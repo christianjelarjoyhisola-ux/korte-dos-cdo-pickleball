@@ -491,6 +491,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .cc-dot.selected { background:var(--lime); border-color:rgba(var(--lime-rgb),.75); box-shadow:0 0 0 2px rgba(var(--lime-rgb),.18); }
 .cc-dot.booked { background:var(--red); }
 .cc-dot.processing { background:#f59e0b; }
+.cc-dot.done { background:#94a3b8; }
 .cc-dot.maintenance { background:#6b7280; }
 /* MOBILE STICKY BOOK BAR */
 .mobile-book-bar {
@@ -3929,6 +3930,7 @@ async function renderCourts() {
           <span><i class="cc-dot selected"></i>Selected</span>
           <span><i class="cc-dot booked"></i>Booked</span>
           <span><i class="cc-dot processing"></i>Processing</span>
+          <span><i class="cc-dot done"></i>Done</span>
           <span><i class="cc-dot maintenance"></i>Maintenance</span>
         </div>
       </div>
