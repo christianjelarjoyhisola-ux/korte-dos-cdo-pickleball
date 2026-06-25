@@ -25,7 +25,8 @@ npx supabase link --project-ref $envMap["SUPABASE_PROJECT_REF"]
 
 npx supabase secrets set `
   SERVICE_ROLE_KEY="$($envMap["SUPABASE_SERVICE_ROLE_KEY"])" `
-  PAYMENT_PROVIDER="$env:PAYMENT_PROVIDER"
+  PAYMENT_PROVIDER="$env:PAYMENT_PROVIDER" `
+  OCRSPACE_API_KEY="$($envMap["OCRSPACE_API_KEY"])"
 
 npx supabase functions deploy create-payment-session
 npx supabase functions deploy payment-webhook
