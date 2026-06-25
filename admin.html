@@ -1491,7 +1491,7 @@ tr:hover td { background: var(--bg2); }
           <table>
             <thead>
               <tr>
-                <th>Week</th>
+                <th>Month</th>
                 <th>Bookings</th>
                 <th>Platform Fee</th>
                 <th>Amount Due</th>
@@ -1503,13 +1503,13 @@ tr:hover td { background: var(--bg2); }
             <tbody id="myBillBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px">No statements yet.</td></tr></tbody>
           </table>
         </div>
-        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Send your platform fee to the GCash account shown when you click <strong>Pay Now</strong>. Then submit the GCash transaction ID for verification.</div>
+        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Send your monthly platform fee to the GCash account shown when you click <strong>Pay Now</strong>. Then submit the GCash transaction ID for verification.</div>
       </div>
 
       <!-- PLATFORM REMITTANCE — System Owner only (where court owners send fees) -->
       <div class="panel" data-perm="owner_only" style="max-width:680px;margin-bottom:20px;border:1.5px solid rgba(255,160,0,.35);background:rgba(255,160,0,.04)">
         <h4>🏦 Platform Remittance Account <span style="font-size:.7rem;background:rgba(255,160,0,.15);color:var(--yellow);padding:2px 8px;border-radius:8px;margin-left:6px;font-family:'DM Mono',monospace;letter-spacing:1px">SYSTEM OWNER</span></h4>
-        <p style="color:var(--muted);font-size:.84rem;margin:8px 0 14px">This is the GCash account where court owners send weekly platform fees. Shown to them in the Pay Now dialog.</p>
+        <p style="color:var(--muted);font-size:.84rem;margin:8px 0 14px">This is the GCash account where court owners send monthly platform fees. Shown to them in the Pay Now dialog.</p>
         <div class="frow" style="gap:10px;margin-bottom:10px;">
           <div class="fg" style="margin:0;flex:1">
             <label class="fl">Platform GCash Number</label>
@@ -1663,15 +1663,15 @@ tr:hover td { background: var(--bg2); }
         </div>
       </div>
 
-      <!-- WEEKLY BILLING (owner only) -->
+      <!-- MONTHLY BILLING (owner only) -->
       <div class="panel" data-perm="owner_only" style="max-width:980px;margin-bottom:20px;border:1.5px solid rgba(var(--green-rgb),.35);background:rgba(var(--green-rgb),.04)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-          <h4 style="margin:0;color:var(--green)">🧾 Weekly Billing Statements</h4>
+          <h4 style="margin:0;color:var(--green)">🧾 Monthly Billing Statements</h4>
           <div class="bill-controls" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <label style="font-size:.78rem;color:var(--text3)">Statement Week:</label>
+            <label style="font-size:.78rem;color:var(--text3)">Statement Month:</label>
             <select class="fi" id="billWeekMode" style="padding:5px 10px;font-size:.82rem;width:auto">
-              <option value="1" selected>Previous Week (Mon-Sun)</option>
-              <option value="0">Current Week (Mon-Sun)</option>
+              <option value="1" selected>Previous Month</option>
+              <option value="0">Current Month</option>
             </select>
             <button class="btn btn-p btn-sm" onclick="generateWeeklyStatement()">➕ Generate Statement</button>
             <button class="btn btn-g btn-sm" onclick="renderWeeklyBilling()">🔄 Refresh</button>
@@ -1697,7 +1697,7 @@ tr:hover td { background: var(--bg2); }
           <table>
             <thead>
               <tr>
-                <th>Week</th>
+                <th>Month</th>
                 <th>Court Owner</th>
                 <th>Bookings</th>
                 <th>Platform Fee</th>
@@ -1711,7 +1711,7 @@ tr:hover td { background: var(--bg2); }
             <tbody id="billBody"><tr><td colspan="9" style="text-align:center;color:var(--muted);padding:22px">No statements yet.</td></tr></tbody>
           </table>
         </div>
-        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Statements are generated weekly from <strong>confirmed</strong> and <strong>completed</strong> bookings only. Once generated, use <strong>Mark Paid</strong> after verifying GCash remittance proof.</div>
+        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Statements are generated monthly from <strong>confirmed</strong> and <strong>completed</strong> bookings only. Once generated, use <strong>Mark Paid</strong> after verifying GCash remittance proof.</div>
       </div>
     </div>
 
@@ -4092,39 +4092,35 @@ async function renderPaymentSettings() {
   await renderMyBilling();
 }
 function _weekBounds(mode = 1) {
-  // mode = integer weeks ago (0 = current, 1 = previous, 2 = two weeks ago, ...).
+  // mode = integer months ago (0 = current, 1 = previous, 2 = two months ago, ...).
   // Legacy strings 'current'/'last' still supported.
-  let weeksAgo = mode === 'current' ? 0 : mode === 'last' ? 1 : Number(mode);
-  if (!Number.isFinite(weeksAgo) || weeksAgo < 0) weeksAgo = 1;
+  let monthsAgo = mode === 'current' ? 0 : mode === 'last' ? 1 : Number(mode);
+  if (!Number.isFinite(monthsAgo) || monthsAgo < 0) monthsAgo = 1;
   const now = new Date();
-  const dow = now.getDay();
-  const mondayOffset = (dow + 6) % 7;
-  const start = new Date(now);
+  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
   start.setHours(0, 0, 0, 0);
-  start.setDate(now.getDate() - mondayOffset - (weeksAgo * 7));
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
   end.setHours(23, 59, 59, 999);
 
   const toDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   return { startDate: toDate(start), endDate: toDate(end), start, end };
 }
 
-// Populate the "Statement Week" dropdown with the last N weeks (Mon-Sun).
-function populateBillWeekOptions(weeksBack = 12) {
+// Populate the "Statement Month" dropdown with recent calendar months.
+function populateBillWeekOptions(monthsBack = 12) {
   const sel = $('billWeekMode');
   if (!sel) return;
   const prev = sel.value;
   const opts = [];
-  for (let w = 0; w <= weeksBack; w++) {
-    const { startDate, endDate } = _weekBounds(w);
-    const label = w === 0 ? `Current Week (${_dateLabel(startDate)} – ${_dateLabel(endDate)})`
-                : w === 1 ? `Previous Week (${_dateLabel(startDate)} – ${_dateLabel(endDate)})`
-                : `${w} Weeks Ago (${_dateLabel(startDate)} – ${_dateLabel(endDate)})`;
-    opts.push(`<option value="${w}"${String(w) === prev ? ' selected' : ''}>${label}</option>`);
+  for (let m = 0; m <= monthsBack; m++) {
+    const { startDate, endDate } = _weekBounds(m);
+    const label = m === 0 ? `Current Month (${_dateLabel(startDate)} - ${_dateLabel(endDate)})`
+                : m === 1 ? `Previous Month (${_dateLabel(startDate)} - ${_dateLabel(endDate)})`
+                : `${m} Months Ago (${_dateLabel(startDate)} - ${_dateLabel(endDate)})`;
+    opts.push(`<option value="${m}"${String(m) === prev ? ' selected' : ''}>${label}</option>`);
   }
   sel.innerHTML = opts.join('');
-  if (!prev) sel.value = '1'; // default to Previous Week
+  if (!prev) sel.value = '1'; // default to previous month
 }
 
 function _dateLabel(ds) {
@@ -4184,7 +4180,7 @@ async function renderWeeklyBilling() {
     const refDisplay = status === 'paid' ? (r.paid_ref || '—')
                      : status === 'submitted' ? (r.submitted_ref || '—')
                      : '—';
-    const week = `${_dateLabel(r.week_start)} – ${_dateLabel(r.week_end)}`;
+    const period = `${_dateLabel(r.week_start)} – ${_dateLabel(r.week_end)}`;
     const canMarkPaid = status !== 'paid';
     const canMarkOverdue = ['draft', 'sent'].includes(status);
     const proofBtn = (status === 'submitted' && r.submitted_proof_url)
@@ -4192,7 +4188,7 @@ async function renderWeeklyBilling() {
       : '';
 
     return `<tr>
-      <td data-label="Week">${week}</td>
+      <td data-label="Month">${period}</td>
       <td data-label="Court Owner"><div style="font-weight:700">${ownerName}</div><div style="font-size:.72rem;color:var(--muted)">${r.court_owner_email || owner?.email || '—'}</div></td>
       <td data-label="Bookings">${r.bookings_count}</td>
       <td data-label="Platform Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
@@ -4235,34 +4231,35 @@ async function generateWeeklyStatement() {
     const feeCfg = getPlatformFeeConfig(settings);
     const feePerBooking = feeCfg.amount;
 
+    // One statement per (owner, month). Regenerating recomputes the same month
+    // rather than creating a duplicate.
+    const existing = (existingStatements || []).find(r =>
+      r.court_owner_user_id === courtOwner.id &&
+      r.week_start === startDate && r.week_end === endDate
+    );
+
     // Billable event = a CONFIRMED booking (one that successfully reserved a
-    // slot). Cancelled / rejected / verifying holds are never billed.
+    // slot). Cancelled / rejected / verifying holds are never billed. Bookings
+    // already stamped to another statement are skipped to avoid double billing.
     const eligible = bookings.filter(b =>
       (b.status === 'confirmed' || b.status === 'completed') &&
-      b.date >= startDate && b.date <= endDate
+      b.date >= startDate && b.date <= endDate &&
+      (!b.weeklyFeeId || (existing && String(b.weeklyFeeId) === String(existing.id)))
     );
     const billedRefs = eligible.map(b => b.ref).filter(Boolean);
     const bookingsCount = billedRefs.length;
     const amountDue = eligible.reduce((sum, b) => sum + calcPlatformFeeForBooking(b, feeCfg), 0);
 
     const due = new Date(end);
-    due.setDate(end.getDate() + 5); // Friday after Sunday cut-off
+    due.setDate(end.getDate() + 5); // five days after month end
     due.setHours(17, 0, 0, 0);
 
-    // One statement per (owner, week). Regenerating recomputes the same week
-    // rather than creating a duplicate. A booking's date maps it to exactly one
-    // week, so a booking can never be billed on two different statements.
-    const existing = (existingStatements || []).find(r =>
-      r.court_owner_user_id === courtOwner.id &&
-      r.week_start === startDate && r.week_end === endDate
-    );
-
-    console.log('[billGenerate] mode=', mode, 'week=', startDate, 'to', endDate, 'owner=', courtOwner.email, 'eligible=', bookingsCount, existing ? '(regenerate)' : '(new)');
+    console.log('[billGenerate] mode=', mode, 'month=', startDate, 'to', endDate, 'owner=', courtOwner.email, 'eligible=', bookingsCount, existing ? '(regenerate)' : '(new)');
 
     let weeklyFeeId;
     if (existing) {
       if ((existing.status || '').toLowerCase() === 'paid') {
-        toast('This week is already marked paid and cannot be regenerated.', 'err');
+        toast('This month is already marked paid and cannot be regenerated.', 'err');
         return;
       }
       await DB.updateWeeklyFee(existing.id, {
@@ -4294,11 +4291,11 @@ async function generateWeeklyStatement() {
     // Stamp each billed booking so it is auditable and never billed twice.
     if (weeklyFeeId) await DB.markBookingsBilled(billedRefs, weeklyFeeId);
 
-    toast(`Statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligible, feeCfg)} = ${fmt(amountDue)}`);
+    toast(`Monthly statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligible, feeCfg)} = ${fmt(amountDue)}`);
     await renderWeeklyBilling();
   } catch (e) {
     console.error('[billGenerate] error:', e);
-    toast('Failed to generate weekly statement: ' + (e?.message || e), 'err');
+    toast('Failed to generate monthly statement: ' + (e?.message || e), 'err');
   }
 }
 
@@ -4363,7 +4360,7 @@ async function renderMyBilling() {
 
   body.innerHTML = mine.map(r => {
     const status = (r.status || 'draft').toLowerCase();
-    const week = `${_dateLabel(r.week_start)} – ${_dateLabel(r.week_end)}`;
+    const period = `${_dateLabel(r.week_start)} – ${_dateLabel(r.week_end)}`;
     const dueLabel = r.due_at ? new Date(r.due_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     const canPay = ['sent', 'overdue'].includes(status);
     const submittedLabel = status === 'submitted'
@@ -4378,7 +4375,7 @@ async function renderMyBilling() {
           : `<span style="font-size:.74rem;color:var(--muted)">—</span>`;
 
     return `<tr>
-      <td data-label="Week">${week}${submittedLabel}</td>
+      <td data-label="Month">${period}${submittedLabel}</td>
       <td data-label="Bookings">${r.bookings_count}</td>
       <td data-label="Platform Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
       <td data-label="Amount Due"><strong style="color:var(--yellow)">${fmt(r.amount_due)}</strong></td>
@@ -4403,7 +4400,7 @@ async function openPayBilling(id) {
     return;
   }
 
-  const refNote = `WK-${r.week_start}`;
+  const refNote = `MO-${String(r.week_start || '').slice(0, 7)}`;
   $('pbStatementId').value = id;
   $('pbWeekLabel').textContent = `${_dateLabel(r.week_start)} – ${_dateLabel(r.week_end)} • ${r.bookings_count} bookings`;
   $('pbAmount').textContent = fmt(r.amount_due);
@@ -6108,11 +6105,11 @@ function applyRoleVisibility(role) {
         <li>Platform hosting, security, and technical maintenance</li>
       </ul>
 
-      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Platform Booking Fee &amp; Weekly Remittance</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Platform Booking Fee &amp; Monthly Remittance</h4>
       <p id="agreeFeeIntro" style="margin:0 0 14px">In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable platform booking fee</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The platform booking fee is controlled by the System Owner in Payment Settings and may be configured as either a per-booked-hour fee or a flat per-booking fee.</p>
       <p id="agreeFeeBillable" style="margin:0 0 14px"><strong>Billable event.</strong> The configured platform fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not billed</strong>.</p>
       <p id="agreeFeeCollection" style="margin:0 0 14px"><strong>Collection.</strong> The Court Owner collects the configured platform fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.</p>
-      <p id="agreeFeeWeekly" style="margin:0 0 14px"><strong>Weekly remittance.</strong> Billing is settled <strong>weekly</strong>. Each week the Platform Provider issues a statement covering every confirmed booking from the previous <strong>Monday–Sunday</strong> period. The amount due is calculated using the System Owner-selected platform fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is billed <strong>only once</strong>.</p>
+      <p id="agreeFeeWeekly" style="margin:0 0 14px"><strong>Monthly remittance.</strong> Billing is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering every confirmed booking from the previous <strong>calendar month</strong>. The amount due is calculated using the System Owner-selected platform fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is billed <strong>only once</strong>.</p>
       <p style="margin:0 0 14px"><strong>Due date &amp; method.</strong> Payment is due within <strong>five (5) days</strong> of the statement date. The Court Owner remits the amount due via <strong>GCash</strong> to the platform remittance account shown in the dashboard, then submits the GCash transaction reference and a screenshot of the receipt as proof of payment through the "Pay Now" function.</p>
       <p style="margin:0 0 14px"><strong>Non-payment.</strong> Statements unpaid past the due date are marked <strong>overdue</strong>. The Platform Provider may suspend the Court Owner's access to the booking system until all outstanding statements are settled. Suspension does not waive any amounts already due.</p>
 
@@ -6158,7 +6155,7 @@ function applyRoleVisibility(role) {
         <li>You have read and fully understood all terms of this Agreement.</li>
         <li>You are the authorized Court Owner or duly authorized representative.</li>
         <li id="agreeFeeConfirmCollect">You authorize the platform to collect the System Owner-selected platform fee from customers on confirmed bookings.</li>
-        <li id="agreeFeeConfirmRemit">You agree to remit the collected platform fees to the Platform Provider <strong>weekly</strong>, due within five (5) days of each statement.</li>
+        <li id="agreeFeeConfirmRemit">You agree to remit the collected platform fees to the Platform Provider <strong>monthly</strong>, due within five (5) days of each statement.</li>
         <li>You agree to honor all platform bookings and not circumvent the platform fee.</li>
         <li>You understand the Platform Provider is the software provider only and does not operate the court.</li>
         <li>This electronic signature has the same legal force as a handwritten signature under RA 8792.</li>
@@ -6204,7 +6201,7 @@ function applyRoleVisibility(role) {
 
 <script>
 /* ── AGREEMENT MODAL ── */
-const AGREEMENT_VERSION = 3;
+const AGREEMENT_VERSION = 4;
 let _agreeDrawing = false, _agreeHasSig = false;
 let _agreePrevX = 0, _agreePrevY = 0;
 
@@ -6223,11 +6220,11 @@ async function updateAgreementFeeCopy() {
   setHtml('agreeFeeIntro', `In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable platform booking fee of ${fee}</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The platform booking fee is controlled by the System Owner in Payment Settings and may be configured as either a per-booked-hour fee or a flat per-booking fee.`);
   setHtml('agreeFeeBillable', `<strong>Billable event.</strong> The configured ${feeShort} platform fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not billed</strong>.`);
   setHtml('agreeFeeCollection', `<strong>Collection.</strong> The Court Owner collects the configured ${feeShort} platform fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.`);
-  setHtml('agreeFeeWeekly', `<strong>Weekly remittance.</strong> Billing is settled <strong>weekly</strong>. Each week the Platform Provider issues a statement covering every confirmed booking from the previous <strong>Monday–Sunday</strong> period. The amount due is calculated as <strong>${formula}</strong>, using the System Owner-selected platform fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is billed <strong>only once</strong>.`);
+  setHtml('agreeFeeWeekly', `<strong>Monthly remittance.</strong> Billing is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering every confirmed booking from the previous <strong>calendar month</strong>. The amount due is calculated as <strong>${formula}</strong>, using the System Owner-selected platform fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is billed <strong>only once</strong>.`);
   setHtml('agreeFeeRevenue', `All court booking fees set by the Court Owner (e.g. ₱200/hr, ₱250/hr) belong <strong>exclusively to the Court Owner</strong>. The Platform Provider does not take any share of the court rental revenue. The Court Owner receives 100% of the court rate from every confirmed booking. Only the separate configured platform fee of <strong>${fee}</strong> (paid by the customer) goes to the Platform Provider.`);
   setHtml('agreeFeeCircumvention', `The Court Owner agrees <strong>not to direct, encourage, or assist customers to bypass the platform</strong> in order to avoid the configured platform booking fee of <strong>${fee}</strong>. This includes but is not limited to: advertising a direct booking channel at a lower price, accepting bookings verbally or via personal chat for slots visible on the platform, or instructing customers to "book directly" to avoid the fee.<br><br>Circumvention of the platform fee is a material breach of this Agreement and may result in immediate termination of platform access.`);
   setHtml('agreeFeeConfirmCollect', `You authorize the platform to collect the System Owner-selected platform fee of <strong>${fee}</strong> from customers on confirmed bookings.`);
-  setHtml('agreeFeeConfirmRemit', `You agree to remit the collected platform fees to the Platform Provider <strong>weekly</strong>, due within five (5) days of each statement.`);
+  setHtml('agreeFeeConfirmRemit', `You agree to remit the collected platform fees to the Platform Provider <strong>monthly</strong>, due within five (5) days of each statement.`);
   setHtml('agreeFeeCheckboxText', `I have read and fully understood the Platform Access &amp; Booking Fee Authorization Agreement above. I authorize the platform to collect the System Owner-selected <strong>${fee}</strong> platform booking fee from customers on confirmed bookings. I agree to honor all platform bookings and not direct customers to book directly to circumvent this fee. I understand that [Platform Provider Name] is the software provider only and does not operate the court. This electronic signature is legally binding under RA 8792.`);
 }
 
