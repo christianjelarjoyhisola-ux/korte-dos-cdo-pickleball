@@ -3739,7 +3739,7 @@ async function onCardDate(courtId, date) {
   grid.innerHTML = `<div class="cc-slots-empty"><div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading times</div></div></div>`;
 
   const [courts, bookings, blockedDates] = await Promise.all([
-    DB.getCourts(), DB.getBookings(), DB.getBlockedDates(), loadOperatingHours()
+    DB.getCourts(), DB.getBookings({ courtId, date, activeOnly: true }), DB.getBlockedDates(), loadOperatingHours()
   ]);
 
   const c = courts.find(x => x.id === courtId);
@@ -3827,20 +3827,25 @@ async function ensureCourt(courtId) {
    COURTS
    ============================================= */
 async function renderCourts() {
-  const [courts, bookings] = await Promise.all([DB.getCourts(), DB.getBookings(), loadOperatingHours()]);
   const today = todayStr();
+  const [courts, bookings, , openPlayCountsByCourt] = await Promise.all([
+    DB.getCourts(),
+    DB.getBookings({ date: today, activeOnly: true }),
+    loadOperatingHours(),
+    DB.getOpenPlayCountsForDate ? DB.getOpenPlayCountsForDate(today) : Promise.resolve({}),
+  ]);
   const curHour = nowHour();
   const courtsGrid = $('courtsGrid');
   if (!courtsGrid) return;
   const openPlayTodayByCourt = {};
-  await Promise.all(courts.map(async c => {
+  courts.forEach(c => {
     const session = getOpenPlaySessionForDate(today, c.id);
-    const count = session ? await DB.getOpenPlayCountForDate(today, c.id) : 0;
+    const count = session ? Number(openPlayCountsByCourt?.[String(c.id)] || 0) : 0;
     openPlayTodayByCourt[c.id] = {
       session,
       spotsLeft: Math.max(0, (openPlayMaxPlayers || 40) - count),
     };
-  }));
+  });
 
   courtsGrid.innerHTML = courts.map(c => {
     const blk = c.blocked;
@@ -4062,11 +4067,10 @@ async function onDate() {
    TIME SLOTS — REAL-TIME AWARE
    ============================================= */
 async function getBookedSlots(cid, date) {
-  const bookings = await DB.getBookings();
+  const bookings = await DB.getBookings({ courtId: cid, date, activeOnly: true });
   const s = new Set();
   bookings.forEach(b => {
-    if (b.courtId === cid && b.date === date && b.status !== 'cancelled')
-      b.slots.forEach(h => s.add(h));
+    b.slots.forEach(h => s.add(h));
   });
   return s;
 }
@@ -4979,9 +4983,9 @@ function startRealtime() {
     // Debounce: a single booking can emit several row events in quick succession.
     clearTimeout(_rtDebounce);
     _rtDebounce = setTimeout(() => { 
-      loadOperatingHours(); // Reload ALL settings on any change (QR, payment methods, operating hours, etc.)
+      if (DB.clearCache) DB.clearCache();
       refreshLiveViews().catch(() => {}); 
-    }, 250);
+    }, 120);
   };
   _supabase.channel('public-rt')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, onChange)

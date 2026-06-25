@@ -27,6 +27,61 @@ if (PB_IS_LOCAL_HOST) {
 
 window.PB_USE_LOCAL_DATA = PB_IS_LOCAL_HOST && localStorage.getItem(PB_DATA_MODE_KEY) === 'local';
 
+const PB_FAST_CACHE_MS = {
+  courts: 60000,
+  settings: 30000,
+  blockedDates: 30000,
+  bookings: 3500,
+  openPlay: 3500,
+};
+const _pbFastCache = new Map();
+
+function _pbClone(value) {
+  if (value == null) return value;
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(value);
+  } catch(_) {}
+  try { return JSON.parse(JSON.stringify(value)); } catch(_) { return value; }
+}
+
+function _pbCacheKey(scope, params = {}) {
+  const suffix = Object.entries(params || {})
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(',') : String(value)}`)
+    .join('&');
+  return suffix ? `${scope}:${suffix}` : scope;
+}
+
+async function _pbCached(scope, params, ttlMs, loader) {
+  const key = _pbCacheKey(scope, params);
+  const hit = _pbFastCache.get(key);
+  const now = Date.now();
+  if (hit?.promise) return _pbClone(await hit.promise);
+  if (hit && now - hit.at < ttlMs) return _pbClone(hit.value);
+
+  const promise = Promise.resolve()
+    .then(loader)
+    .then(value => {
+      _pbFastCache.set(key, { at: Date.now(), value });
+      return value;
+    })
+    .catch(err => {
+      _pbFastCache.delete(key);
+      throw err;
+    });
+  _pbFastCache.set(key, { at: now, promise });
+  return _pbClone(await promise);
+}
+
+function _pbClearFastCache(scopes = []) {
+  const list = Array.isArray(scopes) ? scopes.filter(Boolean) : [scopes].filter(Boolean);
+  if (list.length === 0) { _pbFastCache.clear(); return; }
+  for (const key of [..._pbFastCache.keys()]) {
+    if (list.some(scope => key === scope || key.startsWith(`${scope}:`))) _pbFastCache.delete(key);
+  }
+}
+
 function _safeJsonParse(v) {
   try { return JSON.parse(v); } catch(_) { return null; }
 }
@@ -296,26 +351,37 @@ window.DB = {
 
   // ---- COURTS ----
   async getCourts() {
-    const { data, error } = await _sb.from('courts').select('*').order('id');
-    if (error) { console.error('getCourts:', error); return []; }
-    return data.map(rowToCourt);
+    return _pbCached('courts', {}, PB_FAST_CACHE_MS.courts, async () => {
+      const { data, error } = await _sb.from('courts').select('*').order('id');
+      if (error) { console.error('getCourts:', error); return []; }
+      return data.map(rowToCourt);
+    });
   },
 
   async saveCourt(court) {
     const { error } = await _sb.from('courts').upsert(courtToRow(court));
     if (error) { console.error('saveCourt:', error); throw error; }
+    _pbClearFastCache(['courts']);
   },
 
   async deleteCourt(id) {
     const { error } = await _sb.from('courts').delete().eq('id', id);
     if (error) console.error('deleteCourt:', error);
+    _pbClearFastCache(['courts']);
   },
 
   // ---- BOOKINGS ----
-  async getBookings() {
-    const { data, error } = await _sb.from('bookings').select('*').order('created_at', { ascending: false });
-    if (error) { console.error('getBookings:', error); return []; }
-    return data.map(rowToBooking);
+  async getBookings(filters = {}) {
+    const opts = filters || {};
+    return _pbCached('bookings', opts, PB_FAST_CACHE_MS.bookings, async () => {
+      let query = _sb.from('bookings').select('*').order('created_at', { ascending: false });
+      if (opts.date) query = query.eq('date', opts.date);
+      if (opts.courtId) query = query.eq('court_id', String(opts.courtId));
+      if (opts.activeOnly) query = query.neq('status', 'cancelled');
+      const { data, error } = await query;
+      if (error) { console.error('getBookings:', error); return []; }
+      return data.map(rowToBooking);
+    });
   },
 
   async addBooking(booking) {
@@ -333,6 +399,7 @@ window.DB = {
 
     const { error } = await _sb.from('bookings').insert(bookingToRow(booking));
     if (error) { console.error('addBooking:', error); throw error; }
+    _pbClearFastCache(['bookings']);
   },
 
   async getBookingByRef(ref) {
@@ -367,6 +434,7 @@ window.DB = {
     if (updates.weeklyFeeId !== undefined) row.weekly_fee_id = updates.weeklyFeeId;
     const { error } = await _sb.from('bookings').update(row).eq('ref', ref);
     if (error) { console.error('updateBooking:', error); throw error; }
+    _pbClearFastCache(['bookings']);
   },
 
   // Stamp a set of bookings as billed on a given weekly statement (idempotent
@@ -377,18 +445,22 @@ window.DB = {
       .update({ billed_at: new Date().toISOString(), weekly_fee_id: weeklyFeeId })
       .in('ref', refs);
     if (error) { console.error('markBookingsBilled:', error); throw error; }
+    _pbClearFastCache(['bookings']);
   },
 
   async deleteBooking(ref) {
     const { error } = await _sb.from('bookings').delete().eq('ref', ref);
     if (error) console.error('deleteBooking:', error);
+    _pbClearFastCache(['bookings']);
   },
 
   // ---- OPEN PLAY REGISTRATIONS ----
   async getOpenPlayRegistrations() {
-    const { data, error } = await _sb.from('open_play_registrations').select('*').order('created_at', { ascending: false });
-    if (error) { console.error('getOpenPlayRegistrations:', error); return []; }
-    return data;
+    return _pbCached('openPlayRegistrations', {}, PB_FAST_CACHE_MS.openPlay, async () => {
+      const { data, error } = await _sb.from('open_play_registrations').select('*').order('created_at', { ascending: false });
+      if (error) { console.error('getOpenPlayRegistrations:', error); return []; }
+      return data;
+    });
   },
 
   async addOpenPlayRegistration(reg) {
@@ -415,6 +487,7 @@ window.DB = {
       created_at: new Date().toISOString(),
     });
     if (error) { console.error('addOpenPlayRegistration:', error); throw error; }
+    _pbClearFastCache(['openPlayRegistrations', 'openPlayCount', 'openPlayCounts']);
   },
 
   async updateOpenPlayRegistration(id, updates) {
@@ -431,22 +504,41 @@ window.DB = {
     if (updates.receiptVerifiedAt !== undefined) row.receipt_verified_at = updates.receiptVerifiedAt;
     const { error } = await _sb.from('open_play_registrations').update(row).eq('id', id);
     if (error) { console.error('updateOpenPlayRegistration:', error); throw error; }
+    _pbClearFastCache(['openPlayRegistrations', 'openPlayCount', 'openPlayCounts']);
   },
 
   async getOpenPlayCountForDate(date, courtId = null) {
-    let query = _sb.from('open_play_registrations')
-      .select('*', { count: 'exact', head: true })
-      .eq('date', date)
-      .or('payment_status.is.null,payment_status.neq.rejected');
-    if (courtId) query = query.eq('court_id', String(courtId));
-    const { count, error } = await query;
-    if (error) { console.error('getOpenPlayCountForDate:', error); return 0; }
-    return count || 0;
+    return _pbCached('openPlayCount', { date, courtId: courtId || '' }, PB_FAST_CACHE_MS.openPlay, async () => {
+      let query = _sb.from('open_play_registrations')
+        .select('*', { count: 'exact', head: true })
+        .eq('date', date)
+        .or('payment_status.is.null,payment_status.neq.rejected');
+      if (courtId) query = query.eq('court_id', String(courtId));
+      const { count, error } = await query;
+      if (error) { console.error('getOpenPlayCountForDate:', error); return 0; }
+      return count || 0;
+    });
+  },
+
+  async getOpenPlayCountsForDate(date) {
+    return _pbCached('openPlayCounts', { date }, PB_FAST_CACHE_MS.openPlay, async () => {
+      const { data, error } = await _sb.from('open_play_registrations')
+        .select('court_id')
+        .eq('date', date)
+        .or('payment_status.is.null,payment_status.neq.rejected');
+      if (error) { console.error('getOpenPlayCountsForDate:', error); return {}; }
+      return (data || []).reduce((counts, row) => {
+        const key = String(row.court_id || '');
+        counts[key] = (counts[key] || 0) + 1;
+        return counts;
+      }, {});
+    });
   },
 
   async deleteOpenPlayRegistration(id) {
     const { error } = await _sb.from('open_play_registrations').delete().eq('id', id);
     if (error) console.error('deleteOpenPlayRegistration:', error);
+    _pbClearFastCache(['openPlayRegistrations', 'openPlayCount', 'openPlayCounts']);
   },
 
   // ---- OPEN PLAY GAME MANAGER ----
@@ -559,19 +651,23 @@ window.DB = {
 
   // ---- BLOCKED DATES ----
   async getBlockedDates() {
-    const { data, error } = await _sb.from('blocked_dates').select('date').order('date');
-    if (error) { console.error('getBlockedDates:', error); return []; }
-    return data.map(r => r.date);
+    return _pbCached('blockedDates', {}, PB_FAST_CACHE_MS.blockedDates, async () => {
+      const { data, error } = await _sb.from('blocked_dates').select('date').order('date');
+      if (error) { console.error('getBlockedDates:', error); return []; }
+      return data.map(r => r.date);
+    });
   },
 
   async addBlockedDate(date) {
     const { error } = await _sb.from('blocked_dates').insert({ date, created_at: new Date().toISOString() });
     if (error) console.error('addBlockedDate:', error);
+    _pbClearFastCache(['blockedDates']);
   },
 
   async removeBlockedDate(date) {
     const { error } = await _sb.from('blocked_dates').delete().eq('date', date);
     if (error) console.error('removeBlockedDate:', error);
+    _pbClearFastCache(['blockedDates']);
   },
 
   // ---- ACCOUNTS ----
@@ -593,16 +689,23 @@ window.DB = {
 
   // ---- SETTINGS ----
   async getSettings() {
-    const { data, error } = await _sb.from('settings').select('*');
-    if (error) { console.error('getSettings:', error); return {}; }
-    const out = {};
-    data.forEach(r => out[r.key] = r.value);
-    return out;
+    return _pbCached('settings', {}, PB_FAST_CACHE_MS.settings, async () => {
+      const { data, error } = await _sb.from('settings').select('*');
+      if (error) { console.error('getSettings:', error); return {}; }
+      const out = {};
+      data.forEach(r => out[r.key] = r.value);
+      return out;
+    });
   },
 
   async saveSetting(key, value) {
     const { error } = await _sb.from('settings').upsert({ key, value });
     if (error) { console.error('saveSetting:', error); throw error; }
+    _pbClearFastCache(['settings']);
+  },
+
+  clearCache(scopes = []) {
+    _pbClearFastCache(scopes);
   },
 
   async createPaymentSession(payload) {
@@ -997,8 +1100,13 @@ window.DB = {
       writeDb(db);
     },
 
-    async getBookings() {
-      return readDb().bookings.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    async getBookings(filters = {}) {
+      const opts = filters || {};
+      return readDb().bookings
+        .filter(b => !opts.date || b.date === opts.date)
+        .filter(b => !opts.courtId || String(b.courtId) === String(opts.courtId))
+        .filter(b => !opts.activeOnly || b.status !== 'cancelled')
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     },
     async addBooking(booking) {
       const db = readDb();
@@ -1084,6 +1192,15 @@ window.DB = {
         (!courtId || String(r.court_id) === String(courtId)) &&
         r.payment_status !== 'rejected'
       ).length;
+    },
+    async getOpenPlayCountsForDate(date) {
+      return readDb().openPlayRegistrations
+        .filter(r => r.date === date && r.payment_status !== 'rejected')
+        .reduce((counts, row) => {
+          const key = String(row.court_id || '');
+          counts[key] = (counts[key] || 0) + 1;
+          return counts;
+        }, {});
     },
     async deleteOpenPlayRegistration(id) {
       const db = readDb();
@@ -1262,6 +1379,7 @@ window.DB = {
       db.settings[key] = value;
       writeDb(db);
     },
+    clearCache() {},
 
     async createPaymentSession() { throw new Error('Online checkout is disabled in local data mode.'); },
     async sendConfirmationEmail() { return { ok: true, skipped: true, reason: 'Local data mode' }; },

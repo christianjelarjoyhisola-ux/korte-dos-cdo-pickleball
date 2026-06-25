@@ -13,14 +13,17 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 - **Court-card slot status legend** - each public court card now shows bottom color indicators for Available, Selected, Booked, Processing, Done, and Maintenance states.
 - **Done slot indicator** - past/completed time slots now have their own muted silver indicator in the court-card legend.
 - **Pickleball loading indicators** - public and admin loading placeholders now use an animated circling pickleball instead of plain text loaders.
+- **Fast browser data cache** - Supabase reads now use short-lived in-flight caching for courts, bookings, settings, blocked dates, and Open Play counts to avoid duplicate requests.
 
 ### Changed
 - **Selected time slot color** - selected public time cards now use the Korte DOS lime green from the logo instead of blue, making the active selection easier to identify.
 - **Mobile time-slot grid** - public booking time cards use a 3-column mobile layout for easier reading.
 - **Court-card selection behavior** - court cards stay visually neutral while the selected time slot carries the main booking emphasis.
 - **Generic spinner styling** - the shared spinner class now renders as a mini pickleball loader for consistency.
+- **Public booking data reads** - court-card and slot availability views now request only the needed court/date booking rows instead of repeatedly reading all bookings.
+- **Realtime refresh speed** - live booking refreshes now clear cached reads and use a shorter debounce so updates appear faster without sending duplicate requests.
 
-**Files affected:** `index.html`, `admin.html`, `style.css`
+**Files affected:** `index.html`, `admin.html`, `style.css`, `supabase-config.js`
 
 ---
 
