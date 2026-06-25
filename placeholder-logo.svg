@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pickleball court logo placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <path d="M132 321 256 116l124 205H132Z" fill="none" stroke="#fff" stroke-width="36" stroke-linejoin="round"/>
+  <circle cx="336" cy="176" r="34" fill="#38bdf8"/>
+  <circle cx="336" cy="176" r="8" fill="#0f172a" opacity=".45"/>
+  <circle cx="320" cy="162" r="6" fill="#0f172a" opacity=".35"/>
+  <circle cx="351" cy="192" r="6" fill="#0f172a" opacity=".35"/>
+  <text x="256" y="408" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="800" fill="#fff">COURT</text>
+</svg>

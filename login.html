@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Korte DOS — Admin Login</title>
+<link rel="icon" type="image/svg+xml" href="placeholder-logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+:root{--green:#334155;--green-dark:#111827;--glow:rgba(15,23,42,.14);--bg:#f8fafc;--card:#fff;--border:#d7dde5;--text:#111827;--muted:#64748b;--input:#f1f5f9;--red:#dc2626;}
+body.light{--bg:#f8fafc;--card:#fff;--border:#d7dde5;--text:#111827;--muted:#64748b;--input:#f1f5f9;}body.dark{--bg:#111827;--card:#1f2937;--border:#374151;--text:#f9fafb;--muted:#9ca3af;--input:#111827;--green:#e5e7eb;--green-dark:#9ca3af;--glow:rgba(255,255,255,.08);}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;transition:background .3s,color .3s;touch-action:manipulation;}
+button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulation}
+.bg-glow{position:fixed;top:-100px;left:50%;transform:translateX(-50%);width:700px;height:500px;border-radius:50%;background:radial-gradient(ellipse,rgba(15,23,42,.08) 0%,transparent 70%);pointer-events:none;}
+.bg-grid{position:fixed;inset:0;opacity:.035;background-image:repeating-linear-gradient(0deg,var(--green) 0,var(--green) 1px,transparent 1px,transparent 72px),repeating-linear-gradient(90deg,var(--green) 0,var(--green) 1px,transparent 1px,transparent 80px);pointer-events:none;}
+.card{position:relative;z-index:10;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:44px 38px;width:100%;max-width:400px;box-shadow:0 24px 64px rgba(15,23,42,.12);}
+.logo{text-align:center;margin-bottom:28px;}
+.logo-ic{width:60px;height:60px;background:linear-gradient(135deg,var(--green),var(--green-dark));border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.9rem;margin:0 auto 14px;box-shadow:0 8px 24px var(--glow);}
+.logo-tx{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:2px;}
+.logo-sub{color:var(--muted);font-size:.88rem;margin-top:4px;}
+.divider{height:1px;background:var(--border);margin:22px 0;}
+.err{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:8px;padding:11px 14px;font-size:.86rem;color:#ff7875;margin-bottom:14px;display:none;}
+.err.show{display:block;}
+.fl{display:block;font-size:.77rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px;}
+.fi{width:100%;padding:11px 13px;background:var(--input);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Outfit',sans-serif;font-size:.92rem;transition:border-color .2s,box-shadow .2s;margin-bottom:14px;}
+.fi:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(55,65,81,.15);}
+.fi::placeholder{color:var(--muted);}
+@media (pointer: coarse){.fi,input,select,textarea,button,.btn{font-size:16px!important;}}
+.btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:13px 20px;border:none;border-radius:9px;font-family:'Outfit',sans-serif;font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s;}
+.btn-p{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;box-shadow:0 4px 14px var(--glow);}
+.btn-p:hover{transform:translateY(-2px);box-shadow:0 8px 22px var(--glow);}
+.hint{background:rgba(55,65,81,.07);border:1px solid rgba(55,65,81,.22);border-radius:8px;padding:12px;font-size:.82rem;color:var(--muted);margin-top:18px;text-align:center;}
+.hint strong{color:var(--green);}
+.back{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:20px;font-size:.86rem;color:var(--muted);transition:color .2s;text-decoration:none;}
+.back:hover{color:var(--green);}
+.forgot-link{display:block;text-align:right;font-size:.8rem;color:var(--muted);margin-top:-8px;margin-bottom:14px;cursor:pointer;transition:color .2s;}
+.forgot-link:hover{color:var(--green);}
+.reset-panel{display:none;margin-top:18px;}
+.reset-panel.show{display:block;}
+.ok-msg{background:rgba(55,65,81,.08);border:1px solid rgba(55,65,81,.25);border-radius:8px;padding:12px 14px;font-size:.84rem;color:var(--green);margin-bottom:14px;display:none;}
+.ok-msg.show{display:block;}
+.new-pass-panel{display:none;margin-top:4px;}
+.new-pass-panel.show{display:block;}
+/* toast */
+.toasts{position:fixed;top:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;min-width:240px;box-shadow:0 6px 24px rgba(0,0,0,.4);animation:tin .3s ease;font-size:.86rem;}
+@keyframes tin{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast.err{border-left:3px solid var(--red);}
+</style>
+</head>
+<body class="light">
+<div class="bg-glow"></div>
+<div class="bg-grid"></div>
+<div class="toasts" id="toasts"></div>
+
+<div class="card">
+  <div class="logo">
+    <div class="logo-ic">🏓</div>
+    <div class="logo-tx">PICKLEBALL COURT DASHBOARD</div>
+    <div class="logo-sub">Admin Control Panel</div>
+  </div>
+  <div class="divider"></div>
+
+  <div class="err" id="errBox">❌ Invalid email or password.</div>
+
+  <!-- Login form -->
+  <div id="loginPanel">
+    <form id="loginForm" onsubmit="doLogin(event)" autocomplete="on">
+      <label class="fl" for="uname">✉️ Email</label>
+      <input type="text" inputmode="email" class="fi" id="uname" placeholder="admin@yourdomain.com" autocomplete="username"/>
+      <label class="fl" for="upass">🔒 Password</label>
+      <input type="password" class="fi" id="upass" placeholder="Enter password" autocomplete="current-password"/>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;margin-top:-4px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem;color:var(--muted)">
+          <input type="checkbox" id="rememberMe" style="width:15px;height:15px;accent-color:var(--green);cursor:pointer"/>
+          Keep me logged in
+        </label>
+        <span class="forgot-link" style="margin:0" onclick="showForgot()">Forgot password?</span>
+      </div>
+      <button type="submit" class="btn btn-p">Login to Dashboard →</button>
+    </form>
+  </div>
+
+  <!-- Forgot password panel -->
+  <div class="reset-panel" id="resetPanel">
+    <div class="ok-msg" id="resetOk">✅ Reset link sent! Check your email inbox.</div>
+    <label class="fl">✉️ Enter your admin email</label>
+    <input type="email" class="fi" id="resetEmail" placeholder="admin@yourdomain.com"/>
+    <button class="btn btn-p" onclick="doReset()">Send Reset Link</button>
+    <span class="forgot-link" style="text-align:center;margin-top:12px;" onclick="showLogin()">← Back to login</span>
+  </div>
+
+  <!-- New password panel (after clicking reset link) -->
+  <div class="new-pass-panel" id="newPassPanel">
+    <label class="fl">🔒 New Password</label>
+    <input type="password" class="fi" id="newPass" placeholder="Enter new password (min 8 chars)"/>
+    <label class="fl">🔒 Confirm Password</label>
+    <input type="password" class="fi" id="newPassConfirm" placeholder="Confirm new password"/>
+    <button class="btn btn-p" onclick="doSetPassword()">Set New Password</button>
+  </div>
+
+  <a class="back" href="index.html">← Back to Booking Page</a>
+</div>
+
+<script>
+// Dark mode sync
+const dark = localStorage.getItem('pb_template_theme') === 'dark';
+document.body.classList.toggle('dark', dark);
+document.body.classList.toggle('light', !dark);
+
+async function doLogin(e) {
+  e.preventDefault();
+  const u = document.getElementById('uname').value.trim();
+  const p = document.getElementById('upass').value;
+  const btn = e.target.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = 'Logging in…';
+  const remember = document.getElementById('rememberMe').checked;
+  const r = await Auth.login(u, p, remember);
+  if (r.ok) {
+    const params = new URLSearchParams(window.location.search);
+    window.location.href = params.get('next') || 'admin.html';
+  } else {
+    document.getElementById('errBox').classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Login to Dashboard →';
+  }
+}
+
+// Redirect if already logged in (skip if we were sent here from admin — avoids redirect loop)
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const comingFromAdmin = !!params.get('next');
+  if (!comingFromAdmin && Auth.getSession()) window.location.href = 'admin.html';
+  // Check if redirected here from a password reset email
+  const hash = window.location.hash;
+  if (hash.includes('type=recovery')) {
+    document.getElementById('loginPanel').style.display = 'none';
+    document.getElementById('newPassPanel').classList.add('show');
+  }
+});
+
+function showForgot() {
+  document.getElementById('loginPanel').style.display = 'none';
+  document.getElementById('resetPanel').classList.add('show');
+  document.getElementById('errBox').classList.remove('show');
+}
+
+function showLogin() {
+  document.getElementById('loginPanel').style.display = 'block';
+  document.getElementById('resetPanel').classList.remove('show');
+  document.getElementById('resetOk').classList.remove('show');
+}
+
+async function doReset() {
+  const email = document.getElementById('resetEmail').value.trim();
+  if (!email) { alert('Please enter your email.'); return; }
+  const { error } = await _sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/login.html'
+  });
+  if (error) {
+    alert('Error: ' + error.message);
+  } else {
+    document.getElementById('resetOk').classList.add('show');
+  }
+}
+
+async function doSetPassword() {
+  const p1 = document.getElementById('newPass').value;
+  const p2 = document.getElementById('newPassConfirm').value;
+  if (p1.length < 8) { alert('Password must be at least 8 characters.'); return; }
+  if (p1 !== p2) { alert('Passwords do not match.'); return; }
+  const { error } = await _sb.auth.updateUser({ password: p1 });
+  if (error) {
+    alert('Error: ' + error.message);
+  } else {
+    alert('✅ Password updated! You can now log in.');
+    window.location.href = 'login.html';
+  }
+}
+</script>
+<script src="supabase.min.js"></script>
+<script src="supabase-config.js"></script>
+</body>
+</html>

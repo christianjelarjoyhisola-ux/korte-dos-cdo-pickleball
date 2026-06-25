@@ -1,0 +1,19 @@
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), accelerometer=(), gyroscope=(), magnetometer=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+/*.html
+  Cache-Control: no-cache
+
+/admin.html
+  Cache-Control: no-cache
+
+/login.html
+  Cache-Control: no-cache
+
+/supabase-config.js
+  Cache-Control: no-cache
