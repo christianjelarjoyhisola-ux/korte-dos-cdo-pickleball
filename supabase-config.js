@@ -3,7 +3,7 @@
 // Replace these with your actual project credentials.
 // Find them at: Supabase Dashboard → Project Settings → API
 // =============================================
-const SUPABASE_URL = 'https://your-project-ref.supabase.co';
+const SUPABASE_URL = 'https://zcuufcpkgidmaanxjufo.supabase.co';
 const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
 // Initialize Supabase client (uses UMD global loaded from CDN)
