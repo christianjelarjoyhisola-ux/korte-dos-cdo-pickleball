@@ -924,7 +924,7 @@ window.DB = {
     gcash_merchant_name: 'Court Owner Name',
     service_fee_rate: '15',
     maintenance_fee: '5',
-    fee_type: 'booking',
+    fee_type: 'per_hour',
   });
 
   const defaultAccounts = () => ([{
