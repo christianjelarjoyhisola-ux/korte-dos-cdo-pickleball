@@ -2447,6 +2447,7 @@ async function saveMaintRate() {
     }
     toast(`Booking fee set to ₱${val.toFixed(2)} (${feeType === 'flat' ? 'flat' : 'per hr'})`);
   } catch(e) {
+    console.error('saveMaintRate error:', e);
     toast('Failed to save rate.', 'err');
   }
 }
@@ -5946,14 +5947,17 @@ function updateThemeBtn() {
 function logout(){ Auth.logout(); }
 
 document.addEventListener('DOMContentLoaded', async ()=>{
-  // LOCAL DEV BYPASS: skip Supabase JWT check on localhost
+  // Local demo data can use a browser-only owner session. When localhost is
+  // connected to the live Supabase project, require real Supabase Auth so RLS
+  // permits settings writes such as platform rate changes.
   const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-  if (isLocalDev && !Auth.getSession()) {
-    const devSession = { id: 'owner_001', email: 'owner@kortedos.local', role: 'owner', fullName: 'System Owner', loginAt: new Date().toISOString() };
+  const allowLocalBypass = isLocalDev && window.PB_USE_LOCAL_DATA;
+  if (allowLocalBypass && !Auth.getSession()) {
+    const devSession = { id: 'owner_001', email: 'owner@kortedos.local', role: 'owner', fullName: 'System Owner', loginAt: new Date().toISOString(), isLocalData: true };
     localStorage.setItem('pb_session', JSON.stringify(devSession));
     localStorage.setItem('pb_remember', '1');
   }
-  if (!isLocalDev) {
+  if (!allowLocalBypass) {
   // Allow demo sessions (set via demo bypass in Auth.login)
   const existingSession = Auth.getSession();
   if (existingSession && existingSession.isDemo) {
@@ -5977,7 +5981,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     sessionStorage.setItem('pb_session', JSON.stringify(session));
   }
   } // end non-demo check
-  } // end !isLocalDev
+  } // end !allowLocalBypass
 
   sess = Auth.requireAuth();
   if (!sess) return;
