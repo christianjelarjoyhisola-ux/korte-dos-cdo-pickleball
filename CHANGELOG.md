@@ -15,7 +15,7 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ### Changed
 - **Selected time slot color** - selected public time cards now use the Korte DOS lime green from the logo instead of blue, making the active selection easier to identify.
-- **Mobile time-slot grid** - public booking time cards now use a 4-column mobile layout instead of 3 columns for faster scanning.
+- **Mobile time-slot grid** - public booking time cards use a 3-column mobile layout for easier reading.
 - **Court-card selection behavior** - court cards stay visually neutral while the selected time slot carries the main booking emphasis.
 
 **Files affected:** `index.html`
