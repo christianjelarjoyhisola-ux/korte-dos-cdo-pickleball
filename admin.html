@@ -208,6 +208,16 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
   border-radius: var(--r); padding: 18px;
 }
 .panel h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 14px; font-weight: 600; }
+.integration-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
+.integration-card { background:var(--input); border:1px solid var(--border); border-radius:8px; padding:12px; min-width:0; }
+.integration-card.ok { border-color:rgba(var(--green-rgb),.35); background:rgba(var(--green-rgb),.06); }
+.integration-card.warn { border-color:rgba(var(--yellow-rgb),.35); background:rgba(var(--yellow-rgb),.06); }
+.integration-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px; }
+.integration-name { font-weight:800; font-size:.86rem; color:var(--text); line-height:1.25; }
+.integration-badge { font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.5px; border-radius:999px; padding:2px 7px; white-space:nowrap; }
+.integration-badge.ok { background:var(--green-bg); color:var(--green); }
+.integration-badge.warn { background:var(--yellow-bg); color:var(--yellow); }
+.integration-meta { font-size:.74rem; color:var(--muted); line-height:1.45; overflow-wrap:anywhere; }
 .pay-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 5px; }
 .bar { height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; margin-bottom: 14px; }
 .bar-fill { height: 100%; border-radius: 3px; transition: width .6s; }
@@ -1420,6 +1430,18 @@ tr:hover td { background: var(--bg2); }
     <!-- PAYMENTS -->
     <div id="sec-payments" class="adm-sec">
       <div class="toolbar"><h2>💳 PAYMENT SETTINGS</h2></div>
+
+      <div class="panel" style="max-width:980px;margin-bottom:20px;border:1.5px solid rgba(var(--green-rgb),.3);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+          <h4 style="margin:0;color:var(--green)">Connection Readiness</h4>
+          <button class="btn btn-g btn-sm" onclick="renderIntegrationStatus()">Refresh</button>
+        </div>
+        <div id="integrationStatusBody" class="integration-grid">
+          <div class="integration-card warn">
+            <div class="integration-meta">Checking services...</div>
+          </div>
+        </div>
+      </div>
 
       <!-- PLATFORM FEE — System Owner only -->
       <div class="panel" data-perm="owner_only" style="max-width:680px;margin-bottom:20px;border:2px solid var(--green);">
@@ -2880,34 +2902,39 @@ async function updatePaymentStatus(ref, status) {
   renderDash();
 }
 
+async function sendBookingConfirmationNotice(bk, successText = 'Confirmation email sent to customer!') {
+  if (!bk?.email) return;
+  const res = await DB.sendConfirmationEmail(bk, { allowFailure: true });
+  if (res?.ok) toast(successText);
+  else if (!res?.skipped) toast(`Booking saved, but email failed: ${res?.error || 'unknown error'}`, 'err');
+}
+
+async function notifyBookingUpdateSafe(bookingOrRef, event, note = '') {
+  try {
+    const bk = typeof bookingOrRef === 'string' ? await DB.getBookingByRef(bookingOrRef) : bookingOrRef;
+    if (bk) await DB.notifyBookingUpdate(bk, event, note);
+  } catch (_) {}
+}
+
 async function updateStatus(ref, status) {
   await DB.updateBooking(ref, { status });
   toast(`Status updated to ${status}.`);
 
-  // Refresh table immediately — don't wait for email
+  // Refresh table immediately; email and alerts run in the background.
   await renderBookings();
   renderDash();
 
-  // Send confirmation email fire-and-forget
-  if (status === 'confirmed') {
-    DB.getBookingByRef(ref).then(bk => {
-      if (!bk?.email) return;
-      fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/send-confirmation-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({
-          bookingRef: bk.ref, email: bk.email, fullName: bk.fullName,
-          courtName: bk.courtName, date: bk.date, startTime: bk.startTime,
-          endTime: bk.endTime, duration: bk.duration, total: bk.total,
-          downpayment: bk.downpayment || Math.round(bk.total * 0.5),
-          contactNumber: bk.contactNumber,
-        }),
-      }).then(r => r.json()).then(j => {
-        if (j?.ok) toast('📧 Confirmation email sent to customer!');
-        else toast(`⚠️ Booking confirmed but email failed: ${j?.error || 'unknown error'}`, 'err');
-      }).catch(err => toast(`⚠️ Booking confirmed but email failed: ${err.message}`, 'err'));
-    }).catch(() => {});
-  }
+  DB.getBookingByRef(ref).then(async bk => {
+    if (!bk) return;
+    if (status === 'confirmed') {
+      await Promise.all([
+        sendBookingConfirmationNotice(bk),
+        notifyBookingUpdateSafe(bk, 'booking_confirmed'),
+      ]);
+    } else if (status === 'cancelled') {
+      await notifyBookingUpdateSafe(bk, 'booking_cancelled');
+    }
+  }).catch(() => {});
 }
 
 async function openVerifyModal(ref) {
@@ -2968,36 +2995,23 @@ async function verifyAndConfirm() {
   const ref = $('verifyModal').dataset.ref;
   if (!ref) return;
   try {
-    // Set payment status based on whether downpayment or full payment was made
     const bkForPay = await DB.getBookingByRef(ref);
     const isFullyPaid = bkForPay && bkForPay.downpayment >= bkForPay.total;
     const verifiedPayStatus = isFullyPaid ? 'paid' : 'downpayment_paid';
     await DB.updateBooking(ref, { status: 'confirmed', paymentStatus: verifiedPayStatus });
 
-    // Close modal and refresh table immediately — don't wait for email
     closeModal('verifyModal');
-    toast('✅ Payment verified & booking confirmed!');
+    toast('Payment verified & booking confirmed!');
     await renderBookings();
     if (_curSection === 'payreview') await renderPaymentReview();
     renderDash();
 
-    // Send confirmation email fire-and-forget
-    DB.getBookingByRef(ref).then(bk => {
-      if (!bk?.email) return;
-      fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/send-confirmation-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({
-          bookingRef: bk.ref, email: bk.email, fullName: bk.fullName,
-          courtName: bk.courtName, date: bk.date, startTime: bk.startTime,
-          endTime: bk.endTime, duration: bk.duration, total: bk.total,
-          downpayment: bk.downpayment || Math.round(bk.total * 0.5),
-          contactNumber: bk.contactNumber,
-        }),
-      }).then(r => r.json()).then(j => {
-        if (j?.ok) toast('📧 Confirmation email sent to customer!');
-        else toast(`⚠️ Booking confirmed but email failed: ${j?.error || 'unknown error'}`, 'err');
-      }).catch(err => toast(`⚠️ Booking confirmed but email failed: ${err.message}`, 'err'));
+    DB.getBookingByRef(ref).then(async bk => {
+      if (!bk) return;
+      await Promise.all([
+        sendBookingConfirmationNotice(bk),
+        notifyBookingUpdateSafe(bk, 'payment_verified', 'Payment marked received by admin.'),
+      ]);
     }).catch(() => {});
   } catch(e) {
     toast('Failed to confirm booking.', 'err');
@@ -3007,24 +3021,11 @@ async function verifyAndConfirm() {
 async function resendConfirmationEmail(ref) {
   const bk = await DB.getBookingByRef(ref);
   if (!bk?.email) { toast('No email address on file for this booking.', 'err'); return; }
-  toast('📧 Sending email…', 'inf');
+  toast('Sending email...', 'inf');
   try {
-    const r = await fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/send-confirmation-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({
-        bookingRef: bk.ref, email: bk.email, fullName: bk.fullName,
-        courtName: bk.courtName, date: bk.date, startTime: bk.startTime,
-        endTime: bk.endTime, duration: bk.duration, total: bk.total,
-        downpayment: bk.downpayment || Math.round(bk.total * 0.5),
-        contactNumber: bk.contactNumber,
-      }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (j?.ok) toast(`📧 Confirmation email resent to ${bk.email}!`);
-    else toast(`Failed to resend email: ${j?.error || 'unknown error'}`, 'err');
+    await sendBookingConfirmationNotice(bk, `Confirmation email resent to ${bk.email}!`);
   } catch(e) {
-    toast(`Failed to resend email: ${e.message}`, 'err');
+    toast(`Failed to resend email: ${e.message || e}`, 'err');
   }
 }
 
@@ -3039,6 +3040,7 @@ async function rejectPayment() {
     await renderBookings();
     if (_curSection === 'payreview') await renderPaymentReview();
     renderDash();
+    notifyBookingUpdateSafe(ref, 'payment_rejected', 'Payment marked not received by admin.');
   } catch(e) {
     toast('Failed to cancel booking.', 'err');
   }
@@ -3397,20 +3399,10 @@ async function saveNewBooking() {
     await renderBookings();
     renderDash();
 
-    // Send confirmation email if confirmed and email provided
+    notifyBookingUpdateSafe(booking, status === 'confirmed' ? 'admin_booking_created' : 'new_booking', 'Created from admin panel.');
+
     if (status === 'confirmed' && email) {
-      fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/send-confirmation-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({
-          bookingRef: booking.ref, email: booking.email, fullName: booking.fullName,
-          courtName: booking.courtName, date: booking.date, startTime: booking.startTime,
-          endTime: booking.endTime, duration: booking.duration, total: booking.total,
-          downpayment: booking.downpayment, contactNumber: booking.contactNumber,
-        }),
-      }).then(r => r.json()).then(j => {
-        if (j?.ok) toast('📧 Confirmation email sent to customer!');
-      }).catch(() => {});
+      sendBookingConfirmationNotice(booking).catch(() => {});
     }
   } catch(e) {
     toast(e.message || 'Failed to create booking.', 'err');
@@ -3484,6 +3476,9 @@ async function saveReschedule() {
   const ref = $('rescheduleModal').dataset.ref;
   if (!ref) return;
 
+  const oldDate = $('rescheduleModal').dataset.oldDate;
+  const oldStartTime = $('rescheduleModal').dataset.oldStart;
+  const oldEndTime = $('rescheduleModal').dataset.oldEnd;
   const newDate = $('rsNewDate').value;
   const startH = parseInt($('rsStartTime').value);
   const dur = parseInt($('rsDuration').value);
@@ -3507,33 +3502,34 @@ async function saveReschedule() {
     });
 
     closeModal('rescheduleModal');
-    toast('📅 Booking rescheduled!');
+    toast('Booking rescheduled!');
     await renderBookings();
     renderDash();
 
-    // Send reschedule email fire-and-forget
-    if (!window.PB_USE_LOCAL_DATA) DB.getBookingByRef(ref).then(bk => {
-      if (!bk?.email) return;
-      fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/send-reschedule-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-        body: JSON.stringify({
-          bookingRef:   bk.ref,
-          email:        bk.email,
-          fullName:     bk.fullName,
-          courtName:    bk.courtName,
-          oldDate:      $('rescheduleModal').dataset.oldDate,
-          oldStartTime: $('rescheduleModal').dataset.oldStart,
-          oldEndTime:   $('rescheduleModal').dataset.oldEnd,
-          newDate,
-          newStartTime,
-          newEndTime,
-          newDuration:  dur,
-          note,
-        }),
-      }).then(r => r.json()).then(j => {
-        if (j?.ok) toast('📧 Reschedule email sent to customer!');
-      }).catch(() => {});
+    DB.getBookingByRef(ref).then(async bk => {
+      if (!bk) return;
+      const payload = {
+        bookingRef: bk.ref,
+        email: bk.email,
+        fullName: bk.fullName,
+        courtName: bk.courtName,
+        oldDate,
+        oldStartTime,
+        oldEndTime,
+        newDate,
+        newStartTime,
+        newEndTime,
+        newDuration: dur,
+        note,
+      };
+
+      await Promise.all([
+        bk.email ? DB.sendRescheduleEmail(payload, { allowFailure: true }).then(j => {
+          if (j?.ok) toast('Reschedule email sent to customer!');
+          else if (!j?.skipped) toast(`Booking rescheduled, but email failed: ${j?.error || 'unknown error'}`, 'err');
+        }).catch(() => {}) : Promise.resolve(),
+        notifyBookingUpdateSafe(bk, 'booking_rescheduled', note || `Moved from ${oldDate} ${oldStartTime}-${oldEndTime} to ${newDate} ${newStartTime}-${newEndTime}`),
+      ]);
     }).catch(() => {});
   } catch(e) {
     toast('Failed to reschedule booking.', 'err');
@@ -3977,6 +3973,38 @@ async function savePricingTiers() {
 /* ==============================================
    PAYMENT SETTINGS
    ============================================== */
+async function renderIntegrationStatus() {
+  const body = $('integrationStatusBody');
+  if (!body) return;
+  body.innerHTML = '<div class="integration-card warn"><div class="integration-meta">Checking services...</div></div>';
+  try {
+    const res = await DB.getIntegrationStatus();
+    const services = Array.isArray(res?.services) ? res.services : [];
+    if (!res?.ok || services.length === 0) {
+      const msg = res?.error || 'Unable to reach integration status function.';
+      body.innerHTML = `<div class="integration-card warn"><div class="integration-name">Status unavailable</div><div class="integration-meta">${esc(msg)}</div></div>`;
+      return;
+    }
+    body.innerHTML = services.map(s => {
+      const ok = !!s.configured;
+      const missing = (s.missing || []).length ? (s.missing || []).join(', ') : 'All required env vars set';
+      const recommended = (s.recommended || []).length ? `<div class="integration-meta">Recommended: ${esc((s.recommended || []).join(', '))}</div>` : '';
+      const note = s.note ? `<div class="integration-meta">${esc(s.note)}</div>` : '';
+      return `<div class="integration-card ${ok ? 'ok' : 'warn'}">
+        <div class="integration-top">
+          <div class="integration-name">${esc(s.label || s.id || 'Service')}</div>
+          <span class="integration-badge ${ok ? 'ok' : 'warn'}">${ok ? 'Ready' : 'Setup'}</span>
+        </div>
+        <div class="integration-meta">${ok ? 'Ready' : 'Missing'}: ${esc(missing)}</div>
+        ${recommended}
+        ${note}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    body.innerHTML = `<div class="integration-card warn"><div class="integration-name">Status unavailable</div><div class="integration-meta">${esc(e.message || e)}</div></div>`;
+  }
+}
+
 async function renderPaymentSettings() {
   const settings = await DB.getSettings();
   const cashOn = settings.payment_method_cash !== '0';
@@ -4031,6 +4059,7 @@ async function renderPaymentSettings() {
     $('platformRemSummary').textContent = pn ? `Receiving via GCash: ${pn}${pnm ? ' (' + pnm + ')' : ''}` : 'Not configured yet — court owners cannot pay until set.';
   }
 
+  renderIntegrationStatus().catch(() => {});
   populateBillWeekOptions();
   await renderWeeklyBilling();
   await renderMyBilling();

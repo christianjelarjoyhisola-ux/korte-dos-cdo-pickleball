@@ -1244,6 +1244,20 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .inv-next-txt { color:var(--muted); line-height:1.4; }
 .inv-next-txt strong { color:var(--text); }
 
+.inv-timeline {
+  margin:12px 24px 0;
+  background:rgba(255,255,255,.025); border:1px solid var(--border);
+  border-radius:var(--r); padding:12px 14px;
+}
+.inv-timeline-title { font-size:.68rem; font-weight:800; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:9px; }
+.inv-timeline-list { display:grid; gap:7px; }
+.inv-timeline-step { display:flex; align-items:center; gap:9px; font-size:.79rem; color:var(--muted); min-width:0; }
+.inv-timeline-dot { width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex:0 0 18px; font-size:.66rem; font-weight:900; background:var(--input); color:var(--text3); border:1px solid var(--border); }
+.inv-timeline-step.done .inv-timeline-dot { background:rgba(var(--ac),.16); color:var(--accent); border-color:rgba(var(--ac),.35); }
+.inv-timeline-step.active .inv-timeline-dot { background:rgba(200,160,96,.18); color:var(--yellow); border-color:rgba(200,160,96,.42); }
+.inv-timeline-step.bad .inv-timeline-dot { background:rgba(229,57,53,.14); color:#e53935; border-color:rgba(229,57,53,.36); }
+.inv-timeline-label { line-height:1.35; overflow-wrap:anywhere; }
+
 .inv-email-note { margin:12px 24px 0; font-size:.78rem; color:var(--muted); text-align:center; }
 
 .inv-actions {
@@ -1443,6 +1457,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   .inv-next { margin:8px 16px 0; padding:10px 12px; }
   .inv-next-title { margin-bottom:6px; }
   .inv-next-step { font-size:.78rem; margin-bottom:5px; gap:7px; }
+  .inv-timeline { margin:8px 16px 0; padding:10px 12px; }
   .inv-email-note { margin:6px 16px 0; font-size:.73rem; }
   .inv-actions { padding:10px 16px 16px; gap:8px; }
 }
@@ -2674,6 +2689,9 @@ body.light #splashScreen { background: var(--bg); }
       </div>
     </div>
 
+    <!-- Status timeline -->
+    <div class="inv-timeline" id="iTimeline"></div>
+
     <!-- What's next -->
     <div class="inv-next" id="iNext"></div>
 
@@ -3211,6 +3229,24 @@ function extractErrMsg(err) {
   if (err.error_description) return String(err.error_description);
   if (err.error) return String(err.error);
   try { return JSON.stringify(err); } catch(_) { return 'Unknown error'; }
+}
+
+function receiptReasonFromFlags(flags) {
+  const labels = {
+    DUPLICATE_REF: 'Duplicate reference',
+    DUPLICATE_IMAGE: 'Duplicate image',
+    DUPLICATE_VISUAL_RECEIPT: 'Duplicate-looking receipt',
+    AMOUNT_MISMATCH: 'Amount mismatch',
+    REF_MISMATCH: 'Reference mismatch',
+    DATE_MISMATCH: 'Date mismatch',
+    SUSPECTED_FAKE: 'Receipt content not recognized',
+    IMAGE_UNREADABLE: 'Image unreadable',
+    REF_UNREADABLE: 'Reference unreadable',
+    LOW_OCR_CONFIDENCE: 'Low OCR confidence',
+    OCR_UNAVAILABLE: 'OCR unavailable',
+    AMOUNT_UNREADABLE: 'Amount unreadable',
+  };
+  return (flags || []).map(f => labels[f] || String(f).replace(/_/g, ' ')).join(', ');
 }
 
 function stopPaymentWatch() {
@@ -4453,25 +4489,8 @@ async function submitBooking(e) {
     }
     bookingSaved = true;
 
-    // Notify owner via Telegram (fire-and-forget — never blocks booking flow)
-    if (!window.PB_USE_LOCAL_DATA) fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/send-telegram-notification`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({
-        bookingRef:    booking.ref,
-        fullName:      booking.fullName,
-        contactNumber: booking.contactNumber,
-        courtName:     booking.courtName,
-        date:          booking.date,
-        startTime:     booking.startTime,
-        endTime:       booking.endTime,
-        duration:      booking.duration,
-        total:         booking.total,
-        downpayment:   booking.downpayment,
-        paymentMethod: booking.paymentMethod,
-        gcashRef:      booking.gcashRef || null,
-      }),
-    }).catch(() => {}); // Silent fail — never interrupt booking
+    // Notify owner via Telegram (fire-and-forget; never blocks booking flow).
+    DB.notifyBookingSubmitted(booking).catch(() => {});
 
     // ── Run OCR against the saved booking ────────────────────────────────
     if (_receiptFile && (payMethod === 'gcash' || payMethod === 'gotyme' || payMethod === 'pnb')) {
@@ -4480,6 +4499,9 @@ async function submitBooking(e) {
       if (ocrStatus === 'rejected') {
         // Edge fn already set status=cancelled on the booking. Show rejection
         // screen then refresh the grid so the slot turns free immediately.
+        booking.status = 'cancelled';
+        booking.paymentStatus = 'rejected';
+        DB.notifyBookingUpdate(booking, 'payment_rejected', receiptReasonFromFlags(booking._receiptResult?.flags || [])).catch(() => {});
         showInvoice(booking);
         resetForm();
         // Refresh both the card grid (today) AND the specific date-picker view
@@ -4491,12 +4513,14 @@ async function submitBooking(e) {
       } else if (ocrStatus === 'auto_approved') {
         booking.status = 'confirmed';
         booking.paymentStatus = (booking.downpayment >= booking.total - 1) ? 'paid' : 'downpayment_paid';
+        DB.notifyBookingUpdate(booking, 'payment_verified', 'Receipt auto-verified.').catch(() => {});
       } else {
         // manual_review or OCR error — downgrade from verifying to pending so
         // slot shows as taken (red) while admin reviews it, not yellow forever.
         booking.status = 'pending';
         booking.paymentStatus = 'for_verification';
         await DB.updateBooking(booking.ref, { status: 'pending', paymentStatus: 'for_verification' }).catch(() => {});
+        DB.notifyBookingUpdate(booking, 'payment_review_needed', receiptReasonFromFlags(booking._receiptResult?.flags || []) || 'Receipt needs owner review.').catch(() => {});
         onCardDate(booking.courtId, booking.date).catch(() => {});
       }
     }
@@ -4673,23 +4697,27 @@ function resetForm() {
 function showInvoice(b) {
   const set = (id, value) => { const el = $(id); if (el) el.textContent = value; };
   const isConfirmed = b.status === 'confirmed';
+  const receiptStatus = b._receiptResult?.status || b.receiptStatus || '';
+  const isRejected = b.status === 'cancelled' || b.paymentStatus === 'rejected' || receiptStatus === 'rejected';
+  const isDigitalPay = ['gcash','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase());
   const isFullPay = b.downpayment >= b.total;
-  const payLabel = b.paymentMethod === 'gcash' ? 'GCash' : b.paymentMethod === 'gotyme' ? 'GoTyme Bank' : 'Cash';
+  const payLabel = b.paymentMethod === 'gcash' ? 'GCash' : b.paymentMethod === 'gotyme' ? 'GoTyme Bank' : b.paymentMethod === 'pnb' ? 'PNB' : 'Cash';
 
   // Hero — base state (may be overridden by receipt result below)
   const heroEl = $('invModal') && $('invModal').querySelector('.inv-hero');
   const checkWrapEl = heroEl && heroEl.querySelector('.inv-check-wrap');
   const checkIconEl = heroEl && heroEl.querySelector('.inv-check-icon');
   if (heroEl) heroEl.classList.remove('inv-hero--rejected','inv-hero--approved');
+  if (heroEl && isRejected) heroEl.classList.add('inv-hero--rejected');
 
-  set('iTitle', isConfirmed ? 'Booking Confirmed!' : 'Booking Received!');
-  set('iHeroSub', isConfirmed ? 'Your court is confirmed. See you on the court!' : 'Your slot is reserved — pending owner confirmation.');
+  set('iTitle', isRejected ? 'Receipt Rejected' : isConfirmed ? 'Booking Confirmed!' : 'Booking Received!');
+  set('iHeroSub', isRejected ? 'Your receipt could not be verified. Please make a new booking.' : isConfirmed ? 'Your court is confirmed. See you on the court!' : isDigitalPay ? 'Payment received for review. We will confirm after verification.' : 'Your request is received. Staff will confirm after payment.');
   const statusEl = $('iStatus');
   if (statusEl) {
-    statusEl.textContent = isConfirmed ? '✓ Confirmed' : '⏳ Pending Confirmation';
-    statusEl.className = 'inv-status-bdg ' + (isConfirmed ? 'inv-status-confirmed' : 'inv-status-pending');
+    statusEl.textContent = isRejected ? 'Receipt Rejected' : isConfirmed ? 'Confirmed' : isDigitalPay ? 'Pending Verification' : 'Pending Confirmation';
+    statusEl.className = 'inv-status-bdg ' + (isRejected ? 'inv-status-rejected' : isConfirmed ? 'inv-status-confirmed' : isDigitalPay ? 'inv-status-review' : 'inv-status-pending');
   }
-  if (checkIconEl) checkIconEl.textContent = '✓';
+  if (checkIconEl) checkIconEl.textContent = isRejected ? '!' : '\u2713';
 
   // Ref & details
   set('iRef', b.ref);
@@ -4713,8 +4741,9 @@ function showInvoice(b) {
   set('iTot', fmt(b.total));
   set('iDown', fmt(b.downpayment));
   set('iDownLabel', isFullPay ? 'Full Payment' : '50% Downpayment Due');
-  set('iDownNote', isFullPay ? '✅ Fully paid — no balance due on arrival.' :
-    b.gcashRef ? `${payLabel} ref submitted ✓ — owner will verify shortly.` :
+  set('iDownNote', isRejected ? 'Receipt verification failed. The slot has been released.' :
+    isFullPay ? 'Fully paid. No balance due on arrival.' :
+    b.gcashRef ? `${payLabel} ref submitted. Owner will verify shortly.` :
     'Pay downpayment at the front desk before your session.');
 
   if (b._receiptResult) {
@@ -4755,10 +4784,41 @@ function showInvoice(b) {
     }
   }
 
+  const timelineEl = $('iTimeline');
+  if (timelineEl) {
+    const timelineSteps = isRejected ? [
+      ['Booking submitted', 'done'],
+      ['Payment rejected', 'bad'],
+      ['Slot released', 'bad'],
+    ] : isConfirmed ? [
+      ['Booking submitted', 'done'],
+      ['Payment verified', 'done'],
+      ['Booking confirmed', 'done'],
+    ] : isDigitalPay ? [
+      ['Booking submitted', 'done'],
+      ['Payment review', 'active'],
+      ['Admin confirmation', 'pending'],
+    ] : [
+      ['Booking submitted', 'done'],
+      ['Pay front desk', 'active'],
+      ['Admin confirmation', 'pending'],
+    ];
+    timelineEl.innerHTML = '<div class="inv-timeline-title">Status</div><div class="inv-timeline-list">' +
+      timelineSteps.map(([label, state], idx) => {
+        const dot = state === 'done' ? '✓' : state === 'bad' ? '!' : String(idx + 1);
+        return `<div class="inv-timeline-step ${state}"><span class="inv-timeline-dot">${dot}</span><span class="inv-timeline-label">${label}</span></div>`;
+      }).join('') +
+      '</div>';
+  }
+
   // What's next steps
   const nextEl = $('iNext');
   if (nextEl) {
-    const steps = b.gcashRef ? [
+    const steps = isRejected ? [
+      ['The payment receipt was not accepted.', '1'],
+      ['The slot has been released for other players.', '2'],
+      ['Please create a new booking with a valid receipt.', '3'],
+    ] : b.gcashRef ? [
       ['Show this booking ref to the front desk.', '1'],
       [`Your ${payLabel} ref # has been submitted for verification.`, '2'],
       ['You\'ll receive a confirmation once the owner verifies payment.', '3'],
@@ -4775,7 +4835,10 @@ function showInvoice(b) {
   }
 
   // Email note
-  set('iEmailNote', b.email ? `📧 Confirmation details sent to ${b.email}` : '');
+  set('iEmailNote', !b.email ? '' :
+    isRejected ? 'No confirmation email was sent because this receipt was rejected.' :
+    isConfirmed ? `Confirmation details sent to ${b.email}` :
+    `We will email ${b.email} after owner confirmation.`);
 
   if ($('invModal')) $('invModal').classList.add('show');
 }
@@ -5519,12 +5582,16 @@ async function submitOpenPlay() {
       receiptVerifiedAt: receiptResult?.receiptVerifiedAt || null,
     });
 
-    // Fire-and-forget Telegram notification
-    fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ type: 'open_play', fullName: name, courtName: _opSignupData.courtName, date: _opSignupData.date, timeLabel, paymentType: payType, amount: amt }),
-    }).catch(() => {});
+    // Fire-and-forget Telegram notification.
+    DB.sendTelegramNotification({
+      type: 'open_play',
+      fullName: name,
+      courtName: _opSignupData.courtName,
+      date: _opSignupData.date,
+      timeLabel,
+      paymentType: payType,
+      amount: amt,
+    }, { allowFailure: true }).catch(() => {});
 
     $('opModalBody').innerHTML = `
       <div style="text-align:center;padding:28px 0">

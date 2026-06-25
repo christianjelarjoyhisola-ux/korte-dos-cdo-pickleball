@@ -78,6 +78,72 @@ async function _invokePaymentSessionFallback(payload) {
   return json;
 }
 
+async function _invokeEdgeFunction(name, payload = {}, { allowFailure = false } = {}) {
+  const { data, error } = await _sb.functions.invoke(name, { body: payload });
+  if (!error && data) return data;
+
+  const fnUrl = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/${name}`;
+  const sess = await _sb.auth.getSession();
+  const accessToken = sess?.data?.session?.access_token || '';
+  const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_ANON_KEY}`;
+
+  try {
+    const res = await fetch(fnUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': authHeader,
+      },
+      body: JSON.stringify(payload),
+    });
+    const txt = await res.text();
+    const json = _safeJsonParse(txt) || {};
+    if (!res.ok) throw new Error(json.error || txt || `HTTP ${res.status}`);
+    return json;
+  } catch (fallbackErr) {
+    const reason = `${_extractFnError(error, 'Function invoke failed')}. ${_extractFnError(fallbackErr, 'Fallback call failed')}`;
+    if (allowFailure) return { ok: false, error: reason };
+    throw new Error(reason);
+  }
+}
+
+function _bookingEmailPayload(b) {
+  return {
+    bookingRef: b.ref,
+    email: b.email,
+    fullName: b.fullName,
+    courtName: b.courtName,
+    date: b.date,
+    startTime: b.startTime,
+    endTime: b.endTime,
+    duration: b.duration,
+    total: b.total,
+    downpayment: b.downpayment || Math.round((b.total || 0) * 0.5),
+    contactNumber: b.contactNumber,
+  };
+}
+
+function _telegramBookingPayload(b, extras = {}) {
+  return {
+    bookingRef: b.ref,
+    fullName: b.fullName,
+    contactNumber: b.contactNumber,
+    courtName: b.courtName,
+    date: b.date,
+    startTime: b.startTime,
+    endTime: b.endTime,
+    duration: b.duration,
+    total: b.total,
+    downpayment: b.downpayment || Math.round((b.total || 0) * 0.5),
+    paymentMethod: b.paymentMethod,
+    paymentStatus: b.paymentStatus,
+    bookingStatus: b.status,
+    gcashRef: b.gcashRef || null,
+    ...extras,
+  };
+}
+
 // =============================================
 // ROW ↔ JS OBJECT MAPPING
 // SQL uses snake_case; JS objects use camelCase
@@ -534,6 +600,40 @@ window.DB = {
       console.error('createPaymentSession.fallbackError:', fallbackErr);
       throw new Error(`${baseReason}. Fallback failed: ${fbReason}`);
     }
+  },
+
+  async sendConfirmationEmail(booking, options = {}) {
+    if (!booking?.email) return { ok: false, skipped: true, reason: 'No customer email' };
+    return _invokeEdgeFunction('send-confirmation-email', _bookingEmailPayload(booking), {
+      allowFailure: !!options.allowFailure,
+    });
+  },
+
+  async sendRescheduleEmail(payload, options = {}) {
+    if (!payload?.email) return { ok: false, skipped: true, reason: 'No customer email' };
+    return _invokeEdgeFunction('send-reschedule-email', payload, {
+      allowFailure: !!options.allowFailure,
+    });
+  },
+
+  async sendTelegramNotification(payload, options = {}) {
+    return _invokeEdgeFunction('send-telegram-notification', payload, {
+      allowFailure: options.allowFailure !== false,
+    });
+  },
+
+  async notifyBookingSubmitted(booking) {
+    if (window.PB_USE_LOCAL_DATA) return { ok: true, skipped: true, reason: 'Local data mode' };
+    return this.sendTelegramNotification(_telegramBookingPayload(booking, { event: 'new_booking' }), { allowFailure: true });
+  },
+
+  async notifyBookingUpdate(booking, event, note = '') {
+    if (window.PB_USE_LOCAL_DATA) return { ok: true, skipped: true, reason: 'Local data mode' };
+    return this.sendTelegramNotification(_telegramBookingPayload(booking, { type: 'booking_update', event, note }), { allowFailure: true });
+  },
+
+  async getIntegrationStatus() {
+    return _invokeEdgeFunction('integration-status', { action: 'status' }, { allowFailure: true });
   },
 
   // Verify an uploaded GCash/GoTyme/PNB receipt image via the Edge Function.
@@ -1141,6 +1241,24 @@ window.DB = {
     },
 
     async createPaymentSession() { throw new Error('Online checkout is disabled in local data mode.'); },
+    async sendConfirmationEmail() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async sendRescheduleEmail() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async sendTelegramNotification() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async notifyBookingSubmitted() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async notifyBookingUpdate() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async getIntegrationStatus() {
+      return {
+        ok: true,
+        local: true,
+        services: [
+          { id: 'email', label: 'Email confirmations', configured: false, required: ['RESEND_API_KEY'], missing: ['RESEND_API_KEY'], note: 'Local data mode' },
+          { id: 'telegram', label: 'Telegram admin alerts', configured: false, required: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'], missing: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'], note: 'Local data mode' },
+          { id: 'payments', label: 'PayMongo checkout', configured: false, required: ['PAYMONGO_SECRET_KEY', 'PAYMENT_SUCCESS_URL', 'PAYMENT_CANCEL_URL'], missing: ['PAYMONGO_SECRET_KEY', 'PAYMENT_SUCCESS_URL', 'PAYMENT_CANCEL_URL'], note: 'Local data mode' },
+          { id: 'ocr', label: 'Receipt OCR', configured: false, required: ['GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY'], missing: ['GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY'], note: 'Local data mode' },
+          { id: 'service_role', label: 'Server database access', configured: false, required: ['SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY'], missing: ['SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY'], note: 'Local data mode' },
+        ],
+      };
+    },
     async verifyGcashReceipt() {
       return { ok: true, status: 'manual_review', flags: ['local_data_mode'], extracted: {}, confidence: 0, message: 'Local data mode: receipt OCR is not sent to Supabase.' };
     },

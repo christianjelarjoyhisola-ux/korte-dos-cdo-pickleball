@@ -33,5 +33,6 @@ npx supabase functions deploy verify-gcash-receipt
 npx supabase functions deploy send-confirmation-email
 npx supabase functions deploy send-reschedule-email
 npx supabase functions deploy send-telegram-notification
+npx supabase functions deploy integration-status
 
 Write-Host "Edge Functions deployed."
