@@ -2749,7 +2749,7 @@ let openPlayFee = 100; // default ₱100, overridden by settings
 let openPlayMaxPlayers = 40; // default 40, overridden by settings
 let paymentAcceptanceMode = 'both'; // 'both', 'downpayment_only', 'full_payment_only'
 let _serviceFeeRate = 0; // booking fee amount, loaded from settings
-let _serviceFeeType = 'per_hour'; // booking fee is always charged per booked hour
+let _serviceFeeType = 'per_hour'; // booking fee is always charged per booked hour per confirmed booking transaction
 function normalizePlatformFeeType(_type) {
   return 'per_hour';
 }
