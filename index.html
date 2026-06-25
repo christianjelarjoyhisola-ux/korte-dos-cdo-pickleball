@@ -258,15 +258,19 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   .cc-photo-feats { display:none; }
   .cc-times { padding:10px 12px 12px; }
   .cc-times-sub { display:none; }
-  .cc-slots-grid{ grid-template-columns:repeat(3,1fr); gap:6px; }
-  .cc-slot-btn { padding:6px 4px; min-height:auto; }
-  .csl-time  { font-size:.7rem; }
+  .cc-slots-grid{ grid-template-columns:repeat(4,1fr); gap:5px; }
+  .cc-slot-btn { padding:6px 3px; min-height:46px; }
+  .csl-time  { font-size:.64rem; }
   .csl-time .t-full { display:none; }
   .csl-time .t-compact { display:inline; }
-  .csl-price { font-size:.66rem; }
+  .csl-price { font-size:.6rem; }
 }
-@media(max-width:480px){ .cc-slots-grid{ grid-template-columns:repeat(3,1fr); gap:5px; } }
-@media(max-width:340px){ .cc-slots-grid{ grid-template-columns:repeat(2,1fr); } }
+@media(max-width:480px){ .cc-slots-grid{ grid-template-columns:repeat(4,1fr); gap:4px; } }
+@media(max-width:340px){
+  .cc-slot-btn { padding:5px 2px; min-height:44px; }
+  .csl-time { font-size:.6rem; }
+  .csl-price { font-size:.56rem; }
+}
 
 /* ── PICKLEBALL LOADER ── */
 .pb-loader {
