@@ -2826,19 +2826,184 @@ function getCourtRepair(courtName, date) {
 }
 let cachedBookedSlots = new Set(); // cached after renderSlots() — avoids re-fetching on every click
 let payFull = false; // false = 50% downpayment, true = 100% full payment
-let cardSel   = { courtId: null, date: null, slots: [], rate: 0 };
+let cardSel   = { courtId: null, courtName: '', date: null, slots: [], rate: 0, tiers: [] };
+let cardSelections = {};
+let bookingItems = [];
+
+function emptyCardSelection() {
+  return { courtId: null, courtName: '', date: null, slots: [], rate: 0, tiers: [] };
+}
+
+function cardSelectionList() {
+  return Object.values(cardSelections)
+    .filter(sel => sel && Array.isArray(sel.slots) && sel.slots.length > 0)
+    .sort((a, b) => String(a.courtName || a.courtId).localeCompare(String(b.courtName || b.courtId)));
+}
+
+function refreshCardSelAlias() {
+  cardSel = cardSelectionList()[0] || emptyCardSelection();
+}
+
+function cardSelectionDate() {
+  return cardSelectionList()[0]?.date || null;
+}
+
+function getCardSelection(courtId) {
+  return cardSelections[String(courtId)] || null;
+}
+
+function selectionCourtFee(sel) {
+  const tiers = Array.isArray(sel?.tiers) && sel.tiers.length ? sel.tiers : pricingTiers;
+  const fallbackRate = Number(sel?.rate || 0);
+  return (sel?.slots || []).reduce((sum, h) => sum + getRateForHourFromTiers(Number(h), tiers, fallbackRate), 0);
+}
+
+function selectionServiceFee(sel) {
+  return calcSvcFee((sel?.slots || []).length);
+}
+
+function selectionTotal(sel) {
+  return selectionCourtFee(sel) + selectionServiceFee(sel);
+}
+
+function itemTimeLabel(item) {
+  const slots = item?.slots || [];
+  if (!slots.length) return '';
+  return `${fmtT(Math.min(...slots))} - ${fmtT(Math.max(...slots) + 1)}`;
+}
+
+function selectionSummaryText(sel, includeFee = false) {
+  if (!sel || !sel.slots?.length) return '';
+  const hrs = sel.slots.length;
+  const amount = includeFee ? selectionTotal(sel) : selectionCourtFee(sel);
+  return `${itemTimeLabel(sel)} | ${hrs} hr${hrs > 1 ? 's' : ''} | ${fmt(amount)}`;
+}
+
+function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
+  const slots = [...(sel?.slots || [])].map(Number).sort((a, b) => a - b);
+  const courtFee = selectionCourtFee(sel);
+  const serviceFee = selectionServiceFee(sel);
+  return {
+    ref,
+    groupRef,
+    courtId: String(sel.courtId),
+    courtName: sel.courtName || `Court ${sel.courtId}`,
+    date: sel.date,
+    slots,
+    startTime: fmtT(Math.min(...slots)),
+    endTime: fmtT(Math.max(...slots) + 1),
+    duration: slots.length,
+    rate: Number(sel.rate || 0),
+    courtFee,
+    serviceFee,
+    total: courtFee + serviceFee,
+  };
+}
+
+function makeBookingItemFromCurrentForm() {
+  if (!court || !selSlots.length || !$('bDate')?.value) return null;
+  const sel = {
+    courtId: court.id,
+    courtName: court.name,
+    date: $('bDate').value,
+    slots: [...selSlots],
+    rate: court.rate,
+    tiers: getPricingTiersForCourt(court),
+  };
+  return makeBookingItemFromSelection(sel, _reservedRef || null, null);
+}
+
+function activeBookingItems() {
+  if (bookingItems.length > 0) return bookingItems;
+  const item = makeBookingItemFromCurrentForm();
+  return item ? [item] : [];
+}
+
+function bookingItemsCourtFee(items = activeBookingItems()) {
+  return items.reduce((sum, item) => sum + Number(item.courtFee || 0), 0);
+}
+
+function bookingItemsServiceFee(items = activeBookingItems()) {
+  return items.reduce((sum, item) => sum + Number(item.serviceFee || 0), 0);
+}
+
+function bookingItemsTotal(items = activeBookingItems()) {
+  return items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+}
+
+function bookingItemsDuration(items = activeBookingItems()) {
+  return items.reduce((sum, item) => sum + Number(item.duration || 0), 0);
+}
+
+function bookingItemsCourtLabel(items = activeBookingItems()) {
+  if (items.length === 0) return '-';
+  if (items.length === 1) return items[0].courtName;
+  return `${items.length} courts: ${items.map(item => item.courtName).join(', ')}`;
+}
+
+function bookingItemsTimeLabel(items = activeBookingItems()) {
+  if (items.length === 0) return '-';
+  if (items.length === 1) return `${items[0].startTime} - ${items[0].endTime}`;
+  return items.map(item => `${item.courtName}: ${item.startTime} - ${item.endTime}`).join('; ');
+}
+
+function bookingItemsDate(items = activeBookingItems()) {
+  return items[0]?.date || $('bDate')?.value || '';
+}
+
+function bookingItemsRateLabel(items = activeBookingItems()) {
+  const rates = [];
+  items.forEach(item => {
+    if (item.duration > 0 && item.courtFee > 0) rates.push(item.courtFee / item.duration);
+  });
+  const unique = [...new Set(rates.map(rate => Math.round(rate * 100) / 100))].sort((a, b) => a - b);
+  if (unique.length === 1) return `${fmt(unique[0])}/hr`;
+  if (unique.length > 1) return `${fmt(unique[0])} - ${fmt(unique[unique.length - 1])}/hr`;
+  return court ? fmt(court.rate) + '/hr' : '-';
+}
+
+function bookingItemsSummaryHtml(items = activeBookingItems()) {
+  const total = bookingItemsTotal(items);
+  const svcFee = bookingItemsServiceFee(items);
+  const dateStr = bookingItemsDate(items) ? fmtD(bookingItemsDate(items)) : '-';
+  const rows = [
+    `Court: ${bookingItemsCourtLabel(items)}`,
+    `Date: ${dateStr}`,
+  ];
+  items.forEach(item => {
+    rows.push(`Time: ${item.courtName}: ${item.startTime} - ${item.endTime} &nbsp;(${item.duration} hr${item.duration !== 1 ? 's' : ''})`);
+  });
+  rows.push(`Court Fee: <strong style="color:var(--muted)">${fmt(bookingItemsCourtFee(items))}</strong>`);
+  if (svcFee > 0) rows.push(`Booking Fee: <strong style="color:var(--muted)">${fmt(svcFee)}</strong>`);
+  rows.push(`Total: <strong style="color:var(--accent)">${fmt(total)}</strong>`);
+  return rows.filter(Boolean).map(s => `<div>${s}</div>`).join('');
+}
+
+async function refreshBookingItemViews(items = activeBookingItems()) {
+  await renderCourts();
+  const seen = new Set();
+  (items || []).forEach(item => {
+    const key = `${item.courtId}|${item.date}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    onCardDate(item.courtId, item.date).catch(() => {});
+  });
+}
 
 function syncCourtCardSelection() {
-  const selectedCourtId = cardSel.courtId && cardSel.slots.length > 0 ? String(cardSel.courtId) : null;
+  refreshCardSelAlias();
+  const selectedIds = new Set(cardSelectionList().map(sel => String(sel.courtId)));
   document.querySelectorAll('#courtsGrid .cc').forEach(card => {
-    card.classList.toggle('sel', selectedCourtId === String(card.dataset.id));
+    card.classList.toggle('sel', selectedIds.has(String(card.dataset.id)));
   });
   const mobileBar = $('mobileBookBar');
-  if (mobileBar) mobileBar.classList.toggle('sel', !!selectedCourtId);
+  if (mobileBar) mobileBar.classList.toggle('sel', selectedIds.size > 0);
 }
 
 function clearCardSelection() {
-  cardSel = { courtId: null, date: null, slots: [], rate: 0 };
+  cardSelections = {};
+  bookingItems = [];
+  cardSel = emptyCardSelection();
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
   document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
   const mobileBar = $('mobileBookBar');
@@ -3392,13 +3557,27 @@ async function toggleCardSlot(courtId, date, h) {
     toast(`This slot is ${_ml.text.toLowerCase()}.`, 'inf');
     return;
   }
-  // Reset if switching court or date
-  if (cardSel.courtId !== courtId || cardSel.date !== date) {
+  const existingDate = cardSelectionDate();
+  if (existingDate && existingDate !== date) {
     clearCardSelection();
-    cardSel = { courtId, date, slots: [], rate: 0 };
+    toast('Selection moved to the new date.', 'inf');
   }
 
-  const s = cardSel.slots;
+  const key = String(courtId);
+  let sel = getCardSelection(key);
+  if (!sel) {
+    sel = {
+      courtId: key,
+      courtName: court?.name || `Court ${courtId}`,
+      date,
+      slots: [],
+      rate: Number(court?.rate || 0),
+      tiers: getPricingTiersForCourt(court),
+    };
+    cardSelections[key] = sel;
+  }
+
+  const s = sel.slots;
   const i = s.indexOf(h);
   if (i === -1) {
     if (s.length === 0) {
@@ -3414,11 +3593,13 @@ async function toggleCardSlot(courtId, date, h) {
     else { toast('Deselect from start or end only.', 'inf'); return; }
   }
 
+  if (sel.slots.length === 0) delete cardSelections[key];
+  refreshCardSelAlias();
   updateCardUI(courtId);
-  if (cardSel.courtId === courtId && cardSel.slots.length === 0) clearCardSelection();
 }
 
 function updateCardUI(courtId) {
+  const sel = getCardSelection(courtId);
   const grid = $('cSlots_' + courtId);
   const bar  = $('cBar_'   + courtId);
   const sum  = $('cBarSum_' + courtId);
@@ -3427,19 +3608,15 @@ function updateCardUI(courtId) {
   // Update button selected states
   grid.querySelectorAll('.cc-slot-btn').forEach(btn => {
     const h = parseInt(btn.dataset.h);
-    btn.classList.toggle('selected', cardSel.courtId === courtId && cardSel.slots.includes(h));
+    btn.classList.toggle('selected', !!sel && sel.slots.includes(h));
   });
 
   // Show/hide Book Now bar
   const mobileBar   = $('mobileBookBar');
   const mobileSumEl = $('mobileBookSum');
   const mobileCtEl  = $('mobileBookCourt');
-  if (cardSel.courtId === courtId && cardSel.slots.length > 0) {
-    const mn    = Math.min(...cardSel.slots);
-    const mx    = Math.max(...cardSel.slots);
-    const hrs   = cardSel.slots.length;
-    const total = cardSel.slots.reduce((s, h) => s + getRateForHour(h), 0);
-    const txt   = `${fmtT(mn)} – ${fmtT(mx+1)} · ${hrs} hr${hrs>1?'s':''} · ${fmt(total)}`;
+  if (sel && sel.slots.length > 0) {
+    const txt   = selectionSummaryText(sel);
     sum.textContent = txt;
     bar.style.display = 'flex';
     if (mobileBar) {
@@ -3454,15 +3631,47 @@ function updateCardUI(courtId) {
     bar.style.display = 'none';
     if (mobileBar) mobileBar.style.display = 'none';
   }
+
+  const selections = cardSelectionList();
+  if (mobileBar) {
+    if (selections.length > 0) {
+      const total = selections.reduce((sum, item) => sum + selectionTotal(item), 0);
+      const hrs = selections.reduce((sum, item) => sum + item.slots.length, 0);
+      if (mobileSumEl) mobileSumEl.textContent = `${hrs} hr${hrs !== 1 ? 's' : ''} · ${fmt(total)}`;
+      if (mobileCtEl) mobileCtEl.textContent = selections.length === 1 ? selections[0].courtName : `${selections.length} courts selected`;
+      mobileBar.style.display = 'flex';
+    } else {
+      mobileBar.style.display = 'none';
+    }
+  }
   syncCourtCardSelection();
 }
 
 // Holds the ref of the currently-reserved (verifying) booking so we can
 // cancel it if the user closes the modal without completing.
 let _reservedRef = null;
+let _reservedRefs = [];
 let _reservationStartedAt = null;
 let _countdownInterval = null;
 const RESERVATION_MINUTES = 15;
+
+function reservedRefs() {
+  return [...new Set([_reservedRef, ...(_reservedRefs || [])].filter(Boolean))];
+}
+
+function clearReservationState() {
+  _reservedRef = null;
+  _reservedRefs = [];
+  _reservationStartedAt = null;
+}
+
+function cancelReservedBookings(refs = reservedRefs()) {
+  const uniqueRefs = [...new Set((refs || []).filter(Boolean))];
+  clearReservationState();
+  return Promise.allSettled(uniqueRefs.map(ref =>
+    DB.updateBooking(ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {})
+  ));
+}
 
 // A `verifying` booking only HOLDS its slot for RESERVATION_MINUTES. After that
 // the reservation is considered expired and the slot is treated as free at
@@ -3483,7 +3692,7 @@ function bookingHoldsSlot(b) {
   return true;
 }
 
-async function proceedToBook(courtId) {
+async function proceedToBookLegacy(courtId) {
   await ensureCourt(courtId);
   const visibleDate = $('cDate_' + courtId)?.value || cardSel.date;
   if (!cardSel.courtId || cardSel.courtId !== courtId || cardSel.date !== visibleDate || cardSel.slots.length === 0) {
@@ -3547,19 +3756,116 @@ async function proceedToBook(courtId) {
   startSlotCountdown();
 }
 
+async function proceedToBook(courtId = null) {
+  const selections = cardSelectionList();
+  if (selections.length === 0) {
+    toast('Please select at least one time slot.', 'inf');
+    return;
+  }
+
+  const selectedDate = selections[0].date;
+  if (!selectedDate || selections.some(sel => sel.date !== selectedDate)) {
+    clearCardSelection();
+    toast('Please select slots on one date only.', 'err');
+    return;
+  }
+
+  if (selectedDate < todayStr()) {
+    clearCardSelection();
+    toast('Cannot book a past date.', 'err');
+    return;
+  }
+
+  const unavailable = selections.find(sel =>
+    sel.slots.some(h => isOpenPlayHour(sel.date, h, sel.courtId) || isMaintenanceHour(sel.date, h, sel.courtId)) ||
+    !!getCourtRepair(sel.courtName, sel.date)
+  );
+  if (unavailable) {
+    toast('Some selected slots are unavailable. Please choose another time.', 'err');
+    await Promise.allSettled(selections.map(sel => onCardDate(sel.courtId, sel.date)));
+    return;
+  }
+
+  const courts = await DB.getCourts();
+  const primary = courtId
+    ? selections.find(sel => String(sel.courtId) === String(courtId)) || selections[0]
+    : selections[0];
+  court = courts.find(c => String(c.id) === String(primary.courtId)) || {
+    id: primary.courtId,
+    name: primary.courtName,
+    rate: primary.rate,
+    rateSchedule: primary.tiers,
+  };
+  if (court) pricingTiers = getPricingTiersForCourt(court);
+
+  const groupRef = selections.length > 1 ? genRef() + '-G' : null;
+  const reserveStartedAt = new Date().toISOString();
+  const reserveItems = selections.map(sel => makeBookingItemFromSelection(sel, genRef(), groupRef));
+  const createdRefs = [];
+
+  try {
+    for (const item of reserveItems) {
+      await DB.addBooking({
+        ref:           item.ref,
+        groupRef:      item.groupRef,
+        fullName:      'Reserving...',
+        contactNumber: '00000000000',
+        email:         'reserve@hold.internal',
+        courtId:       item.courtId,
+        courtName:     item.courtName,
+        date:          item.date,
+        slots:         [...item.slots],
+        startTime:     item.startTime,
+        endTime:       item.endTime,
+        duration:      item.duration,
+        rate:          item.rate,
+        total:         item.total,
+        paymentMethod: 'gcash',
+        paymentFlow:   null,
+        paymentStatus: 'for_verification',
+        status:        'verifying',
+        createdAt:     reserveStartedAt,
+        downpayment:   null,
+        gcashRef:      null,
+      });
+      createdRefs.push(item.ref);
+    }
+  } catch (err) {
+    if (createdRefs.length) await cancelReservedBookings(createdRefs);
+    const msg = err?.message || '';
+    if (msg.toLowerCase().includes('no longer available') || msg.toLowerCase().includes('already booked')) {
+      toast('Sorry, someone just reserved one of those slots. Please choose another time.', 'err');
+    } else {
+      toast('Could not reserve slots: ' + msg, 'err');
+    }
+    await Promise.allSettled(selections.map(sel => onCardDate(sel.courtId, sel.date)));
+    return;
+  }
+
+  bookingItems = reserveItems;
+  _reservedRefs = reserveItems.map(item => item.ref);
+  _reservedRef = _reservedRefs[0] || null;
+  _reservationStartedAt = reserveStartedAt;
+  selSlots = [...primary.slots];
+  $('bDate').value = selectedDate;
+  updatePrice();
+  wizStartStep = 3;
+  $('bookModal').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  const mobileBar = $('mobileBookBar');
+  if (mobileBar) mobileBar.style.display = 'none';
+  wizGoTo(3);
+  startSlotCountdown();
+}
+
 function closeBookModal() {
   $('bookModal').classList.remove('active');
   document.body.style.overflow = '';
   stopSlotCountdown();
   // Cancel the reservation if the user closes without submitting.
-  if (_reservedRef) {
-    const ref = _reservedRef;
-    _reservedRef = null;
-    _reservationStartedAt = null;
-    DB.updateBooking(ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {});
-  }
+  cancelReservedBookings().catch(() => {});
   const _mb = $('mobileBookBar');
-  if (_mb) _mb.style.display = (cardSel.slots && cardSel.slots.length > 0) ? 'flex' : 'none';
+  if (_mb) _mb.style.display = cardSelectionList().length > 0 ? 'flex' : 'none';
 }
 
 function startSlotCountdown() {
@@ -3586,12 +3892,7 @@ function startSlotCountdown() {
       banner.style.display = 'none';
       // Time expired — cancel reservation and close modal.
       toast('⏰ Time expired! Your slot reservation was released.', 'err');
-      if (_reservedRef) {
-        const ref = _reservedRef;
-        _reservedRef = null;
-        _reservationStartedAt = null;
-        DB.updateBooking(ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {});
-      }
+      cancelReservedBookings().catch(() => {});
       closeBookModal();
       renderCourts();
       return;
@@ -3709,7 +4010,7 @@ function wizBack() {
   wizGoTo(wizStep - 1);
 }
 
-function updateWiz3Summary() {
+function updateWiz3SummaryLegacy() {
   const mn  = selSlots.length ? Math.min(...selSlots) : null;
   const mx  = selSlots.length ? Math.max(...selSlots) : null;
   const hrs = selSlots.length;
@@ -3725,6 +4026,11 @@ function updateWiz3Summary() {
     svcFee > 0 ? `🏷️ Booking Fee: <strong style="color:var(--muted)">${fmt(svcFee)}</strong>` : ``,
     `💰 Total: <strong style="color:var(--accent)">${fmt(total)}</strong>`,
   ].filter(Boolean).map(s => `<div>${s}</div>`).join('');
+}
+
+function updateWiz3Summary() {
+  const el = $('wiz3Summary');
+  if (el) el.innerHTML = bookingItemsSummaryHtml();
 }
 
 /* =============================================
@@ -3888,6 +4194,7 @@ async function renderCourts() {
     // Use this court's own rate schedule, fall back to global tiers, then flat rate
     const _cTiers = getPricingTiersForCourt(c);
     const _cRate = h => getRateForHourFromTiers(h, _cTiers, c.rate);
+    const cardSelection = getCardSelection(c.id);
 
     const rateRange = (() => {
       const r = _cTiers.map(t => t.rate);
@@ -3917,7 +4224,7 @@ async function renderCourts() {
           const isBooked_ = bookedHours.has(h);
           const isOpenPlay_ = isOpenPlayHour(today, h, c.id);
           const isMaint_ = isMaintenanceHour(today, h, c.id);
-          const isSelectedSlot_ = cardSel.courtId === c.id && cardSel.date === today && cardSel.slots.includes(h);
+          const isSelectedSlot_ = !!cardSelection && cardSelection.date === today && cardSelection.slots.includes(h);
           const timeRange = slotTimeLabel(h);
           if (isPast_)    return `<div class="cc-slot-btn past-slot"><div class="csl-time">${timeRange}</div><div class="csl-tag">Done</div></div>`;
           if (isBooked_ && verifyingHoursSet.has(h)) return `<div class="cc-slot-btn processing"><div class="csl-time">${timeRange}</div><div class="csl-tag">⏳ Processing…</div></div>`;
@@ -3926,9 +4233,9 @@ async function renderCourts() {
           if (isOpenPlay_) return '';
           return `<div class="cc-slot-btn${isSelectedSlot_ ? ' selected' : ''}" data-h="${h}" onclick="event.stopPropagation(); toggleCardSlot('${jsArg(c.id)}','${jsArg(today)}',${h})"><div class="csl-time">${timeRange}</div><div class="csl-price">₱${_cRate(h)}</div></div>`;
         }).join('');
-    const isSelectedCard = !blk && cardSel.courtId === c.id && cardSel.date === today && cardSel.slots.length > 0;
+    const isSelectedCard = !blk && !!cardSelection && cardSelection.date === today && cardSelection.slots.length > 0;
     const selectedSummary = isSelectedCard
-      ? `${fmtT(Math.min(...cardSel.slots))} – ${fmtT(Math.max(...cardSel.slots)+1)} · ${cardSel.slots.length} hr${cardSel.slots.length>1?'s':''} · ${fmt(cardSel.slots.reduce((s, h) => s + _cRate(h), 0))}`
+      ? selectionSummaryText(cardSelection)
       : '';
 
     return `
@@ -4021,7 +4328,7 @@ async function renderCourts() {
       <span class="tab-dot tab-dot-all"></span>All Courts
     </button>` + singleCourtTabs;
     if (courts.length > 0) {
-      const activeCourtId = cardSel.courtId && cardSel.date === today && cardSel.slots.length > 0 ? cardSel.courtId : 'all';
+      const activeCourtId = cardSelectionList()[0]?.courtId || 'all';
       switchCourtTab(activeCourtId);
     }
   }
@@ -4030,7 +4337,6 @@ async function renderCourts() {
 function switchCourtTab(courtId) {
   const showAllCourts = courtId === 'all';
   const courtKey = String(courtId);
-  if (!showAllCourts && cardSel.courtId && String(cardSel.courtId) !== courtKey) clearCardSelection();
   document.querySelectorAll('.court-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.court === courtKey));
   document.querySelectorAll('#courtsGrid .cc').forEach(el =>
@@ -4262,7 +4568,7 @@ function toggleSlot(h) {
 /* =============================================
    PRICE
    ============================================= */
-function updatePrice() {
+function updatePriceLegacy() {
   const hrs   = selSlots.length;
   const courtTotal = selSlots.reduce((s, h) => s + getRateForHour(h), 0);
   const svcFee = calcSvcFee(hrs);
@@ -4304,6 +4610,44 @@ function updatePrice() {
     $('downNote').innerHTML = payFull
       ? ''
       : `⚠️ A <strong>50% downpayment</strong> is required to confirm your booking. ${paymentInstructionText()}`;
+  }
+}
+
+function updatePrice() {
+  const items = activeBookingItems();
+  const hrs = bookingItemsDuration(items);
+  const courtTotal = bookingItemsCourtFee(items);
+  const svcFee = bookingItemsServiceFee(items);
+  const total = bookingItemsTotal(items);
+  const half = total / 2;
+  const payAmt = payFull ? total : half;
+
+  if ($('pHrs')) $('pHrs').textContent  = `${hrs} hr${hrs !== 1 ? 's' : ''}`;
+  if ($('pRate')) $('pRate').textContent = bookingItemsRateLabel(items);
+  if ($('pCourtFee')) $('pCourtFee').textContent = fmt(courtTotal);
+  if ($('pSvcFeeRow')) $('pSvcFeeRow').style.display = svcFee > 0 ? '' : 'none';
+  if ($('pSvcFee'))    $('pSvcFee').textContent = fmt(svcFee);
+  if ($('pTot')) $('pTot').textContent  = fmt(total);
+  if ($('pDown')) $('pDown').textContent = fmt(payAmt);
+
+  if ($('gcPat50Amt'))  $('gcPat50Amt').textContent  = fmt(half);
+  if ($('gcPat100Amt')) $('gcPat100Amt').textContent = fmt(total);
+  if ($('gtPat50Amt'))  $('gtPat50Amt').textContent  = fmt(half);
+  if ($('gtPat100Amt')) $('gtPat100Amt').textContent = fmt(total);
+  if ($('pnPat50Amt'))  $('pnPat50Amt').textContent  = fmt(half);
+  if ($('pnPat100Amt')) $('pnPat100Amt').textContent = fmt(total);
+
+  if ($('gcDownAmt'))   $('gcDownAmt').textContent   = fmt(payAmt);
+  if ($('gtDownAmt'))   $('gtDownAmt').textContent   = fmt(payAmt);
+  if ($('pnDownAmt'))   $('pnDownAmt').textContent   = fmt(payAmt);
+  if ($('bStepPayAmt')) $('bStepPayAmt').textContent = fmt(payAmt);
+
+  if ($('pDownLabel')) $('pDownLabel').textContent = payFull ? 'Full Payment' : '50% Downpayment';
+  if ($('downNote')) {
+    $('downNote').style.display = payFull ? 'none' : '';
+    $('downNote').innerHTML = payFull
+      ? ''
+      : `A <strong>50% downpayment</strong> is required to confirm your booking. ${paymentInstructionText()}`;
   }
 }
 
@@ -4479,7 +4823,7 @@ function setPayAmount(mode) {
 /* =============================================
    SUBMIT
    ============================================= */
-async function submitBooking(e) {
+async function submitBookingLegacy(e) {
   if (e) e.preventDefault();
   const submitBtn = $('wizNextBtn');
   if (submitBtn?.disabled) return;
@@ -4682,6 +5026,185 @@ async function submitBooking(e) {
   }
 }
 
+async function submitBooking(e) {
+  if (e) e.preventDefault();
+  const submitBtn = $('wizNextBtn');
+  if (submitBtn?.disabled) return;
+
+  const now = Date.now();
+  const cooldown = 30000;
+  if (now - _lastSubmitAt < cooldown) {
+    const wait = Math.ceil((cooldown - (now - _lastSubmitAt)) / 1000);
+    toast(`Please wait ${wait}s before trying again.`, 'inf');
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Processing...';
+  }
+
+  const items = activeBookingItems();
+  const bookingDate = bookingItemsDate(items);
+  const payMethod = $('bPay').value;
+  const gcashRef  = $('bGcashRef')?.value?.trim() || '';
+  const hasPaymentMethod = paymentMethods.cash || paymentMethods.gcash || paymentMethods.gotyme || paymentMethods.pnb;
+  const digitalPay = ['gcash', 'gotyme', 'pnb'].includes(payMethod);
+  const repairItem = items.find(item => getCourtRepair(item.courtName, item.date));
+
+  const checks = [
+    [items.length === 0, 'Please select at least one time slot.', 'slotsGrid', 2],
+    [!bookingDate, 'Please select a date.', 'bDate', 2],
+    [items.some(item => !item.slots?.length), 'Please select at least one time slot.', 'slotsGrid', 2],
+    [!$('bName').value.trim(), 'Please enter your full name.', 'bName', 3],
+    [$('bName').value.trim().length < 3, 'Name must be at least 3 characters.', 'bName', 3],
+    [!$('bPhone').value.trim(), 'Please enter your contact number.', 'bPhone', 3],
+    [!/^(09|\+639)\d{9}$/.test($('bPhone').value.replace(/\s|-/g,'')), 'Enter a valid PH number (e.g. 09XX XXX XXXX).', 'bPhone', 3],
+    [!$('bEmail').value.trim(), 'Please enter your email.', 'bEmail', 3],
+    [!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('bEmail').value), 'Please enter a valid email address.', 'bEmail', 3],
+    [!hasPaymentMethod, 'No payment method is enabled right now. Please contact admin.', 'payMethodBlock', 4],
+    [!payMethod, 'Please select a payment method.', 'payMethodBlock', 4],
+    [!!payMethod && !paymentMethods[payMethod], 'Selected payment method is no longer available.', 'payMethodBlock', 4],
+    [!$('bookingPolicyAgree')?.checked, 'Please agree to the booking and payment policy before confirming.', $('bookingPolicyAgree')?.closest('.booking-policy-check'), 4],
+    [digitalPay && !gcashRef, 'Please enter your payment reference number after paying.', 'bGcashRef', 4],
+    [payMethod === 'gcash' && !isGcashRefValid(gcashRef), 'GCash reference number must be exactly 13 digits.', 'bGcashRef', 4],
+    [digitalPay && !_receiptFile, () => {
+      const drop = $('bReceiptDrop');
+      if (drop) markBookingInvalid(drop, 4);
+      return 'Please upload your receipt screenshot before confirming.';
+    }, 'bReceiptDrop', 4],
+    [!!repairItem, `${repairItem?.courtName || 'Court'} is closed for repairs on this date. Please choose a different date or another court.`, 'bDate', 2],
+  ];
+
+  for (const [fail, msg, target, step] of checks) {
+    if (fail) {
+      const message = typeof msg === 'function' ? msg() : msg;
+      bookingValidationError(message, target, step);
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Confirm Booking'; }
+      return;
+    }
+  }
+  _lastSubmitAt = now;
+
+  const createdAt = _reservationStartedAt || new Date().toISOString();
+  const groupTotal = bookingItemsTotal(items);
+  const groupDownpayment = payFull ? groupTotal : groupTotal / 2;
+  const sharedGroupRef = items.length > 1 ? (items[0].groupRef || genRef() + '-G') : null;
+  const heldRefs = new Set(reservedRefs());
+  const status = digitalPay ? 'verifying' : 'pending';
+  const paymentStatus = payMethod === 'cash' ? 'unpaid' : 'for_verification';
+
+  const itemBookings = items.map(item => ({
+    ref: item.ref || genRef(),
+    groupRef: sharedGroupRef,
+    fullName: $('bName').value.trim(),
+    contactNumber: $('bPhone').value.trim(),
+    email: $('bEmail').value.trim(),
+    courtId: item.courtId,
+    courtName: item.courtName,
+    date: item.date,
+    slots: [...item.slots],
+    startTime: item.startTime,
+    endTime: item.endTime,
+    duration: item.duration,
+    rate: item.rate,
+    total: item.total,
+    paymentMethod: payMethod,
+    gcashRef: gcashRef || null,
+    paymentFlow: payMethod,
+    downpayment: payFull ? item.total : item.total / 2,
+    paymentStatus,
+    status,
+    createdAt,
+  }));
+
+  const booking = {
+    ...itemBookings[0],
+    ref: itemBookings[0].ref,
+    groupRef: sharedGroupRef,
+    groupItems: itemBookings,
+    courtName: bookingItemsCourtLabel(itemBookings),
+    timeLabel: bookingItemsTimeLabel(itemBookings),
+    duration: bookingItemsDuration(itemBookings),
+    total: groupTotal,
+    downpayment: groupDownpayment,
+  };
+
+  stopSlotCountdown();
+
+  let bookingSaved = false;
+  try {
+    for (const row of itemBookings) {
+      if (heldRefs.has(row.ref)) {
+        await DB.updateBooking(row.ref, {
+          fullName:      row.fullName,
+          contactNumber: row.contactNumber,
+          email:         row.email,
+          paymentMethod: row.paymentMethod,
+          paymentFlow:   row.paymentFlow,
+          gcashRef:      row.gcashRef,
+          downpayment:   row.downpayment,
+          total:         row.total,
+          paymentStatus: row.paymentStatus,
+          status:        row.status,
+          createdAt:     row.createdAt,
+        });
+      } else {
+        await DB.addBooking(row);
+      }
+    }
+    clearReservationState();
+    bookingSaved = true;
+
+    DB.notifyBookingSubmitted(booking).catch(() => {});
+
+    if (_receiptFile && digitalPay) {
+      try { booking._receiptResult = await verifyUploadedReceipt(booking.ref, payMethod); } catch(_) {}
+      const ocrStatus = booking._receiptResult?.status;
+      if (ocrStatus === 'rejected') {
+        booking.status = 'cancelled';
+        booking.paymentStatus = 'rejected';
+        itemBookings.forEach(row => { row.status = 'cancelled'; row.paymentStatus = 'rejected'; });
+        DB.notifyBookingUpdate(booking, 'payment_rejected', receiptReasonFromFlags(booking._receiptResult?.flags || [])).catch(() => {});
+        showInvoice(booking);
+        resetForm();
+        await refreshBookingItemViews(itemBookings);
+        return;
+      }
+      if (ocrStatus === 'auto_approved') {
+        booking.status = 'confirmed';
+        booking.paymentStatus = (booking.downpayment >= booking.total - 1) ? 'paid' : 'downpayment_paid';
+        itemBookings.forEach(row => {
+          row.status = 'confirmed';
+          row.paymentStatus = (row.downpayment >= row.total - 1) ? 'paid' : 'downpayment_paid';
+        });
+        DB.notifyBookingUpdate(booking, 'payment_verified', 'Receipt auto-verified.').catch(() => {});
+      } else {
+        booking.status = 'pending';
+        booking.paymentStatus = 'for_verification';
+        itemBookings.forEach(row => { row.status = 'pending'; row.paymentStatus = 'for_verification'; });
+        await Promise.allSettled(itemBookings.map(row =>
+          DB.updateBooking(row.ref, { status: 'pending', paymentStatus: 'for_verification' })
+        ));
+        DB.notifyBookingUpdate(booking, 'payment_review_needed', receiptReasonFromFlags(booking._receiptResult?.flags || []) || 'Receipt needs owner review.').catch(() => {});
+        await refreshBookingItemViews(itemBookings);
+      }
+    }
+
+    showInvoice(booking);
+    resetForm();
+    toast('Booking submitted successfully!');
+  } catch(err) {
+    if (bookingSaved) toast(`Booking saved, but post-processing failed: ${extractErrMsg(err)}`, 'err');
+    else toast(`Failed to save booking: ${extractErrMsg(err)}`, 'err');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Confirm Booking';
+    }
+  }
+}
+
 /* =============================================
    RECEIPT UPLOAD + AUTO-VERIFICATION
    ============================================= */
@@ -4762,11 +5285,12 @@ function resetForm() {
   $('bookForm').reset();
   clearReceipt();
   stopSlotCountdown();
-  _reservedRef = null;
-  _reservationStartedAt = null;
+  clearReservationState();
   court = null;
   selSlots = [];
-  cardSel = { courtId: null, date: null, slots: [], rate: 0 };
+  cardSelections = {};
+  bookingItems = [];
+  cardSel = emptyCardSelection();
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
   document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
   const mb2 = $('mobileBookBar'); if (mb2) { mb2.style.display = 'none'; mb2.classList.remove('sel'); }
@@ -4832,7 +5356,7 @@ function showInvoice(b) {
   set('iEmail', b.email);
   set('iCourt', b.courtName);
   set('iDate', fmtD(b.date));
-  set('iTime', `${b.startTime} – ${b.endTime}`);
+  set('iTime', b.timeLabel || `${b.startTime} – ${b.endTime}`);
   set('iDur', `${b.duration} hr${b.duration !== 1 ? 's' : ''}`);
   set('iPay', payLabel);
 
@@ -5731,7 +6255,7 @@ async function submitOpenPlay() {
     <span class="mbbar-court" id="mobileBookCourt"></span>
     <span class="mbbar-sum" id="mobileBookSum"></span>
   </div>
-  <button class="btn btn-p btn-sm" onclick="proceedToBook(cardSel.courtId)">Book Now →</button>
+  <button class="btn btn-p btn-sm" onclick="proceedToBook()">Book Now →</button>
 </div>
 </body>
 </html>

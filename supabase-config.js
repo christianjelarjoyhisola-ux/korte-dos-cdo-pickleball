@@ -216,6 +216,7 @@ function _telegramBookingPayload(b, extras = {}) {
 function rowToBooking(r) {
   return {
     ref:           r.ref,
+    groupRef:      r.booking_group_ref || null,
     fullName:      r.full_name,
     contactNumber: r.contact_number,
     email:         r.email,
@@ -278,6 +279,7 @@ function hasSlotConflict(existingBookings, booking) {
 function bookingToRow(b) {
   return {
     ref:            b.ref,
+    booking_group_ref: b.groupRef || null,
     full_name:      b.fullName,
     contact_number: b.contactNumber,
     email:          b.email,
@@ -420,6 +422,7 @@ window.DB = {
     // Map only the fields provided (camelCase → snake_case)
     const row = {};
     if (updates.status    !== undefined) row.status = updates.status;
+    if (updates.groupRef  !== undefined) row.booking_group_ref = updates.groupRef;
     if (updates.fullName  !== undefined) row.full_name = updates.fullName;
     if (updates.contactNumber !== undefined) row.contact_number = updates.contactNumber;
     if (updates.email     !== undefined) row.email = updates.email;

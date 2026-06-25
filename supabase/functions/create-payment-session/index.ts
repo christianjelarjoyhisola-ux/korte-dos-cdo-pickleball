@@ -13,6 +13,7 @@ type CreatePayload = {
 
 type BookingRow = {
   ref: string;
+  booking_group_ref: string | null;
   full_name: string | null;
   email: string | null;
   contact_number: string | null;
@@ -115,6 +116,41 @@ function expectedBookingAmounts(booking: BookingRow, court: CourtRow, settings: 
   return { total, due };
 }
 
+async function loadBookingGroup(
+  db: ReturnType<typeof createClient>,
+  booking: BookingRow,
+): Promise<BookingRow[]> {
+  if (!booking.booking_group_ref) return [booking];
+  const { data, error } = await db
+    .from("bookings")
+    .select("ref,booking_group_ref,full_name,email,contact_number,court_id,slots,total,downpayment,status,payment_status")
+    .eq("booking_group_ref", booking.booking_group_ref)
+    .neq("status", "cancelled");
+  if (error) throw error;
+  return (data || []) as BookingRow[];
+}
+
+async function expectedBookingGroupAmounts(
+  db: ReturnType<typeof createClient>,
+  bookings: BookingRow[],
+  settings: Record<string, string>,
+) {
+  let total = 0;
+  let due = 0;
+  for (const row of bookings) {
+    const { data: court, error: courtErr } = await db
+      .from("courts")
+      .select("rate,rate_schedule")
+      .eq("id", row.court_id)
+      .single();
+    if (courtErr || !court) throw courtErr || new Error("Court not found");
+    const amounts = expectedBookingAmounts(row, court as CourtRow, settings);
+    total += amounts.total;
+    due += amounts.due;
+  }
+  return { total: roundMoney(total), due: roundMoney(due) };
+}
+
 async function createPayMongoCheckoutSession(input: {
   secretKey: string;
   amountPhp: number;
@@ -201,7 +237,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingErr } = await db
       .from("bookings")
-      .select("ref,full_name,email,contact_number,court_id,slots,total,downpayment,status,payment_status")
+      .select("ref,booking_group_ref,full_name,email,contact_number,court_id,slots,total,downpayment,status,payment_status")
       .eq("ref", bookingRef)
       .single();
     if (bookingErr || !booking) {
@@ -217,17 +253,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: court, error: courtErr } = await db
-      .from("courts")
-      .select("rate,rate_schedule")
-      .eq("id", booking.court_id)
-      .single();
-    if (courtErr || !court) throw courtErr || new Error("Court not found");
-
     const { data: settingRows, error: settingsErr } = await db.from("settings").select("key,value");
     if (settingsErr) throw settingsErr;
     const settings = settingMap(settingRows as Array<{ key: string; value: string }>);
-    const amounts = expectedBookingAmounts(booking as BookingRow, court as CourtRow, settings);
+    const bookingGroup = await loadBookingGroup(db, booking as BookingRow);
+    const amounts = await expectedBookingGroupAmounts(db, bookingGroup, settings);
 
     const requestedAmount = Number(body.amountPhp);
     if (Number.isFinite(requestedAmount) && !closeMoney(requestedAmount, amounts.due)) {
@@ -244,7 +274,11 @@ Deno.serve(async (req) => {
       email: body.customer?.email || booking.email || "",
       phone: body.customer?.phone || booking.contact_number || "",
     };
-    const metadata = { ...(body.metadata || {}), booking_ref: bookingRef };
+    const metadata = {
+      ...(body.metadata || {}),
+      booking_ref: bookingRef,
+      ...(booking.booking_group_ref ? { booking_group_ref: booking.booking_group_ref } : {}),
+    };
 
     let checkoutUrl = "";
     let providerSessionId = sessionId;
@@ -288,12 +322,15 @@ Deno.serve(async (req) => {
     const { error: sessErr } = await db.from("payment_sessions").insert(paymentRow);
     if (sessErr) throw sessErr;
 
-    const { error: bErr } = await db.from("bookings").update({
+    const bookingUpdate = {
       payment_status: "pending",
       payment_provider: providerName,
       payment_session_id: sessionId,
       payment_checkout_url: checkoutUrl,
-    }).eq("ref", bookingRef);
+    };
+    const { error: bErr } = booking.booking_group_ref
+      ? await db.from("bookings").update(bookingUpdate).eq("booking_group_ref", booking.booking_group_ref).neq("status", "cancelled")
+      : await db.from("bookings").update(bookingUpdate).eq("ref", bookingRef);
     if (bErr) throw bErr;
 
     return new Response(JSON.stringify({

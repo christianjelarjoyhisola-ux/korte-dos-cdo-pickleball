@@ -353,6 +353,45 @@ async function expectedBookingAmount(
   return chooseExpectedDue(total, toNumber(booking.downpayment, -1), settings);
 }
 
+async function loadBookingGroup(
+  db: ReturnType<typeof createClient>,
+  booking: Record<string, unknown>,
+): Promise<Array<Record<string, unknown>>> {
+  const groupRef = String(booking.booking_group_ref || "");
+  if (!groupRef) return [booking];
+  const { data, error } = await db
+    .from("bookings")
+    .select("ref, booking_group_ref, court_id, slots, total, downpayment, gcash_ref, date, payment_status, status, full_name, created_at")
+    .eq("booking_group_ref", groupRef)
+    .neq("status", "cancelled");
+  if (error) throw error;
+  return (data || []) as Array<Record<string, unknown>>;
+}
+
+async function expectedBookingGroupAmount(
+  db: ReturnType<typeof createClient>,
+  bookings: Array<Record<string, unknown>>,
+  settings: Record<string, string>,
+): Promise<number> {
+  let due = 0;
+  for (const row of bookings) due += await expectedBookingAmount(db, row, settings);
+  return roundMoney(due);
+}
+
+function bookingGroupStoredTotal(bookings: Array<Record<string, unknown>>): number {
+  return roundMoney(bookings.reduce((sum, row) => sum + toNumber(row.total), 0));
+}
+
+function bookingUpdateQuery(
+  db: ReturnType<typeof createClient>,
+  booking: Record<string, unknown>,
+  update: Record<string, unknown>,
+) {
+  const groupRef = String(booking.booking_group_ref || "");
+  const query = db.from("bookings").update(update);
+  return groupRef ? query.eq("booking_group_ref", groupRef) : query.eq("ref", String(booking.ref || ""));
+}
+
 function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
   const expected = normalizeMobile(expectedRaw);
   if (expected.length < 10) return "unreadable"; // no configured number to compare
@@ -583,7 +622,7 @@ Deno.serve(async (req) => {
     } else {
       const { data: bk, error: bErr } = await db
         .from("bookings")
-        .select("ref, court_id, slots, total, downpayment, gcash_ref, date, payment_status, status, full_name, created_at")
+        .select("ref, booking_group_ref, court_id, slots, total, downpayment, gcash_ref, date, payment_status, status, full_name, created_at")
         .eq("ref", bookingRef)
         .single();
       if (bErr || !bk) return json({ error: "Booking not found" }, 404);
@@ -598,11 +637,16 @@ Deno.serve(async (req) => {
     const expectedName = expectedMerchant.name;
     let pricingError = "";
     let expectedAmount = Number(booking.downpayment ?? (Number(booking.total) || 0) / 2);
+    let expectedTotal = Number(booking.total || 0);
+    let bookingGroup: Array<Record<string, unknown>> = [booking];
     try {
-      expectedAmount = await expectedBookingAmount(db, booking, settings);
+      bookingGroup = await loadBookingGroup(db, booking);
+      expectedAmount = await expectedBookingGroupAmount(db, bookingGroup, settings);
+      expectedTotal = bookingGroupStoredTotal(bookingGroup);
     } catch (err) {
       pricingError = errMsg(err);
     }
+    const bookingGroupRefs = new Set(bookingGroup.map(row => String(row.ref || "")).filter(Boolean));
 
     // Hashes are stored for audit only. GCash validity is based on receipt details.
     const imageHash = await sha256Hex(bytes);
@@ -715,8 +759,8 @@ Deno.serve(async (req) => {
         .select("booking_ref")
         .eq("gcash_ref", refForDedupe)
         .maybeSingle();
-      if (existingRef && existingRef.booking_ref !== bookingRef) flags.push("DUPLICATE_REF");
-      else if (existingRef && existingRef.booking_ref === bookingRef) refAlreadyClaimedByThisBooking = true;
+      if (existingRef && !bookingGroupRefs.has(String(existingRef.booking_ref || ""))) flags.push("DUPLICATE_REF");
+      else if (existingRef && bookingGroupRefs.has(String(existingRef.booking_ref || ""))) refAlreadyClaimedByThisBooking = true;
     }
 
     // ── decision routing ────────────────────────────────────────────────────
@@ -769,13 +813,16 @@ Deno.serve(async (req) => {
     // availability). Pass 2 = receipt_* metadata for admin/audit display.
     const statusUpdate: Record<string, unknown> = {};
     if (result === "auto_approved") {
-      const fullyPaid = expectedAmount >= (Number(booking.total) || 0) - PESO_TOLERANCE;
+      const fullyPaid = expectedAmount >= expectedTotal - PESO_TOLERANCE;
       statusUpdate.payment_status = fullyPaid ? "paid" : "downpayment_paid";
       if (booking.status !== "completed" && booking.status !== "cancelled") {
         statusUpdate.status = "confirmed";
       }
     } else if (result === "manual_review") {
       statusUpdate.payment_status = "for_verification";
+      if (booking.status !== "completed" && booking.status !== "cancelled") {
+        statusUpdate.status = "pending";
+      }
     } else if (result === "rejected") {
       // Cancel the booking immediately — invalid/fake receipt → slot must be freed.
       statusUpdate.status = "cancelled";
@@ -800,10 +847,7 @@ Deno.serve(async (req) => {
     if (!inlineBookingData) {
       // Pass 1 — status invariants (CRITICAL for slot release on rejection).
       if (Object.keys(statusUpdate).length > 0) {
-        const { data: statusRows, error: sErr } = await db
-          .from("bookings")
-          .update(statusUpdate)
-          .eq("ref", bookingRef)
+        const { data: statusRows, error: sErr } = await bookingUpdateQuery(db, booking, statusUpdate)
           .select("ref, status, payment_status");
         if (sErr) {
           statusUpdateError = errMsg(sErr);
@@ -814,7 +858,7 @@ Deno.serve(async (req) => {
         }
       }
       // Pass 2 — receipt_* metadata. A failure here MUST NOT block slot release.
-      const { error: mErr } = await db.from("bookings").update(metadataUpdate).eq("ref", bookingRef);
+      const { error: mErr } = await bookingUpdateQuery(db, booking, metadataUpdate);
       if (mErr) {
         metadataUpdateError = errMsg(mErr);
         console.error("booking METADATA update failed:", metadataUpdateError);
@@ -824,10 +868,7 @@ Deno.serve(async (req) => {
       // more with just the cancel field. The slot MUST be freed on a rejected
       // receipt — no exceptions.
       if (statusUpdateError && result === "rejected") {
-        const { error: fallbackErr } = await db
-          .from("bookings")
-          .update({ status: "cancelled" })
-          .eq("ref", bookingRef);
+        const { error: fallbackErr } = await bookingUpdateQuery(db, booking, { status: "cancelled" });
         if (fallbackErr) {
           console.error("FALLBACK cancel also failed:", errMsg(fallbackErr));
         } else {

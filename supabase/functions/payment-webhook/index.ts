@@ -160,7 +160,16 @@ Deno.serve(async (req) => {
         bookingUpdate.paid_at = paidAtIso;
       }
       if (normalized === "failed") bookingUpdate.status = "cancelled";
-      await db.from("bookings").update(bookingUpdate).eq("ref", bookingRefToUpdate);
+      const { data: bookingRow } = await db
+        .from("bookings")
+        .select("ref,booking_group_ref")
+        .eq("ref", bookingRefToUpdate)
+        .single();
+      if (bookingRow?.booking_group_ref) {
+        await db.from("bookings").update(bookingUpdate).eq("booking_group_ref", bookingRow.booking_group_ref);
+      } else {
+        await db.from("bookings").update(bookingUpdate).eq("ref", bookingRefToUpdate);
+      }
     }
 
     return new Response(JSON.stringify({ ok: true, status: normalized }), {
