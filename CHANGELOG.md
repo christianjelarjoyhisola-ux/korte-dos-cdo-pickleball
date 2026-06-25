@@ -1,4 +1,4 @@
-# Changelog — Korte DOS (Your City, Philippines)
+# Changelog — Korte DOS (Bayabas, Cagayan de Oro)
 
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Type: Description (files affected)`
@@ -175,7 +175,7 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 ## [2026-06-12] — Splash Screen Bottom Label Fix
 
 ### Fixed
-- `.sp-bottom` ("KORTE DOS · YOUR CITY, PHILIPPINES") was positioned at bottom-left instead of bottom-center
+- `.sp-bottom` location label was positioned at bottom-left instead of bottom-center
 - Added `left: 50%; transform: translateX(-50%); white-space: nowrap` to center it horizontally
 
 **Files affected:** `index.html`
