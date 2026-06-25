@@ -6,6 +6,22 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-06-25] - Public Booking Mobile UX & Slot Indicators
+
+### Added
+- **All Courts mobile tab** - mobile court tabs now start with `All Courts` so players see every court by default before filtering to Court 1, Court 2, or another specific court.
+- **Court-card slot status legend** - each public court card now shows bottom color indicators for Available, Selected, Booked, Processing, Done, and Maintenance states.
+- **Done slot indicator** - past/completed time slots now have their own muted silver indicator in the court-card legend.
+
+### Changed
+- **Selected time slot color** - selected public time cards now use the Korte DOS lime green from the logo instead of blue, making the active selection easier to identify.
+- **Court-card selection behavior** - court cards stay visually neutral while the selected time slot carries the main booking emphasis.
+- **Mobile court tab hint** - helper text now explains that players can view all courts or filter to a single court.
+
+**Files affected:** `index.html`
+
+---
+
 ## [2026-06-17] - Open Play Game Manager & Mobile Polish
 
 ### Added
