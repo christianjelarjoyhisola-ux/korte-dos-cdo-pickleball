@@ -790,10 +790,30 @@ select.form-control option { background: var(--dark-card); }
 .spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
   border-radius: 50%;
+  border: 0;
+  background: radial-gradient(circle at 32% 30%, #fde047, #facc15 55%, #d4a017);
+  box-shadow: inset -3px -3px 6px rgba(120,80,0,.3), 0 3px 8px rgba(250,204,21,.25);
+  position: relative;
   animation: spin 0.6s linear infinite;
+}
+.spinner::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(90,62,0,.55);
+  box-shadow:
+    -5px -4px 0 rgba(90,62,0,.5),
+     1px -6px 0 rgba(90,62,0,.5),
+     6px -2px 0 rgba(90,62,0,.5),
+    -6px  1px 0 rgba(90,62,0,.5),
+     6px  3px 0 rgba(90,62,0,.5),
+    -3px  6px 0 rgba(90,62,0,.5),
+     4px  6px 0 rgba(90,62,0,.5);
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }

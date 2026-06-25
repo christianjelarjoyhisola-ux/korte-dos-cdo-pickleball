@@ -12,13 +12,15 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 - **All Courts mobile tab** - mobile court tabs now start with `All Courts` so players see every court by default before filtering to Court 1, Court 2, or another specific court.
 - **Court-card slot status legend** - each public court card now shows bottom color indicators for Available, Selected, Booked, Processing, Done, and Maintenance states.
 - **Done slot indicator** - past/completed time slots now have their own muted silver indicator in the court-card legend.
+- **Pickleball loading indicators** - public and admin loading placeholders now use an animated circling pickleball instead of plain text loaders.
 
 ### Changed
 - **Selected time slot color** - selected public time cards now use the Korte DOS lime green from the logo instead of blue, making the active selection easier to identify.
 - **Mobile time-slot grid** - public booking time cards use a 3-column mobile layout for easier reading.
 - **Court-card selection behavior** - court cards stay visually neutral while the selected time slot carries the main booking emphasis.
+- **Generic spinner styling** - the shared spinner class now renders as a mini pickleball loader for consistency.
 
-**Files affected:** `index.html`
+**Files affected:** `index.html`, `admin.html`, `style.css`
 
 ---
 

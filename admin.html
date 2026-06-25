@@ -76,6 +76,40 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .hidden { display: none !important; }
 
+/* Pickleball loading indicator */
+.pb-loader {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:8px; padding:14px 0; text-align:center;
+}
+.pb-ball {
+  width:34px; height:34px; border-radius:50%;
+  background:radial-gradient(circle at 32% 30%, #fde047, #facc15 55%, #d4a017);
+  box-shadow:inset -4px -4px 8px rgba(120,80,0,.3),0 4px 12px rgba(250,204,21,.22);
+  position:relative;
+  animation:pb-spin 1s linear infinite;
+}
+.pb-ball::before {
+  content:''; position:absolute; top:15px; left:15px;
+  width:3px; height:3px; border-radius:50%;
+  background:rgba(90,62,0,.55);
+  box-shadow:
+    -8px -7px 0 0 rgba(90,62,0,.5),
+     1px -10px 0 0 rgba(90,62,0,.5),
+    10px -5px 0 0 rgba(90,62,0,.5),
+   -10px  1px 0 0 rgba(90,62,0,.5),
+    10px  3px 0 0 rgba(90,62,0,.5),
+    -5px  9px 0 0 rgba(90,62,0,.5),
+     6px  9px 0 0 rgba(90,62,0,.5);
+}
+.pb-loader-txt {
+  color:var(--text3); font-size:.8rem; font-weight:700;
+}
+.pb-loader-txt::after { content:''; animation:pb-dots 1.4s steps(4,end) infinite; }
+.pb-loading-cell { text-align:center; padding:24px !important; }
+@keyframes pb-spin { to { transform:rotate(360deg); } }
+@keyframes pb-dots { 0%{content:'';} 25%{content:'.';} 50%{content:'..';} 75%{content:'...';} }
+@media (prefers-reduced-motion: reduce) { .pb-ball { animation-duration:2.4s; } }
+
 /* ── TOP NAV ───────────────────────────────────────────── */
 .topnav {
   position: sticky; top: 0; z-index: 100;
@@ -1039,7 +1073,7 @@ tr:hover td { background: var(--bg2); }
         <div class="tbl-scroll">
           <table>
             <thead><tr><th>Type</th><th>Customer / Player</th><th>Court / Schedule</th><th>Method</th><th>Amount</th><th>Status</th><th>Flags</th><th>Action</th></tr></thead>
-            <tbody id="prQueueBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Loading payments...</td></tr></tbody>
+            <tbody id="prQueueBody"><tr><td colspan="8" class="pb-loading-cell"><div class="pb-loader"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading payments</div></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1268,7 +1302,7 @@ tr:hover td { background: var(--bg2); }
             <button class="btn btn-sm" style="border:1px solid var(--border);color:var(--muted);background:transparent;font-size:.78rem" onclick="$('opRegDate').value='';$('opRegCourt').value='';renderOpRegistrations()">Clear</button>
           </div>
         </div>
-        <div id="opRegList"><p style="color:var(--muted);font-style:italic">Loading…</p></div>
+        <div id="opRegList"><div class="pb-loader"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading registrations</div></div></div>
       </div>
 
       <!-- BLOCKED DATES (kept for maintenance/holidays) -->
@@ -4846,7 +4880,7 @@ async function saveOpenPlay() {
 async function renderOpRegistrations() {
   const el = $('opRegList');
   if (!el) return;
-  el.innerHTML = '<p style="color:var(--muted);font-style:italic">Loading…</p>';
+  el.innerHTML = '<div class="pb-loader"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading registrations</div></div>';
   let regs = await DB.getOpenPlayRegistrations();
   const filterDate = $('opRegDate')?.value;
   const filterCourt = $('opRegCourt')?.value;

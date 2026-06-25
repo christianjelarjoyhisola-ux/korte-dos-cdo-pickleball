@@ -306,6 +306,30 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .pb-loader-txt::after { content:''; animation:pb-dots 1.4s steps(4,end) infinite; }
 @keyframes pb-dots { 0%{content:'';} 25%{content:'.';} 50%{content:'..';} 75%{content:'...';} }
 @media (prefers-reduced-motion: reduce) { .pb-ball { animation-duration:2.4s; } }
+.pb-loader.mini {
+  gap:8px; padding:14px 0;
+}
+.pb-loader.mini .pb-ball {
+  width:34px; height:34px;
+  box-shadow:inset -4px -4px 8px rgba(120,80,0,.3),0 4px 12px rgba(250,204,21,.22);
+}
+.pb-loader.mini .pb-ball::before {
+  top:15px; left:15px;
+  width:3px; height:3px;
+  box-shadow:
+    -8px -7px 0 0 rgba(90,62,0,.5),
+     1px -10px 0 0 rgba(90,62,0,.5),
+    10px -5px 0 0 rgba(90,62,0,.5),
+   -10px  1px 0 0 rgba(90,62,0,.5),
+    10px  3px 0 0 rgba(90,62,0,.5),
+    -5px  9px 0 0 rgba(90,62,0,.5),
+     6px  9px 0 0 rgba(90,62,0,.5);
+}
+.pb-loader.mini .pb-loader-txt {
+  font-family:'Outfit',sans-serif; font-size:.78rem; letter-spacing:.2px;
+  color:var(--muted);
+}
+.cc-slots-empty .pb-loader.mini { padding:4px 0; }
 
 /* ── MOBILE COURT TABS ── */
 .court-tabs {
@@ -2329,7 +2353,7 @@ body.light #splashScreen { background: var(--bg); }
         <div class="wiz-panel on" id="wizPanel1">
           <div class="wiz-sec-title">🏟️ Select a Court</div>
           <div class="wiz-court-list" id="wizCourtList">
-            <div style="color:var(--muted);font-size:.82rem;padding:12px 0">Loading courts…</div>
+            <div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading courts</div></div>
           </div>
         </div>
 
@@ -3712,7 +3736,7 @@ async function onCardDate(courtId, date) {
     mobDate.textContent = isToday_ ? 'Today' : fmtD(date).replace(/^[^,]+,\s*/, '');
   }
 
-  grid.innerHTML = `<div class="cc-slots-empty">⏳ Loading...</div>`;
+  grid.innerHTML = `<div class="cc-slots-empty"><div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading times</div></div></div>`;
 
   const [courts, bookings, blockedDates] = await Promise.all([
     DB.getCourts(), DB.getBookings(), DB.getBlockedDates(), loadOperatingHours()
@@ -5189,7 +5213,7 @@ async function openPlaySignup(courtId, date, h, courtName) {
   $('opModalMeta').textContent = fmtOpenPlayMeta(courtName, date, session.start, session.end);
 
   // Show modal immediately with loading state
-  $('opModalBody').innerHTML = `<div style="text-align:center;padding:32px 0;color:var(--muted)">Checking availability…</div>`;
+  $('opModalBody').innerHTML = `<div class="pb-loader mini" style="padding:32px 0"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Checking availability</div></div>`;
   $('opModalFt').innerHTML = `<button class="btn" style="border:1.5px solid var(--border);color:var(--muted);background:transparent" onclick="closeOpModal()">Cancel</button>`;
   $('opModal').classList.add('active');
 
