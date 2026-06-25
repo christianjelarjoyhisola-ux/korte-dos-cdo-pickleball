@@ -28,12 +28,13 @@ npx supabase secrets set `
   PAYMENT_PROVIDER="$env:PAYMENT_PROVIDER" `
   OCRSPACE_API_KEY="$($envMap["OCRSPACE_API_KEY"])"
 
-npx supabase functions deploy create-payment-session
-npx supabase functions deploy payment-webhook
-npx supabase functions deploy verify-gcash-receipt
-npx supabase functions deploy send-confirmation-email
-npx supabase functions deploy send-reschedule-email
-npx supabase functions deploy send-telegram-notification
-npx supabase functions deploy integration-status
+npx supabase functions deploy create-payment-session --no-verify-jwt
+npx supabase functions deploy payment-webhook --no-verify-jwt
+npx supabase functions deploy verify-gcash-receipt --no-verify-jwt
+npx supabase functions deploy manage-account --no-verify-jwt
+npx supabase functions deploy send-confirmation-email --no-verify-jwt
+npx supabase functions deploy send-reschedule-email --no-verify-jwt
+npx supabase functions deploy send-telegram-notification --no-verify-jwt
+npx supabase functions deploy integration-status --no-verify-jwt
 
 Write-Host "Edge Functions deployed."

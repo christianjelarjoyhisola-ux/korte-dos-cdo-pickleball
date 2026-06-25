@@ -2,13 +2,31 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 type CreatePayload = {
   bookingRef: string;
-  amountPhp: number;
+  amountPhp?: number;
   customer?: {
     name?: string;
     email?: string;
     phone?: string;
   };
   metadata?: Record<string, string>;
+};
+
+type BookingRow = {
+  ref: string;
+  full_name: string | null;
+  email: string | null;
+  contact_number: string | null;
+  court_id: string;
+  slots: Array<string | number> | null;
+  total: number | null;
+  downpayment: number | null;
+  status: string | null;
+  payment_status: string | null;
+};
+
+type CourtRow = {
+  rate: number | null;
+  rate_schedule: Array<{ from: number; to: number; rate: number }> | null;
 };
 
 const corsHeaders = {
@@ -24,6 +42,77 @@ function extractErrMsg(err: unknown) {
     if (typeof maybe.error === "string") return maybe.error;
   }
   try { return JSON.stringify(err); } catch { return "Unknown error"; }
+}
+
+function toNumber(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function closeMoney(a: number, b: number) {
+  return Math.abs(roundMoney(a) - roundMoney(b)) <= 0.01;
+}
+
+function settingMap(rows: Array<{ key: string; value: string }> | null) {
+  const out: Record<string, string> = {};
+  (rows || []).forEach((row) => { out[row.key] = row.value; });
+  return out;
+}
+
+function parseTiers(raw: string | null | undefined) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function rateForHour(hour: number, tiers: Array<{ from: number; to: number; rate: number }>, fallbackRate: number) {
+  for (const tier of tiers || []) {
+    const from = toNumber(tier.from);
+    const to = toNumber(tier.to);
+    const rate = toNumber(tier.rate, fallbackRate);
+    const inRange = from < to ? hour >= from && hour < to : hour >= from || hour < to;
+    if (inRange) return rate;
+  }
+  return tiers && tiers.length > 0
+    ? Math.min(...tiers.map((tier) => toNumber(tier.rate, fallbackRate)))
+    : fallbackRate;
+}
+
+function expectedBookingAmounts(booking: BookingRow, court: CourtRow, settings: Record<string, string>) {
+  const slots = (booking.slots || []).map(Number).filter(Number.isFinite);
+  if (slots.length === 0) throw new Error("Booking has no billable slots");
+
+  const courtRate = toNumber(court.rate);
+  const tiers = Array.isArray(court.rate_schedule) && court.rate_schedule.length
+    ? court.rate_schedule
+    : parseTiers(settings.pricing_tiers);
+  const usableTiers = tiers.length ? tiers : [{ from: 0, to: 24, rate: courtRate }];
+  const courtTotal = slots.reduce((sum, hour) => sum + rateForHour(hour, usableTiers, courtRate), 0);
+
+  const feeRate = toNumber(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee);
+  const feeType = settings.fee_type === "flat" ? "flat" : "per_hour";
+  const serviceFee = feeType === "flat" ? feeRate : feeRate * slots.length;
+  const total = roundMoney(courtTotal + serviceFee);
+  const half = roundMoney(total / 2);
+  const storedDownpayment = toNumber(booking.downpayment, -1);
+  const mode = settings.payment_acceptance_mode || "both";
+
+  let due = half;
+  if (mode === "full_payment_only") due = total;
+  else if (mode === "downpayment_only") due = half;
+  else if (closeMoney(storedDownpayment, total)) due = total;
+  else if (closeMoney(storedDownpayment, half)) due = half;
+  else throw new Error("Booking amount does not match current pricing");
+
+  return { total, due };
 }
 
 async function createPayMongoCheckoutSession(input: {
@@ -102,20 +191,58 @@ Deno.serve(async (req) => {
     const db = createClient(supabaseUrl, serviceRoleKey);
 
     const body = (await req.json()) as CreatePayload;
-    if (!body.bookingRef || !Number.isFinite(body.amountPhp) || body.amountPhp <= 0) {
+    const bookingRef = String(body.bookingRef || "").trim();
+    if (!bookingRef) {
       return new Response(JSON.stringify({ error: "Invalid payload" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const { data: booking, error: bookingErr } = await db
+      .from("bookings")
+      .select("ref,full_name,email,contact_number,court_id,slots,total,downpayment,status,payment_status")
+      .eq("ref", bookingRef)
+      .single();
+    if (bookingErr || !booking) {
+      return new Response(JSON.stringify({ error: "Booking not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (booking.status === "cancelled" || booking.payment_status === "paid" || booking.payment_status === "downpayment_paid") {
+      return new Response(JSON.stringify({ error: "Booking is not payable" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: court, error: courtErr } = await db
+      .from("courts")
+      .select("rate,rate_schedule")
+      .eq("id", booking.court_id)
+      .single();
+    if (courtErr || !court) throw courtErr || new Error("Court not found");
+
+    const { data: settingRows, error: settingsErr } = await db.from("settings").select("key,value");
+    if (settingsErr) throw settingsErr;
+    const settings = settingMap(settingRows as Array<{ key: string; value: string }>);
+    const amounts = expectedBookingAmounts(booking as BookingRow, court as CourtRow, settings);
+
+    const requestedAmount = Number(body.amountPhp);
+    if (Number.isFinite(requestedAmount) && !closeMoney(requestedAmount, amounts.due)) {
+      return new Response(JSON.stringify({ error: "Payment amount does not match booking price" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const sessionId = crypto.randomUUID();
-    const amountPhp = Number(body.amountPhp.toFixed(2));
-    const bookingRef = body.bookingRef;
+    const amountPhp = amounts.due;
     const customer = {
-      name: body.customer?.name || "Customer",
-      email: body.customer?.email || "",
-      phone: body.customer?.phone || "",
+      name: body.customer?.name || booking.full_name || "Customer",
+      email: body.customer?.email || booking.email || "",
+      phone: body.customer?.phone || booking.contact_number || "",
     };
     const metadata = { ...(body.metadata || {}), booking_ref: bookingRef };
 

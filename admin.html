@@ -2177,7 +2177,7 @@ function platformFeeFormulaText(bookings, cfg) {
   const hours = bookings.reduce((sum, b) => sum + bookingBillableHours(b), 0);
   return `${hours} booked hour${hours !== 1 ? 's' : ''} × ${fmt(cfg.amount)}`;
 }
-function statusBdg(s){const m={pending:'bdg-p',confirmed:'bdg-c',completed:'bdg-d',verifying:'bdg-v',cancelled:'bdg-x'};return`<span class="bdg ${m[s]||''}">${s}</span>`;}
+function statusBdg(s){const m={pending:'bdg-p',confirmed:'bdg-c',completed:'bdg-d',verifying:'bdg-v',cancelled:'bdg-x'};return`<span class="bdg ${m[s]||''}">${esc(s)}</span>`;}
 function payStatusBdg(s){
   const v = (s || 'unpaid').toLowerCase();
   const label = v === 'paid' ? 'Fully Paid' : v === 'downpayment_paid' ? 'Downpayment Paid' : v === 'for_verification' ? 'For Verification' : v === 'pending' ? 'Pending' : v === 'rejected' ? 'Rejected' : v === 'failed' ? 'Failed' : 'Unpaid';
@@ -2186,6 +2186,9 @@ function payStatusBdg(s){
 }
 function esc(v){
   return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function jsArg(v){
+  return esc(String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n'));
 }
 function shortDateTime(v){
   if (!v) return '<span style="color:var(--muted)">--</span>';
@@ -2267,23 +2270,23 @@ function receiptDetailsHtml(b){
 function bookingDetailsButton(b){
   if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
   if (!['gcash','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
-  return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${esc(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`;
+  return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`;
 }
 function bookingActionsHtml(b, canDelete){
   return `${bookingDetailsButton(b)}
-    ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${esc(b.ref)}')">📅 Reschedule</button>`:''}
-    ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${esc(b.ref)}')">📧 Resend Email</button>`:''}
-    <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${esc(b.ref)}',this.value)">
+    ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(b.ref)}')">📅 Reschedule</button>`:''}
+    ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(b.ref)}')">📧 Resend Email</button>`:''}
+    <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${jsArg(b.ref)}',this.value)">
       <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
       <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
       <option value="verifying" ${b.status==='verifying'?'selected':''}>Processing</option>
       <option value="completed" ${b.status==='completed'?'selected':''}>Completed</option>
       <option value="cancelled" ${b.status==='cancelled'?'selected':''}>Cancelled</option>
     </select>
-    ${canDelete?`<button class="btn btn-d btn-sm" onclick="delBooking('${esc(b.ref)}')">🗑️</button>`:''}`;
+    ${canDelete?`<button class="btn btn-d btn-sm" onclick="delBooking('${jsArg(b.ref)}')">🗑️</button>`:''}`;
 }
 function bookingPayStateSelect(b){
-  return `<select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${esc(b.ref)}',this.value)">
+  return `<select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${jsArg(b.ref)}',this.value)">
     <option value="unpaid" ${(!b.paymentStatus||b.paymentStatus==='unpaid')?'selected':''}>Unpaid</option>
     <option value="downpayment_paid" ${b.paymentStatus==='downpayment_paid'?'selected':''}>Downpayment Paid</option>
     <option value="paid" ${b.paymentStatus==='paid'?'selected':''}>Fully Paid</option>
@@ -2322,7 +2325,7 @@ function mobileBookingCard(b, canDelete){
     </details>
   </div>`;
 }
-function toast(msg,type='ok'){const icons={ok:'✅',err:'❌',inf:'ℹ️'};const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<span>${icons[type]}</span><span>${msg}</span>`;$('toasts').appendChild(el);setTimeout(()=>el.remove(),3800);}
+function toast(msg,type='ok'){const icons={ok:'✅',err:'❌',inf:'ℹ️'};const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<span>${icons[type]||''}</span><span></span>`;el.lastElementChild.textContent=String(msg ?? '');$('toasts').appendChild(el);setTimeout(()=>el.remove(),3800);}
 function closeModal(id){$(id).classList.remove('show');}
 
 let sess;
@@ -2413,7 +2416,7 @@ async function renderDash(){
   $('cBar').style.width=(tot>0?Math.round(ca/tot*100):0)+'%';
   const recent=[...realBks].slice(0,5);
   $('recentBody').innerHTML=recent.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No bookings yet.</td></tr>':
-    recent.map(b=>`<tr><td data-label="Ref"><code style="color:var(--green);font-size:.78rem">${b.ref}</code></td><td data-label="Name">${b.fullName}</td><td data-label="Court">${b.courtName}</td><td data-label="Date">${fmtD(b.date)}</td><td data-label="Status">${statusBdg(b.status)}</td></tr>`).join('');
+    recent.map(b=>`<tr><td data-label="Ref"><code style="color:var(--green);font-size:.78rem">${esc(b.ref)}</code></td><td data-label="Name">${esc(b.fullName)}</td><td data-label="Court">${esc(b.courtName)}</td><td data-label="Date">${fmtD(b.date)}</td><td data-label="Status">${statusBdg(b.status)}</td></tr>`).join('');
 
   // ── Charts ──
   renderDashCharts(active);
@@ -2662,19 +2665,19 @@ async function renderBookings(){
 
   const bkRowsHtml = bks.map(b=>`<tr class="booking-row">
       <td class="booking-mobile-card">${mobileBookingCard(b, canDelete)}</td>
-      <td data-label="Ref"><code style="color:var(--green);font-size:.76rem">${b.ref}</code></td>
-      <td data-label="Customer"><div style="font-weight:600">${b.fullName}</div><div style="font-size:.75rem;color:var(--text)">${b.email}</div></td>
-      <td data-label="Court">${b.courtName}</td>
-      <td data-label="Schedule">${fmtD(b.date)}<div style="font-size:.75rem;color:var(--text);font-weight:600">${b.startTime}–${b.endTime}</div></td>
+      <td data-label="Ref"><code style="color:var(--green);font-size:.76rem">${esc(b.ref)}</code></td>
+      <td data-label="Customer"><div style="font-weight:600">${esc(b.fullName)}</div><div style="font-size:.75rem;color:var(--text)">${esc(b.email)}</div></td>
+      <td data-label="Court">${esc(b.courtName)}</td>
+      <td data-label="Schedule">${fmtD(b.date)}<div style="font-size:.75rem;color:var(--text);font-weight:600">${esc(b.startTime)}–${esc(b.endTime)}</div></td>
       <td data-label="Booked On">${b.createdAt ? (() => { const d=new Date(b.createdAt); return d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) + '<div style="font-size:.75rem;color:var(--muted);font-weight:600">' + d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true}) + '</div>'; })() : '<span style="color:var(--muted)">—</span>'}</td>
       <td data-label="Amount"><div class="amount-stack">
         <div class="amount-main">${fmt(b.total)}</div>
         ${(()=>{ const dp=b.downpayment||b.total/2; return dp>=b.total ? `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">✅ Full payment</div>` : `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">⚡ ${fmt(dp)} down</div>`; })()}
-        ${b.gcashRef?`<div style="font-size:.7rem;margin-top:1px;font-weight:700">Ref: <code style="color:var(--text)">${b.gcashRef}</code></div>`:''}
+        ${b.gcashRef?`<div style="font-size:.7rem;margin-top:1px;font-weight:700">Ref: <code style="color:var(--text)">${esc(b.gcashRef)}</code></div>`:''}
       </div></td>
-      <td data-label="Payment"><span style="font-size:.76rem;background:var(--input);border-radius:4px;padding:2px 7px">${b.paymentMethod==='gotyme'?'GoTyme':b.paymentMethod.toUpperCase()}</span></td>
+      <td data-label="Payment"><span style="font-size:.76rem;background:var(--input);border-radius:4px;padding:2px 7px">${esc(b.paymentMethod==='gotyme'?'GoTyme':String(b.paymentMethod || '').toUpperCase())}</span></td>
       <td data-label="Pay State"><div class="pay-state-stack">
-        <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${b.ref}',this.value)">
+        <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${jsArg(b.ref)}',this.value)">
           <option value="unpaid" ${(!b.paymentStatus||b.paymentStatus==='unpaid')?'selected':''}>Unpaid</option>
           <option value="downpayment_paid" ${b.paymentStatus==='downpayment_paid'?'selected':''}>Downpayment Paid</option>
           <option value="paid" ${b.paymentStatus==='paid'?'selected':''}>Fully Paid</option>
@@ -2685,17 +2688,17 @@ async function renderBookings(){
       </div></td>
       <td data-label="Status">${statusBdg(b.status)}</td>
       <td data-label="Actions"><div style="display:flex;gap:5px;flex-wrap:wrap">
-        ${(b.gcashRef || (b.receiptStatus && b.receiptStatus!=='none')) && (b.paymentMethod==='gcash'||b.paymentMethod==='gotyme'||b.paymentMethod==='pnb')?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${b.ref}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
-        ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${b.ref}')">📅 Reschedule</button>`:''}
-        ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${b.ref}')">📧 Resend Email</button>`:''}
-        <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${b.ref}',this.value)">
+        ${(b.gcashRef || (b.receiptStatus && b.receiptStatus!=='none')) && (b.paymentMethod==='gcash'||b.paymentMethod==='gotyme'||b.paymentMethod==='pnb')?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
+        ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(b.ref)}')">📅 Reschedule</button>`:''}
+        ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(b.ref)}')">📧 Resend Email</button>`:''}
+        <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${jsArg(b.ref)}',this.value)">
           <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
           <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
           <option value="verifying" ${b.status==='verifying'?'selected':''}>Processing</option>
           <option value="completed" ${b.status==='completed'?'selected':''}>Completed</option>
           <option value="cancelled" ${b.status==='cancelled'?'selected':''}>Cancelled</option>
         </select>
-        ${canDelete?`<button class="btn btn-d btn-sm" onclick="delBooking('${b.ref}')">🗑️</button>`:''}
+        ${canDelete?`<button class="btn btn-d btn-sm" onclick="delBooking('${jsArg(b.ref)}')">🗑️</button>`:''}
       </div></td>
     </tr>`).join('');
   const noResults = !mtRowsHtml && !bkRowsHtml ? '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">No bookings found.</td></tr>' : '';
@@ -3137,7 +3140,7 @@ async function openNewBookingModal() {
   _nbCourts = (await DB.getCourts()).filter(c => !c.blocked);
   const sel = $('nbCourt');
   sel.innerHTML = '<option value="">— Select Court —</option>' +
-    _nbCourts.map(c => `<option value="${c.id}">${c.name} — ${fmt(c.rate)}/hr</option>`).join('');
+    _nbCourts.map(c => `<option value="${esc(c.id)}">${esc(c.name)} — ${fmt(c.rate)}/hr</option>`).join('');
 
   // Load operating hours + open play config
   const settings = await DB.getSettings();
@@ -3745,17 +3748,17 @@ async function renderCourts(){
   const courts=await DB.getCourts();
   $('courtBody').innerHTML=courts.map(c=>`<tr>
     <td data-label="Name">
-      ${c.photo?`<img src="${c.photo}" alt="${c.name}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border);vertical-align:middle;margin-right:8px;display:inline-block;"/>`:
+      ${c.photo?`<img src="${esc(c.photo)}" alt="${esc(c.name)}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border);vertical-align:middle;margin-right:8px;display:inline-block;"/>`:
         `<span style="display:inline-block;width:44px;height:44px;background:var(--input);border:1px solid var(--border);border-radius:6px;text-align:center;line-height:44px;font-size:1.2rem;vertical-align:middle;margin-right:8px;">🏟️</span>`}
-      <strong style="vertical-align:middle">${c.name}</strong>
+      <strong style="vertical-align:middle">${esc(c.name)}</strong>
     </td>
-    <td data-label="Description" style="font-size:.82rem;color:var(--muted)">${c.desc}</td>
+    <td data-label="Description" style="font-size:.82rem;color:var(--muted)">${esc(c.desc)}</td>
     <td data-label="Rate">${fmt(c.rate)}/hr</td>
     <td data-label="Status">${c.blocked?'<span class="bdg bdg-x">Maintenance</span>':'<span class="bdg bdg-c">Available</span>'}</td>
     <td data-label="Actions"><div style="display:flex;gap:6px">
-      <button class="btn btn-g btn-sm" onclick="openCourtModal('${c.id}')">✏️ Edit</button>
-      <button class="btn btn-sm" style="background:${c.blocked?'rgba(var(--green-rgb),.12);color:var(--green)':'rgba(var(--yellow-rgb),.12);color:var(--yellow)'}" onclick="toggleBlock('${c.id}')">${c.blocked?'✅ Unblock':'🔒 Block'}</button>
-      <button class="btn btn-d btn-sm" onclick="delCourt('${c.id}')">🗑️</button>
+      <button class="btn btn-g btn-sm" onclick="openCourtModal('${jsArg(c.id)}')">✏️ Edit</button>
+      <button class="btn btn-sm" style="background:${c.blocked?'rgba(var(--green-rgb),.12);color:var(--green)':'rgba(var(--yellow-rgb),.12);color:var(--yellow)'}" onclick="toggleBlock('${jsArg(c.id)}')">${c.blocked?'✅ Unblock':'🔒 Block'}</button>
+      <button class="btn btn-d btn-sm" onclick="delCourt('${jsArg(c.id)}')">🗑️</button>
     </div></td>
   </tr>`).join('');
 }
@@ -4226,23 +4229,23 @@ async function renderWeeklyBilling() {
     const canMarkPaid = status !== 'paid';
     const canMarkOverdue = ['draft', 'sent'].includes(status);
     const proofBtn = (status === 'submitted' && r.submitted_proof_url)
-      ? `<button class="btn btn-sm" style="background:rgba(91,140,210,.12);color:#5b8cd2;border:1px solid rgba(91,140,210,.3)" onclick="viewBillingProof('${r.id}')">📎 Receipt</button>`
+      ? `<button class="btn btn-sm" style="background:rgba(91,140,210,.12);color:#5b8cd2;border:1px solid rgba(91,140,210,.3)" onclick="viewBillingProof('${jsArg(r.id)}')">📎 Receipt</button>`
       : '';
 
     return `<tr>
       <td data-label="Month">${period}</td>
-      <td data-label="Court Owner"><div style="font-weight:700">${ownerName}</div><div style="font-size:.72rem;color:var(--muted)">${r.court_owner_email || owner?.email || '—'}</div></td>
+      <td data-label="Court Owner"><div style="font-weight:700">${esc(ownerName)}</div><div style="font-size:.72rem;color:var(--muted)">${esc(r.court_owner_email || owner?.email || '—')}</div></td>
       <td data-label="Bookings">${r.bookings_count}</td>
       <td data-label="Booking Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
       <td data-label="Amount to Remit"><strong style="color:var(--yellow)">${fmt(r.amount_due)}</strong></td>
       <td data-label="Status">${_billStatusBadge(r.status)}</td>
       <td data-label="Due Date">${dueLabel}</td>
-      <td data-label="Remittance Ref"><code style="font-size:.74rem;color:var(--text)">${refDisplay}</code></td>
+      <td data-label="Remittance Ref"><code style="font-size:.74rem;color:var(--text)">${esc(refDisplay)}</code></td>
       <td data-label="Actions">
         <div style="display:flex;gap:5px;flex-wrap:wrap">
           ${proofBtn}
-          ${canMarkPaid ? `<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="markWeeklyFeePaid('${r.id}', '${(r.submitted_ref || '').replace(/'/g,"\\'")}')">✅ Mark Received</button>` : ''}
-          ${canMarkOverdue ? `<button class="btn btn-sm" style="background:rgba(229,57,53,.12);color:#e53935;border:1px solid rgba(229,57,53,.3)" onclick="markWeeklyFeeOverdue('${r.id}')">⚠️ Overdue</button>` : ''}
+          ${canMarkPaid ? `<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="markWeeklyFeePaid('${jsArg(r.id)}', '${jsArg(r.submitted_ref || '')}')">✅ Mark Received</button>` : ''}
+          ${canMarkOverdue ? `<button class="btn btn-sm" style="background:rgba(229,57,53,.12);color:#e53935;border:1px solid rgba(229,57,53,.3)" onclick="markWeeklyFeeOverdue('${jsArg(r.id)}')">⚠️ Overdue</button>` : ''}
         </div>
       </td>
     </tr>`;
@@ -4406,10 +4409,10 @@ async function renderMyBilling() {
     const dueLabel = r.due_at ? new Date(r.due_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     const canPay = ['sent', 'overdue'].includes(status);
     const submittedLabel = status === 'submitted'
-      ? `<div style="font-size:.7rem;color:var(--text3);margin-top:3px">Ref: <code>${r.submitted_ref || '—'}</code></div>`
+      ? `<div style="font-size:.7rem;color:var(--text3);margin-top:3px">Ref: <code>${esc(r.submitted_ref || '—')}</code></div>`
       : '';
     const action = canPay
-      ? `<button class="btn btn-p btn-sm" onclick="openPayBilling('${r.id}')">💸 Remit Now</button>`
+      ? `<button class="btn btn-p btn-sm" onclick="openPayBilling('${jsArg(r.id)}')">💸 Remit Now</button>`
       : status === 'submitted'
         ? `<span style="font-size:.74rem;color:var(--muted)">Awaiting verification</span>`
         : status === 'paid'
@@ -4666,13 +4669,13 @@ async function renderAccounts(){
   const ROLE_BDG={owner:'bdg-c',court_owner:'bdg-p',staff:'bdg-d'};
   $('accBody').innerHTML=accs.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No other accounts.</td></tr>':
     accs.map(a=>`<tr>
-      <td data-label="Full Name"><strong>${a.fullName}</strong></td>
-      <td data-label="Username">${a.username}</td>
-      <td data-label="Email">${a.email}</td>
-      <td data-label="Role"><span class="bdg ${ROLE_BDG[a.role]||'bdg-d'}">${ROLE_LABELS[a.role]||a.role}</span></td>
+      <td data-label="Full Name"><strong>${esc(a.fullName)}</strong></td>
+      <td data-label="Username">${esc(a.username)}</td>
+      <td data-label="Email">${esc(a.email)}</td>
+      <td data-label="Role"><span class="bdg ${ROLE_BDG[a.role]||'bdg-d'}">${esc(ROLE_LABELS[a.role]||a.role)}</span></td>
       <td data-label="Actions"><div style="display:flex;gap:6px">
-        <button class="btn btn-g btn-sm" onclick="openAccModal('${a.id}')">✏️ Edit</button>
-        <button class="btn btn-d btn-sm" onclick="delAcc('${a.id}')">🗑️</button>
+        <button class="btn btn-g btn-sm" onclick="openAccModal('${jsArg(a.id)}')">✏️ Edit</button>
+        <button class="btn btn-d btn-sm" onclick="delAcc('${jsArg(a.id)}')">🗑️</button>
       </div></td>
     </tr>`).join('');
 }
@@ -4700,7 +4703,7 @@ async function saveAcc(){
   if(id){
     const d={fullName,username,email,role};if(password)d.password=password;
     const r=await Auth.update(id,d);
-    if(!r.ok){toast('Update failed.','err');return;}
+    if(!r.ok){toast(r.msg || 'Update failed.','err');return;}
     toast('Account updated!');
   } else {
     if(!password){toast('Password required.','err');return;}
@@ -4714,7 +4717,8 @@ async function saveAcc(){
 
 async function delAcc(id){
   if(!confirm('Delete this account?'))return;
-  await Auth.del(id);
+  const r=await Auth.del(id);
+  if(!r.ok){toast(r.msg || 'Delete failed.','err');return;}
   await renderAccounts();
   toast('Account deleted.','inf');
 }
@@ -4925,17 +4929,17 @@ async function renderOpRegistrations() {
               : `<span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(var(--yellow-rgb),.15);color:var(--yellow)">🕐 Pending</span>`;
             return `
             <tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:9px 10px;font-weight:600">${r.full_name}</td>
-              <td style="padding:9px 10px;color:var(--muted)">${r.court_name || '—'}</td>
+              <td style="padding:9px 10px;font-weight:600">${esc(r.full_name)}</td>
+              <td style="padding:9px 10px;color:var(--muted)">${esc(r.court_name || '—')}</td>
               <td style="padding:9px 10px">${fmtD(r.date)}</td>
-              <td style="padding:9px 10px">${r.time_label || '—'}</td>
-              <td style="padding:9px 10px;color:var(--muted)">${methodLabel(r.payment_method)}</td>
-              <td style="padding:9px 10px"><span style="font-size:.75rem;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.payment_type==='100%'?'rgba(var(--green-rgb),.15)':'rgba(var(--yellow-rgb),.15)'};color:${r.payment_type==='100%'?'var(--green)':'var(--yellow)'}">${r.payment_type}</span></td>
+              <td style="padding:9px 10px">${esc(r.time_label || '—')}</td>
+              <td style="padding:9px 10px;color:var(--muted)">${esc(methodLabel(r.payment_method))}</td>
+              <td style="padding:9px 10px"><span style="font-size:.75rem;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.payment_type==='100%'?'rgba(var(--green-rgb),.15)':'rgba(var(--yellow-rgb),.15)'};color:${r.payment_type==='100%'?'var(--green)':'var(--yellow)'}">${esc(r.payment_type)}</span></td>
               <td style="padding:9px 10px;text-align:right;font-weight:700;color:var(--green)">${fmt(r.amount)}</td>
               <td style="padding:9px 10px">${statusBadge}</td>
               <td style="padding:9px 10px;text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end">
-                ${canVerify ? `<button class="btn btn-sm" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.35);font-weight:700" onclick="openOpVerifyModal('${r.id}')">🔍 Verify</button>` : ''}
-                <button class="btn btn-d btn-sm" onclick="deleteOpReg('${r.id}')">Remove</button>
+                ${canVerify ? `<button class="btn btn-sm" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.35);font-weight:700" onclick="openOpVerifyModal('${jsArg(r.id)}')">🔍 Verify</button>` : ''}
+                <button class="btn btn-d btn-sm" onclick="deleteOpReg('${jsArg(r.id)}')">Remove</button>
               </td>
             </tr>`;
           }).join('')}
@@ -5827,11 +5831,11 @@ function mtRuleHtml(rule, n) {
   const savedIds = (rule.courtIds || []).map(String);
   const courtCbs = _mtCourts.length === 0
     ? '<span style="font-size:.82rem;color:var(--muted)">No courts found.</span>'
-    : _mtCourts.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer"><input type="checkbox" class="mt-cc-${id}" value="${c.id}"${savedIds.includes(String(c.id)) ? ' checked' : ''}> ${c.name}</label>`).join('');
+    : _mtCourts.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer"><input type="checkbox" class="mt-cc-${esc(id)}" value="${esc(c.id)}"${savedIds.includes(String(c.id)) ? ' checked' : ''}> ${esc(c.name)}</label>`).join('');
 
   const dateListHtml = (rule.dates || []).length === 0
     ? '<p style="color:var(--muted);font-style:italic;font-size:.82rem;margin:4px 0">No dates added.</p>'
-    : rule.dates.map(d => `<div class="blk-item"><span>🔧 ${fmtD(d)}</span><button class="btn btn-d btn-sm" onclick="mtRemoveDateFromRule('${id}','${d}')">Remove</button></div>`).join('');
+    : rule.dates.map(d => `<div class="blk-item"><span>🔧 ${fmtD(d)}</span><button class="btn btn-d btn-sm" onclick="mtRemoveDateFromRule('${jsArg(id)}','${jsArg(d)}')">Remove</button></div>`).join('');
 
   const monthOpts = Array.from({length: 31}, (_, i) => `<option value="${i+1}"${(rule.recurring?.day ?? 1) === i+1 ? ' selected' : ''}>${i+1}</option>`).join('');
   const weekDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -6022,32 +6026,19 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     localStorage.setItem('pb_remember', '1');
   }
   if (!allowLocalBypass) {
-  // Allow demo sessions (set via demo bypass in Auth.login)
-  const existingSession = Auth.getSession();
-  if (existingSession && existingSession.isDemo) {
-    // Demo account — skip Supabase JWT check
+    // Verify real Supabase Auth and rebuild browser session from the accounts table.
+    // Browser storage is only a cache; it is not trusted for role selection.
+    const verifiedSession = await Auth.refreshSessionFromAuth();
+    if (!verifiedSession) {
+      localStorage.removeItem('pb_session');
+      sessionStorage.removeItem('pb_session');
+      window.location.href = 'login.html?next=admin.html';
+      return;
+    }
+    sess = verifiedSession;
   } else {
-  // Verify real Supabase Auth session — not just sessionStorage
-  const { data: authData } = await _supabase.auth.getUser();
-  if (!authData.user) {
-    localStorage.removeItem('pb_session');
-    sessionStorage.removeItem('pb_session');
-    window.location.href = 'login.html?next=admin.html';
-    return;
+    sess = Auth.requireAuth();
   }
-
-  // If sessionStorage was cleared (tab restore, refresh, etc.) rebuild it from auth
-  if (!Auth.getSession()) {
-    const { data: acc } = await _supabase.from('accounts').select('*').eq('email', authData.user.email).single();
-    const session = acc
-      ? { ...rowToAccount(acc), loginAt: new Date().toISOString() }
-      : { id: authData.user.id, email: authData.user.email, role: 'staff', fullName: 'Court Staff', loginAt: new Date().toISOString() };
-    sessionStorage.setItem('pb_session', JSON.stringify(session));
-  }
-  } // end non-demo check
-  } // end !allowLocalBypass
-
-  sess = Auth.requireAuth();
   if (!sess) return;
 
   // Dark mode — data-theme approach

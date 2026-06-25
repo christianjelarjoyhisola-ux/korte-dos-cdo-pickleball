@@ -163,6 +163,16 @@ async function _invokeEdgeFunction(name, payload = {}, { allowFailure = false } 
   }
 }
 
+async function _authRestHeaders(extra = {}) {
+  const sess = await _sb.auth.getSession();
+  const accessToken = sess?.data?.session?.access_token || '';
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY}`,
+    ...extra,
+  };
+}
+
 function _bookingEmailPayload(b) {
   return {
     bookingRef: b.ref,
@@ -324,7 +334,6 @@ function rowToAccount(r) {
   return {
     id:        r.id,
     username:  r.username,
-    password:  r.password,
     role:      r.role,
     fullName:  r.full_name,
     email:     r.email,
@@ -336,7 +345,6 @@ function accountToRow(a) {
   return {
     id:         a.id,
     username:   a.username,
-    password:   a.password,
     role:       a.role,
     full_name:  a.fullName,
     email:      a.email,
@@ -842,10 +850,7 @@ window.DB = {
     try {
       // Use REST API directly to bypass schema cache
       const res = await fetch(`${SUPABASE_URL}/rest/v1/weekly_fees?order=week_start.desc,created_at.desc`, {
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        }
+        headers: await _authRestHeaders(),
       });
       if (!res.ok) {
         console.error('getWeeklyFees REST error:', res.status, res.statusText);
@@ -882,12 +887,10 @@ window.DB = {
       // Use REST API directly to bypass schema cache
       const res = await fetch(`${SUPABASE_URL}/rest/v1/weekly_fees`, {
         method: 'POST',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        headers: await _authRestHeaders({
           'Content-Type': 'application/json',
           Prefer: 'return=representation',
-        },
+        }),
         body: JSON.stringify(row),
       });
       if (!res.ok) {
@@ -922,11 +925,9 @@ window.DB = {
       // Use REST API directly to bypass schema cache
       const res = await fetch(`${SUPABASE_URL}/rest/v1/weekly_fees?id=eq.${id}`, {
         method: 'PATCH',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        headers: await _authRestHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(row),
       });
       if (!res.ok) {
@@ -952,11 +953,9 @@ window.DB = {
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/weekly_fees?id=eq.${id}`, {
         method: 'PATCH',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        headers: await _authRestHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(row),
       });
       if (!res.ok) {
@@ -1475,28 +1474,54 @@ window.Auth = {
     return sess.role === role;
   },
 
-  async login(email, password, remember = false) {
-    // Sign in via Supabase Auth — establishes a verified JWT session
-    const { data, error } = await _sb.auth.signInWithPassword({ email, password });
-    if (error || !data.user) return { ok: false };
+  async refreshSessionFromAuth({ remember = null } = {}) {
+    const { data: authData, error } = await _sb.auth.getUser();
+    if (error || !authData?.user) return null;
 
-    // Fetch role/name from accounts table (now accessible as authenticated user)
-    const { data: acc } = await _sb.from('accounts').select('*').eq('email', email).single();
+    const { data: acc } = await _sb
+      .from('accounts')
+      .select('*')
+      .eq('id', authData.user.id)
+      .maybeSingle();
+
     const session = acc
       ? { ...rowToAccount(acc), loginAt: new Date().toISOString() }
-      : { id: data.user.id, email: data.user.email, role: 'staff', fullName: 'Court Staff', loginAt: new Date().toISOString() };
+      : {
+          id: authData.user.id,
+          email: authData.user.email,
+          role: 'staff',
+          fullName: authData.user.user_metadata?.full_name || 'Court Staff',
+          loginAt: new Date().toISOString(),
+        };
 
-    // Use localStorage when "remember me" is checked so session survives browser close
-    const store = remember ? localStorage : sessionStorage;
+    const shouldRemember = remember === null ? localStorage.getItem('pb_remember') === '1' : !!remember;
+    sessionStorage.removeItem('pb_session');
+    localStorage.removeItem('pb_session');
+    const store = shouldRemember ? localStorage : sessionStorage;
     store.setItem('pb_session', JSON.stringify(session));
-    if (remember) localStorage.setItem('pb_remember', '1');
-    return { ok: true };
+    if (shouldRemember) localStorage.setItem('pb_remember', '1');
+    else localStorage.removeItem('pb_remember');
+    return session;
+  },
+
+  async login(email, password, remember = false) {
+    // Sign in via Supabase Auth — establishes a verified JWT session.
+    const { data, error } = await _sb.auth.signInWithPassword({ email, password });
+    if (error || !data.user) return { ok: false };
+    const session = await this.refreshSessionFromAuth({ remember });
+    return session ? { ok: true } : { ok: false };
   },
 
   getSession() {
-    // Check localStorage first (remembered), then sessionStorage (tab-only)
+    // Check localStorage first (remembered), then sessionStorage (tab-only).
     const s = localStorage.getItem('pb_session') || sessionStorage.getItem('pb_session');
-    return s ? JSON.parse(s) : null;
+    if (!s) return null;
+    try { return JSON.parse(s); }
+    catch (_) {
+      localStorage.removeItem('pb_session');
+      sessionStorage.removeItem('pb_session');
+      return null;
+    }
   },
 
   requireAuth() {
@@ -1519,32 +1544,36 @@ window.Auth = {
   },
 
   async add(d) {
-    const all = await DB.getAccounts();
-    if (all.find(x => x.username === d.username)) return { ok: false, msg: 'Username taken.' };
-
-    // Create a real Supabase Auth user so the account can actually log in
-    const { data, error } = await _sb.auth.signUp({ email: d.email, password: d.password });
-    if (error) return { ok: false, msg: error.message };
-    if (!data.user) return { ok: false, msg: 'Signup failed — no user returned.' };
-
-    const acc = {
-      id: data.user.id,
-      fullName: d.fullName,
-      username: d.username,
-      email: d.email,
-      role: this.ROLES.includes(d.role) ? d.role : 'staff',
-      createdAt: new Date().toISOString(),
-    };
-    try { await DB.saveAccount(acc); return { ok: true }; }
-    catch(e) { return { ok: false, msg: 'Auth user created but profile save failed.' }; }
+    try {
+      await _invokeEdgeFunction('manage-account', {
+        action: 'create',
+        fullName: d.fullName,
+        username: d.username,
+        email: d.email,
+        password: d.password,
+        role: this.ROLES.includes(d.role) ? d.role : 'staff',
+      });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, msg: _extractFnError(e, 'Account create failed.') };
+    }
   },
 
   async update(id, d) {
-    const all = await DB.getAccounts();
-    const existing = all.find(x => x.id === id);
-    if (!existing) return { ok: false };
-    try { await DB.saveAccount({ ...existing, ...d }); return { ok: true }; }
-    catch(e) { return { ok: false }; }
+    try {
+      await _invokeEdgeFunction('manage-account', {
+        action: 'update',
+        id,
+        fullName: d.fullName,
+        username: d.username,
+        email: d.email,
+        password: d.password || '',
+        role: this.ROLES.includes(d.role) ? d.role : 'staff',
+      });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, msg: _extractFnError(e, 'Account update failed.') };
+    }
   },
 
   // Self-service password change for the currently signed-in user.
@@ -1567,8 +1596,12 @@ window.Auth = {
   },
 
   async del(id) {
-    await DB.deleteAccount(id);
-    return { ok: true };
+    try {
+      await _invokeEdgeFunction('manage-account', { action: 'delete', id });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, msg: _extractFnError(e, 'Account delete failed.') };
+    }
   },
 };
 

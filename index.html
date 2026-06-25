@@ -2935,9 +2935,9 @@ function openPlaySessionHtml({ courtId, courtName, date, session, spotsLeft, max
   const full = state === 'full';
   const ended = state === 'ended';
   const disabled = full || ended;
-  const cid = String(courtId || '').replace(/'/g, "\\'");
-  const cnm = String(courtName || 'Court').replace(/'/g, "\\'");
-  const safeDate = String(date || '').replace(/'/g, "\\'");
+  const cid = jsArg(courtId || '');
+  const cnm = jsArg(courtName || 'Court');
+  const safeDate = jsArg(date || '');
   const click = disabled ? '' : `onclick="event.stopPropagation(); openPlaySignup('${cid}', '${safeDate}', ${session.start}, '${cnm}')"`;
   const title = ended ? 'Open Play session ended' : full ? 'Open Play is full' : 'Tap to join Open Play';
   const cta = ended ? 'SESSION ENDED' : full ? 'FULL' : 'JOIN OPEN PLAY →';
@@ -3005,11 +3005,20 @@ function getMaintenanceLabel(date, h, courtId = null) {
   return _mtLabels[rule?.label] || _mtLabels.maintenance;
 }
 
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function jsArg(v) {
+  return esc(String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n'));
+}
+
 function toast(msg, type='ok') {
   const icons = {ok:'✅', err:'❌', inf:'ℹ️'};
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = `<span>${icons[type]}</span><span class="t-msg">${msg}</span>`;
+  el.innerHTML = `<span>${icons[type]||''}</span><span class="t-msg"></span>`;
+  el.querySelector('.t-msg').textContent = String(msg ?? '');
   $('toasts').appendChild(el);
   setTimeout(() => el.remove(), 3800);
 }
@@ -3880,7 +3889,7 @@ async function renderCourts() {
     })();
 
     const courtPhotoHtml = c.photo
-      ? `<img src="${c.photo}" alt="${c.name}" style="width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0"/>`
+      ? `<img src="${esc(c.photo)}" alt="${esc(c.name)}" style="width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0"/>`
       : `<div style="width:100%;height:100%;background:linear-gradient(135deg,var(--navy-dark),var(--navy));display:flex;align-items:center;justify-content:center;position:absolute;inset:0"><svg width="80" height="54" viewBox="0 0 110 74" fill="none"><rect x="2" y="2" width="106" height="70" rx="3" stroke="rgba(var(--ac),.5)" stroke-width="1.8"/><line x1="55" y1="2" x2="55" y2="72" stroke="rgba(var(--ac),.4)" stroke-width="1.4"/><line x1="2" y1="37" x2="108" y2="37" stroke="rgba(var(--ac),.3)" stroke-width="1"/><circle cx="55" cy="37" r="6" stroke="rgba(var(--ac),.35)" stroke-width="1.5"/></svg></div>`;
 
     const openPlayCardHtml = (!blk && todayOpenPlaySession)
@@ -3906,10 +3915,10 @@ async function renderCourts() {
           const timeRange = slotTimeLabel(h);
           if (isPast_)    return `<div class="cc-slot-btn past-slot"><div class="csl-time">${timeRange}</div><div class="csl-tag">Done</div></div>`;
           if (isBooked_ && verifyingHoursSet.has(h)) return `<div class="cc-slot-btn processing"><div class="csl-time">${timeRange}</div><div class="csl-tag">⏳ Processing…</div></div>`;
-          if (isBooked_) return `<div class="cc-slot-btn taken"><div class="csl-time">${timeRange}</div><div class="csl-name">${maskName(slotNameMap[h])}</div></div>`;
-          if (isMaint_)  { const _ml=getMaintenanceLabel(today,h,c.id); return `<div class="cc-slot-btn maintenance"><div class="csl-time">${timeRange}</div><div class="csl-tag">${_ml.icon} ${_ml.text}</div></div>`; }
+          if (isBooked_) return `<div class="cc-slot-btn taken"><div class="csl-time">${timeRange}</div><div class="csl-name">${esc(maskName(slotNameMap[h]))}</div></div>`;
+          if (isMaint_)  { const _ml=getMaintenanceLabel(today,h,c.id); return `<div class="cc-slot-btn maintenance"><div class="csl-time">${timeRange}</div><div class="csl-tag">${esc(_ml.icon)} ${esc(_ml.text)}</div></div>`; }
           if (isOpenPlay_) return '';
-          return `<div class="cc-slot-btn${isSelectedSlot_ ? ' selected' : ''}" data-h="${h}" onclick="event.stopPropagation(); toggleCardSlot('${c.id}','${today}',${h})"><div class="csl-time">${timeRange}</div><div class="csl-price">₱${_cRate(h)}</div></div>`;
+          return `<div class="cc-slot-btn${isSelectedSlot_ ? ' selected' : ''}" data-h="${h}" onclick="event.stopPropagation(); toggleCardSlot('${jsArg(c.id)}','${jsArg(today)}',${h})"><div class="csl-time">${timeRange}</div><div class="csl-price">₱${_cRate(h)}</div></div>`;
         }).join('');
     const isSelectedCard = !blk && cardSel.courtId === c.id && cardSel.date === today && cardSel.slots.length > 0;
     const selectedSummary = isSelectedCard
@@ -3917,22 +3926,22 @@ async function renderCourts() {
       : '';
 
     return `
-    <div class="cc${blk?' blk':''}${isSelectedCard?' sel':''}" data-id="${c.id}" ${blk ? `onclick="toast('Court is under maintenance.','err')"` : ''}>
+    <div class="cc${blk?' blk':''}${isSelectedCard?' sel':''}" data-id="${esc(c.id)}" ${blk ? `onclick="toast('Court is under maintenance.','err')"` : ''}>
 
       <!-- MOBILE-ONLY HEADER -->
       <div class="cc-mobile-hd">
-        <span>📍 ${c.name}</span>
-        <span class="cc-mobile-hd-date" id="cMobDate_${c.id}">Today</span>
+        <span>📍 ${esc(c.name)}</span>
+        <span class="cc-mobile-hd-date" id="cMobDate_${esc(c.id)}">Today</span>
       </div>
 
       <!-- LEFT: Photo -->
       <div class="cc-photo">
         ${courtPhotoHtml}
-        <div class="cc-photo-avail ${availBadgeCls}" id="cAvail_${c.id}">${availBadgeTxt}</div>
+        <div class="cc-photo-avail ${availBadgeCls}" id="cAvail_${esc(c.id)}">${esc(availBadgeTxt)}</div>
         <div class="cc-photo-bar">
-          <span class="cc-photo-name">${c.name}</span>
-          <div class="cc-photo-rate">${rateRange} · ${c.desc}</div>
-          <div class="cc-photo-feats">${c.feats.map(f=>`<span class="cc-photo-feat">${f}</span>`).join('')}</div>
+          <span class="cc-photo-name">${esc(c.name)}</span>
+          <div class="cc-photo-rate">${esc(rateRange)} · ${esc(c.desc)}</div>
+          <div class="cc-photo-feats">${(c.feats || []).map(f=>`<span class="cc-photo-feat">${esc(f)}</span>`).join('')}</div>
         </div>
       </div>
 
@@ -3998,8 +4007,8 @@ async function renderCourts() {
       const avail_ = blk ? 0 : allSl_.filter(h => h > cur_ && !booked_.has(h) && !isOpenPlayHour(today_, h, c.id) && !isMaintenanceHour(today_, h, c.id)).length;
       const dotCls  = blk ? 'tab-dot-mnt' : avail_ > 0 ? 'tab-dot-av' : 'tab-dot-full';
       const shortName = c.name.replace(/^SMASH\s*/i, '');
-      return `<button class="court-tab" data-court="${c.id}" onclick="switchCourtTab('${c.id}')" title="${c.name}">
-        <span class="tab-dot ${dotCls}"></span>${shortName}
+      return `<button class="court-tab" data-court="${esc(c.id)}" onclick="switchCourtTab('${jsArg(c.id)}')" title="${esc(c.name)}">
+        <span class="tab-dot ${dotCls}"></span>${esc(shortName)}
       </button>`;
     }).join('');
     tabsEl.innerHTML = `<button class="court-tab" data-court="all" onclick="switchCourtTab('all')" title="All Courts">

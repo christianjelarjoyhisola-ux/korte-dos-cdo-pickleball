@@ -263,6 +263,96 @@ function expectedMerchantForProvider(
   };
 }
 
+function toNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function closeMoney(a: number, b: number): boolean {
+  return Math.abs(roundMoney(a) - roundMoney(b)) <= 0.01;
+}
+
+function parseJsonArray(raw: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(raw)) return raw as Array<Record<string, unknown>>;
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as Array<Record<string, unknown>> : [];
+  } catch {
+    return [];
+  }
+}
+
+function rateForHour(hour: number, tiers: Array<Record<string, unknown>>, fallbackRate: number): number {
+  for (const tier of tiers || []) {
+    const from = toNumber(tier.from);
+    const to = toNumber(tier.to);
+    const rate = toNumber(tier.rate, fallbackRate);
+    const inRange = from < to ? hour >= from && hour < to : hour >= from || hour < to;
+    if (inRange) return rate;
+  }
+  return tiers && tiers.length > 0
+    ? Math.min(...tiers.map((tier) => toNumber(tier.rate, fallbackRate)))
+    : fallbackRate;
+}
+
+function chooseExpectedDue(total: number, storedDownpayment: number, settings: Record<string, string>): number {
+  const half = roundMoney(total / 2);
+  const mode = settings.payment_acceptance_mode || "both";
+  if (mode === "full_payment_only") return total;
+  if (mode === "downpayment_only") return half;
+  if (closeMoney(storedDownpayment, total)) return total;
+  if (closeMoney(storedDownpayment, half)) return half;
+  throw new Error("Stored payment amount does not match current pricing");
+}
+
+function expectedOpenPlayAmount(booking: Record<string, unknown>, settings: Record<string, string>): number {
+  const cfg = (() => {
+    try { return settings.open_play_config ? JSON.parse(settings.open_play_config) : {}; }
+    catch { return {}; }
+  })() as Record<string, unknown>;
+  const openPlayFee = toNumber(cfg.fee ?? settings.open_play_fee, 100);
+  const platformFee = toNumber(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee);
+  const total = roundMoney(openPlayFee + platformFee);
+  return chooseExpectedDue(total, toNumber(booking.downpayment, -1), settings);
+}
+
+async function expectedBookingAmount(
+  db: ReturnType<typeof createClient>,
+  booking: Record<string, unknown>,
+  settings: Record<string, string>,
+): Promise<number> {
+  const courtId = String(booking.court_id || "");
+  if (!courtId) return expectedOpenPlayAmount(booking, settings);
+
+  const slots = Array.isArray(booking.slots)
+    ? booking.slots.map(Number).filter(Number.isFinite)
+    : [];
+  if (slots.length === 0) throw new Error("Booking has no billable slots");
+
+  const { data: court, error: courtErr } = await db
+    .from("courts")
+    .select("rate,rate_schedule")
+    .eq("id", courtId)
+    .single();
+  if (courtErr || !court) throw courtErr || new Error("Court not found");
+
+  const courtRate = toNumber(court.rate);
+  const courtTiers = parseJsonArray(court.rate_schedule);
+  const settingTiers = parseJsonArray(settings.pricing_tiers);
+  const tiers = courtTiers.length ? courtTiers : settingTiers.length ? settingTiers : [{ from: 0, to: 24, rate: courtRate }];
+  const courtTotal = slots.reduce((sum, hour) => sum + rateForHour(hour, tiers, courtRate), 0);
+  const feeRate = toNumber(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee);
+  const feeType = settings.fee_type === "flat" ? "flat" : "per_hour";
+  const serviceFee = feeType === "flat" ? feeRate : feeRate * slots.length;
+  const total = roundMoney(courtTotal + serviceFee);
+  return chooseExpectedDue(total, toNumber(booking.downpayment, -1), settings);
+}
+
 function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
   const expected = normalizeMobile(expectedRaw);
   if (expected.length < 10) return "unreadable"; // no configured number to compare
@@ -493,7 +583,7 @@ Deno.serve(async (req) => {
     } else {
       const { data: bk, error: bErr } = await db
         .from("bookings")
-        .select("ref, total, downpayment, gcash_ref, date, payment_status, status, full_name, created_at")
+        .select("ref, court_id, slots, total, downpayment, gcash_ref, date, payment_status, status, full_name, created_at")
         .eq("ref", bookingRef)
         .single();
       if (bErr || !bk) return json({ error: "Booking not found" }, 404);
@@ -506,7 +596,13 @@ Deno.serve(async (req) => {
     const expectedMerchant = expectedMerchantForProvider(settings, provider);
     const expectedNumber = expectedMerchant.number;
     const expectedName = expectedMerchant.name;
-    const expectedAmount = Number(booking.downpayment ?? (Number(booking.total) || 0) / 2);
+    let pricingError = "";
+    let expectedAmount = Number(booking.downpayment ?? (Number(booking.total) || 0) / 2);
+    try {
+      expectedAmount = await expectedBookingAmount(db, booking, settings);
+    } catch (err) {
+      pricingError = errMsg(err);
+    }
 
     // Hashes are stored for audit only. GCash validity is based on receipt details.
     const imageHash = await sha256Hex(bytes);
@@ -573,7 +669,8 @@ Deno.serve(async (req) => {
       }
 
       // Amount: allow overpay, flag underpay beyond tolerance; unreadable -> soft.
-      if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+      if (pricingError) flags.push("AMOUNT_MISMATCH");
+      else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
       else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
 
       // Receipt date must match the date the booking was started/submitted (PH).
