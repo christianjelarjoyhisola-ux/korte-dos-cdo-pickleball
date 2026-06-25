@@ -140,23 +140,11 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   border-radius:var(--r); overflow:hidden;
   position:relative;
   display:flex; flex-direction:row;
-  transition:border-color .25s, box-shadow .25s, background .25s;
+  transition:border-color .25s, box-shadow .25s;
   cursor:default;
 }
 .cc:hover { border-color:var(--accent); box-shadow:0 6px 28px var(--glow); }
-.cc::after {
-  content:"";
-  position:absolute; left:0; right:0; bottom:0; height:5px;
-  background:transparent;
-  pointer-events:none; z-index:3;
-  transition:background .25s, box-shadow .25s;
-}
-.cc.sel {
-  border-color:var(--lime);
-  background:linear-gradient(180deg,rgba(var(--lime-rgb),.10),var(--card) 72%);
-  box-shadow:0 0 0 3px rgba(var(--lime-rgb),.28),0 12px 32px rgba(var(--lime-rgb),.16);
-}
-.cc.sel::after { background:var(--lime); box-shadow:0 -6px 18px rgba(var(--lime-rgb),.34); }
+.cc.sel { border-color:var(--border); box-shadow:none; }
 .cc.blk { opacity:.6; cursor:not-allowed; }
 
 /* LEFT: Photo panel */
@@ -164,9 +152,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   width:240px; flex-shrink:0; position:relative;
   background:linear-gradient(135deg,var(--navy-dark),var(--navy));
   overflow:hidden; min-height:200px;
-  transition:box-shadow .25s;
 }
-.cc.sel .cc-photo { box-shadow:inset 0 -5px 0 var(--lime); }
 .cc-photo img { width:100%; height:100%; object-fit:cover; display:block; }
 .cc-photo-avail {
   position:absolute; top:10px; left:10px;
@@ -404,15 +390,15 @@ body.dark .nav { background:rgba(9,21,33,.94); }
     box-shadow: 0 0 0 3px rgba(75,85,99,.15);
   }
 }
-/* ── SELECTED ── solid blue, very obvious (guards match the available rule's specificity so it wins) */
+/* ── SELECTED ── lime green, matching the pickleball logo */
 .cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) {
-  background: #1d4ed8;
-  border: 2px solid #4b5563;
-  color: #fff;
+  background:linear-gradient(135deg,var(--lime),#a5ac2f);
+  border:2px solid rgba(var(--lime-rgb),.78);
+  color:var(--navy-dark);
   transform: translateY(-1px);
-  box-shadow: 0 0 0 3px rgba(75,85,99,.35), 0 4px 16px rgba(29,78,216,.55);
+  box-shadow:0 0 0 3px rgba(var(--lime-rgb),.28),0 4px 16px rgba(var(--lime-rgb),.42);
 }
-.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color: #fff; font-weight: 800; }
+.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color:var(--navy-dark); font-weight:900; }
 /* ── PROCESSING/VERIFYING ── yellow, slot reserved while OCR runs */
 .cc-slot-btn.processing {
   background: rgba(202,138,4,.08);
@@ -475,7 +461,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .csl-price { font-size:.72rem; font-weight:800; margin-top:1px; }
 .csl-name  { font-size:.62rem; font-weight:600; margin-top:1px; opacity:.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .csl-tag   { font-size:.56rem; font-weight:900; letter-spacing:.5px; text-transform:uppercase; margin-top:2px; }
-.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color:#fff; }
+.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color:var(--navy-dark); }
 
 .cc-slots-empty {
   grid-column:span 5;
@@ -488,11 +474,24 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   border:1px solid rgba(var(--ac),.3); border-radius:var(--r-sm);
   display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
 }
-.cc.sel .cc-book-bar {
-  background:linear-gradient(135deg,rgba(var(--lime-rgb),.18),rgba(var(--lime-rgb),.06));
-  border-color:rgba(var(--lime-rgb),.5);
-  box-shadow:inset 0 -3px 0 var(--lime);
+.cc-slot-legend {
+  display:flex; align-items:center; flex-wrap:wrap;
+  gap:8px 12px; margin-top:2px; padding:8px 2px 0;
+  border-top:1px solid rgba(var(--ac),.12);
+  color:var(--muted); font-size:.66rem; font-weight:800;
+  letter-spacing:.2px;
 }
+.cc-slot-legend span { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+.cc-dot {
+  width:9px; height:9px; border-radius:50%; flex:0 0 9px;
+  border:1px solid rgba(255,255,255,.34);
+  box-shadow:0 0 0 2px rgba(0,0,0,.04);
+}
+.cc-dot.available { background:var(--navy); }
+.cc-dot.selected { background:var(--lime); border-color:rgba(var(--lime-rgb),.75); box-shadow:0 0 0 2px rgba(var(--lime-rgb),.18); }
+.cc-dot.booked { background:var(--red); }
+.cc-dot.processing { background:#f59e0b; }
+.cc-dot.maintenance { background:#6b7280; }
 /* MOBILE STICKY BOOK BAR */
 .mobile-book-bar {
   display:none;
@@ -514,7 +513,6 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   .courts { padding-bottom:72px; }
 }
 .cc-book-sum { font-size:.8rem; font-weight:600; color:var(--accent); flex:1; }
-.cc.sel .cc-book-sum { color:var(--lime-ink); }
 .cc-date-pick {
   background:var(--input); border:1px solid var(--border);
   border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
@@ -3924,6 +3922,14 @@ async function renderCourts() {
         <div class="cc-book-bar" id="cBar_${c.id}" data-rate="${c.rate}" style="${isSelectedCard ? 'display:flex' : 'display:none'}">
           <span class="cc-book-sum" id="cBarSum_${c.id}">${selectedSummary}</span>
           <button class="btn btn-p btn-sm" onclick="event.stopPropagation(); proceedToBook('${c.id}')">Book Now →</button>
+        </div>
+
+        <div class="cc-slot-legend" aria-label="Slot color indicators">
+          <span><i class="cc-dot available"></i>Available</span>
+          <span><i class="cc-dot selected"></i>Selected</span>
+          <span><i class="cc-dot booked"></i>Booked</span>
+          <span><i class="cc-dot processing"></i>Processing</span>
+          <span><i class="cc-dot maintenance"></i>Maintenance</span>
         </div>
       </div>
 
