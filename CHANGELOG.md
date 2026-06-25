@@ -16,7 +16,6 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 ### Changed
 - **Selected time slot color** - selected public time cards now use the Korte DOS lime green from the logo instead of blue, making the active selection easier to identify.
 - **Court-card selection behavior** - court cards stay visually neutral while the selected time slot carries the main booking emphasis.
-- **Mobile court tab hint** - helper text now explains that players can view all courts or filter to a single court.
 
 **Files affected:** `index.html`
 
