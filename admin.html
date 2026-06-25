@@ -6057,7 +6057,7 @@ function applyRoleVisibility(role) {
         <div style="font-size:1.7rem">📋</div>
         <div>
           <div style="font-size:1.05rem;font-weight:800;letter-spacing:.5px;color:var(--text,#e8eaf0)">PLATFORM ACCESS & BOOKING FEE AUTHORIZATION AGREEMENT</div>
-          <div style="font-size:.73rem;color:var(--muted,#7a8a9a);margin-top:2px">Pickleball Court Booking System — Version 9 · Monthly Booking Fee Remittance Terms</div>
+          <div style="font-size:.73rem;color:var(--muted,#7a8a9a);margin-top:2px">Pickleball Court Booking System — Version 10 · Monthly Booking Fee Remittance Terms</div>
         </div>
       </div>
     </div>
@@ -6083,7 +6083,7 @@ function applyRoleVisibility(role) {
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Booking Fee &amp; Monthly Remittance</h4>
       <p id="agreeFeeIntro" style="margin:0 0 14px">In consideration of the platform access provided at no setup fee, one-time fee, monthly subscription fee, hidden fee, or other platform charge to the Court Owner, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner, and is separate from the court rental fee.<br><br>The System Owner sets the booking fee amount. The fee is charged <strong>per booked hour per confirmed booking transaction</strong>, added to the player's checkout, and included in the monthly remittance statement.</p>
-      <p id="agreeFeeBillable" style="margin:0 0 14px"><strong>When it applies.</strong> The configured booking fee applies only to a <strong>confirmed booking transaction</strong> made through the platform, meaning a booking that successfully reserved a court slot. Bookings that are cancelled before confirmation, rejected during payment verification, expired, or never held a slot are <strong>not charged</strong>.</p>
+      <p id="agreeFeeBillable" style="margin:0 0 14px"><strong>When it applies.</strong> The configured per booked hour fee applies only to a <strong>confirmed booking transaction</strong> made through the platform, meaning a booking that successfully reserved a court slot. Bookings that are cancelled before confirmation, rejected during payment verification, expired, or never held a slot are <strong>not charged</strong>.</p>
       <p id="agreeFeeCollection" style="margin:0 0 14px"><strong>Collection.</strong> The Court Owner collects the configured booking fee from the customer together with the court rental fee at the time of booking, and holds the booking fee on behalf of the Platform Provider until remittance. The booking fee is not a fee charged to the Court Owner and is not part of the Court Owner's court rental revenue.</p>
       <p id="agreeFeeWeekly" style="margin:0 0 14px"><strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering confirmed booking transactions from the previous <strong>calendar month</strong>. The amount to remit is calculated as <strong>total booked hours from confirmed booking transactions × the System Owner-selected booking fee</strong>. Each confirmed booking transaction is included <strong>only once</strong>.</p>
       <p style="margin:0 0 14px"><strong>Due date &amp; method.</strong> Remittance is due within <strong>five (5) calendar days</strong> of the statement date. The Court Owner remits that amount via <strong>GCash</strong> to the booking fee remittance account shown in the dashboard, then submits the GCash transaction reference and a screenshot of the receipt as remittance proof through the "Remit Now" function.</p>
@@ -6178,7 +6178,7 @@ function applyRoleVisibility(role) {
 
 <script>
 /* ── AGREEMENT MODAL ── */
-const AGREEMENT_VERSION = 9;
+const AGREEMENT_VERSION = 10;
 let _agreeDrawing = false, _agreeHasSig = false;
 let _agreePrevX = 0, _agreePrevY = 0;
 
@@ -6189,12 +6189,13 @@ async function updateAgreementFeeCopy() {
   } catch(_) {}
   const fee = platformFeeLabel(cfg);
   const feeShort = platformFeeLabel(cfg, { short: true });
+  const feePerBookedHour = `${fmt(cfg.amount)} per booked hour`;
   const formula = `total booked hours from confirmed booking transactions × ${fmt(cfg.amount)}`;
   const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
 
   setHtml('agreeFeeIntro', `In consideration of the platform access provided at no setup fee, one-time fee, monthly subscription fee, hidden fee, or other platform charge to the Court Owner, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee of ${fee}</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner, and is separate from the court rental fee.<br><br>The System Owner sets the booking fee amount. The fee is charged <strong>per booked hour per confirmed booking transaction</strong>, added to the player's checkout, and included in the monthly remittance statement.`);
-  setHtml('agreeFeeBillable', `<strong>When it applies.</strong> The configured ${feeShort} booking fee applies only to a <strong>confirmed booking transaction</strong> made through the platform, meaning a booking that successfully reserved a court slot. Bookings that are cancelled before confirmation, rejected during payment verification, expired, or never held a slot are <strong>not charged</strong>.`);
-  setHtml('agreeFeeCollection', `<strong>Collection.</strong> The Court Owner collects the configured ${feeShort} booking fee from the customer together with the court rental fee at the time of booking, and holds the booking fee on behalf of the Platform Provider until remittance. The booking fee is not a fee charged to the Court Owner and is not part of the Court Owner's court rental revenue.`);
+  setHtml('agreeFeeBillable', `<strong>When it applies.</strong> The configured ${feePerBookedHour} fee applies only to a <strong>confirmed booking transaction</strong> made through the platform, meaning a booking that successfully reserved a court slot. Bookings that are cancelled before confirmation, rejected during payment verification, expired, or never held a slot are <strong>not charged</strong>.`);
+  setHtml('agreeFeeCollection', `<strong>Collection.</strong> The Court Owner collects the configured ${feePerBookedHour} fee from the customer together with the court rental fee at the time of booking, and holds the booking fee on behalf of the Platform Provider until remittance. The booking fee is not a fee charged to the Court Owner and is not part of the Court Owner's court rental revenue.`);
   setHtml('agreeFeeWeekly', `<strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering confirmed booking transactions from the previous <strong>calendar month</strong>. The amount to remit is calculated as <strong>${formula}</strong>. Each confirmed booking transaction is included <strong>only once</strong>.`);
   setHtml('agreeFeeRevenue', `All court rental fees set by the Court Owner (e.g. ₱200/hr, ₱250/hr) belong <strong>exclusively to the Court Owner</strong>. The Platform Provider does not take any share of the court rental revenue. The Court Owner receives 100% of the court rental rate from every confirmed booking. Only the separate configured booking fee of <strong>${fee}</strong> paid by the customer is for the Platform Provider.`);
   setHtml('agreeFeeCircumvention', `The Court Owner agrees <strong>not to direct, encourage, or assist customers to bypass the platform</strong> in order to avoid the configured booking fee of <strong>${fee}</strong>. This includes but is not limited to: advertising a direct booking channel at a lower price for platform-visible slots, accepting bookings verbally or via personal chat for slots available on the platform, waiving or hiding the booking fee outside the system, or instructing customers to "book directly" to avoid the fee.<br><br>Circumvention of the booking fee is a material breach of this Agreement and may result in immediate suspension or termination of platform access.`);
