@@ -1446,16 +1446,9 @@ tr:hover td { background: var(--bg2); }
       <!-- BOOKING FEE — System Owner only -->
       <div class="panel" data-perm="owner_only" style="max-width:680px;margin-bottom:20px;border:2px solid var(--green);">
         <h4>💰 Booking Fee <span style="font-size:.72rem;background:var(--green-bg);color:var(--green);padding:2px 8px;border-radius:8px;margin-left:8px;font-family:'DM Mono',monospace;letter-spacing:1px">SYSTEM OWNER</span></h4>
-        <p style="color:var(--muted);font-size:.84rem;margin:8px 0 12px">Player-paid booking fee added at checkout as your system revenue. Choose per-hour or flat per booking; court owners collect it with each booking and remit it monthly.</p>
-        <div style="display:flex;gap:16px;margin-bottom:16px">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.88rem;color:var(--text)">
-            <input type="radio" name="feeType" value="per_hour" checked style="accent-color:var(--green)" />
-            Per Hour
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.88rem;color:var(--text)">
-            <input type="radio" name="feeType" value="flat" style="accent-color:var(--green)" />
-            Flat Booking Fee
-          </label>
+        <p style="color:var(--muted);font-size:.84rem;margin:8px 0 12px">Player-paid booking fee added at checkout as your system revenue. It is charged per booked hour; court owners collect it with each booking and remit it monthly.</p>
+        <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:16px;padding:7px 11px;background:rgba(var(--green-rgb),.08);border:1px solid rgba(var(--green-rgb),.25);border-radius:8px;font-size:.82rem;color:var(--text)">
+          <strong style="color:var(--green)">Charging method:</strong> Per booked hour
         </div>
         <div style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap">
           <div>
@@ -2114,8 +2107,8 @@ function toggleSidebar() {
 const $=id=>document.getElementById(id);
 const fmt=n=>'₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:2});
 const fmtD=s=>{if(!s)return'—';return new Date(s+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});};
-function normalizePlatformFeeType(type) {
-  return ['flat', 'booking', 'per_booking'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
+function normalizePlatformFeeType(_type) {
+  return 'per_hour';
 }
 function getPlatformFeeConfig(settings = {}) {
   const amount = parseFloat(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee ?? '0') || 0;
@@ -2123,20 +2116,16 @@ function getPlatformFeeConfig(settings = {}) {
   return { amount, type };
 }
 function platformFeeLabel(cfg, { short = false } = {}) {
-  const unit = cfg.type === 'flat'
-    ? (short ? '/booking' : 'per confirmed booking')
-    : (short ? '/hr' : 'per booked hour');
+  const unit = short ? '/hr' : 'per booked hour';
   return `${fmt(cfg.amount)} ${unit}`;
 }
 function bookingBillableHours(b) {
   return Number(b.duration) || (Array.isArray(b.slots) ? b.slots.length : 0) || 1;
 }
 function calcPlatformFeeForBooking(b, cfg) {
-  return cfg.type === 'flat' ? cfg.amount : cfg.amount * bookingBillableHours(b);
+  return cfg.amount * bookingBillableHours(b);
 }
 function platformFeeFormulaText(bookings, cfg) {
-  const count = bookings.length;
-  if (cfg.type === 'flat') return `${count} booking${count !== 1 ? 's' : ''} × ${fmt(cfg.amount)}`;
   const hours = bookings.reduce((sum, b) => sum + bookingBillableHours(b), 0);
   return `${hours} booked hour${hours !== 1 ? 's' : ''} × ${fmt(cfg.amount)}`;
 }
@@ -2384,19 +2373,18 @@ async function renderDash(){
 
 // ── MAINTENANCE FEE ─────────────────────────────────────────
 let _maintRate = 5; // cached from DB settings
-let _maintFeeType = 'per_hour'; // cached from DB settings
+let _maintFeeType = 'per_hour'; // booking fee is charged per booked hour
 
 async function renderMaintFee() {
   const monthInput = $('maintMonth');
   const selectedMonth = monthInput?.value; // e.g. "2026-04"
   if (!selectedMonth) return;
 
-  // Load rate and fee type from DB settings
+  // Load rate from DB settings. Booking fee is always per booked hour.
   const settings = await DB.getSettings();
   _maintRate = parseFloat(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee ?? '5');
-  _maintFeeType = normalizePlatformFeeType(settings.fee_type);
-  const isFlat = _maintFeeType === 'flat';
-  if ($('mfRateDisplay')) $('mfRateDisplay').textContent = isFlat ? `₱${_maintRate.toFixed(2)} / booking` : `₱${_maintRate.toFixed(2)} / hr`;
+  _maintFeeType = 'per_hour';
+  if ($('mfRateDisplay')) $('mfRateDisplay').textContent = `₱${_maintRate.toFixed(2)} / hr`;
 
   const bks = await DB.getBookings();
   // Only count confirmed + completed bookings in the selected month
@@ -2407,7 +2395,7 @@ async function renderMaintFee() {
 
   const totalBookings = filtered.length;
   const totalHours = filtered.reduce((s, b) => s + (parseInt(b.duration) || 0), 0);
-  const totalFee = isFlat ? totalBookings * _maintRate : totalHours * _maintRate;
+  const totalFee = totalHours * _maintRate;
 
   $('mfBookings').textContent = totalBookings;
   $('mfHours').textContent = totalHours;
@@ -2433,19 +2421,15 @@ async function renderMaintFee() {
   const rows = Object.entries(byCourtMap)
     .sort((a, b) => b[1].hours - a[1].hours)
     .map(([court, d]) => {
-      const courtFee = isFlat ? d.bookings * _maintRate : d.hours * _maintRate;
-      const feeDetail = isFlat
-        ? `${d.bookings} booking${d.bookings !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)}`
-        : `${d.hours} hr${d.hours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)}`;
+      const courtFee = d.hours * _maintRate;
+      const feeDetail = `${d.hours} hr${d.hours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)}`;
       return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
         <span>🏟️ ${court}</span>
         <span>${feeDetail} = <span style="color:var(--yellow)">${fmt(courtFee)}</span></span>
       </div>`;
     }).join('');
 
-  const totalLine = isFlat
-    ? `${totalBookings} booking${totalBookings !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:var(--yellow);font-size:1rem">${fmt(totalFee)}</span>`
-    : `${totalHours} hr${totalHours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:var(--yellow);font-size:1rem">${fmt(totalFee)}</span>`;
+  const totalLine = `${totalHours} hr${totalHours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:var(--yellow);font-size:1rem">${fmt(totalFee)}</span>`;
 
   $('mfBreakdown').innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:var(--text)">📊 Breakdown for ${monthLabel}</div>
@@ -2459,7 +2443,7 @@ async function renderMaintFee() {
 async function saveMaintRate() {
   const val = parseFloat($('maintRateInput').value);
   if (isNaN(val) || val < 0) { toast('Please enter a valid rate (0 or more).', 'err'); return; }
-  const feeType = document.querySelector('input[name="feeType"]:checked')?.value || 'per_hour';
+  const feeType = 'per_hour';
   try {
     await DB.saveSetting('maintenance_fee', String(val));
     await DB.saveSetting('fee_type', feeType);
@@ -2468,10 +2452,9 @@ async function saveMaintRate() {
     const sum = $('maintRateSummary');
     if (sum) {
       sum.style.display = 'block';
-      const typeLabel = feeType === 'flat' ? 'flat fee per booking' : 'per booked hour';
-      sum.innerHTML = `🛠️ Booking fee: <strong style="color:var(--green)">₱${val.toFixed(2)}</strong> — ${typeLabel}.`;
+      sum.innerHTML = `🛠️ Booking fee: <strong style="color:var(--green)">₱${val.toFixed(2)}</strong> — per booked hour.`;
     }
-    toast(`Booking fee set to ₱${val.toFixed(2)} (${feeType === 'flat' ? 'flat' : 'per hr'})`);
+    toast(`Booking fee set to ₱${val.toFixed(2)} per booked hour.`);
   } catch(e) {
     console.error('saveMaintRate error:', e);
     toast('Failed to save rate.', 'err');
@@ -3848,25 +3831,18 @@ async function renderMaintRateSettings() {
   const settings = await DB.getSettings();
   const rate = parseFloat(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee ?? '5');
   if ($('maintRateInput')) $('maintRateInput').value = rate;
-  const feeType = normalizePlatformFeeType(settings.fee_type);
-  const ftEl = document.querySelector(`input[name="feeType"][value="${feeType}"]`);
-  if (ftEl) ftEl.checked = true;
   updateMaintRateLabel();
   const sum = $('maintRateSummary');
   if (sum) {
-    const typeLabel = feeType === 'flat' ? 'flat fee per booking' : 'per booked hour';
     sum.style.display = 'block';
-    sum.innerHTML = `🛠️ Booking fee: <strong style="color:var(--green)">₱${rate.toFixed(2)}</strong> — ${typeLabel}.`;
+    sum.innerHTML = `🛠️ Booking fee: <strong style="color:var(--green)">₱${rate.toFixed(2)}</strong> — per booked hour.`;
   }
 }
 
 function updateMaintRateLabel() {
-  const isFlat = document.querySelector('input[name="feeType"][value="flat"]')?.checked;
   const lbl = document.getElementById('maintRateLabel');
-  if (lbl) lbl.textContent = isFlat ? '🛠️ Booking Fee (₱ flat)' : '🛠️ Booking Fee (₱/hr)';
+  if (lbl) lbl.textContent = '🛠️ Booking Fee (₱/hr)';
 }
-document.addEventListener('change', e => { if (e.target.name === 'feeType') updateMaintRateLabel(); });
-
 async function renderHours() {
   const settings = await DB.getSettings();
   const openHr  = parseInt(settings.open_hour  || '6');
@@ -6106,7 +6082,7 @@ function applyRoleVisibility(role) {
       </ul>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Booking Fee &amp; Monthly Remittance</h4>
-      <p id="agreeFeeIntro" style="margin:0 0 14px">In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The booking fee is controlled by the System Owner in Booking Fee settings and may be configured as either a per-booked-hour fee or a flat per-booking fee.</p>
+      <p id="agreeFeeIntro" style="margin:0 0 14px">In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The System Owner sets the booking fee amount per booked hour. The selected fee is added to the player's checkout and included in the monthly remittance statement.</p>
       <p id="agreeFeeBillable" style="margin:0 0 14px"><strong>When it applies.</strong> The configured booking fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not charged</strong>.</p>
       <p id="agreeFeeCollection" style="margin:0 0 14px"><strong>Collection.</strong> The Court Owner collects the configured booking fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.</p>
       <p id="agreeFeeWeekly" style="margin:0 0 14px"><strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering every confirmed booking from the previous <strong>calendar month</strong>. The amount to remit is calculated using the System Owner-selected booking fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is included <strong>only once</strong>.</p>
@@ -6201,7 +6177,7 @@ function applyRoleVisibility(role) {
 
 <script>
 /* ── AGREEMENT MODAL ── */
-const AGREEMENT_VERSION = 5;
+const AGREEMENT_VERSION = 6;
 let _agreeDrawing = false, _agreeHasSig = false;
 let _agreePrevX = 0, _agreePrevY = 0;
 
@@ -6212,12 +6188,10 @@ async function updateAgreementFeeCopy() {
   } catch(_) {}
   const fee = platformFeeLabel(cfg);
   const feeShort = platformFeeLabel(cfg, { short: true });
-  const formula = cfg.type === 'flat'
-    ? `number of confirmed bookings × ${fmt(cfg.amount)}`
-    : `total booked hours from confirmed bookings × ${fmt(cfg.amount)}`;
+  const formula = `total booked hours from confirmed bookings × ${fmt(cfg.amount)}`;
   const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
 
-  setHtml('agreeFeeIntro', `In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee of ${fee}</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The booking fee is controlled by the System Owner in Booking Fee settings and may be configured as either a per-booked-hour fee or a flat per-booking fee.`);
+  setHtml('agreeFeeIntro', `In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee of ${fee}</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The System Owner sets the booking fee amount per booked hour. The selected fee is added to the player's checkout and included in the monthly remittance statement.`);
   setHtml('agreeFeeBillable', `<strong>When it applies.</strong> The configured ${feeShort} booking fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not charged</strong>.`);
   setHtml('agreeFeeCollection', `<strong>Collection.</strong> The Court Owner collects the configured ${feeShort} booking fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.`);
   setHtml('agreeFeeWeekly', `<strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering every confirmed booking from the previous <strong>calendar month</strong>. The amount to remit is calculated as <strong>${formula}</strong>, using the System Owner-selected booking fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is included <strong>only once</strong>.`);

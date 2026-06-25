@@ -2749,11 +2749,11 @@ let openPlayFee = 100; // default ₱100, overridden by settings
 let openPlayMaxPlayers = 40; // default 40, overridden by settings
 let paymentAcceptanceMode = 'both'; // 'both', 'downpayment_only', 'full_payment_only'
 let _serviceFeeRate = 0; // booking fee amount, loaded from settings
-let _serviceFeeType = 'per_hour'; // 'per_hour' or 'flat'
-function normalizePlatformFeeType(type) {
-  return ['flat', 'booking', 'per_booking'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
+let _serviceFeeType = 'per_hour'; // booking fee is always charged per booked hour
+function normalizePlatformFeeType(_type) {
+  return 'per_hour';
 }
-function calcSvcFee(hrs) { return _serviceFeeType === 'flat' ? _serviceFeeRate : _serviceFeeRate * hrs; }
+function calcSvcFee(hrs) { return _serviceFeeRate * hrs; }
 let maintenanceConfig = null; // { enabled, start, end, mode, dates[], recurring }
 
 // Hardcoded court repair notices — update courtName/from/to as needed
