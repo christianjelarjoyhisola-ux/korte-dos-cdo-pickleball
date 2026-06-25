@@ -11,34 +11,40 @@
 <style>
 /* ── DESIGN TOKENS ─────────────────────────────────────── */
 :root {
-  --bg: #f5f3ee; --bg2: #eceae3;
-  --surface: #ffffff; --surface2: #f0ede6;
-  --border: #ddd9d0;
-  --text: #1a1916; --text2: #6b6860; --text3: #9c9890;
-  --green: #334155; --green-dark: #111827; --green-bg: #e5e7eb;
-  --red: #c8191a; --red-bg: #fde8e8;
-  --yellow: #b87e00; --yellow-bg: #fef3d0;
-  --shadow: 0 2px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 8px 40px rgba(0,0,0,0.14);
+  --navy: #143d63; --navy-dark: #0b2744; --court-blue: #0e5a8a;
+  --court-red: #c83d26; --court-red-bg: #fdebe6;
+  --pickle-lime: #c9cf43; --pickle-lime-bg: #f3f6d8;
+  --bg: #f4f7f8; --bg2: #eaf0f3;
+  --surface: #ffffff; --surface2: #f2f6f8;
+  --border: #d7e0e6;
+  --text: #0f2438; --text2: #546579; --text3: #8794a3;
+  --green: var(--navy); --green-dark: var(--navy-dark); --green-bg: #e6eef4; --green-rgb: 20,61,99;
+  --red: var(--court-red); --red-bg: var(--court-red-bg);
+  --yellow: #9a6b16; --yellow-bg: #fff4d6; --yellow-rgb: 154,107,22;
+  --shadow: 0 2px 12px rgba(20,61,99,0.08);
+  --shadow-lg: 0 8px 40px rgba(20,61,99,0.14);
   --radius: 12px; --radius-sm: 8px;
   --transition: 0.2s ease;
   --r: 12px;
   /* legacy compat */
   --card: var(--surface); --input: var(--bg2); --muted: var(--text3);
-  --glow: rgba(55,65,81,.25);
+  --glow: rgba(20,61,99,.24);
 }
 [data-theme="dark"] {
-  --bg: #0f0e0c; --bg2: #1a1916;
-  --surface: #242220; --surface2: #2e2c29;
-  --border: #3a3835;
-  --text: #f0ede6; --text2: #a09d98; --text3: #6b6860;
-  --green: #e5e7eb; --green-dark: #9ca3af; --green-bg: #374151;
-  --red: #e85050; --red-bg: #2b0d0d;
-  --yellow: #f0a820; --yellow-bg: #2b2100;
+  --navy: #7fa9cc; --navy-dark: #143d63; --court-blue: #8ab9d9;
+  --court-red: #e0664e; --court-red-bg: rgba(224,102,78,.16);
+  --pickle-lime: #dce768; --pickle-lime-bg: rgba(220,231,104,.16);
+  --bg: #091521; --bg2: #0f2234;
+  --surface: #12283b; --surface2: #18334a;
+  --border: #29475f;
+  --text: #f8faf6; --text2: #b8c7d4; --text3: #8395a4;
+  --green: var(--navy); --green-dark: #d6e6f3; --green-bg: rgba(127,169,204,.16); --green-rgb: 127,169,204;
+  --red: var(--court-red); --red-bg: var(--court-red-bg);
+  --yellow: #d8b24c; --yellow-bg: rgba(216,178,76,.16); --yellow-rgb: 216,178,76;
   --shadow: 0 2px 12px rgba(0,0,0,0.4);
   --shadow-lg: 0 8px 40px rgba(0,0,0,0.5);
   --card: var(--surface); --input: var(--bg2); --muted: var(--text3);
-  --glow: rgba(75,85,99,.25);
+  --glow: rgba(127,169,204,.22);
 }
 
 /* ── SMOOTH THEME SWITCH ───────────────────────────────── */
@@ -73,7 +79,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 /* ── TOP NAV ───────────────────────────────────────────── */
 .topnav {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(245,243,238,0.92);
+  background: rgba(244,247,248,0.92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
@@ -81,7 +87,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
   height: 60px;
   transition: background var(--transition), border-color var(--transition);
 }
-[data-theme="dark"] .topnav { background: rgba(17,24,39,0.92); }
+[data-theme="dark"] .topnav { background: rgba(9,21,33,0.92); }
 .nav-brand {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 22px; letter-spacing: 2px;
@@ -90,7 +96,8 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 }
 .nav-brand .brand-accent { color: var(--green); }
 .logo-img {
-  width: 38px; height: 38px; border-radius: 50%; object-fit: cover;
+  width: 38px; height: 38px; border-radius: 50%; object-fit: contain;
+  background: #fff; padding: 2px;
   border: 1.5px solid var(--border); flex-shrink: 0;
   transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -628,11 +635,11 @@ tr:hover td { background: var(--bg2); }
 .gm-matchup { display:grid; grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr); gap:8px; align-items:stretch; padding:12px; }
 .gm-vs { display:flex; align-items:center; justify-content:center; color:var(--text3); font-size:.7rem; font-weight:900; }
 .gm-team { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg); }
-.gm-team.win { border-color: rgba(74,154,74,.7); background: rgba(74,154,74,.12); box-shadow: inset 0 0 0 1px rgba(74,154,74,.18); }
+.gm-team.win { border-color: rgba(var(--green-rgb),.7); background: rgba(var(--green-rgb),.12); box-shadow: inset 0 0 0 1px rgba(var(--green-rgb),.18); }
 .gm-team-label { font-size: .64rem; color: var(--text3); text-transform: uppercase; letter-spacing: .8px; font-weight: 900; margin-bottom: 6px; }
 .gm-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .gm-player-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 5px 9px; border-radius: 999px; background: var(--green-bg); color: var(--green); border: 1px solid var(--border); font-size: .78rem; font-weight: 800; overflow-wrap: anywhere; }
-.gm-player-chip.playing { background: rgba(74,154,74,.14); border-color: rgba(74,154,74,.4); }
+.gm-player-chip.playing { background: rgba(var(--green-rgb),.14); border-color: rgba(var(--green-rgb),.4); }
 .gm-player-chip.waiting { background: var(--surface); color: var(--text); }
 .gm-player-chip.out { opacity: .58; color: var(--text3); }
 .gm-chip-action { border: 0; background: rgba(0,0,0,.08); color: inherit; border-radius: 999px; padding: 2px 6px; font-size: .68rem; font-weight: 900; cursor: pointer; }
@@ -659,7 +666,7 @@ tr:hover td { background: var(--bg2); }
 .gm-standing-meta { font-size: .72rem; color: var(--text3); font-weight: 800; white-space: nowrap; }
 .gm-empty { color: var(--text3); font-style: italic; font-size: .84rem; padding: 12px 0; }
 .gm-warn { border: 1px solid rgba(229,57,53,.35); background: rgba(229,57,53,.08); color: var(--red); border-radius: 10px; padding: 10px 12px; font-size: .8rem; font-weight: 700; }
-.gm-ready { border: 1px solid rgba(74,154,74,.35); background: rgba(74,154,74,.1); color: var(--green); border-radius: 10px; padding: 10px 12px; font-size: .8rem; font-weight: 700; }
+.gm-ready { border: 1px solid rgba(var(--green-rgb),.35); background: rgba(var(--green-rgb),.1); color: var(--green); border-radius: 10px; padding: 10px 12px; font-size: .8rem; font-weight: 700; }
 .gm-textarea { min-height: 92px; resize: vertical; }
 @media (max-width: 980px) { .gm-shell, .gm-live-grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px) {
@@ -846,9 +853,9 @@ tr:hover td { background: var(--bg2); }
       </div>
 
       <!-- MAINTENANCE FEE SUMMARY -->
-      <div class="panel" id="maintFeePanel" style="margin-bottom:16px;border:1.5px solid rgba(244,168,37,.35);background:rgba(244,168,37,.04)">
+      <div class="panel" id="maintFeePanel" style="margin-bottom:16px;border:1.5px solid rgba(var(--yellow-rgb),.35);background:rgba(var(--yellow-rgb),.04)">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-          <h4 style="margin:0;color:#f4a825">🛠️ Developer Maintenance Fee</h4>
+          <h4 style="margin:0;color:var(--yellow)">🛠️ Developer Maintenance Fee</h4>
           <div style="display:flex;align-items:center;gap:8px">
             <label style="font-size:.78rem;color:var(--text3)">Month:</label>
             <input type="month" id="maintMonth" style="font-size:.82rem;padding:5px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--input);color:var(--text);cursor:pointer" onchange="renderMaintFee()"/>
@@ -867,8 +874,8 @@ tr:hover td { background: var(--bg2); }
             <div style="font-size:.72rem;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Rate</div>
             <div style="font-size:1rem;font-weight:700;color:var(--text)" id="mfRateDisplay">₱5.00 / hr</div>
           </div>
-          <div style="background:rgba(244,168,37,.12);border:1.5px solid rgba(244,168,37,.4);border-radius:10px;padding:14px;text-align:center">
-            <div style="font-size:1.6rem;font-weight:800;color:#f4a825" id="mfFee">₱0.00</div>
+          <div style="background:rgba(var(--yellow-rgb),.12);border:1.5px solid rgba(var(--yellow-rgb),.4);border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:1.6rem;font-weight:800;color:var(--yellow)" id="mfFee">₱0.00</div>
             <div style="font-size:.72rem;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.5px">Fee to Collect</div>
           </div>
         </div>
@@ -1635,7 +1642,7 @@ tr:hover td { background: var(--bg2); }
       </div>
 
       <!-- WEEKLY BILLING (owner only) -->
-      <div class="panel" data-perm="owner_only" style="max-width:980px;margin-bottom:20px;border:1.5px solid rgba(74,154,74,.35);background:rgba(74,154,74,.04)">
+      <div class="panel" data-perm="owner_only" style="max-width:980px;margin-bottom:20px;border:1.5px solid rgba(var(--green-rgb),.35);background:rgba(var(--green-rgb),.04)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
           <h4 style="margin:0;color:var(--green)">🧾 Weekly Billing Statements</h4>
           <div class="bill-controls" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1799,9 +1806,9 @@ tr:hover td { background: var(--bg2); }
     </div>
     <div class="m-body">
       <div style="text-align:center;margin-bottom:16px">
-        <span id="vmMethod" style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:2px;padding:5px 18px;border-radius:20px;background:rgba(74,154,74,.1);color:var(--green);border:1px solid rgba(74,154,74,.25)">GCash</span>
+        <span id="vmMethod" style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:2px;padding:5px 18px;border-radius:20px;background:rgba(var(--green-rgb),.1);color:var(--green);border:1px solid rgba(var(--green-rgb),.25)">GCash</span>
       </div>
-      <div style="background:rgba(74,154,74,.07);border:1.5px solid rgba(74,154,74,.28);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px">
+      <div style="background:rgba(var(--green-rgb),.07);border:1.5px solid rgba(var(--green-rgb),.28);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px">
         <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Payment Reference #</div>
         <div id="vmGcashRef" style="font-family:monospace;font-size:1.55rem;font-weight:800;color:var(--green);letter-spacing:2px">—</div>
         <div style="font-size:.7rem;color:var(--muted);margin-top:5px">Check your GCash/GoTyme app for this reference</div>
@@ -1881,7 +1888,7 @@ tr:hover td { background: var(--bg2); }
 <!-- NEW BOOKING MODAL -->
 <div class="overlay" id="newBookingModal">
   <div class="modal" style="max-width:500px">
-    <div class="m-hd" style="background:linear-gradient(135deg,rgba(74,154,74,.1),transparent)">
+    <div class="m-hd" style="background:linear-gradient(135deg,rgba(var(--green-rgb),.1),transparent)">
       <h2>➕ BOOK FOR CUSTOMER</h2>
       <button class="m-x" onclick="closeModal('newBookingModal')">✕</button>
     </div>
@@ -2118,7 +2125,7 @@ function receiptBadge(b){
   if (s === 'none') return '';
   const reason = receiptReasonText(b.receiptFlags);
   const map = {
-    auto_approved: ['#2a8a4a','rgba(74,154,74,.15)','✅ Auto-verified'],
+    auto_approved: ['var(--green)','rgba(var(--green-rgb),.15)','✅ Auto-verified'],
     manual_review: ['#b87e00','rgba(184,126,0,.15)','🕓 Review receipt'],
     rejected:      ['#e53935','rgba(229,57,53,.12)','⚠️ Receipt flagged'],
   };
@@ -2180,7 +2187,7 @@ function bookingDetailsButton(b){
 function bookingActionsHtml(b, canDelete){
   return `${bookingDetailsButton(b)}
     ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${esc(b.ref)}')">📅 Reschedule</button>`:''}
-    ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(74,154,74,.12);color:#4a9a4a;border:1px solid rgba(74,154,74,.3)" onclick="resendConfirmationEmail('${esc(b.ref)}')">📧 Resend Email</button>`:''}
+    ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${esc(b.ref)}')">📧 Resend Email</button>`:''}
     <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${esc(b.ref)}',this.value)">
       <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
       <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
@@ -2384,13 +2391,13 @@ async function renderMaintFee() {
         : `${d.hours} hr${d.hours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)}`;
       return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
         <span>🏟️ ${court}</span>
-        <span>${feeDetail} = <span style="color:#f4a825">${fmt(courtFee)}</span></span>
+        <span>${feeDetail} = <span style="color:var(--yellow)">${fmt(courtFee)}</span></span>
       </div>`;
     }).join('');
 
   const totalLine = isFlat
-    ? `${totalBookings} booking${totalBookings !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:#f4a825;font-size:1rem">${fmt(totalFee)}</span>`
-    : `${totalHours} hr${totalHours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:#f4a825;font-size:1rem">${fmt(totalFee)}</span>`;
+    ? `${totalBookings} booking${totalBookings !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:var(--yellow);font-size:1rem">${fmt(totalFee)}</span>`
+    : `${totalHours} hr${totalHours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:var(--yellow);font-size:1rem">${fmt(totalFee)}</span>`;
 
   $('mfBreakdown').innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:var(--text)">📊 Breakdown for ${monthLabel}</div>
@@ -2444,7 +2451,7 @@ function renderDashCharts(bookings) {
   const isDark = document.body.getAttribute('data-theme') === 'dark';
   const gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
   const textColor = isDark ? '#a09d98' : '#6b6860';
-  const green = isDark ? '#3ab871' : '#2a8a4a';
+  const green = isDark ? '#3ab871' : 'var(--green)';
   const yellow = isDark ? '#f0a820' : '#b87e00';
 
   const baseOpts = {
@@ -2555,11 +2562,11 @@ async function renderBookings(){
       const lbl = mtLabelMap[rule.label || 'maintenance'] || '🔧 Maintenance';
       const timeRange = `${fmtHr(Number(rule.start))}–${fmtHr(Number(rule.end))}`;
       const modeTag = rule.mode === 'weekly' ? 'Weekly recurring' : rule.mode === 'monthly' ? 'Monthly recurring' : 'One-time block';
-      return `<tr style="background:rgba(244,168,37,.07);border-left:3px solid #f4a825;outline:1px solid rgba(244,168,37,.15);">
-        <td data-label="Ref"><code style="color:#f4a825;font-size:.75rem;font-weight:800">BLOCK</code></td>
-        <td data-label="Type"><div style="font-weight:700;color:#f4a825;font-size:.88rem">${lbl}</div><div style="font-size:.73rem;color:var(--muted)">${modeTag}</div></td>
+      return `<tr style="background:rgba(var(--yellow-rgb),.07);border-left:3px solid var(--yellow);outline:1px solid rgba(var(--yellow-rgb),.15);">
+        <td data-label="Ref"><code style="color:var(--yellow);font-size:.75rem;font-weight:800">BLOCK</code></td>
+        <td data-label="Type"><div style="font-weight:700;color:var(--yellow);font-size:.88rem">${lbl}</div><div style="font-size:.73rem;color:var(--muted)">${modeTag}</div></td>
         <td data-label="Court" style="font-size:.88rem">${courtNames}</td>
-        <td data-label="Schedule">${fmtD(fd)}<div style="font-size:.75rem;color:#f4a825;font-weight:700">${timeRange}</div></td>
+        <td data-label="Schedule">${fmtD(fd)}<div style="font-size:.75rem;color:var(--yellow);font-weight:700">${timeRange}</div></td>
         <td colspan="6" style="color:var(--muted);font-size:.78rem;font-style:italic">Not bookable — admin block</td>
       </tr>`;
     }).join('');
@@ -2592,7 +2599,7 @@ async function renderBookings(){
       <td data-label="Actions"><div style="display:flex;gap:5px;flex-wrap:wrap">
         ${(b.gcashRef || (b.receiptStatus && b.receiptStatus!=='none')) && (b.paymentMethod==='gcash'||b.paymentMethod==='gotyme'||b.paymentMethod==='pnb')?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${b.ref}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
         ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${b.ref}')">📅 Reschedule</button>`:''}
-        ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(74,154,74,.12);color:#4a9a4a;border:1px solid rgba(74,154,74,.3)" onclick="resendConfirmationEmail('${b.ref}')">📧 Resend Email</button>`:''}
+        ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${b.ref}')">📧 Resend Email</button>`:''}
         <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${b.ref}',this.value)">
           <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
           <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
@@ -2645,8 +2652,8 @@ function statusPill(status) {
   const map = {
     manual_review: ['#b87e00', 'rgba(184,126,0,.15)', 'Manual review'],
     pending: ['#b87e00', 'rgba(184,126,0,.15)', 'Pending'],
-    auto_approved: ['#2a8a4a', 'rgba(74,154,74,.15)', 'Auto-verified'],
-    paid: ['#2a8a4a', 'rgba(74,154,74,.15)', 'Paid'],
+    auto_approved: ['var(--green)', 'rgba(var(--green-rgb),.15)', 'Auto-verified'],
+    paid: ['var(--green)', 'rgba(var(--green-rgb),.15)', 'Paid'],
     rejected: ['#e53935', 'rgba(229,57,53,.12)', 'Rejected'],
     unpaid: ['var(--muted)', 'var(--input)', 'Unpaid'],
   };
@@ -2837,7 +2844,7 @@ async function renderCalendar(){
     const mtHtml = uniqueLabels.map(lbl => {
       const fmtT = h => { if(h===0||h===24) return '12 MN'; const ap=h<12?'AM':'PM'; const hh=h%12||12; return `${hh}${ap}`; };
       const times = mtRules.filter(r=>(r.label||'maintenance')===lbl).map(r=>`${fmtT(r.start)}–${fmtT(r.end)}`).join(', ');
-      return `<div style="font-size:.6rem;font-weight:700;color:#f4a825;margin-top:2px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_calMtLabels[lbl]||'🔧'} <span style="opacity:.75">${times}</span></div>`;
+      return `<div style="font-size:.6rem;font-weight:700;color:var(--yellow);margin-top:2px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_calMtLabels[lbl]||'🔧'} <span style="opacity:.75">${times}</span></div>`;
     }).join('');
 
     html+=`<div class="cal-cell${isToday?' cal-today':''}" onclick="calDayClick('${ds}')">
@@ -2926,7 +2933,7 @@ async function vmPopulateReceipt(b){
   if (wrap) wrap.style.display = '';
   const st = $('vmReceiptStatus');
   const map = {
-    auto_approved: ['#2a8a4a','rgba(74,154,74,.12)','✅ Auto-verified — all checks passed'],
+    auto_approved: ['var(--green)','rgba(var(--green-rgb),.12)','✅ Auto-verified — all checks passed'],
     manual_review: ['#b87e00','rgba(184,126,0,.12)','🕓 Needs review — see flags below'],
     rejected:      ['#e53935','rgba(229,57,53,.1)','⚠️ Flagged — review carefully before confirming'],
     none:          ['#888','var(--input)','No automated result'],
@@ -3685,7 +3692,7 @@ async function renderCourts(){
     <td data-label="Status">${c.blocked?'<span class="bdg bdg-x">Maintenance</span>':'<span class="bdg bdg-c">Available</span>'}</td>
     <td data-label="Actions"><div style="display:flex;gap:6px">
       <button class="btn btn-g btn-sm" onclick="openCourtModal('${c.id}')">✏️ Edit</button>
-      <button class="btn btn-sm" style="background:${c.blocked?'rgba(0,200,83,.12);color:var(--green)':'rgba(255,214,0,.12);color:var(--yellow)'}" onclick="toggleBlock('${c.id}')">${c.blocked?'✅ Unblock':'🔒 Block'}</button>
+      <button class="btn btn-sm" style="background:${c.blocked?'rgba(var(--green-rgb),.12);color:var(--green)':'rgba(var(--yellow-rgb),.12);color:var(--yellow)'}" onclick="toggleBlock('${c.id}')">${c.blocked?'✅ Unblock':'🔒 Block'}</button>
       <button class="btn btn-d btn-sm" onclick="delCourt('${c.id}')">🗑️</button>
     </div></td>
   </tr>`).join('');
@@ -4142,7 +4149,7 @@ async function renderWeeklyBilling() {
       <td data-label="Actions">
         <div style="display:flex;gap:5px;flex-wrap:wrap">
           ${proofBtn}
-          ${canMarkPaid ? `<button class="btn btn-sm" style="background:rgba(74,154,74,.12);color:var(--green);border:1px solid rgba(74,154,74,.3)" onclick="markWeeklyFeePaid('${r.id}', '${(r.submitted_ref || '').replace(/'/g,"\\'")}')">✅ Mark Paid</button>` : ''}
+          ${canMarkPaid ? `<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="markWeeklyFeePaid('${r.id}', '${(r.submitted_ref || '').replace(/'/g,"\\'")}')">✅ Mark Paid</button>` : ''}
           ${canMarkOverdue ? `<button class="btn btn-sm" style="background:rgba(229,57,53,.12);color:#e53935;border:1px solid rgba(229,57,53,.3)" onclick="markWeeklyFeeOverdue('${r.id}')">⚠️ Overdue</button>` : ''}
         </div>
       </td>
@@ -4816,12 +4823,12 @@ async function renderOpRegistrations() {
             const isCash     = !r.payment_method || r.payment_method === 'cash';
             const canVerify  = !isPaid && !isRejected && !isCash;
             const statusBadge = isPaid
-              ? `<span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(74,154,74,.15);color:var(--green)">✅ Paid</span>`
+              ? `<span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(var(--green-rgb),.15);color:var(--green)">✅ Paid</span>`
               : isRejected
               ? `<span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(239,68,68,.15);color:#ef4444">❌ Rejected</span>`
               : isCash
               ? `<span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(148,163,184,.15);color:var(--muted)">💵 Cash</span>`
-              : `<span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(244,168,37,.15);color:#f4a825">🕐 Pending</span>`;
+              : `<span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(var(--yellow-rgb),.15);color:var(--yellow)">🕐 Pending</span>`;
             return `
             <tr style="border-bottom:1px solid var(--border)">
               <td style="padding:9px 10px;font-weight:600">${r.full_name}</td>
@@ -4829,7 +4836,7 @@ async function renderOpRegistrations() {
               <td style="padding:9px 10px">${fmtD(r.date)}</td>
               <td style="padding:9px 10px">${r.time_label || '—'}</td>
               <td style="padding:9px 10px;color:var(--muted)">${methodLabel(r.payment_method)}</td>
-              <td style="padding:9px 10px"><span style="font-size:.75rem;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.payment_type==='100%'?'rgba(74,154,74,.15)':'rgba(244,168,37,.15)'};color:${r.payment_type==='100%'?'var(--green)':'#f4a825'}">${r.payment_type}</span></td>
+              <td style="padding:9px 10px"><span style="font-size:.75rem;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.payment_type==='100%'?'rgba(var(--green-rgb),.15)':'rgba(var(--yellow-rgb),.15)'};color:${r.payment_type==='100%'?'var(--green)':'var(--yellow)'}">${r.payment_type}</span></td>
               <td style="padding:9px 10px;text-align:right;font-weight:700;color:var(--green)">${fmt(r.amount)}</td>
               <td style="padding:9px 10px">${statusBadge}</td>
               <td style="padding:9px 10px;text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end">
@@ -4874,7 +4881,7 @@ async function ovPopulateReceipt(r) {
   if (wrap) wrap.style.display = '';
   const st = $('ovReceiptStatus');
   const map = {
-    auto_approved: ['#2a8a4a','rgba(74,154,74,.12)','Auto-verified - all checks passed'],
+    auto_approved: ['var(--green)','rgba(var(--green-rgb),.12)','Auto-verified - all checks passed'],
     manual_review: ['#b87e00','rgba(184,126,0,.12)','Needs review - see flags below'],
     rejected:      ['#e53935','rgba(229,57,53,.1)','Flagged - review carefully before confirming'],
     none:          ['#888','var(--input)','No automated result'],
@@ -6011,7 +6018,7 @@ function applyRoleVisibility(role) {
      signature, and clicks "I Agree & Sign".
      ============================================================ -->
 <div id="agreementOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
-  <div id="agreementModal" style="background:var(--card,#161f2c);border:1px solid rgba(74,154,74,.3);border-radius:14px;width:min(680px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.6);">
+  <div id="agreementModal" style="background:var(--card,#161f2c);border:1px solid rgba(var(--green-rgb),.3);border-radius:14px;width:min(680px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.6);">
 
     <!-- Header -->
     <div style="padding:22px 26px 16px;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0">
@@ -6029,10 +6036,10 @@ function applyRoleVisibility(role) {
 
       <p style="margin:0 0 14px;color:#a0b0c0;font-size:.8rem;font-style:italic">Read the full agreement before signing. The <strong>Sign</strong> button unlocks only after you scroll to the bottom.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">1. Parties</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">1. Parties</h4>
       <p style="margin:0 0 14px"><strong>Platform Provider:</strong> [Platform Provider Name] ("Platform Provider"), the sole developer and owner of the Pickleball Court Booking System, a software platform that enables customers to discover and book pickleball courts online.<br><br><strong>Court Owner:</strong> The individual or business identified by the account below ("Court Owner"), who independently owns, operates, and is solely responsible for the physical Korte DOS court in Bayabas, Cagayan de Oro City, Misamis Oriental, Philippines.<br><br>The Platform Provider has no involvement in the physical operations, staffing, pricing decisions, customer disputes, or revenues of the court. The Platform Provider provides only the online booking software as a service.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">2. What the Platform Provides</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">2. What the Platform Provides</h4>
       <p style="margin:0 0 14px">The Platform Provider grants the Court Owner access to the following at <strong>no monthly subscription cost</strong> to the Court Owner:</p>
       <ul style="margin:0 0 14px;padding-left:20px">
         <li>Online court booking page accessible to the public</li>
@@ -6043,7 +6050,7 @@ function applyRoleVisibility(role) {
         <li>Platform hosting, security, and technical maintenance</li>
       </ul>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Platform Booking Fee &amp; Weekly Remittance</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Platform Booking Fee &amp; Weekly Remittance</h4>
       <p style="margin:0 0 14px">In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add a <strong>non-refundable platform booking fee of ₱15.00 (fifteen pesos, fixed)</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The ₱15.00 platform fee is <strong>fixed and permanent</strong>. It will not increase, decrease, or change for any reason, and no other fees will be charged to the Court Owner or customers beyond those the Court Owner sets for their own court rates.</p>
       <p style="margin:0 0 14px"><strong>Billable event.</strong> The ₱15.00 fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not billed</strong>.</p>
       <p style="margin:0 0 14px"><strong>Collection.</strong> The Court Owner collects the ₱15.00 platform fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.</p>
@@ -6051,16 +6058,16 @@ function applyRoleVisibility(role) {
       <p style="margin:0 0 14px"><strong>Due date &amp; method.</strong> Payment is due within <strong>five (5) days</strong> of the statement date. The Court Owner remits the amount due via <strong>GCash</strong> to the platform remittance account shown in the dashboard, then submits the GCash transaction reference and a screenshot of the receipt as proof of payment through the "Pay Now" function.</p>
       <p style="margin:0 0 14px"><strong>Non-payment.</strong> Statements unpaid past the due date are marked <strong>overdue</strong>. The Platform Provider may suspend the Court Owner's access to the booking system until all outstanding statements are settled. Suspension does not waive any amounts already due.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">4. Court Owner's Revenue</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">4. Court Owner's Revenue</h4>
       <p style="margin:0 0 14px">All court booking fees set by the Court Owner (e.g. ₱200/hr, ₱250/hr) belong <strong>exclusively to the Court Owner</strong>. The Platform Provider does not take any share of the court rental revenue. The Court Owner receives 100% of the court rate from every confirmed booking. Only the separate ₱15.00 platform fee (paid by the customer) goes to the Platform Provider.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">5. Anti-Circumvention</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">5. Anti-Circumvention</h4>
       <p style="margin:0 0 14px">The Court Owner agrees <strong>not to direct, encourage, or assist customers to bypass the platform</strong> in order to avoid the ₱15.00 booking fee. This includes but is not limited to: advertising a direct booking channel at a lower price, accepting bookings verbally or via personal chat for slots visible on the platform, or instructing customers to "book directly" to avoid the fee.<br><br>Circumvention of the platform fee is a material breach of this Agreement and may result in immediate termination of platform access.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">6. Obligation to Honor Bookings</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">6. Obligation to Honor Bookings</h4>
       <p style="margin:0 0 14px">The Court Owner agrees to <strong>honor all confirmed bookings</strong> made through the platform. Customers who receive a booking confirmation with a reference number must be allowed access to the court at the reserved time. Cancellations due to the Court Owner's failure (not the customer's) are a breach of this Agreement.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">7. Court Owner's Responsibilities</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">7. Court Owner's Responsibilities</h4>
       <ul style="margin:0 0 14px;padding-left:20px">
         <li>Keep court availability, rates, and operating hours accurate on the platform</li>
         <li>Manage and respond to customer concerns about the physical court experience</li>
@@ -6069,7 +6076,7 @@ function applyRoleVisibility(role) {
         <li>Not export or misuse customer data for purposes unrelated to court management</li>
       </ul>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">8. Independence of Parties</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">8. Independence of Parties</h4>
       <p style="margin:0 0 14px">The Court Owner and Platform Provider are fully independent parties. This Agreement does not create a partnership, franchise, joint venture, employment, or agency relationship. The Platform Provider is not responsible for:</p>
       <ul style="margin:0 0 14px;padding-left:20px">
         <li>Disputes between the Court Owner and customers</li>
@@ -6078,16 +6085,16 @@ function applyRoleVisibility(role) {
         <li>Any business, tax, or legal obligations of the Court Owner</li>
       </ul>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">9. Platform Availability</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">9. Platform Availability</h4>
       <p style="margin:0 0 14px">The Platform Provider will make reasonable efforts to keep the system available. However, the Platform Provider does not guarantee 100% uptime and is not liable for losses caused by temporary platform outages, third-party service interruptions (e.g. Supabase, Cloudflare), or force majeure events.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">10. Termination</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">10. Termination</h4>
       <p style="margin:0 0 14px">Either party may terminate this Agreement with <strong>14 days written notice</strong> via GCash message or email. The Platform Provider may terminate immediately and without notice if the Court Owner breaches Sections 5 (Anti-Circumvention) or 6 (Honor Bookings), engages in fraud, or misuses customer data.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">11. Governing Law</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">11. Governing Law</h4>
       <p style="margin:0 0 14px">This Agreement is governed by the laws of the <strong>Republic of the Philippines</strong>, including the Electronic Commerce Act of 2000 (RA 8792), the Data Privacy Act of 2012 (RA 10173), and the Civil Code of the Philippines. Any disputes shall be resolved in the proper courts of Cagayan de Oro City, Misamis Oriental.</p>
 
-      <h4 style="margin:0 0 8px;color:var(--green,#4a9a4a);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">12. Acceptance by Electronic Signature</h4>
+      <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">12. Acceptance by Electronic Signature</h4>
       <p style="margin:0 0 14px">Pursuant to the Philippine <strong>Electronic Commerce Act of 2000 (Republic Act No. 8792)</strong>, this Agreement is legally binding upon electronic acceptance. By typing your legal full name and drawing your signature below and clicking "I Agree & Sign", you confirm that:</p>
       <ul style="margin:0 0 14px;padding-left:20px">
         <li>You have read and fully understood all terms of this Agreement.</li>
@@ -6099,21 +6106,21 @@ function applyRoleVisibility(role) {
         <li>This electronic signature has the same legal force as a handwritten signature under RA 8792.</li>
       </ul>
 
-      <div style="background:rgba(74,154,74,.07);border:1px solid rgba(74,154,74,.2);border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:.8rem;color:#a0b0c0">
+      <div style="background:rgba(var(--green-rgb),.07);border:1px solid rgba(var(--green-rgb),.2);border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:.8rem;color:#a0b0c0">
         📍 <strong>Agreement recorded with:</strong> timestamp (UTC), IP address, browser fingerprint, typed name, and drawn signature — stored securely in the Korte DOS database.
       </div>
 
       <!-- Signature section (unlocked after scroll) -->
       <div id="agreeSignSection">
         <div style="margin-bottom:16px">
-          <label style="font-size:.75rem;text-transform:uppercase;letter-spacing:.8px;color:var(--green,#4a9a4a);font-weight:700;display:block;margin-bottom:6px">Legal Full Name <span style="color:#e53935">*</span></label>
+          <label style="font-size:.75rem;text-transform:uppercase;letter-spacing:.8px;color:var(--green);font-weight:700;display:block;margin-bottom:6px">Legal Full Name <span style="color:#e53935">*</span></label>
           <input id="agreeName" type="text" placeholder="Enter your full legal name as it appears on your ID"
             style="width:100%;box-sizing:border-box;padding:10px 13px;background:var(--input,#1a2535);border:1.5px solid var(--border,rgba(255,255,255,.1));border-radius:8px;color:var(--text,#e8eaf0);font-size:.9rem;outline:none"
             oninput="agreeCheckReady()" />
         </div>
 
         <div style="margin-bottom:16px">
-          <label style="font-size:.75rem;text-transform:uppercase;letter-spacing:.8px;color:var(--green,#4a9a4a);font-weight:700;display:block;margin-bottom:6px">Draw Your Signature <span style="color:#e53935">*</span></label>
+          <label style="font-size:.75rem;text-transform:uppercase;letter-spacing:.8px;color:var(--green);font-weight:700;display:block;margin-bottom:6px">Draw Your Signature <span style="color:#e53935">*</span></label>
           <div style="position:relative;background:var(--input,#1a2535);border:1.5px solid var(--border,rgba(255,255,255,.1));border-radius:8px;overflow:hidden">
             <canvas id="agreeCanvas" width="620" height="140" style="display:block;width:100%;cursor:crosshair;touch-action:none"></canvas>
             <button type="button" onclick="agreeClearSig()" style="position:absolute;top:8px;right:10px;background:rgba(229,57,53,.15);color:#e53935;border:1px solid rgba(229,57,53,.3);border-radius:6px;font-size:.7rem;padding:3px 10px;cursor:pointer">✕ Clear</button>

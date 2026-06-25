@@ -9,15 +9,15 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
-:root{--green:#334155;--green-dark:#111827;--glow:rgba(15,23,42,.14);--bg:#f8fafc;--card:#fff;--border:#d7dde5;--text:#111827;--muted:#64748b;--input:#f1f5f9;--red:#dc2626;}
-body.light{--bg:#f8fafc;--card:#fff;--border:#d7dde5;--text:#111827;--muted:#64748b;--input:#f1f5f9;}body.dark{--bg:#111827;--card:#1f2937;--border:#374151;--text:#f9fafb;--muted:#9ca3af;--input:#111827;--green:#e5e7eb;--green-dark:#9ca3af;--glow:rgba(255,255,255,.08);}
-body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;transition:background .3s,color .3s;touch-action:manipulation;}
+:root{--navy:#143d63;--navy-dark:#0b2744;--court-red:#c83d26;--court-red-dark:#9f2f1f;--pickle-lime:#c9cf43;--green:var(--navy);--green-dark:var(--navy-dark);--cta:var(--court-red);--cta-dark:var(--court-red-dark);--glow:rgba(20,61,99,.18);--ac:20,61,99;--bg:#f4f7f8;--card:#fff;--border:#d7e0e6;--text:#0f2438;--muted:#657486;--input:#eef3f6;--red:#c83d26;}
+body.light{--bg:#f4f7f8;--card:#fff;--border:#d7e0e6;--text:#0f2438;--muted:#657486;--input:#eef3f6;}body.dark{--bg:#091521;--card:#12283b;--border:#29475f;--text:#f8faf6;--muted:#aec0cf;--input:#0f2234;--green:#7fa9cc;--green-dark:#143d63;--glow:rgba(127,169,204,.18);--ac:127,169,204;}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;transition:background .3s,color .3s;touch-action:manipulation;padding:16px;}
 button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulation}
-.bg-glow{position:fixed;top:-100px;left:50%;transform:translateX(-50%);width:700px;height:500px;border-radius:50%;background:radial-gradient(ellipse,rgba(15,23,42,.08) 0%,transparent 70%);pointer-events:none;}
+.bg-glow{position:fixed;top:-100px;left:50%;transform:translateX(-50%);width:700px;height:500px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--ac),.1) 0%,transparent 70%);pointer-events:none;}
 .bg-grid{position:fixed;inset:0;opacity:.035;background-image:repeating-linear-gradient(0deg,var(--green) 0,var(--green) 1px,transparent 1px,transparent 72px),repeating-linear-gradient(90deg,var(--green) 0,var(--green) 1px,transparent 1px,transparent 80px);pointer-events:none;}
-.card{position:relative;z-index:10;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:44px 38px;width:100%;max-width:400px;box-shadow:0 24px 64px rgba(15,23,42,.12);}
+.card{position:relative;z-index:10;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:44px 38px;width:100%;max-width:400px;box-shadow:0 24px 64px rgba(20,61,99,.12);}
 .logo{text-align:center;margin-bottom:28px;}
-.logo-ic{width:60px;height:60px;background:linear-gradient(135deg,var(--green),var(--green-dark));border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.9rem;margin:0 auto 14px;box-shadow:0 8px 24px var(--glow);}
+.logo-ic{width:76px;height:76px;background:#fff;border:2px solid rgba(var(--ac),.28);border-radius:50%;display:block;object-fit:contain;padding:5px;margin:0 auto 14px;box-shadow:0 8px 24px var(--glow);}
 .logo-tx{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:2px;}
 .logo-sub{color:var(--muted);font-size:.88rem;margin-top:4px;}
 .divider{height:1px;background:var(--border);margin:22px 0;}
@@ -25,13 +25,13 @@ button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulat
 .err.show{display:block;}
 .fl{display:block;font-size:.77rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px;}
 .fi{width:100%;padding:11px 13px;background:var(--input);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Outfit',sans-serif;font-size:.92rem;transition:border-color .2s,box-shadow .2s;margin-bottom:14px;}
-.fi:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(55,65,81,.15);}
+.fi:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(var(--ac),.14);}
 .fi::placeholder{color:var(--muted);}
 @media (pointer: coarse){.fi,input,select,textarea,button,.btn{font-size:16px!important;}}
 .btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:13px 20px;border:none;border-radius:9px;font-family:'Outfit',sans-serif;font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s;}
-.btn-p{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;box-shadow:0 4px 14px var(--glow);}
-.btn-p:hover{transform:translateY(-2px);box-shadow:0 8px 22px var(--glow);}
-.hint{background:rgba(55,65,81,.07);border:1px solid rgba(55,65,81,.22);border-radius:8px;padding:12px;font-size:.82rem;color:var(--muted);margin-top:18px;text-align:center;}
+.btn-p{background:linear-gradient(135deg,var(--cta),var(--cta-dark));color:#fff;box-shadow:0 4px 14px rgba(200,61,38,.22);}
+.btn-p:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(200,61,38,.28);}
+.hint{background:rgba(var(--ac),.07);border:1px solid rgba(var(--ac),.22);border-radius:8px;padding:12px;font-size:.82rem;color:var(--muted);margin-top:18px;text-align:center;}
 .hint strong{color:var(--green);}
 .back{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:20px;font-size:.86rem;color:var(--muted);transition:color .2s;text-decoration:none;}
 .back:hover{color:var(--green);}
@@ -39,7 +39,7 @@ button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulat
 .forgot-link:hover{color:var(--green);}
 .reset-panel{display:none;margin-top:18px;}
 .reset-panel.show{display:block;}
-.ok-msg{background:rgba(55,65,81,.08);border:1px solid rgba(55,65,81,.25);border-radius:8px;padding:12px 14px;font-size:.84rem;color:var(--green);margin-bottom:14px;display:none;}
+.ok-msg{background:rgba(var(--ac),.08);border:1px solid rgba(var(--ac),.25);border-radius:8px;padding:12px 14px;font-size:.84rem;color:var(--green);margin-bottom:14px;display:none;}
 .ok-msg.show{display:block;}
 .new-pass-panel{display:none;margin-top:4px;}
 .new-pass-panel.show{display:block;}
@@ -57,7 +57,7 @@ button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulat
 
 <div class="card">
   <div class="logo">
-    <div class="logo-ic">🏓</div>
+    <img class="logo-ic" src="korte-dos-logo.svg" alt="Korte DOS logo">
     <div class="logo-tx">PICKLEBALL COURT DASHBOARD</div>
     <div class="logo-sub">Admin Control Panel</div>
   </div>
