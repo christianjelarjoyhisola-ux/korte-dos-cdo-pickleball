@@ -20,6 +20,8 @@ html { scroll-behavior: smooth; -webkit-text-size-adjust:100%; text-size-adjust:
   --dark-text: #f8faf6; --dark-muted: #aec0cf;
   --red: var(--court-red); --yellow: #b88b24; --yellow-rgb: 184,139,36;
   --lime: var(--pickle-lime); --lime-rgb: 201,207,67; --lime-ink: #70771e;
+  --slot-selected: #f97316; --slot-selected-dark: #ea580c; --slot-selected-rgb: 249,115,22;
+  --slot-processing: #22c55e; --slot-processing-dark: #16a34a; --slot-processing-rgb: 34,197,94;
   --r-sm: 8px; --r: 12px; --r-lg: 18px; --pill: 999px;
 }
 body.light { --bg:#f4f7f8; --card:#ffffff; --border:#d7e0e6; --text:#0f2438; --muted:#657486; --input:#eef3f6; --dark-text:#f8faf6; --dark-muted:#aec0cf; }
@@ -419,26 +421,30 @@ body.dark .nav { background:rgba(9,21,33,.94); }
     box-shadow: 0 0 0 3px rgba(75,85,99,.15);
   }
 }
-/* ── SELECTED ── lime green, matching the pickleball logo */
+/* ── SELECTED ── orange */
 .cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) {
-  background:linear-gradient(135deg,var(--lime),#a5ac2f);
-  border:2px solid rgba(var(--lime-rgb),.78);
-  color:var(--navy-dark);
+  background:linear-gradient(135deg,var(--slot-selected),var(--slot-selected-dark));
+  border:2px solid rgba(var(--slot-selected-rgb),.86);
+  color:#fff;
   transform: translateY(-1px);
-  box-shadow:0 0 0 3px rgba(var(--lime-rgb),.28),0 4px 16px rgba(var(--lime-rgb),.42);
+  box-shadow:0 0 0 3px rgba(var(--slot-selected-rgb),.26),0 4px 16px rgba(var(--slot-selected-rgb),.42);
 }
-.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color:var(--navy-dark); font-weight:900; }
-/* ── PROCESSING/VERIFYING ── yellow, slot reserved while OCR runs */
+.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color:#fff; font-weight:900; }
+/* ── PROCESSING/VERIFYING ── green, slot reserved while OCR runs */
 .cc-slot-btn.processing {
-  background: rgba(202,138,4,.08);
-  border: 1.5px solid rgba(202,138,4,.45);
+  background: rgba(var(--slot-processing-rgb),.11);
+  border: 1.5px solid rgba(var(--slot-processing-rgb),.55);
   color: var(--dark-muted);
   cursor: not-allowed;
-  animation: pulse-yellow 1.8s ease-in-out infinite;
+  animation: pulse-slot-processing 1.8s ease-in-out infinite;
 }
-.cc-slot-btn.processing .csl-time { color: #fbbf24; font-size: .62rem; }
-.cc-slot-btn.processing .csl-tag  { color: #fbbf24; font-size: .55rem; font-weight: 700; letter-spacing: .3px; }
+.cc-slot-btn.processing .csl-time { color: #86efac; font-size: .62rem; }
+.cc-slot-btn.processing .csl-tag  { color: #86efac; font-size: .55rem; font-weight: 700; letter-spacing: .3px; }
 .cc-slot-btn.processing:hover { transform: none; box-shadow: none; }
+@keyframes pulse-slot-processing {
+  0%,100% { border-color: rgba(var(--slot-processing-rgb),.55); box-shadow: none; }
+  50%      { border-color: rgba(var(--slot-processing-rgb),.9);  box-shadow: 0 0 8px rgba(var(--slot-processing-rgb),.36); }
+}
 @keyframes pulse-yellow {
   0%,100% { border-color: rgba(202,138,4,.45); box-shadow: none; }
   50%      { border-color: rgba(202,138,4,.8);  box-shadow: 0 0 6px rgba(202,138,4,.3); }
@@ -490,7 +496,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .csl-price { font-size:.72rem; font-weight:800; margin-top:1px; }
 .csl-name  { font-size:.62rem; font-weight:600; margin-top:1px; opacity:.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .csl-tag   { font-size:.56rem; font-weight:900; letter-spacing:.5px; text-transform:uppercase; margin-top:2px; }
-.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color:var(--navy-dark); }
+.cc-slot-btn.selected:not(.taken):not(.past-slot):not(.open-play):not(.maintenance) .csl-price { color:#fff; }
 
 .cc-slots-empty {
   grid-column:span 5;
@@ -517,9 +523,9 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   box-shadow:0 0 0 2px rgba(0,0,0,.04);
 }
 .cc-dot.available { background:var(--navy); }
-.cc-dot.selected { background:var(--lime); border-color:rgba(var(--lime-rgb),.75); box-shadow:0 0 0 2px rgba(var(--lime-rgb),.18); }
+.cc-dot.selected { background:var(--slot-selected); border-color:rgba(var(--slot-selected-rgb),.75); box-shadow:0 0 0 2px rgba(var(--slot-selected-rgb),.18); }
 .cc-dot.booked { background:var(--red); }
-.cc-dot.processing { background:#f59e0b; }
+.cc-dot.processing { background:var(--slot-processing); border-color:rgba(var(--slot-processing-rgb),.78); box-shadow:0 0 0 2px rgba(var(--slot-processing-rgb),.18); }
 .cc-dot.done { background:#94a3b8; }
 .cc-dot.maintenance { background:#6b7280; }
 /* MOBILE STICKY BOOK BAR */
@@ -706,7 +712,7 @@ select.fi option { background:var(--card); }
   transition:all .15s; user-select:none;
 }
 .slot:hover:not(.bkd) { border-color:var(--accent); color:var(--accent); }
-.slot.sel { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; transform:translateY(-2px); box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--accent),0 6px 18px rgba(var(--ac),.45); position:relative; z-index:2; }
+.slot.sel { background:var(--slot-selected); border-color:var(--slot-selected); color:#fff; font-weight:700; transform:translateY(-2px); box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--slot-selected),0 6px 18px rgba(var(--slot-selected-rgb),.42); position:relative; z-index:2; }
 .slot.bkd { background:rgba(248,81,73,.07); border-color:rgba(248,81,73,.2); color:var(--muted); cursor:not-allowed; text-decoration:line-through; }
 .slot-msg { font-size:.78rem; color:var(--muted); }
 
@@ -1569,14 +1575,14 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 
 /* States */
 .slot.free:hover  { border-color: var(--accent); background: rgba(var(--ac),.08); color: var(--accent); }
-.slot.sel  { background: var(--accent); border-color: var(--accent); color: #fff; font-weight:700; transform:translateY(-2px); box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--accent),0 6px 18px rgba(var(--ac),.45); position:relative; z-index:2; }
+.slot.sel  { background: var(--slot-selected); border-color: var(--slot-selected); color: #fff; font-weight:700; transform:translateY(-2px); box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--slot-selected),0 6px 18px rgba(var(--slot-selected-rgb),.42); position:relative; z-index:2; }
 .slot.sel .slot-time { color: #fff; }
 .slot.sel .slot-end { color: rgba(255,255,255,.72); }
 .slot.sel::after {
   content: '✓';
   position: absolute; top: -7px; right: -7px;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; color: var(--accent);
+  background: #fff; color: var(--slot-selected);
   font-size: .62rem; font-weight: 900;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 1px 4px rgba(0,0,0,.35);
@@ -4194,7 +4200,7 @@ async function renderSlots() {
   const legend = `
     <div class="slot-legend">
       <span class="leg">⬜ Available</span>
-      <span class="leg" style="color:var(--accent)">🟩 Selected</span>
+      <span class="leg" style="color:var(--slot-selected)">🟧 Selected</span>
       <span class="leg" style="color:var(--red)">🟥 Booked</span>
       ${hasMaint ? '<span class="leg" style="color:#ff9800">🟧 Maintenance</span>' : ''}
       ${todayFlag ? '<span class="leg" style="color:var(--muted)">⬛ Past</span><span class="leg" style="color:#4fc3f7">🔵 Now</span>' : ''}
