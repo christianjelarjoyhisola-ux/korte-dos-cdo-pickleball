@@ -1493,7 +1493,7 @@ tr:hover td { background: var(--bg2); }
               <tr>
                 <th>Week</th>
                 <th>Bookings</th>
-                <th>Rate</th>
+                <th>Platform Fee</th>
                 <th>Amount Due</th>
                 <th>Status</th>
                 <th>Due Date</th>
@@ -1700,7 +1700,7 @@ tr:hover td { background: var(--bg2); }
                 <th>Week</th>
                 <th>Court Owner</th>
                 <th>Bookings</th>
-                <th>Rate</th>
+                <th>Platform Fee</th>
                 <th>Amount Due</th>
                 <th>Status</th>
                 <th>Due Date</th>
@@ -2114,6 +2114,32 @@ function toggleSidebar() {
 const $=id=>document.getElementById(id);
 const fmt=n=>'₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:2});
 const fmtD=s=>{if(!s)return'—';return new Date(s+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});};
+function normalizePlatformFeeType(type) {
+  return ['flat', 'booking', 'per_booking'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
+}
+function getPlatformFeeConfig(settings = {}) {
+  const amount = parseFloat(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee ?? '0') || 0;
+  const type = normalizePlatformFeeType(settings.fee_type);
+  return { amount, type };
+}
+function platformFeeLabel(cfg, { short = false } = {}) {
+  const unit = cfg.type === 'flat'
+    ? (short ? '/booking' : 'per confirmed booking')
+    : (short ? '/hr' : 'per booked hour');
+  return `${fmt(cfg.amount)} ${unit}`;
+}
+function bookingBillableHours(b) {
+  return Number(b.duration) || (Array.isArray(b.slots) ? b.slots.length : 0) || 1;
+}
+function calcPlatformFeeForBooking(b, cfg) {
+  return cfg.type === 'flat' ? cfg.amount : cfg.amount * bookingBillableHours(b);
+}
+function platformFeeFormulaText(bookings, cfg) {
+  const count = bookings.length;
+  if (cfg.type === 'flat') return `${count} booking${count !== 1 ? 's' : ''} × ${fmt(cfg.amount)}`;
+  const hours = bookings.reduce((sum, b) => sum + bookingBillableHours(b), 0);
+  return `${hours} booked hour${hours !== 1 ? 's' : ''} × ${fmt(cfg.amount)}`;
+}
 function statusBdg(s){const m={pending:'bdg-p',confirmed:'bdg-c',completed:'bdg-d',verifying:'bdg-v',cancelled:'bdg-x'};return`<span class="bdg ${m[s]||''}">${s}</span>`;}
 function payStatusBdg(s){
   const v = (s || 'unpaid').toLowerCase();
@@ -2367,8 +2393,8 @@ async function renderMaintFee() {
 
   // Load rate and fee type from DB settings
   const settings = await DB.getSettings();
-  _maintRate = parseFloat(settings.maintenance_fee ?? '5');
-  _maintFeeType = settings.fee_type || 'per_hour';
+  _maintRate = parseFloat(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee ?? '5');
+  _maintFeeType = normalizePlatformFeeType(settings.fee_type);
   const isFlat = _maintFeeType === 'flat';
   if ($('mfRateDisplay')) $('mfRateDisplay').textContent = isFlat ? `₱${_maintRate.toFixed(2)} / booking` : `₱${_maintRate.toFixed(2)} / hr`;
 
@@ -3820,9 +3846,9 @@ function fmtH(h) {
 
 async function renderMaintRateSettings() {
   const settings = await DB.getSettings();
-  const rate = parseFloat(settings.maintenance_fee || '5');
+  const rate = parseFloat(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee ?? '5');
   if ($('maintRateInput')) $('maintRateInput').value = rate;
-  const feeType = settings.fee_type || 'per_hour';
+  const feeType = normalizePlatformFeeType(settings.fee_type);
   const ftEl = document.querySelector(`input[name="feeType"][value="${feeType}"]`);
   if (ftEl) ftEl.checked = true;
   updateMaintRateLabel();
@@ -4126,18 +4152,16 @@ async function viewBillingProof(id) {
   $('billProofModal').classList.add('show');
 }
 
-// Fixed platform fee per confirmed booking. Permanent per the signed agreement —
-// it never changes, so it lives here as a constant, not an editable setting.
-const PLATFORM_FEE_PER_BOOKING = 15;
-
 async function renderWeeklyBilling() {
   const body = $('billBody');
   if (!body || !Auth.can('owner_only', sess.role)) return;
 
-  const [rows, accounts] = await Promise.all([
+  const [rows, accounts, settings] = await Promise.all([
     DB.getWeeklyFees(),
     DB.getAccounts(),
+    DB.getSettings(),
   ]);
+  const feeCfg = getPlatformFeeConfig(settings);
   const ownerById = {};
   accounts.forEach(a => { ownerById[a.id] = a; });
 
@@ -4171,7 +4195,7 @@ async function renderWeeklyBilling() {
       <td data-label="Week">${week}</td>
       <td data-label="Court Owner"><div style="font-weight:700">${ownerName}</div><div style="font-size:.72rem;color:var(--muted)">${r.court_owner_email || owner?.email || '—'}</div></td>
       <td data-label="Bookings">${r.bookings_count}</td>
-      <td data-label="Rate">${fmt(r.fee_per_booking)}</td>
+      <td data-label="Platform Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
       <td data-label="Amount Due"><strong style="color:var(--yellow)">${fmt(r.amount_due)}</strong></td>
       <td data-label="Status">${_billStatusBadge(r.status)}</td>
       <td data-label="Due Date">${dueLabel}</td>
@@ -4194,10 +4218,11 @@ async function generateWeeklyStatement() {
   const { startDate, endDate, end } = _weekBounds(mode);
 
   try {
-    const [accounts, bookings, existingStatements] = await Promise.all([
+    const [accounts, bookings, existingStatements, settings] = await Promise.all([
       DB.getAccounts(),
       DB.getBookings(),
       DB.getWeeklyFees(),
+      DB.getSettings(),
     ]);
 
     // Look for court_owner, or fallback to system owner (for testing)
@@ -4207,9 +4232,8 @@ async function generateWeeklyStatement() {
       if (!courtOwner) { toast('No accounts found.', 'err'); return; }
     }
 
-    // Fixed, non-negotiable platform fee. Per the signed agreement the ₱15.00
-    // fee is permanent and never changes, so it is a constant — not a setting.
-    const feePerBooking = PLATFORM_FEE_PER_BOOKING;
+    const feeCfg = getPlatformFeeConfig(settings);
+    const feePerBooking = feeCfg.amount;
 
     // Billable event = a CONFIRMED booking (one that successfully reserved a
     // slot). Cancelled / rejected / verifying holds are never billed.
@@ -4219,7 +4243,7 @@ async function generateWeeklyStatement() {
     );
     const billedRefs = eligible.map(b => b.ref).filter(Boolean);
     const bookingsCount = billedRefs.length;
-    const amountDue = bookingsCount * feePerBooking;
+    const amountDue = eligible.reduce((sum, b) => sum + calcPlatformFeeForBooking(b, feeCfg), 0);
 
     const due = new Date(end);
     due.setDate(end.getDate() + 5); // Friday after Sunday cut-off
@@ -4270,7 +4294,7 @@ async function generateWeeklyStatement() {
     // Stamp each billed booking so it is auditable and never billed twice.
     if (weeklyFeeId) await DB.markBookingsBilled(billedRefs, weeklyFeeId);
 
-    toast(`Statement ${existing ? 'updated' : 'generated'}: ${bookingsCount} bookings × ${fmt(feePerBooking)} = ${fmt(amountDue)}`);
+    toast(`Statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligible, feeCfg)} = ${fmt(amountDue)}`);
     await renderWeeklyBilling();
   } catch (e) {
     console.error('[billGenerate] error:', e);
@@ -4316,7 +4340,8 @@ async function renderMyBilling() {
   const body = $('myBillBody');
   if (!body || !Auth.can('court_owner_only', sess.role)) return;
 
-  const all = await DB.getWeeklyFees();
+  const [all, settings] = await Promise.all([DB.getWeeklyFees(), DB.getSettings()]);
+  const feeCfg = getPlatformFeeConfig(settings);
   const mine = all.filter(r => r.court_owner_user_id === sess.id || r.court_owner_email === sess.email);
 
   const open = mine.filter(r => !['paid'].includes((r.status || 'draft').toLowerCase()));
@@ -4355,7 +4380,7 @@ async function renderMyBilling() {
     return `<tr>
       <td data-label="Week">${week}${submittedLabel}</td>
       <td data-label="Bookings">${r.bookings_count}</td>
-      <td data-label="Rate">${fmt(r.fee_per_booking)}</td>
+      <td data-label="Platform Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
       <td data-label="Amount Due"><strong style="color:var(--yellow)">${fmt(r.amount_due)}</strong></td>
       <td data-label="Status">${_billStatusBadge(r.status)}</td>
       <td data-label="Due Date">${dueLabel}</td>
@@ -6059,7 +6084,7 @@ function applyRoleVisibility(role) {
         <div style="font-size:1.7rem">📋</div>
         <div>
           <div style="font-size:1.05rem;font-weight:800;letter-spacing:.5px;color:var(--text,#e8eaf0)">PLATFORM ACCESS & BOOKING FEE AUTHORIZATION AGREEMENT</div>
-          <div style="font-size:.73rem;color:var(--muted,#7a8a9a);margin-top:2px">Pickleball Court Booking System — Version 2 · Fixed Terms</div>
+          <div style="font-size:.73rem;color:var(--muted,#7a8a9a);margin-top:2px">Pickleball Court Booking System — Version 3 · Configurable Fee Terms</div>
         </div>
       </div>
     </div>
@@ -6084,18 +6109,18 @@ function applyRoleVisibility(role) {
       </ul>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Platform Booking Fee &amp; Weekly Remittance</h4>
-      <p style="margin:0 0 14px">In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add a <strong>non-refundable platform booking fee of ₱15.00 (fifteen pesos, fixed)</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The ₱15.00 platform fee is <strong>fixed and permanent</strong>. It will not increase, decrease, or change for any reason, and no other fees will be charged to the Court Owner or customers beyond those the Court Owner sets for their own court rates.</p>
-      <p style="margin:0 0 14px"><strong>Billable event.</strong> The ₱15.00 fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not billed</strong>.</p>
-      <p style="margin:0 0 14px"><strong>Collection.</strong> The Court Owner collects the ₱15.00 platform fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.</p>
-      <p style="margin:0 0 14px"><strong>Weekly remittance.</strong> Billing is settled <strong>weekly</strong>. Each week the Platform Provider issues a statement covering every confirmed booking from the previous <strong>Monday–Sunday</strong> period. The amount due equals the number of confirmed bookings in that week × ₱15.00. Each statement itemises the exact bookings included, and each booking is billed <strong>only once</strong>.</p>
+      <p id="agreeFeeIntro" style="margin:0 0 14px">In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable platform booking fee</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The platform booking fee is controlled by the System Owner in Payment Settings and may be configured as either a per-booked-hour fee or a flat per-booking fee.</p>
+      <p id="agreeFeeBillable" style="margin:0 0 14px"><strong>Billable event.</strong> The configured platform fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not billed</strong>.</p>
+      <p id="agreeFeeCollection" style="margin:0 0 14px"><strong>Collection.</strong> The Court Owner collects the configured platform fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.</p>
+      <p id="agreeFeeWeekly" style="margin:0 0 14px"><strong>Weekly remittance.</strong> Billing is settled <strong>weekly</strong>. Each week the Platform Provider issues a statement covering every confirmed booking from the previous <strong>Monday–Sunday</strong> period. The amount due is calculated using the System Owner-selected platform fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is billed <strong>only once</strong>.</p>
       <p style="margin:0 0 14px"><strong>Due date &amp; method.</strong> Payment is due within <strong>five (5) days</strong> of the statement date. The Court Owner remits the amount due via <strong>GCash</strong> to the platform remittance account shown in the dashboard, then submits the GCash transaction reference and a screenshot of the receipt as proof of payment through the "Pay Now" function.</p>
       <p style="margin:0 0 14px"><strong>Non-payment.</strong> Statements unpaid past the due date are marked <strong>overdue</strong>. The Platform Provider may suspend the Court Owner's access to the booking system until all outstanding statements are settled. Suspension does not waive any amounts already due.</p>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">4. Court Owner's Revenue</h4>
-      <p style="margin:0 0 14px">All court booking fees set by the Court Owner (e.g. ₱200/hr, ₱250/hr) belong <strong>exclusively to the Court Owner</strong>. The Platform Provider does not take any share of the court rental revenue. The Court Owner receives 100% of the court rate from every confirmed booking. Only the separate ₱15.00 platform fee (paid by the customer) goes to the Platform Provider.</p>
+      <p id="agreeFeeRevenue" style="margin:0 0 14px">All court booking fees set by the Court Owner (e.g. ₱200/hr, ₱250/hr) belong <strong>exclusively to the Court Owner</strong>. The Platform Provider does not take any share of the court rental revenue. The Court Owner receives 100% of the court rate from every confirmed booking. Only the separate configured platform fee (paid by the customer) goes to the Platform Provider.</p>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">5. Anti-Circumvention</h4>
-      <p style="margin:0 0 14px">The Court Owner agrees <strong>not to direct, encourage, or assist customers to bypass the platform</strong> in order to avoid the ₱15.00 booking fee. This includes but is not limited to: advertising a direct booking channel at a lower price, accepting bookings verbally or via personal chat for slots visible on the platform, or instructing customers to "book directly" to avoid the fee.<br><br>Circumvention of the platform fee is a material breach of this Agreement and may result in immediate termination of platform access.</p>
+      <p id="agreeFeeCircumvention" style="margin:0 0 14px">The Court Owner agrees <strong>not to direct, encourage, or assist customers to bypass the platform</strong> in order to avoid the configured platform booking fee. This includes but is not limited to: advertising a direct booking channel at a lower price, accepting bookings verbally or via personal chat for slots visible on the platform, or instructing customers to "book directly" to avoid the fee.<br><br>Circumvention of the platform fee is a material breach of this Agreement and may result in immediate termination of platform access.</p>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">6. Obligation to Honor Bookings</h4>
       <p style="margin:0 0 14px">The Court Owner agrees to <strong>honor all confirmed bookings</strong> made through the platform. Customers who receive a booking confirmation with a reference number must be allowed access to the court at the reserved time. Cancellations due to the Court Owner's failure (not the customer's) are a breach of this Agreement.</p>
@@ -6132,8 +6157,8 @@ function applyRoleVisibility(role) {
       <ul style="margin:0 0 14px;padding-left:20px">
         <li>You have read and fully understood all terms of this Agreement.</li>
         <li>You are the authorized Court Owner or duly authorized representative.</li>
-        <li>You authorize the platform to collect ₱15.00 from customers per confirmed booking.</li>
-        <li>You agree to remit the collected ₱15.00 platform fees to the Platform Provider <strong>weekly</strong>, due within five (5) days of each statement.</li>
+        <li id="agreeFeeConfirmCollect">You authorize the platform to collect the System Owner-selected platform fee from customers on confirmed bookings.</li>
+        <li id="agreeFeeConfirmRemit">You agree to remit the collected platform fees to the Platform Provider <strong>weekly</strong>, due within five (5) days of each statement.</li>
         <li>You agree to honor all platform bookings and not circumvent the platform fee.</li>
         <li>You understand the Platform Provider is the software provider only and does not operate the court.</li>
         <li>This electronic signature has the same legal force as a handwritten signature under RA 8792.</li>
@@ -6163,7 +6188,7 @@ function applyRoleVisibility(role) {
 
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:20px;font-size:.84rem">
           <input id="agreeCheck" type="checkbox" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:pointer" onchange="agreeCheckReady()" />
-          <span>I have read and fully understood the Platform Access &amp; Booking Fee Authorization Agreement above. I authorize the platform to collect a <strong>fixed ₱15.00 platform booking fee from customers</strong> per confirmed booking. I agree to honor all platform bookings and not direct customers to book directly to circumvent this fee. I understand that [Platform Provider Name] is the software provider only and does not operate the court. This electronic signature is legally binding under RA 8792.</span>
+          <span id="agreeFeeCheckboxText">I have read and fully understood the Platform Access &amp; Booking Fee Authorization Agreement above. I authorize the platform to collect the System Owner-selected platform booking fee from customers on confirmed bookings. I agree to honor all platform bookings and not direct customers to book directly to circumvent this fee. I understand that [Platform Provider Name] is the software provider only and does not operate the court. This electronic signature is legally binding under RA 8792.</span>
         </label>
 
         <button id="agreeSubmitBtn" onclick="submitAgreement()" disabled
@@ -6179,9 +6204,32 @@ function applyRoleVisibility(role) {
 
 <script>
 /* ── AGREEMENT MODAL ── */
-const AGREEMENT_VERSION = 2;
+const AGREEMENT_VERSION = 3;
 let _agreeDrawing = false, _agreeHasSig = false;
 let _agreePrevX = 0, _agreePrevY = 0;
+
+async function updateAgreementFeeCopy() {
+  let cfg = { amount: 0, type: 'per_hour' };
+  try {
+    cfg = getPlatformFeeConfig(await DB.getSettings());
+  } catch(_) {}
+  const fee = platformFeeLabel(cfg);
+  const feeShort = platformFeeLabel(cfg, { short: true });
+  const formula = cfg.type === 'flat'
+    ? `number of confirmed bookings × ${fmt(cfg.amount)}`
+    : `total booked hours from confirmed bookings × ${fmt(cfg.amount)}`;
+  const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+  setHtml('agreeFeeIntro', `In exchange for free access to the platform, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable platform booking fee of ${fee}</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner — similar to how Airbnb, Grab, or Booking.com charge a service fee to the end user.<br><br>The platform booking fee is controlled by the System Owner in Payment Settings and may be configured as either a per-booked-hour fee or a flat per-booking fee.`);
+  setHtml('agreeFeeBillable', `<strong>Billable event.</strong> The configured ${feeShort} platform fee applies to each <strong>confirmed booking</strong> made through the platform (a booking that successfully reserved a court slot). Bookings that are cancelled before confirmation, rejected during payment verification, or that never held a slot are <strong>not billed</strong>.`);
+  setHtml('agreeFeeCollection', `<strong>Collection.</strong> The Court Owner collects the configured ${feeShort} platform fee from the customer together with the court rate at the time of booking, and holds it on behalf of the Platform Provider until remittance.`);
+  setHtml('agreeFeeWeekly', `<strong>Weekly remittance.</strong> Billing is settled <strong>weekly</strong>. Each week the Platform Provider issues a statement covering every confirmed booking from the previous <strong>Monday–Sunday</strong> period. The amount due is calculated as <strong>${formula}</strong>, using the System Owner-selected platform fee in effect when the statement is generated. Each statement itemises the exact bookings included, and each booking is billed <strong>only once</strong>.`);
+  setHtml('agreeFeeRevenue', `All court booking fees set by the Court Owner (e.g. ₱200/hr, ₱250/hr) belong <strong>exclusively to the Court Owner</strong>. The Platform Provider does not take any share of the court rental revenue. The Court Owner receives 100% of the court rate from every confirmed booking. Only the separate configured platform fee of <strong>${fee}</strong> (paid by the customer) goes to the Platform Provider.`);
+  setHtml('agreeFeeCircumvention', `The Court Owner agrees <strong>not to direct, encourage, or assist customers to bypass the platform</strong> in order to avoid the configured platform booking fee of <strong>${fee}</strong>. This includes but is not limited to: advertising a direct booking channel at a lower price, accepting bookings verbally or via personal chat for slots visible on the platform, or instructing customers to "book directly" to avoid the fee.<br><br>Circumvention of the platform fee is a material breach of this Agreement and may result in immediate termination of platform access.`);
+  setHtml('agreeFeeConfirmCollect', `You authorize the platform to collect the System Owner-selected platform fee of <strong>${fee}</strong> from customers on confirmed bookings.`);
+  setHtml('agreeFeeConfirmRemit', `You agree to remit the collected platform fees to the Platform Provider <strong>weekly</strong>, due within five (5) days of each statement.`);
+  setHtml('agreeFeeCheckboxText', `I have read and fully understood the Platform Access &amp; Booking Fee Authorization Agreement above. I authorize the platform to collect the System Owner-selected <strong>${fee}</strong> platform booking fee from customers on confirmed bookings. I agree to honor all platform bookings and not direct customers to book directly to circumvent this fee. I understand that [Platform Provider Name] is the software provider only and does not operate the court. This electronic signature is legally binding under RA 8792.`);
+}
 
 function agreeInitCanvas() {
   const canvas = document.getElementById('agreeCanvas');
@@ -6263,6 +6311,7 @@ async function checkAgreementGate(session) {
     if (existing) return false; // already signed
   } catch(_) {}
   // Show the gate
+  await updateAgreementFeeCopy();
   const overlay = document.getElementById('agreementOverlay');
   overlay.style.display = 'flex';
   agreeInitCanvas();

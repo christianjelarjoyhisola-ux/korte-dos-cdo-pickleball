@@ -2750,6 +2750,9 @@ let openPlayMaxPlayers = 40; // default 40, overridden by settings
 let paymentAcceptanceMode = 'both'; // 'both', 'downpayment_only', 'full_payment_only'
 let _serviceFeeRate = 0; // booking fee amount, loaded from settings
 let _serviceFeeType = 'per_hour'; // 'per_hour' or 'flat'
+function normalizePlatformFeeType(type) {
+  return ['flat', 'booking', 'per_booking'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
+}
 function calcSvcFee(hrs) { return _serviceFeeType === 'flat' ? _serviceFeeRate : _serviceFeeRate * hrs; }
 let maintenanceConfig = null; // { enabled, start, end, mode, dates[], recurring }
 
@@ -3036,8 +3039,8 @@ async function loadOperatingHours() {
   if (settings.maintenance_config) {
     try { maintenanceConfig = JSON.parse(settings.maintenance_config); } catch(e) {}
   }
-  _serviceFeeRate = parseFloat(settings.maintenance_fee || '0') || 0;
-  _serviceFeeType  = settings.fee_type || 'per_hour';
+  _serviceFeeRate = parseFloat(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee ?? '0') || 0;
+  _serviceFeeType  = normalizePlatformFeeType(settings.fee_type);
   applyPaymentSettings(settings);
   const note = $('slotHoursNote');
   if (note) note.textContent = `(${fmtT(openHour)} – ${fmtT(closeHour)} · select consecutive hours)`;
