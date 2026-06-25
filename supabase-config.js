@@ -185,6 +185,31 @@ function rowToBooking(r) {
   };
 }
 
+const PB_RESERVATION_HOLD_MINUTES = 15;
+
+function bookingHoldsSlotForConflict(b) {
+  if (!b || b.status === 'cancelled') return false;
+  if (b.status !== 'verifying') return true;
+
+  const created = b.created_at || b.createdAt;
+  if (!created) return true;
+
+  const createdMs = new Date(created).getTime();
+  if (!Number.isFinite(createdMs)) return true;
+
+  return (Date.now() - createdMs) < PB_RESERVATION_HOLD_MINUTES * 60 * 1000;
+}
+
+function hasSlotConflict(existingBookings, booking) {
+  const requested = new Set((booking.slots || []).map(Number));
+  if (requested.size === 0) return false;
+
+  return (existingBookings || [])
+    .filter(bookingHoldsSlotForConflict)
+    .flatMap(b => b.slots || [])
+    .some(slot => requested.has(Number(slot)));
+}
+
 function bookingToRow(b) {
   return {
     ref:            b.ref,
@@ -297,15 +322,13 @@ window.DB = {
     // Check for slot conflicts before inserting
     const { data: existing } = await _sb
       .from('bookings')
-      .select('ref, slots')
+      .select('ref, status, slots, created_at')
       .eq('court_id', booking.courtId)
       .eq('date', booking.date)
       .neq('status', 'cancelled');
 
-    if (existing) {
-      const bookedSlots = existing.flatMap(b => b.slots || []);
-      const conflict = (booking.slots || []).some(s => bookedSlots.includes(s));
-      if (conflict) throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
+    if (hasSlotConflict(existing, booking)) {
+      throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
     }
 
     const { error } = await _sb.from('bookings').insert(bookingToRow(booking));
@@ -979,11 +1002,11 @@ window.DB = {
     },
     async addBooking(booking) {
       const db = readDb();
-      const bookedSlots = db.bookings
-        .filter(b => String(b.courtId) === String(booking.courtId) && b.date === booking.date && b.status !== 'cancelled')
-        .flatMap(b => b.slots || []);
-      const conflict = (booking.slots || []).some(s => bookedSlots.includes(s));
-      if (conflict) throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
+      const existing = db.bookings
+        .filter(b => String(b.courtId) === String(booking.courtId) && b.date === booking.date && b.status !== 'cancelled');
+      if (hasSlotConflict(existing, booking)) {
+        throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
+      }
       db.bookings.push({ ...booking, ref: booking.ref || localRef('PB'), createdAt: booking.createdAt || nowIso() });
       writeDb(db);
     },
