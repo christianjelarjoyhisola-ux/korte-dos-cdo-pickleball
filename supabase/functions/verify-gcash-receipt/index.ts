@@ -565,8 +565,9 @@ Deno.serve(async (req) => {
   if (action === "sign") {
     const bookingRef = String(body.bookingRef || "");
     const openPlayRegistrationId = String(body.openPlayRegistrationId || "");
-    if (!bookingRef && !openPlayRegistrationId) {
-      return json({ error: "bookingRef or openPlayRegistrationId required" }, 400);
+    const hostSessionRegistrationId = String(body.hostSessionRegistrationId || "");
+    if (!bookingRef && !openPlayRegistrationId && !hostSessionRegistrationId) {
+      return json({ error: "bookingRef, openPlayRegistrationId, or hostSessionRegistrationId required" }, 400);
     }
 
     // Require a real signed-in user (anon key alone is rejected).
@@ -580,7 +581,14 @@ Deno.serve(async (req) => {
     if (!userData?.user) return json({ error: "Unauthorized" }, 401);
 
     let path: string | null = null;
-    if (openPlayRegistrationId) {
+    if (hostSessionRegistrationId) {
+      const { data: reg } = await db
+        .from("open_play_host_session_registrations")
+        .select("receipt_image_url")
+        .eq("id", hostSessionRegistrationId)
+        .single();
+      path = reg?.receipt_image_url || null;
+    } else if (openPlayRegistrationId) {
       const { data: reg } = await db
         .from("open_play_registrations")
         .select("receipt_image_url")
@@ -640,9 +648,14 @@ Deno.serve(async (req) => {
     let expectedTotal = Number(booking.total || 0);
     let bookingGroup: Array<Record<string, unknown>> = [booking];
     try {
-      bookingGroup = await loadBookingGroup(db, booking);
-      expectedAmount = await expectedBookingGroupAmount(db, bookingGroup, settings);
-      expectedTotal = bookingGroupStoredTotal(bookingGroup);
+      if (inlineBookingData && Number(booking.total || 0) > 0) {
+        expectedTotal = roundMoney(Number(booking.total || 0));
+        expectedAmount = chooseExpectedDue(expectedTotal, toNumber(booking.downpayment, expectedTotal), settings);
+      } else {
+        bookingGroup = await loadBookingGroup(db, booking);
+        expectedAmount = await expectedBookingGroupAmount(db, bookingGroup, settings);
+        expectedTotal = bookingGroupStoredTotal(bookingGroup);
+      }
     } catch (err) {
       pricingError = errMsg(err);
     }

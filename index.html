@@ -2210,14 +2210,14 @@ body.light #splashScreen { background: var(--bg); }
   <div class="host-invite-head">
     <div>
       <div class="host-invite-title">Are you an Open Play host?</div>
-      <div class="host-invite-copy">Apply for Host Dashboard access to publish sessions, manage courts/time, and share one link with players.</div>
+      <div class="host-invite-copy">Create sessions, collect player payments, and let verified players confirm automatically.</div>
     </div>
     <button type="button" class="host-invite-x" onclick="dismissHostInvite(event)" aria-label="Dismiss host invite">×</button>
   </div>
   <div class="host-invite-features">
-    <div class="host-invite-feature"><b>Multi-court</b>Select multiple courts and a start/end time.</div>
-    <div class="host-invite-feature"><b>Share link</b>Post your session link in ReClub or chats.</div>
-    <div class="host-invite-feature"><b>Player list</b>Prepare confirmed players and payment tracking.</div>
+    <div class="host-invite-feature"><b>Auto payment check</b>Amount, ref, date/time, and receiver are verified.</div>
+    <div class="host-invite-feature"><b>Auto approve players</b>Valid receipts confirm player spots automatically.</div>
+    <div class="host-invite-feature"><b>Share session link</b>Send one join link to ReClub or group chats.</div>
   </div>
   <div class="host-invite-actions">
     <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
@@ -2900,10 +2900,19 @@ body.light #splashScreen { background: var(--bg); }
         <div id="hsDetails" style="font-size:.84rem;line-height:1.7"></div>
       </div>
       <div id="hsNotes" style="margin-top:12px;color:var(--muted);font-size:.82rem;line-height:1.55"></div>
+      <div id="hsJoinBox" class="wiz-summary" style="margin-top:14px">
+        <div class="wiz-summary-lbl">Join + Payment</div>
+        <div class="frow">
+          <div class="fg" style="margin:0"><label class="fl" for="hsJoinName">Full Name</label><input type="text" class="fi" id="hsJoinName" placeholder="Your full name" autocomplete="name"/></div>
+          <div class="fg" style="margin:0"><label class="fl" for="hsJoinPhone">Contact Number</label><input type="tel" class="fi" id="hsJoinPhone" placeholder="09XX XXX XXXX" autocomplete="tel"/></div>
+        </div>
+        <div id="hsPaymentBox" style="margin-top:10px"></div>
+        <div id="hsReceiptStatus" style="display:none;margin-top:10px;padding:9px 11px;border-radius:9px;font-size:.78rem;font-weight:700"></div>
+      </div>
     </div>
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
       <button type="button" class="btn btn-g" onclick="copyCurrentHostSessionLink()">Copy Link</button>
-      <button type="button" class="btn btn-p" onclick="closeHostSessionModal()">Done</button>
+      <button type="button" class="btn btn-p" id="hsJoinBtn" onclick="submitHostSessionJoin()">Join Session</button>
     </div>
   </div>
 </div>
@@ -3060,6 +3069,11 @@ function closeHostSessionModal() {
   $('hostSessionModal')?.classList.remove('show');
 }
 
+let _hostSessionCurrent = null;
+let _hostSessionReceiptFile = null;
+let _hostSessionPayMethod = 'gcash';
+let _hostSessionStartedAt = null;
+
 function hostSessionShareUrl(id) {
   const url = new URL(location.href);
   url.searchParams.set('openPlayHostSession', id);
@@ -3077,9 +3091,241 @@ async function copyCurrentHostSessionLink() {
   }
 }
 
+function hostSessionDigitalMethods() {
+  return ['gcash', 'gotyme', 'pnb'].filter(m => paymentMethods[m]);
+}
+
+function hostSessionPaymentMethodLabel(method) {
+  return method === 'gcash' ? 'GCash' : method === 'gotyme' ? 'GoTyme' : method === 'pnb' ? 'PNB' : 'Payment';
+}
+
+function hostSessionReceiver(method) {
+  return paymentReceiverSettings[method] || paymentReceiverSettings.gcash || { number: '', name: '', qrImage: '' };
+}
+
+function setHostSessionPayMethod(method) {
+  if (!paymentMethods[method]) return;
+  _hostSessionPayMethod = method;
+  if ($('hsPaymentBox') && _hostSessionCurrent) renderHostSessionPayment(_hostSessionCurrent);
+}
+
+function hostSessionPaymentHtml(session) {
+  const methods = hostSessionDigitalMethods();
+  const amount = Number(session.feePerPlayer || 0);
+  if (amount <= 0) {
+    return `<div style="font-size:.82rem;color:var(--muted);line-height:1.55">This host session is marked as free. Tap Join Session to reserve your spot.</div>`;
+  }
+  if (!methods.length) {
+    return `<div style="font-size:.82rem;color:var(--red);line-height:1.55">Digital payment is not available right now. Please contact the host or court owner.</div>`;
+  }
+  if (!methods.includes(_hostSessionPayMethod)) _hostSessionPayMethod = methods[0];
+  const methodButtons = methods.map(m => `
+    <button type="button" class="btn btn-sm ${m === _hostSessionPayMethod ? 'btn-p' : 'btn-g'}" onclick="setHostSessionPayMethod('${m}')">${hostSessionPaymentMethodLabel(m)}</button>
+  `).join('');
+  const receiver = hostSessionReceiver(_hostSessionPayMethod);
+  const label = hostSessionPaymentMethodLabel(_hostSessionPayMethod);
+  const qr = receiver.qrImage
+    ? `<img src="${receiver.qrImage}" class="op-qr-img qr-clickable" alt="${label} QR" onclick="openQrZoomFromImg(this,'${label} QR')" />`
+    : `<div class="op-qr-placeholder">QR</div>`;
+  return `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${methodButtons}</div>
+    <div class="op-pay-card" style="margin-bottom:10px">
+      <div class="op-receiver-row">
+        <div class="op-qr-pane">${qr}</div>
+        <div>
+          <div class="op-send-label">Send exactly</div>
+          <div class="op-send-amount">${fmt(amount)}</div>
+          <div class="op-send-name">${esc(receiver.name || 'Court owner account')}</div>
+          <div class="op-number-row">
+            <code>${esc(receiver.number || 'Scan QR')}</code>
+            <button type="button" onclick="copyHostSessionPaymentNumber()">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="fl" for="hsPaymentRef">${label} Reference Number</label>
+      <input type="text" class="fi" id="hsPaymentRef" placeholder="${_hostSessionPayMethod === 'gcash' ? 'e.g. 1234567890123' : 'Enter payment reference number'}" maxlength="${paymentRefMaxLength(_hostSessionPayMethod)}" inputmode="numeric" oninput="syncHostSessionRef()" />
+      <div id="hsRefHelp" style="font-size:.7rem;color:var(--muted);margin-top:4px">${paymentRefHelpText(_hostSessionPayMethod)}</div>
+    </div>
+    <div class="fg">
+      <label class="fl">Receipt Screenshot</label>
+      <label id="hsReceiptDrop" class="op-receipt-drop">
+        <span>📷</span><span>Attach receipt screenshot</span>
+        <input type="file" id="hsReceiptImg" accept="image/*" style="display:none" onchange="onHostSessionReceiptPicked(event)" />
+      </label>
+      <div id="hsReceiptPreviewWrap" class="op-receipt-preview" style="display:none">
+        <img id="hsReceiptPreview" alt="Receipt preview" />
+        <div style="min-width:0">
+          <div id="hsReceiptName" class="op-receipt-name">Receipt attached</div>
+          <button type="button" onclick="clearHostSessionReceipt()">Remove</button>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:.72rem;color:var(--muted);line-height:1.5">We auto-check amount, reference, date/time, receiver number, duplicate use, and OCR confidence before confirming your spot.</div>
+  `;
+}
+
+function renderHostSessionPayment(session) {
+  const box = $('hsPaymentBox');
+  if (!box) return;
+  box.innerHTML = hostSessionPaymentHtml(session);
+  if (_hostSessionReceiptFile) syncHostSessionReceiptPreview();
+}
+
+function syncHostSessionRef() {
+  const input = $('hsPaymentRef');
+  if (!input) return;
+  const clean = normalizePaymentRef(input.value, _hostSessionPayMethod);
+  if (input.value !== clean) input.value = clean;
+}
+
+function copyHostSessionPaymentNumber() {
+  const receiver = hostSessionReceiver(_hostSessionPayMethod);
+  const num = String(receiver.number || '').replace(/\s/g, '');
+  if (!num || /^scan qr$/i.test(receiver.number || '')) { toast('Payment number is not available. Please scan the QR.', 'inf'); return; }
+  navigator.clipboard?.writeText(num).then(() => toast('Payment number copied.')).catch(() => toast('Could not copy number.', 'err'));
+}
+
+function onHostSessionReceiptPicked(e) {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  if (!f.type.startsWith('image/')) { toast('Please choose an image file.', 'err'); e.target.value = ''; return; }
+  if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'err'); e.target.value = ''; return; }
+  _hostSessionReceiptFile = f;
+  syncHostSessionReceiptPreview();
+}
+
+function syncHostSessionReceiptPreview() {
+  if (!_hostSessionReceiptFile) return;
+  if ($('hsReceiptPreview')) $('hsReceiptPreview').src = URL.createObjectURL(_hostSessionReceiptFile);
+  if ($('hsReceiptName')) $('hsReceiptName').textContent = _hostSessionReceiptFile.name;
+  if ($('hsReceiptPreviewWrap')) $('hsReceiptPreviewWrap').style.display = 'flex';
+  if ($('hsReceiptDrop')) $('hsReceiptDrop').style.display = 'none';
+}
+
+function clearHostSessionReceipt() {
+  _hostSessionReceiptFile = null;
+  if ($('hsReceiptImg')) $('hsReceiptImg').value = '';
+  if ($('hsReceiptPreviewWrap')) $('hsReceiptPreviewWrap').style.display = 'none';
+  if ($('hsReceiptDrop')) $('hsReceiptDrop').style.display = '';
+  if ($('hsReceiptStatus')) $('hsReceiptStatus').style.display = 'none';
+}
+
+async function verifyHostSessionReceipt(ref, method, inlineData) {
+  const st = $('hsReceiptStatus');
+  if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = 'Verifying your receipt...'; }
+  const dataUrl = await _fileToBase64(_hostSessionReceiptFile);
+  const res = await DB.verifyGcashReceipt({
+    bookingRef: ref,
+    provider: method,
+    imageBase64: dataUrl,
+    contentType: _hostSessionReceiptFile.type || 'image/jpeg',
+    bookingData: inlineData,
+  });
+  const status = res?.status || 'manual_review';
+  const msg = res?.message || 'Receipt received.';
+  if (st) {
+    if (status === 'auto_approved') { st.style.background = 'rgba(var(--ac),.12)'; st.style.color = 'var(--accent)'; st.textContent = 'Payment verified. Your spot is confirmed.'; }
+    else if (status === 'rejected') { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt rejected: ' + msg; }
+    else { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = 'Receipt needs review. Your spot is pending.'; }
+  }
+  return {
+    status,
+    message: msg,
+    flags: res?.flags || [],
+    extracted: res?.extracted || null,
+    confidence: res?.confidence ?? null,
+    receiptImageUrl: res?.receiptImageUrl || null,
+    receiptImageHash: res?.receiptImageHash || null,
+    receiptPhash: res?.receiptPhash || null,
+    receiptVerifiedAt: res?.receiptVerifiedAt || new Date().toISOString(),
+  };
+}
+
+async function submitHostSessionJoin() {
+  const session = _hostSessionCurrent;
+  if (!session) return;
+  const btn = $('hsJoinBtn');
+  const name = $('hsJoinName')?.value?.trim() || '';
+  const phone = $('hsJoinPhone')?.value?.trim() || '';
+  const amount = Number(session.feePerPlayer || 0);
+  if (!name) { toast('Enter your full name.', 'err'); $('hsJoinName')?.focus(); return; }
+  if (phone && !/^(09|\+639)\d{9}$/.test(phone.replace(/\s|-/g,''))) { toast('Enter a valid PH contact number.', 'err'); $('hsJoinPhone')?.focus(); return; }
+  if (amount > 0 && !hostSessionDigitalMethods().length) { toast('Digital payment is not available right now.', 'err'); return; }
+  const refInput = $('hsPaymentRef');
+  const paymentRef = normalizePaymentRef(refInput?.value || '', _hostSessionPayMethod);
+  if (amount > 0) {
+    if (!paymentRef) { toast('Enter your payment reference number.', 'err'); refInput?.focus(); return; }
+    if (_hostSessionPayMethod === 'gcash' && !isGcashRefValid(paymentRef)) { toast('GCash reference number must be exactly 13 digits.', 'err'); refInput?.focus(); return; }
+    if (!_hostSessionReceiptFile) { toast('Please upload your payment receipt screenshot.', 'err'); return; }
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+  try {
+    const currentCount = await DB.getOpenPlayHostSessionRegistrationCount(session.id);
+    if (currentCount >= Number(session.maxPlayers || 0)) {
+      toast('This host session is already full.', 'err');
+      return;
+    }
+    const joinRef = 'HS-' + Date.now().toString(36).toUpperCase();
+    let receiptResult = null;
+    let paymentStatus = amount > 0 ? 'pending' : 'paid';
+    if (amount > 0) {
+      receiptResult = await verifyHostSessionReceipt(joinRef, _hostSessionPayMethod, {
+        ref: joinRef,
+        host_session_id: session.id,
+        total: amount,
+        downpayment: amount,
+        gcash_ref: paymentRef,
+        date: session.date,
+        full_name: name,
+        created_at: _hostSessionStartedAt || new Date().toISOString(),
+      });
+      if (receiptResult.status === 'rejected') paymentStatus = 'rejected';
+      else paymentStatus = receiptResult.status === 'auto_approved' ? 'paid' : 'pending';
+    }
+    await DB.addOpenPlayHostSessionRegistration({
+      sessionId: session.id,
+      fullName: name,
+      contactNumber: phone,
+      paymentMethod: amount > 0 ? _hostSessionPayMethod : 'cash',
+      gcashRef: paymentRef || null,
+      paymentStatus,
+      amount,
+      receiptImageUrl: receiptResult?.receiptImageUrl || null,
+      receiptImageHash: receiptResult?.receiptImageHash || null,
+      receiptPhash: receiptResult?.receiptPhash || null,
+      receiptStatus: receiptResult?.status || 'none',
+      receiptFlags: receiptResult?.flags || [],
+      receiptExtracted: receiptResult?.extracted || null,
+      receiptConfidence: receiptResult?.confidence ?? null,
+      receiptVerifiedAt: receiptResult?.receiptVerifiedAt || null,
+    });
+    if (paymentStatus === 'rejected') {
+      toast('Receipt rejected. Please try again with a valid receipt.', 'err');
+      return;
+    }
+    $('hsJoinBox').innerHTML = `
+      <div style="text-align:center;padding:12px 4px">
+        <div style="font-size:2rem;margin-bottom:8px">🏓</div>
+        <div style="font-weight:900;color:var(--text);margin-bottom:5px">${paymentStatus === 'paid' ? 'You are confirmed!' : 'You are pending review.'}</div>
+        <div style="font-size:.82rem;color:var(--muted);line-height:1.55">${paymentStatus === 'paid' ? 'Your payment was auto-verified.' : 'Your receipt was received and needs owner review.'}</div>
+      </div>`;
+    if (btn) btn.style.display = 'none';
+  } catch (err) {
+    toast('Could not join host session: ' + extractErrMsg(err), 'err');
+  } finally {
+    if (btn && btn.style.display !== 'none') { btn.disabled = false; btn.textContent = 'Join Session'; }
+  }
+}
+
 function renderPublicHostSession(session) {
   const title = session.title || 'Open Play Session';
   const time = `${fmtT(session.startHour)} - ${fmtT(session.endHour)}`;
+  _hostSessionCurrent = session;
+  _hostSessionReceiptFile = null;
+  _hostSessionStartedAt = new Date().toISOString();
+  _hostSessionPayMethod = hostSessionDigitalMethods()[0] || 'gcash';
   $('hostSessionModal').dataset.sessionId = session.id;
   $('hsTitle').textContent = title;
   $('hsMeta').textContent = `${fmtDc(session.date)} · ${time}`;
@@ -3092,6 +3338,10 @@ function renderPublicHostSession(session) {
     <div><strong>Fee per player:</strong> ${fmt(Number(session.feePerPlayer || 0))}</div>
   `;
   $('hsNotes').innerHTML = [session.paymentInstructions, session.notes].filter(Boolean).map(esc).join('<br><br>');
+  if ($('hsJoinName')) $('hsJoinName').value = '';
+  if ($('hsJoinPhone')) $('hsJoinPhone').value = '';
+  if ($('hsJoinBtn')) { $('hsJoinBtn').style.display = ''; $('hsJoinBtn').disabled = false; $('hsJoinBtn').textContent = 'Join Session'; }
+  renderHostSessionPayment(session);
   $('hostSessionModal').classList.add('show');
 }
 

@@ -424,6 +424,29 @@ function hostSessionToRow(session) {
   };
 }
 
+function rowToOpenPlayHostSessionRegistration(r) {
+  return {
+    id: r.id,
+    sessionId: r.session_id,
+    fullName: r.full_name,
+    contactNumber: r.contact_number || '',
+    paymentMethod: r.payment_method || 'gcash',
+    gcashRef: r.gcash_ref || null,
+    paymentStatus: r.payment_status || 'pending',
+    amount: Number(r.amount || 0),
+    receiptImageUrl: r.receipt_image_url || null,
+    receiptImageHash: r.receipt_image_hash || null,
+    receiptPhash: r.receipt_phash || null,
+    receiptStatus: r.receipt_status || 'none',
+    receiptFlags: r.receipt_flags || [],
+    receiptExtracted: r.receipt_extracted || null,
+    receiptConfidence: r.receipt_confidence != null ? Number(r.receipt_confidence) : null,
+    receiptVerifiedAt: r.receipt_verified_at || null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
 // =============================================
 // DB — Async Data Layer (replaces localStorage)
 // =============================================
@@ -677,6 +700,42 @@ window.DB = {
     const { data, error } = await _sb.from('open_play_host_sessions').update(row).eq('id', id).select('*').single();
     if (error) { console.error('updateOpenPlayHostSession:', error); throw error; }
     return data ? rowToOpenPlayHostSession(data) : null;
+  },
+
+  async getOpenPlayHostSessionRegistrations(sessionId = null) {
+    let query = _sb.from('open_play_host_session_registrations').select('*').order('created_at', { ascending: false });
+    if (sessionId) query = query.eq('session_id', sessionId);
+    const { data, error } = await query;
+    if (error) { console.error('getOpenPlayHostSessionRegistrations:', error); return []; }
+    return (data || []).map(rowToOpenPlayHostSessionRegistration);
+  },
+
+  async getOpenPlayHostSessionRegistrationCount(sessionId) {
+    const { data, error } = await _sb.rpc('count_open_play_host_session_registrations', { p_session_id: sessionId });
+    if (error) { console.error('getOpenPlayHostSessionRegistrationCount:', error); return 0; }
+    return Number(data || 0);
+  },
+
+  async addOpenPlayHostSessionRegistration(reg) {
+    const { data, error } = await _sb.from('open_play_host_session_registrations').insert({
+      session_id: reg.sessionId,
+      full_name: reg.fullName,
+      contact_number: reg.contactNumber || null,
+      payment_method: reg.paymentMethod || 'gcash',
+      gcash_ref: reg.gcashRef || null,
+      payment_status: reg.paymentStatus || 'pending',
+      amount: reg.amount || 0,
+      receipt_image_url: reg.receiptImageUrl || null,
+      receipt_image_hash: reg.receiptImageHash || null,
+      receipt_phash: reg.receiptPhash || null,
+      receipt_status: reg.receiptStatus || 'none',
+      receipt_flags: reg.receiptFlags || [],
+      receipt_extracted: reg.receiptExtracted || null,
+      receipt_confidence: reg.receiptConfidence ?? null,
+      receipt_verified_at: reg.receiptVerifiedAt || null,
+    }).select('*').single();
+    if (error) { console.error('addOpenPlayHostSessionRegistration:', error); throw error; }
+    return rowToOpenPlayHostSessionRegistration(data);
   },
 
   // ---- OPEN PLAY GAME MANAGER ----
@@ -942,6 +1001,15 @@ window.DB = {
     return data.url;
   },
 
+  async getHostSessionReceiptSignedUrl(registrationId) {
+    const { data, error } = await _sb.functions.invoke('verify-gcash-receipt', {
+      body: { action: 'sign', hostSessionRegistrationId: registrationId },
+    });
+    if (error) throw new Error(_extractFnError(error, 'Could not load receipt'));
+    if (!data?.url) throw new Error(data?.error || 'No receipt available');
+    return data.url;
+  },
+
   // ---- SEED DEFAULT DATA (runs once on first load) ----
   async seedDefaultData() {
     const courts = await this.getCourts();
@@ -1176,6 +1244,7 @@ window.DB = {
       openPlayRegistrations: [],
       openPlayHostApplications: [],
       openPlayHostSessions: [],
+      openPlayHostSessionRegistrations: [],
       openPlayGameSessions: [],
       openPlayGamePlayers: [],
       openPlayGameRounds: [],
@@ -1203,6 +1272,7 @@ window.DB = {
       openPlayRegistrations: Array.isArray(parsed.openPlayRegistrations) ? parsed.openPlayRegistrations : [],
       openPlayHostApplications: Array.isArray(parsed.openPlayHostApplications) ? parsed.openPlayHostApplications : [],
       openPlayHostSessions: Array.isArray(parsed.openPlayHostSessions) ? parsed.openPlayHostSessions : [],
+      openPlayHostSessionRegistrations: Array.isArray(parsed.openPlayHostSessionRegistrations) ? parsed.openPlayHostSessionRegistrations : [],
       openPlayGameSessions: Array.isArray(parsed.openPlayGameSessions) ? parsed.openPlayGameSessions : [],
       openPlayGamePlayers: Array.isArray(parsed.openPlayGamePlayers) ? parsed.openPlayGamePlayers : [],
       openPlayGameRounds: Array.isArray(parsed.openPlayGameRounds) ? parsed.openPlayGameRounds : [],
@@ -1414,6 +1484,44 @@ window.DB = {
       });
       writeDb(db);
       return saved;
+    },
+
+    async getOpenPlayHostSessionRegistrations(sessionId = null) {
+      return (readDb().openPlayHostSessionRegistrations || [])
+        .filter(r => !sessionId || String(r.sessionId || r.session_id) === String(sessionId))
+        .sort((a, b) => String(b.createdAt || b.created_at || '').localeCompare(String(a.createdAt || a.created_at || '')));
+    },
+    async getOpenPlayHostSessionRegistrationCount(sessionId) {
+      return (readDb().openPlayHostSessionRegistrations || [])
+        .filter(r => String(r.sessionId || r.session_id) === String(sessionId) && r.paymentStatus !== 'rejected' && r.payment_status !== 'rejected')
+        .length;
+    },
+    async addOpenPlayHostSessionRegistration(reg) {
+      const db = readDb();
+      if (!Array.isArray(db.openPlayHostSessionRegistrations)) db.openPlayHostSessionRegistrations = [];
+      const row = {
+        id: localRef('hostreg'),
+        sessionId: reg.sessionId,
+        fullName: reg.fullName,
+        contactNumber: reg.contactNumber || '',
+        paymentMethod: reg.paymentMethod || 'gcash',
+        gcashRef: reg.gcashRef || null,
+        paymentStatus: reg.paymentStatus || 'pending',
+        amount: reg.amount || 0,
+        receiptImageUrl: reg.receiptImageUrl || null,
+        receiptImageHash: reg.receiptImageHash || null,
+        receiptPhash: reg.receiptPhash || null,
+        receiptStatus: reg.receiptStatus || 'none',
+        receiptFlags: reg.receiptFlags || [],
+        receiptExtracted: reg.receiptExtracted || null,
+        receiptConfidence: reg.receiptConfidence ?? null,
+        receiptVerifiedAt: reg.receiptVerifiedAt || null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      db.openPlayHostSessionRegistrations.unshift(row);
+      writeDb(db);
+      return row;
     },
 
     async getOpenPlayGameSessions() {
