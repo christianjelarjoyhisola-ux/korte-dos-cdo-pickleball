@@ -3,6 +3,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const LOGO_URL = "https://kortedoscdo.club/korte-dos-logo.png";
+
 type Payload = {
   bookingRef: string;
   email: string;
@@ -51,7 +53,7 @@ function buildHtml(p: Payload): string {
 
       <!-- Header -->
       <tr><td style="background:linear-gradient(135deg,#2d7a2d,#1a4a1a);padding:32px 36px;text-align:center;">
-        <div style="font-size:2rem;margin-bottom:6px;">🏓</div>
+        <img src="${LOGO_URL}" width="92" height="92" alt="Korte DOS logo" style="display:block;width:92px;height:92px;margin:0 auto 12px;border-radius:50%;background:#fff;padding:6px;border:3px solid rgba(255,255,255,.9);"/>
         <div style="font-family:'Bebas Neue',Georgia,serif;font-size:1.6rem;letter-spacing:3px;color:#fff;line-height:1.1;">KORTE DOS</div>
         <div style="font-size:.75rem;color:rgba(255,255,255,.7);letter-spacing:2px;text-transform:uppercase;margin-top:4px;">Bayabas, Cagayan de Oro City</div>
       </td></tr>
