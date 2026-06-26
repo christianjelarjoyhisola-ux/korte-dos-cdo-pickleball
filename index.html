@@ -2387,7 +2387,7 @@ body.light #splashScreen { background: var(--bg); }
 <div class="sec" id="courts" style="padding-top:24px">
   <div class="sec-hd">
     <h2>🏟️ SELECT A COURT</h2>
-    <p>Tap an Open Play session or choose consecutive court hours, then continue.</p>
+    <p>Tap an Open Play session or choose any available court hours, then continue.</p>
   </div>
   <div class="court-tabs-hint">👇 Tap a court to view available times 👇</div>
   <div id="courtTabs" class="court-tabs"></div>
@@ -2734,7 +2734,7 @@ body.light #splashScreen { background: var(--bg); }
   <div class="sec-hd"><h2>HOW IT WORKS</h2></div>
   <div class="how">
     <div class="hc"><div class="hc-ic">🏟️</div><div class="hc-tt">Pick a Court</div><div class="hc-ds">Browse courts and compare rates and features.</div></div>
-    <div class="hc"><div class="hc-ic">📅</div><div class="hc-tt">Choose Your Time</div><div class="hc-ds">Select date and consecutive time slots from 6 AM to 10 PM.</div></div>
+    <div class="hc"><div class="hc-ic">📅</div><div class="hc-tt">Choose Your Time</div><div class="hc-ds">Select a date and any available time slots from 6 AM to 10 PM.</div></div>
     <div class="hc"><div class="hc-ic">📝</div><div class="hc-tt">Fill in Details</div><div class="hc-ds">Enter your contact info and preferred payment method.</div></div>
     <div class="hc"><div class="hc-ic">✅</div><div class="hc-tt">Get Confirmed</div><div class="hc-ds">Receive your booking reference and invoice instantly.</div></div>
   </div>
@@ -3414,17 +3414,39 @@ function selectionTotal(sel) {
   return selectionCourtFee(sel) + selectionServiceFee(sel);
 }
 
+function normalizedSlots(slots) {
+  return [...(slots || [])].map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+}
+
+function slotGroups(slots) {
+  const sorted = normalizedSlots(slots);
+  const groups = [];
+  sorted.forEach(h => {
+    const last = groups[groups.length - 1];
+    if (last && h === last.end) last.end = h + 1;
+    else groups.push({ start: h, end: h + 1 });
+  });
+  return groups;
+}
+
+function slotsAreConsecutive(slots) {
+  return slotGroups(slots).length <= 1;
+}
+
+function slotsTimeLabel(slots) {
+  return slotGroups(slots).map(g => `${fmtT(g.start)} - ${fmtT(g.end)}`).join(', ');
+}
+
 function itemTimeLabel(item) {
-  const slots = item?.slots || [];
-  if (!slots.length) return '';
-  return `${fmtT(Math.min(...slots))} - ${fmtT(Math.max(...slots) + 1)}`;
+  return slotsTimeLabel(item?.slots || []);
 }
 
 function selectionSummaryText(sel, includeFee = false) {
   if (!sel || !sel.slots?.length) return '';
   const hrs = sel.slots.length;
   const amount = includeFee ? selectionTotal(sel) : selectionCourtFee(sel);
-  return `${itemTimeLabel(sel)} | ${hrs} hr${hrs > 1 ? 's' : ''} | ${fmt(amount)}`;
+  const splitNote = slotsAreConsecutive(sel.slots) ? '' : ' separate';
+  return `${itemTimeLabel(sel)} | ${hrs}${splitNote} hr${hrs > 1 ? 's' : ''} | ${fmt(amount)}`;
 }
 
 function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
@@ -3440,6 +3462,7 @@ function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
     slots,
     startTime: fmtT(Math.min(...slots)),
     endTime: fmtT(Math.max(...slots) + 1),
+    timeLabel: slotsTimeLabel(slots),
     duration: slots.length,
     rate: Number(sel.rate || 0),
     courtFee,
@@ -3491,8 +3514,8 @@ function bookingItemsCourtLabel(items = activeBookingItems()) {
 
 function bookingItemsTimeLabel(items = activeBookingItems()) {
   if (items.length === 0) return '-';
-  if (items.length === 1) return `${items[0].startTime} - ${items[0].endTime}`;
-  return items.map(item => `${item.courtName}: ${item.startTime} - ${item.endTime}`).join('; ');
+  if (items.length === 1) return items[0].timeLabel || itemTimeLabel(items[0]);
+  return items.map(item => `${item.courtName}: ${item.timeLabel || itemTimeLabel(item)}`).join('; ');
 }
 
 function bookingItemsDate(items = activeBookingItems()) {
@@ -3520,7 +3543,8 @@ function bookingItemsSummaryHtml(items = activeBookingItems()) {
     `Date: ${dateStr}`,
   ];
   items.forEach(item => {
-    rows.push(`Time: ${item.courtName}: ${item.startTime} - ${item.endTime} &nbsp;(${item.duration} hr${item.duration !== 1 ? 's' : ''})`);
+    const separateNote = slotsAreConsecutive(item.slots) ? '' : ` <span style="color:var(--warn);font-weight:700">(separate hours)</span>`;
+    rows.push(`Time: ${item.courtName}: ${item.timeLabel || itemTimeLabel(item)} &nbsp;(${item.duration} hr${item.duration !== 1 ? 's' : ''})${separateNote}`);
   });
   rows.push(`Court Fee: <strong style="color:var(--muted)">${fmt(bookingItemsCourtFee(items))}</strong>`);
   if (svcFee > 0) rows.push(`Booking Fee: <strong style="color:var(--muted)">${bookingFeeDisplay(svcFee, hrs)}</strong>`);
@@ -3833,7 +3857,7 @@ async function loadOperatingHours() {
   _serviceFeeType  = normalizePlatformFeeType(settings.fee_type);
   applyPaymentSettings(settings);
   const note = $('slotHoursNote');
-  if (note) note.textContent = `(${fmtT(openHour)} – ${fmtT(closeHour)} · select consecutive hours)`;
+  if (note) note.textContent = `(${fmtT(openHour)} – ${fmtT(closeHour)} · select any available hours)`;
 }
 
 function applyPaymentSettings(settings) {
@@ -4129,17 +4153,10 @@ async function toggleCardSlot(courtId, date, h) {
   const s = sel.slots;
   const i = s.indexOf(h);
   if (i === -1) {
-    if (s.length === 0) {
-      s.push(h);
-    } else {
-      const mn = Math.min(...s), mx = Math.max(...s);
-      if (h === mn - 1 || h === mx + 1) { s.push(h); s.sort((a,b) => a-b); }
-      else { toast('Select consecutive hours only.', 'inf'); return; }
-    }
+    s.push(h);
+    s.sort((a,b) => a-b);
   } else {
-    const mn = Math.min(...s), mx = Math.max(...s);
-    if (h === mn || h === mx) s.splice(i, 1);
-    else { toast('Deselect from start or end only.', 'inf'); return; }
+    s.splice(i, 1);
   }
 
   if (sel.slots.length === 0) delete cardSelections[key];
@@ -4268,6 +4285,7 @@ async function proceedToBookLegacy(courtId) {
     slots:         [...cardSel.slots],
     startTime:     fmtT(Math.min(...cardSel.slots)),
     endTime:       fmtT(Math.max(...cardSel.slots) + 1),
+    timeLabel:     slotsTimeLabel(cardSel.slots),
     duration:      cardSel.slots.length,
     rate:          court.rate,
     total:         cardSel.slots.reduce((s, h) => s + getRateForHour(h), 0) + calcSvcFee(cardSel.slots.length),
@@ -4367,6 +4385,7 @@ async function proceedToBook(courtId = null) {
         slots:         [...item.slots],
         startTime:     item.startTime,
         endTime:       item.endTime,
+        timeLabel:     item.timeLabel || itemTimeLabel(item),
         duration:      item.duration,
         rate:          item.rate,
         total:         item.total,
@@ -4563,8 +4582,9 @@ function wizBack() {
 
 function updateWiz3SummaryLegacy() {
   const mn  = selSlots.length ? Math.min(...selSlots) : null;
-  const mx  = selSlots.length ? Math.max(...selSlots) : null;
   const hrs = selSlots.length;
+  const timeLabel = selSlots.length ? slotsTimeLabel(selSlots) : '';
+  const separateNote = slotsAreConsecutive(selSlots) ? '' : ` <span style="color:var(--warn);font-weight:700">(separate hours)</span>`;
   const courtTotal = selSlots.reduce((s, h) => s + getRateForHour(h), 0);
   const svcFee = calcSvcFee(hrs);
   const total = courtTotal + svcFee;
@@ -4572,7 +4592,7 @@ function updateWiz3SummaryLegacy() {
   $('wiz3Summary').innerHTML = [
     `🏟️ ${court ? court.name : '—'}`,
     `📅 ${dateStr}`,
-    mn !== null ? `⏰ ${fmtT(mn)} – ${fmtT(mx + 1)} &nbsp;(${hrs} hr${hrs !== 1 ? 's' : ''})` : '',
+    mn !== null ? `⏰ ${timeLabel} &nbsp;(${hrs} hr${hrs !== 1 ? 's' : ''})${separateNote}` : '',
     `🎾 Court Fee: <strong style="color:var(--muted)">${fmt(courtTotal)}</strong>`,
     svcFee > 0 ? `🏷️ Booking Fee: <strong style="color:var(--muted)">${bookingFeeDisplay(svcFee, hrs)}</strong>` : ``,
     `💰 Total: <strong style="color:var(--accent)">${fmt(total)}</strong>`,
@@ -4814,7 +4834,7 @@ async function renderCourts() {
         <div class="cc-times-head">
           <div>
             <div class="cc-times-title">🕐 Available times</div>
-            <div class="cc-times-sub">Join Open Play or select consecutive court slots</div>
+            <div class="cc-times-sub">Join Open Play or select any available court slots</div>
           </div>
           <div class="cc-date-wrap">
             <span class="cc-date-lbl">Select Date</span>
@@ -5088,20 +5108,10 @@ function toggleSlot(h) {
 
   const i = selSlots.indexOf(h);
   if (i === -1) {
-    if (selSlots.length === 0) {
-      selSlots.push(h);
-    } else {
-      const mn = Math.min(...selSlots), mx = Math.max(...selSlots);
-      if (h === mn - 1 || h === mx + 1) {
-        selSlots.push(h); selSlots.sort((a,b) => a - b);
-      } else {
-        toast('Please select consecutive time slots.', 'inf'); return;
-      }
-    }
+    selSlots.push(h);
+    selSlots.sort((a,b) => a - b);
   } else {
-    const mn = Math.min(...selSlots), mx = Math.max(...selSlots);
-    if (h === mn || h === mx) selSlots.splice(i, 1);
-    else { toast('Deselect from start or end only.', 'inf'); return; }
+    selSlots.splice(i, 1);
   }
 
   // Update DOM instantly — no re-render, no DB call
@@ -5449,6 +5459,7 @@ async function submitBookingLegacy(e) {
     slots: [...selSlots],
     startTime: fmtT(startH),
     endTime: fmtT(endH),
+    timeLabel: slotsTimeLabel(selSlots),
     duration: hrs,
     rate: court.rate,
     total,
@@ -5657,6 +5668,7 @@ async function submitBooking(e) {
     slots: [...item.slots],
     startTime: item.startTime,
     endTime: item.endTime,
+    timeLabel: item.timeLabel || itemTimeLabel(item),
     duration: item.duration,
     rate: item.rate,
     total: item.total,

@@ -213,7 +213,29 @@ function _telegramBookingPayload(b, extras = {}) {
 // ROW ↔ JS OBJECT MAPPING
 // SQL uses snake_case; JS objects use camelCase
 // =============================================
+function _fmtBookingHour(h) {
+  const hour = Number(h);
+  if (!Number.isFinite(hour)) return '';
+  const normalized = ((hour % 24) + 24) % 24;
+  const labelHour = normalized % 12 || 12;
+  const suffix = normalized < 12 ? 'AM' : 'PM';
+  return `${labelHour}:00 ${suffix}`;
+}
+
+function _bookingSlotsTimeLabel(slots, fallbackStart = '', fallbackEnd = '') {
+  const sorted = [...(slots || [])].map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return fallbackStart && fallbackEnd ? `${fallbackStart} - ${fallbackEnd}` : '';
+  const groups = [];
+  sorted.forEach(h => {
+    const last = groups[groups.length - 1];
+    if (last && h === last.end) last.end = h + 1;
+    else groups.push({ start: h, end: h + 1 });
+  });
+  return groups.map(g => `${_fmtBookingHour(g.start)} - ${_fmtBookingHour(g.end)}`).join(', ');
+}
+
 function rowToBooking(r) {
+  const slots = r.slots || [];
   return {
     ref:           r.ref,
     groupRef:      r.booking_group_ref || null,
@@ -223,9 +245,10 @@ function rowToBooking(r) {
     courtId:       r.court_id,
     courtName:     r.court_name,
     date:          r.date,
-    slots:         r.slots || [],
+    slots,
     startTime:     r.start_time,
     endTime:       r.end_time,
+    timeLabel:     _bookingSlotsTimeLabel(slots, r.start_time, r.end_time),
     duration:      r.duration,
     rate:          r.rate,
     total:         r.total,
