@@ -218,8 +218,6 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 }
 .cc-photo-name { font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:1.5px; color:#fff; display:block; }
 .cc-photo-rate { font-size:.75rem; color:rgba(255,255,255,.7); margin-top:1px; }
-.cc-photo-feats { display:flex; flex-wrap:wrap; gap:3px; margin-top:5px; }
-.cc-photo-feat { font-size:.56rem; padding:2px 5px; background:rgba(255,255,255,.12); border-radius:3px; color:rgba(255,255,255,.75); }
 
 /* RIGHT: Times panel */
 .cc-times {
@@ -304,7 +302,6 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   .cc { flex-direction:column; display:none; }
   .cc.active-mobile { display:flex; }
   .cc-photo { width:100%; min-height:140px; max-height:140px; }
-  .cc-photo-feats { display:none; }
   .cc-times { padding:10px 12px 12px; }
   .cc-times-sub { display:none; }
   .cc-slots-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
@@ -5343,7 +5340,6 @@ async function renderCourts() {
         <div class="cc-photo-bar">
           <span class="cc-photo-name">${esc(c.name)}</span>
           <div class="cc-photo-rate">${esc(rateRange)} · ${esc(c.desc)}</div>
-          <div class="cc-photo-feats">${(c.feats || []).map(f=>`<span class="cc-photo-feat">${esc(f)}</span>`).join('')}</div>
         </div>
       </div>
 
