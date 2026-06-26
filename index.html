@@ -1952,8 +1952,8 @@ body.light #splashScreen { background: var(--bg); }
 .wiz-court-badge.mnt { background:rgba(140,140,140,.6); color:#fff; }
 .host-invite-pop {
   position:fixed;
-  right:22px;
-  bottom:22px;
+  left:50%;
+  top:50%;
   z-index:260;
   width:min(380px,calc(100vw - 32px));
   border:1px solid rgba(var(--ac),.28);
@@ -1963,10 +1963,10 @@ body.light #splashScreen { background: var(--bg); }
   padding:16px;
   opacity:0;
   pointer-events:none;
-  transform:translateY(12px) scale(.98);
+  transform:translate(-50%,-46%) scale(.98);
   transition:opacity .22s ease, transform .22s ease;
 }
-.host-invite-pop.show { opacity:1; pointer-events:auto; transform:translateY(0) scale(1); }
+.host-invite-pop.show { opacity:1; pointer-events:auto; transform:translate(-50%,-50%) scale(1); }
 .host-invite-pop::before {
   content:'';
   position:absolute;
@@ -1986,7 +1986,7 @@ body.light #splashScreen { background: var(--bg); }
 .host-invite-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .host-apply-modal { max-width:560px; }
 .host-apply-note { background:var(--input); border:1px solid var(--border); border-radius:var(--r-sm); padding:10px 12px; color:var(--muted); font-size:.78rem; line-height:1.5; margin-bottom:14px; }
-@media(max-width:700px) { .host-invite-pop { left:12px; right:12px; bottom:82px; width:auto; padding:14px; } }
+@media(max-width:700px) { .host-invite-pop { width:calc(100vw - 24px); padding:14px; } }
 @media(max-width:560px) { .host-invite-features { grid-template-columns:1fr; } .host-invite-actions .btn { flex:1; justify-content:center; } }
 .wiz-date-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
 .wiz-date-row label { font-size:.77rem; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); white-space:nowrap; }
@@ -2913,8 +2913,8 @@ let openPlayMaxPlayers = 40; // default 40, overridden by settings
 let paymentAcceptanceMode = 'both'; // 'both', 'downpayment_only', 'full_payment_only'
 let _serviceFeeRate = 0; // booking fee amount, loaded from settings
 let _serviceFeeType = 'per_hour'; // 'per_hour' or 'flat'
-const HOST_INVITE_DISMISS_KEY = 'korte_host_invite_popup_dismissed';
 let hostInviteTimer = null;
+let hostInviteDismissedThisView = false;
 function normalizePlatformFeeType(type) {
   return ['flat', 'booking', 'per_booking', 'per_transaction'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
 }
@@ -2932,25 +2932,24 @@ function bookingFeeDisplay(totalFee, hrs) {
 function maybeShowHostInvite() {
   const popup = $('hostInvitePopup');
   if (!popup) return;
-  const isDismissed = localStorage.getItem(HOST_INVITE_DISMISS_KEY) === '1';
   const blockingModalOpen =
     $('bookModal')?.classList.contains('active') ||
     $('opModal')?.classList.contains('active') ||
     $('hostApplyModal')?.classList.contains('show') ||
     $('hostSessionModal')?.classList.contains('show') ||
     $('invModal')?.classList.contains('show');
-  popup.classList.toggle('show', !isDismissed && !blockingModalOpen);
+  popup.classList.toggle('show', !hostInviteDismissedThisView && !blockingModalOpen);
 }
 
 function initHostInvitePopup() {
-  if (localStorage.getItem(HOST_INVITE_DISMISS_KEY) === '1') return;
+  hostInviteDismissedThisView = false;
   clearTimeout(hostInviteTimer);
   hostInviteTimer = setTimeout(maybeShowHostInvite, 1400);
 }
 
 function dismissHostInvite(e) {
   if (e) e.stopPropagation();
-  localStorage.setItem(HOST_INVITE_DISMISS_KEY, '1');
+  hostInviteDismissedThisView = true;
   $('hostInvitePopup')?.classList.remove('show');
 }
 
@@ -2985,7 +2984,7 @@ async function submitHostApplication() {
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
   try {
     await DB.addOpenPlayHostApplication({ fullName, contactNumber, email, preferredSchedule, notes });
-    localStorage.setItem(HOST_INVITE_DISMISS_KEY, '1');
+    hostInviteDismissedThisView = true;
     closeHostApplyModal();
     maybeShowHostInvite();
     toast('Host application submitted. The court owner will review it.');
