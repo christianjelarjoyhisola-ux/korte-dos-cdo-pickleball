@@ -3612,7 +3612,7 @@ async function refreshBookingItemViews(items = activeBookingItems()) {
     const key = `${item.courtId}|${item.date}`;
     if (seen.has(key)) return;
     seen.add(key);
-    refreshes.push(onCardDate(item.courtId, item.date).catch(() => {}));
+    refreshes.push(onCardDate(item.courtId, item.date, { preserveBookingItems: true }).catch(() => {}));
   });
   await Promise.allSettled(refreshes);
 }
@@ -3627,9 +3627,10 @@ function syncCourtCardSelection() {
   if (mobileBar) mobileBar.classList.toggle('sel', selectedIds.size > 0);
 }
 
-function clearCardSelection() {
+function clearCardSelection(options = {}) {
+  const { preserveBookingItems = false } = options;
   cardSelections = {};
-  bookingItems = [];
+  if (!preserveBookingItems) bookingItems = [];
   cardSel = emptyCardSelection();
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
   document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
@@ -4775,10 +4776,10 @@ function updateWiz3Summary() {
 /* =============================================
    CARD DATE PICKER — refresh slots per court
    ============================================= */
-async function onCardDate(courtId, date) {
+async function onCardDate(courtId, date, options = {}) {
   const grid = $('cSlots_' + courtId);
   if (!grid) return;
-  clearCardSelection();
+  clearCardSelection({ preserveBookingItems: !!options.preserveBookingItems });
 
   // Update date banner display
   const dateValEl = $('cDateVal_' + courtId);
