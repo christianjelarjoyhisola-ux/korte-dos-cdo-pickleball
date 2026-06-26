@@ -132,6 +132,54 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .sec-hd { margin-bottom:26px; }
 .sec-hd h2 { font-size:1.9rem; margin-bottom:4px; }
 .sec-hd p { color:var(--muted); font-size:.88rem; }
+.find-time-entry {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  margin:-10px 0 18px; padding:14px 16px;
+  background:linear-gradient(135deg,rgba(var(--ac),.12),rgba(var(--ac),.04));
+  border:1px solid rgba(var(--ac),.25); border-radius:var(--r);
+}
+.find-time-entry strong { display:block; font-size:.95rem; color:var(--text); }
+.find-time-entry span { display:block; font-size:.78rem; color:var(--muted); margin-top:2px; }
+.find-time-entry .btn { flex-shrink:0; }
+.ft-modal { max-width:560px; }
+.ft-form {
+  display:grid; grid-template-columns:1fr 1fr 110px; gap:10px;
+  align-items:end; margin-bottom:14px;
+}
+.ft-field { display:flex; flex-direction:column; gap:6px; }
+.ft-field label {
+  font-size:.68rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.7px; color:var(--muted);
+}
+.ft-field input, .ft-field select {
+  width:100%; background:var(--input); border:1px solid var(--border);
+  border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
+  font-size:.9rem; padding:10px 11px; min-height:42px;
+}
+.ft-field input:focus, .ft-field select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--ac),.13); }
+.ft-results { display:flex; flex-direction:column; gap:8px; min-height:72px; }
+.ft-note { color:var(--muted); font-size:.82rem; line-height:1.45; padding:10px 0; }
+.ft-section-title {
+  margin-top:6px; font-size:.7rem; font-weight:900; text-transform:uppercase;
+  letter-spacing:.8px; color:var(--accent);
+}
+.ft-result {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:11px 12px; border:1px solid var(--border); border-radius:var(--r-sm);
+  background:rgba(var(--ac),.05);
+}
+.ft-result-main { min-width:0; }
+.ft-result-court { font-weight:800; color:var(--text); }
+.ft-result-time { color:var(--muted); font-size:.82rem; margin-top:2px; }
+.ft-result-price { color:var(--accent); font-size:.8rem; font-weight:800; margin-top:3px; }
+.ft-result .btn { padding:8px 13px; }
+@media(max-width:700px) {
+  .find-time-entry { flex-direction:column; align-items:stretch; margin-top:-6px; }
+  .find-time-entry .btn { width:100%; justify-content:center; }
+  .ft-form { grid-template-columns:1fr; }
+  .ft-result { align-items:stretch; flex-direction:column; }
+  .ft-result .btn { width:100%; justify-content:center; }
+}
 
 /* COURTS — LANDSCAPE LAYOUT */
 .courts { display:flex; flex-direction:column; align-items:stretch; gap:18px; }
@@ -2457,12 +2505,57 @@ body.light #splashScreen { background: #071320; }
     <h2>🏟️ SELECT A COURT</h2>
     <p>Tap an Open Play session or choose any available court hours, then continue.</p>
   </div>
+  <div class="find-time-entry">
+    <div>
+      <strong>Find an available time</strong>
+      <span>Pick a date, time, and duration to quickly search all courts.</span>
+    </div>
+    <button class="btn btn-p" type="button" onclick="openFindTimeModal()">Find Available Time</button>
+  </div>
   <div class="court-tabs-hint">👇 Tap a court to view available times 👇</div>
   <div id="courtTabs" class="court-tabs"></div>
   <div class="courts" id="courtsGrid">
     <div class="pb-loader">
       <div class="pb-ball" aria-hidden="true"></div>
       <div class="pb-loader-txt">Loading courts</div>
+    </div>
+  </div>
+</div>
+
+<!-- FIND TIME MODAL -->
+<div class="bk-modal-overlay" id="findTimeModal" onclick="findTimeBackdrop(event)">
+  <div class="bk-modal ft-modal" role="dialog" aria-modal="true" aria-labelledby="findTimeTitle">
+    <div class="bk-modal-hd">
+      <div>
+        <div class="bk-modal-court" id="findTimeTitle">Find Available Time</div>
+        <div class="bk-modal-meta">Search all courts for a consecutive available slot.</div>
+      </div>
+      <button class="bk-modal-x" type="button" onclick="closeFindTimeModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="bk-modal-body">
+      <div class="ft-form">
+        <div class="ft-field">
+          <label for="ftDate">Date</label>
+          <input type="date" id="ftDate" onchange="populateFindTimeControls()" />
+        </div>
+        <div class="ft-field">
+          <label for="ftStart">Start time</label>
+          <select id="ftStart"></select>
+        </div>
+        <div class="ft-field">
+          <label for="ftDuration">Duration</label>
+          <select id="ftDuration">
+            <option value="1">1 hour</option>
+            <option value="2">2 hours</option>
+            <option value="3">3 hours</option>
+            <option value="4">4 hours</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-p btn-full" type="button" onclick="searchAvailableTime()">Search Available Time</button>
+      <div class="ft-results" id="ftResults">
+        <div class="ft-note">Choose a date and preferred start time, then search.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -3035,6 +3128,7 @@ function bookingFeeDisplay(totalFee, hrs) {
 function hostInviteHasBlockingModal() {
   return (
     $('bookModal')?.classList.contains('active') ||
+    $('findTimeModal')?.classList.contains('active') ||
     $('opModal')?.classList.contains('active') ||
     $('hostApplyModal')?.classList.contains('show') ||
     $('hostSessionModal')?.classList.contains('show') ||
@@ -4252,6 +4346,183 @@ const fmtTs = h => h === 24 ? '12A' : `${h % 12 || 12}${h < 12 ? 'A' : 'P'}`;
 /* compact range label for mobile, e.g. 6AM–7AM / 11AM–12PM */
 const fmtTc = h => h === 24 ? '12AM' : `${h % 12 || 12}${h < 12 ? 'AM' : 'PM'}`;
 const slotTimeLabel = h => `<span class="t-full">${fmtT(h)} – ${fmtT(h+1)}</span><span class="t-compact">${fmtTc(h)}–${fmtTc(h+1)}</span>`;
+
+/* =============================================
+   FIND AVAILABLE TIME
+   ============================================= */
+function populateFindTimeControls() {
+  const dateEl = $('ftDate');
+  const startEl = $('ftStart');
+  const durEl = $('ftDuration');
+  if (!dateEl || !startEl || !durEl) return;
+
+  const today = todayStr();
+  dateEl.min = today;
+  if (!dateEl.value || dateEl.value < today) dateEl.value = cardSelectionDate() || today;
+
+  const latestStart = Math.max(openHour, closeHour - 1);
+  const preferredStart = Math.min(latestStart, Math.max(openHour, isToday(dateEl.value) ? nowHour() + 1 : openHour));
+  startEl.innerHTML = Array.from({ length: Math.max(0, closeHour - openHour) }, (_, i) => {
+    const h = openHour + i;
+    return `<option value="${h}"${h === preferredStart ? ' selected' : ''}>${fmtT(h)}</option>`;
+  }).join('');
+
+  const maxDuration = Math.max(1, Math.min(4, closeHour - openHour));
+  durEl.innerHTML = Array.from({ length: maxDuration }, (_, i) => {
+    const hrs = i + 1;
+    return `<option value="${hrs}">${hrs} hour${hrs !== 1 ? 's' : ''}</option>`;
+  }).join('');
+}
+
+async function openFindTimeModal() {
+  await loadOperatingHours();
+  populateFindTimeControls();
+  const results = $('ftResults');
+  if (results) results.innerHTML = '<div class="ft-note">Choose a date and preferred start time, then search.</div>';
+  $('findTimeModal')?.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeFindTimeModal() {
+  $('findTimeModal')?.classList.remove('active');
+  if (!$('bookModal')?.classList.contains('active') && !$('opModal')?.classList.contains('active') && !$('findTimeModal')?.classList.contains('active')) {
+    document.body.style.overflow = '';
+  }
+}
+
+function findTimeBackdrop(event) {
+  if (event.target === $('findTimeModal')) closeFindTimeModal();
+}
+
+function findTimeBookedMap(bookings = []) {
+  const map = new Map();
+  bookings.forEach(b => {
+    if (!bookingHoldsSlot(b)) return;
+    const key = String(b.courtId);
+    if (!map.has(key)) map.set(key, new Set());
+    (b.slots || []).forEach(h => map.get(key).add(Number(h)));
+  });
+  return map;
+}
+
+function findTimeSlotsAvailable({ court, date, slots, bookedSet, blockedDates }) {
+  if (!court || court.blocked || blockedDates.includes(date)) return false;
+  if (getCourtRepair(court.name, date)) return false;
+  const isPastDate = date < todayStr();
+  const curHour = isToday(date) ? nowHour() : -1;
+  return slots.every(h =>
+    h >= openHour &&
+    h < closeHour &&
+    !isPastDate &&
+    !(isToday(date) && h <= curHour) &&
+    !bookedSet.has(Number(h)) &&
+    !isOpenPlayHour(date, h, court.id) &&
+    !isMaintenanceHour(date, h, court.id)
+  );
+}
+
+async function findAvailableTimeMatches(date, preferredStart, duration) {
+  await loadOperatingHours();
+  const [courts, bookings, blockedDates] = await Promise.all([
+    DB.getCourts(),
+    DB.getBookings({ date, activeOnly: true }),
+    DB.getBlockedDates(),
+  ]);
+  const bookedByCourt = findTimeBookedMap(bookings || []);
+  const matches = [];
+  (courts || []).forEach(c => {
+    const bookedSet = bookedByCourt.get(String(c.id)) || new Set();
+    for (let start = openHour; start + duration <= closeHour; start++) {
+      const slots = Array.from({ length: duration }, (_, i) => start + i);
+      if (!findTimeSlotsAvailable({ court: c, date, slots, bookedSet, blockedDates })) continue;
+      const tiers = getPricingTiersForCourt(c);
+      const courtFee = slots.reduce((sum, h) => sum + getRateForHourFromTiers(h, tiers, c.rate), 0);
+      matches.push({
+        courtId: String(c.id),
+        courtName: c.name,
+        date,
+        start,
+        duration,
+        slots,
+        courtFee,
+        total: courtFee + calcSvcFee(duration),
+        exact: start === preferredStart,
+      });
+    }
+  });
+  return matches.sort((a, b) =>
+    Number(b.exact) - Number(a.exact) ||
+    Math.abs(a.start - preferredStart) - Math.abs(b.start - preferredStart) ||
+    a.start - b.start ||
+    String(a.courtName).localeCompare(String(b.courtName))
+  );
+}
+
+function findTimeResultHtml(item) {
+  const time = `${fmtT(item.start)} - ${fmtT(item.start + item.duration)}`;
+  return `<div class="ft-result">
+    <div class="ft-result-main">
+      <div class="ft-result-court">${esc(item.courtName)}</div>
+      <div class="ft-result-time">${esc(time)} (${item.duration} hr${item.duration !== 1 ? 's' : ''})</div>
+      <div class="ft-result-price">Estimated total ${fmt(item.total)}</div>
+    </div>
+    <button class="btn btn-p btn-sm" type="button" onclick="selectFindTimeResult('${jsArg(item.courtId)}','${jsArg(item.date)}',${item.start},${item.duration})">Select</button>
+  </div>`;
+}
+
+async function searchAvailableTime() {
+  const date = $('ftDate')?.value || todayStr();
+  const preferredStart = parseInt($('ftStart')?.value || String(openHour), 10);
+  const duration = parseInt($('ftDuration')?.value || '1', 10);
+  const resultsEl = $('ftResults');
+  if (!resultsEl) return;
+  if (!date || date < todayStr()) {
+    resultsEl.innerHTML = '<div class="ft-note">Please choose today or a future date.</div>';
+    return;
+  }
+  resultsEl.innerHTML = '<div class="ft-note">Searching all courts...</div>';
+  try {
+    const matches = await findAvailableTimeMatches(date, preferredStart, duration);
+    const exact = matches.filter(m => m.exact);
+    const nearby = matches.filter(m => !m.exact).slice(0, 8);
+    if (!exact.length && !nearby.length) {
+      resultsEl.innerHTML = `<div class="ft-note">No consecutive ${duration} hour slot is available on ${fmtD(date)}. Try another date or shorter duration.</div>`;
+      return;
+    }
+    resultsEl.innerHTML = [
+      exact.length ? '<div class="ft-section-title">Available at your selected time</div>' + exact.map(findTimeResultHtml).join('') : '',
+      nearby.length ? '<div class="ft-section-title">Nearest available times</div>' + nearby.map(findTimeResultHtml).join('') : '',
+    ].filter(Boolean).join('');
+  } catch (err) {
+    console.error('find time search failed', err);
+    resultsEl.innerHTML = '<div class="ft-note">Could not search right now. Please try again.</div>';
+  }
+}
+
+async function selectFindTimeResult(courtId, date, start, duration) {
+  const slots = Array.from({ length: duration }, (_, i) => start + i);
+  closeFindTimeModal();
+  clearCardSelection();
+  const dateInput = $('cDate_' + courtId);
+  if (dateInput) dateInput.value = date;
+  await onCardDate(courtId, date);
+  await ensureCourt(courtId);
+  cardSelections[String(courtId)] = {
+    courtId: String(courtId),
+    courtName: court?.name || `Court ${courtId}`,
+    date,
+    slots,
+    rate: Number(court?.rate || 0),
+    tiers: getPricingTiersForCourt(court),
+  };
+  refreshCardSelAlias();
+  updateCardUI(courtId);
+  switchCourtTab(String(courtId));
+  const selectedCard = [...document.querySelectorAll('#courtsGrid .cc')]
+    .find(el => String(el.dataset.id) === String(courtId));
+  selectedCard?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  toast('Time selected. Tap Book Now to continue.', 'ok');
+}
 
 /* =============================================
    CARD SLOT MULTI-SELECT
@@ -6445,7 +6716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initOpAnnounceSplash();
   initEasterSplash();
   initGrandSplash();
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeQrZoom(); closeBookModal(); closeOpModal(); closeHostApplyModal(); closeHostSessionModal(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeQrZoom(); closeFindTimeModal(); closeBookModal(); closeOpModal(); closeHostApplyModal(); closeHostSessionModal(); } });
   initScrollReveal();
 });
 
