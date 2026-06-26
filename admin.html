@@ -2278,6 +2278,9 @@ function isManualImportBooking(b) {
 function isPlatformBillableBooking(b) {
   return (b?.status === 'confirmed' || b?.status === 'completed') && !isManualImportBooking(b);
 }
+function isDashboardReportBooking(b) {
+  return b?.email !== 'reserve@hold.internal' && !isManualImportBooking(b);
+}
 function calcPlatformFeeForBooking(b, cfg) {
   return cfg.type === 'flat' ? cfg.amount : cfg.amount * bookingBillableHours(b);
 }
@@ -2510,7 +2513,7 @@ async function renderDash(){
   const bks=await DB.getBookings();
   const today=new Date().toISOString().split('T')[0];
   // Exclude placeholder slot-holds ("Reserving…") — they are temporary locks, not real bookings.
-  const realBks=bks.filter(b=>b.email!=='reserve@hold.internal');
+  const realBks=bks.filter(isDashboardReportBooking);
   const active=realBks.filter(b=>b.status!=='cancelled');
   const rev=active.reduce((s,b)=>s+b.total,0);
   const todayBks=realBks.filter(b=>b.date===today);
@@ -3775,13 +3778,14 @@ function _rpDateRange(){
 async function renderReport(){
   const allBks=await DB.getBookings();
   const{from,to}=_rpDateRange();
-  // Active bookings = confirmed + completed only (exclude pending, verifying, & cancelled)
-  let bks=allBks.filter(b=>['confirmed','completed'].includes(b.status));
+  // Reports start from online system usage only. Manual spreadsheet imports
+  // remain schedule/history records but do not appear in analytics.
+  let bks=allBks.filter(isPlatformBillableBooking);
   if(from) bks=bks.filter(b=>b.date>=from);
   if(to)   bks=bks.filter(b=>b.date<=to);
   _rpBks=bks;
 
-  // Gross revenue = only from confirmed/completed bookings
+  // Gross revenue = only from confirmed/completed online bookings
   const gross=bks.reduce((s,b)=>s+(b.total||0),0);
   const collected=bks.filter(b=>b.paymentStatus==='paid').reduce((s,b)=>s+(b.total||0),0);
   const pending=bks.filter(b=>!b.paymentStatus||b.paymentStatus==='unpaid'||b.paymentStatus==='downpayment_paid').reduce((s,b)=>s+(b.total||0),0);
@@ -3822,7 +3826,7 @@ async function renderReport(){
     months.push({label:d.toLocaleDateString('en-PH',{month:'short',year:'2-digit'}),key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`});
   }
   const monthMap={};
-  allBks.filter(b=>['confirmed','completed'].includes(b.status)).forEach(b=>{
+  allBks.filter(isPlatformBillableBooking).forEach(b=>{
     const mk=(b.date||'').substring(0,7);
     if(months.find(m=>m.key===mk)) monthMap[mk]=(monthMap[mk]||0)+(b.total||0);
   });
@@ -3839,7 +3843,7 @@ async function renderReport(){
 }
 
 async function exportReportCSV(){
-  const bks=_rpBks.length?_rpBks:(await DB.getBookings()).filter(b=>b.status!=='cancelled');
+  const bks=_rpBks.length?_rpBks:(await DB.getBookings()).filter(b=>isDashboardReportBooking(b) && b.status!=='cancelled');
   const h=['Ref','Name','Email','Contact','Court','Date','Start','End','Hrs','Total','Downpayment','Payment Method','Payment Status','Booking Status','Created'];
   const rows=bks.map(b=>[b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.date,b.startTime,b.endTime,b.duration,b.total,b.downpayment??'',b.paymentMethod,b.paymentStatus||'unpaid',b.status,b.createdAt]);
   const csv=[h,...rows].map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
