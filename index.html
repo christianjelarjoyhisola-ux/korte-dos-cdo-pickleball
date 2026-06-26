@@ -1812,17 +1812,17 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   content: '';
   position: absolute; inset: -16px;
   background: url('court-splash.jpg') center 45% / cover no-repeat;
-  filter: blur(3px) saturate(.96) contrast(1.05);
-  transform: scale(1.035);
+  filter: blur(1.4px) saturate(1.02) contrast(1.04);
+  transform: scale(1.02);
   z-index: 0;
 }
 #splashScreen::after {
   content: '';
   position: absolute; inset: 0;
   background:
-    radial-gradient(circle at 78% 14%, rgba(217,81,43,.34), transparent 34%),
-    radial-gradient(circle at 24% 76%, rgba(215,229,75,.16), transparent 32%),
-    linear-gradient(180deg, rgba(5,15,28,.64), rgba(6,18,31,.77) 48%, rgba(5,14,24,.88));
+    radial-gradient(circle at 78% 14%, rgba(217,81,43,.24), transparent 34%),
+    radial-gradient(circle at 24% 76%, rgba(215,229,75,.10), transparent 32%),
+    linear-gradient(180deg, rgba(5,15,28,.52), rgba(6,18,31,.66) 48%, rgba(5,14,24,.80));
   z-index: 1;
 }
 
@@ -1830,7 +1830,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .sp-glow {
   position: absolute; top: -80px; left: 50%; transform: translateX(-50%);
   width: 750px; height: 650px; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(ellipse, rgba(217,81,43,.24) 0%, transparent 65%);
+  background: radial-gradient(ellipse, rgba(217,81,43,.16) 0%, transparent 65%);
   animation: spGlowPulse 3.5s ease-in-out infinite;
   z-index: 2;
 }
@@ -1840,7 +1840,8 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 }
 /* Grid */
 .sp-grid {
-  position: absolute; inset: 0; pointer-events: none; opacity: .045;
+  display: none;
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background-image:
     repeating-linear-gradient(0deg,  rgba(255,255,255,.75) 0, rgba(255,255,255,.75) 1px, transparent 1px, transparent 72px),
     repeating-linear-gradient(90deg, rgba(255,255,255,.75) 0, rgba(255,255,255,.75) 1px, transparent 1px, transparent 72px);
@@ -1848,6 +1849,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 }
 /* Expanding rings */
 .sp-ring {
+  display: none;
   position: absolute; border-radius: 50%;
   border: 1px solid rgba(255,255,255,.18);
   top: 50%; left: 50%; transform: translate(-50%,-50%);
