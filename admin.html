@@ -150,6 +150,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .r-owner { background: var(--green-bg); color: var(--green); }
 .r-court-owner { background: var(--yellow-bg); color: var(--yellow); }
 .r-staff { background: rgba(128,128,160,.16); color: #8b8ba6; }
+.r-host { background: rgba(100,180,255,.15); color: #4a9ad4; }
 .btn-icon {
   width: 36px; height: 36px;
   border: 1px solid var(--border); background: var(--surface);
@@ -712,6 +713,28 @@ tr:hover td { background: var(--bg2); }
 .gm-warn { border: 1px solid rgba(229,57,53,.35); background: rgba(229,57,53,.08); color: var(--red); border-radius: 10px; padding: 10px 12px; font-size: .8rem; font-weight: 700; }
 .gm-ready { border: 1px solid rgba(var(--green-rgb),.35); background: rgba(var(--green-rgb),.1); color: var(--green); border-radius: 10px; padding: 10px 12px; font-size: .8rem; font-weight: 700; }
 .gm-textarea { min-height: 92px; resize: vertical; }
+.host-shell { display:grid; grid-template-columns:minmax(0,380px) minmax(0,1fr); gap:14px; align-items:start; }
+.host-stack { display:flex; flex-direction:column; gap:14px; }
+.host-panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:16px; }
+.host-panel h3 { font-family:'DM Sans',sans-serif; font-size:.94rem; margin:0 0 12px; letter-spacing:0; }
+.host-hero { background:linear-gradient(135deg,rgba(var(--green-rgb),.14),rgba(var(--yellow-rgb),.08)); border-color:rgba(var(--green-rgb),.28); }
+.host-hero-title { font-size:1.1rem; font-weight:900; color:var(--text); margin-bottom:6px; }
+.host-hero-copy { color:var(--text2); font-size:.84rem; line-height:1.55; }
+.host-feature-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:12px; }
+.host-feature { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:10px; min-width:0; }
+.host-feature b { display:block; font-size:.78rem; color:var(--text); margin-bottom:3px; }
+.host-feature span { display:block; font-size:.68rem; color:var(--text3); line-height:1.35; }
+.host-session-card, .host-app-card { border:1px solid var(--border); background:var(--bg); border-radius:12px; padding:12px; display:grid; gap:9px; }
+.host-session-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.host-session-title { font-weight:900; color:var(--text); line-height:1.25; }
+.host-meta { color:var(--text3); font-size:.76rem; line-height:1.5; }
+.host-session-actions { display:flex; flex-wrap:wrap; gap:7px; }
+.host-list { display:grid; gap:10px; }
+.host-mini-row { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--border); font-size:.8rem; }
+.host-mini-row:last-child { border-bottom:0; }
+.host-court-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+@media (max-width:980px) { .host-shell { grid-template-columns:1fr; } .host-feature-grid { grid-template-columns:1fr; } }
+@media (max-width:700px) { .host-panel { padding:13px; } .host-court-grid { grid-template-columns:1fr; } }
 @media (max-width: 980px) { .gm-shell, .gm-live-grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px) {
   .gm-panel { padding: 13px; }
@@ -827,7 +850,7 @@ tr:hover td { background: var(--bg2); }
   th { font-weight: 700 !important; background: #eee !important; }
   tr { page-break-inside: avoid; }
   code { font-family: inherit !important; font-size: inherit !important; }
-  .bdg-p, .bdg-c, .bdg-d, .bdg-v, .r-mgr, .r-owner, .r-court-owner, .r-staff { border: 1px solid #000 !important; padding: 1px 5px !important; font-weight: 700 !important; }
+  .bdg-p, .bdg-c, .bdg-d, .bdg-v, .r-mgr, .r-owner, .r-court-owner, .r-staff, .r-host { border: 1px solid #000 !important; padding: 1px 5px !important; font-weight: 700 !important; }
   @page { margin: 5mm; }
 }
 </style>
@@ -868,6 +891,7 @@ tr:hover td { background: var(--bg2); }
       <div class="nav-grp">Management</div>
       <div class="nav-item" data-s="courts" data-perm="courts" onclick="goto('courts')"><span>&#127967;</span> Courts</div>
       <div class="nav-item" data-s="blocked" data-perm="open_play" onclick="goto('blocked')"><span>&#127934;</span> Open Play</div>
+      <div class="nav-item" data-s="hosts" data-perm="host_open_play" onclick="goto('hosts')"><span>&#128101;</span> Host Center</div>
       <div class="nav-item" data-s="gamemgr" data-perm="open_play" onclick="goto('gamemgr')"><span>&#127955;</span> Game Manager</div>
       <div class="nav-item" data-s="maintenance" data-perm="maintenance" onclick="goto('maintenance')"><span>&#128295;</span> Maintenance</div>
       <div class="nav-item" data-s="payments" data-perm="payments" onclick="goto('payments')"><span>&#128179;</span> Payments</div>
@@ -1317,6 +1341,83 @@ tr:hover td { background: var(--bg2); }
           <button class="btn btn-d" onclick="addBlocked()">🔒 Block Date</button>
         </div>
         <div id="blkList"><p style="color:var(--muted);font-style:italic">No blocked dates.</p></div>
+      </div>
+    </div>
+
+    <!-- HOST CENTER -->
+    <div id="sec-hosts" class="adm-sec">
+      <div class="toolbar">
+        <h2>OPEN PLAY HOST CENTER</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-g btn-sm" onclick="renderHostCenter()">Refresh</button>
+          <button class="btn btn-p btn-sm" onclick="hostResetForm()">New Session</button>
+        </div>
+      </div>
+
+      <div class="host-shell">
+        <div class="host-stack">
+          <div class="host-panel host-hero">
+            <div class="host-hero-title">Create and share organized Open Play.</div>
+            <div class="host-hero-copy">Hosts can reserve multiple courts, publish a 12-hour time window, and copy a share link for ReClub or social chats.</div>
+            <div class="host-feature-grid">
+              <div class="host-feature"><b>Multi-court</b><span>Select one or more courts for the session.</span></div>
+              <div class="host-feature"><b>Share link</b><span>Post the public session link anywhere.</span></div>
+              <div class="host-feature"><b>Owner review</b><span>Applications stay visible to admins.</span></div>
+            </div>
+          </div>
+
+          <div class="host-panel">
+            <h3 id="hostFormTitle">Publish Host Session</h3>
+            <input type="hidden" id="hostSessionId"/>
+            <div class="fg"><label class="fl">Session Title</label><input class="fi" id="hostTitle" placeholder="Friday Open Play"/></div>
+            <div class="frow">
+              <div class="fg" style="margin:0"><label class="fl">Date</label><input type="date" class="fi" id="hostDate"/></div>
+              <div class="fg" style="margin:0"><label class="fl">Status</label>
+                <select class="fi" id="hostStatus">
+                  <option value="published">Published</option>
+                  <option value="draft">Draft</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            </div>
+            <div class="frow">
+              <div class="fg" style="margin:0"><label class="fl">Start Time</label><select class="fi" id="hostStart"></select></div>
+              <div class="fg" style="margin:0"><label class="fl">End Time</label><select class="fi" id="hostEnd"></select></div>
+            </div>
+            <div class="fg">
+              <label class="fl">Courts</label>
+              <div id="hostCourtList" class="host-court-grid"></div>
+            </div>
+            <div class="frow">
+              <div class="fg" style="margin:0"><label class="fl">Max Players</label><input type="number" class="fi" id="hostMaxPlayers" min="1" step="1" value="16"/></div>
+              <div class="fg" style="margin:0"><label class="fl">Fee / Player (PHP)</label><input type="number" class="fi" id="hostFee" min="0" step="1" value="0"/></div>
+            </div>
+            <div class="fg"><label class="fl">Payment Instructions</label><textarea class="fi gm-textarea" id="hostPayment" placeholder="GCash name/number, cut-off, or pay at venue."></textarea></div>
+            <div class="fg"><label class="fl">Notes / Rules</label><textarea class="fi gm-textarea" id="hostNotes" placeholder="Skill level, rotation notes, reminders."></textarea></div>
+            <div class="gm-actions">
+              <button class="btn btn-p" onclick="saveHostSession()">Save Session</button>
+              <button class="btn btn-g" onclick="hostResetForm()">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="host-stack">
+          <div class="host-panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+              <h3 style="margin:0">Host Sessions</h3>
+              <span class="gm-mini" id="hostSessionCount">0 sessions</span>
+            </div>
+            <div id="hostSessionList" class="host-list"><div class="gm-empty">Loading sessions...</div></div>
+          </div>
+
+          <div class="host-panel" id="hostApplicationsPanel" data-perm="accounts">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+              <h3 style="margin:0">Host Applications</h3>
+              <span class="gm-mini" id="hostAppCount">0 pending</span>
+            </div>
+            <div id="hostApplicationList" class="host-list"><div class="gm-empty">Loading applications...</div></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1826,6 +1927,7 @@ tr:hover td { background: var(--bg2); }
       <div class="fg" style="margin-top:12px"><label class="fl">Email</label><input type="email" class="fi" id="amEmail" placeholder="email@example.com"/></div>
       <div class="fg" style="margin-top:12px"><label class="fl">Role</label>
         <select class="fi" id="amRole">
+          <option value="host">Open Play Host - publish and share host sessions</option>
           <option value="staff">Court Staff — front-desk: bookings, payments, open play</option>
           <option value="court_owner">Court Owner — operations + settings (no account mgmt)</option>
           <option value="owner">System Owner — full access</option>
@@ -2333,9 +2435,9 @@ let sess;
 /* ==============================================
    NAVIGATION
    ============================================== */
-const titles={dash:'Dashboard',bookings:'Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',blocked:'Open Play',gamemgr:'Game Manager',maintenance:'Maintenance',payments:'Payments'};
-const SECTION_PERM={dash:'dashboard',bookings:'bookings',payreview:'payments',reports:'reports',courts:'courts',accounts:'accounts',blocked:'open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
-const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,blocked:renderBlocked,gamemgr:renderGameManager,maintenance:renderMaintenance,payments:renderPaymentSettings};
+const titles={dash:'Dashboard',bookings:'Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',blocked:'Open Play',hosts:'Host Center',gamemgr:'Game Manager',maintenance:'Maintenance',payments:'Payments'};
+const SECTION_PERM={dash:'dashboard',bookings:'bookings',payreview:'payments',reports:'reports',courts:'courts',accounts:'accounts',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
+const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:renderGameManager,maintenance:renderMaintenance,payments:renderPaymentSettings};
 let _curSection=null;
 async function goto(s){
   // Block navigation to sections the current role can't access
@@ -2376,6 +2478,8 @@ function startAdminRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'settings'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'blocked_dates'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'open_play_registrations'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_host_applications'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_host_sessions'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'open_play_game_sessions'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'open_play_game_players'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'open_play_game_rounds'},rerender)
@@ -4665,8 +4769,8 @@ async function savePaymentSettings() {
    ============================================== */
 async function renderAccounts(){
   const accs=(await Auth.getAll()).filter(a=>a.id!==sess.id);
-  const ROLE_LABELS={owner:'System Owner',court_owner:'Court Owner',staff:'Court Staff'};
-  const ROLE_BDG={owner:'bdg-c',court_owner:'bdg-p',staff:'bdg-d'};
+  const ROLE_LABELS={owner:'System Owner',court_owner:'Court Owner',staff:'Court Staff',host:'Open Play Host'};
+  const ROLE_BDG={owner:'bdg-c',court_owner:'bdg-p',staff:'bdg-d',host:'bdg-v'};
   $('accBody').innerHTML=accs.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No other accounts.</td></tr>':
     accs.map(a=>`<tr>
       <td data-label="Full Name"><strong>${esc(a.fullName)}</strong></td>
@@ -4721,6 +4825,295 @@ async function delAcc(id){
   if(!r.ok){toast(r.msg || 'Delete failed.','err');return;}
   await renderAccounts();
   toast('Account deleted.','inf');
+}
+
+/* ==============================================
+   OPEN PLAY HOST CENTER
+   ============================================== */
+let _hostCenter = { courts: [], applications: [], sessions: [] };
+
+function hostFmtTime(h) {
+  const n = Number(h);
+  if (n === 24) return '12:00 AM';
+  return `${n % 12 || 12}:00 ${n < 12 ? 'AM' : 'PM'}`;
+}
+
+function hostToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function hostPopulateTimePickers() {
+  ['hostStart', 'hostEnd'].forEach((id, idx) => {
+    const sel = $(id);
+    if (!sel || sel.options.length) return;
+    const max = idx === 0 ? 23 : 24;
+    for (let h = 0; h <= max; h++) {
+      const opt = document.createElement('option');
+      opt.value = h;
+      opt.textContent = hostFmtTime(h);
+      sel.appendChild(opt);
+    }
+  });
+}
+
+function hostSelectedCourtIds() {
+  return [...document.querySelectorAll('.host-court-cb:checked')].map(cb => cb.value);
+}
+
+function hostCourtNames(ids) {
+  return ids.map(id => (_hostCenter.courts.find(c => String(c.id) === String(id)) || {}).name || id);
+}
+
+function hostRenderCourtPicker(selectedIds = []) {
+  const wrap = $('hostCourtList');
+  if (!wrap) return;
+  const selected = new Set((selectedIds || []).map(String));
+  wrap.innerHTML = _hostCenter.courts.length
+    ? _hostCenter.courts.map(c => `<label class="op-day op-court-chip"><input type="checkbox" class="host-court-cb" value="${esc(c.id)}" ${selected.has(String(c.id)) ? 'checked' : ''}> <span>${esc(c.name || 'Court')}</span></label>`).join('')
+    : '<div class="gm-empty">No courts found.</div>';
+}
+
+function hostShareUrl(sessionId) {
+  const url = new URL('index.html', location.href);
+  url.searchParams.set('openPlayHostSession', sessionId);
+  return url.toString();
+}
+
+async function hostCopy(text, ok = 'Copied.') {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(ok);
+  } catch (_) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast(ok);
+  }
+}
+
+function hostCanManageApplications() {
+  return !!(sess && Auth.can('accounts', sess.role));
+}
+
+function hostVisibleSessions(sessions) {
+  if (!sess || sess.role !== 'host') return sessions;
+  return sessions.filter(s =>
+    String(s.hostUserId || '') === String(sess.id) ||
+    String(s.hostEmail || '').toLowerCase() === String(sess.email || '').toLowerCase()
+  );
+}
+
+async function renderHostCenter() {
+  hostPopulateTimePickers();
+  const [courts, sessions, applications] = await Promise.all([
+    DB.getCourts(),
+    DB.getOpenPlayHostSessions(),
+    hostCanManageApplications() ? DB.getOpenPlayHostApplications() : Promise.resolve([]),
+  ]);
+  _hostCenter = { courts, sessions, applications };
+  if ($('hostDate') && !$('hostDate').value) $('hostDate').value = hostToday();
+  if ($('hostStart') && !$('hostStart').value) $('hostStart').value = 17;
+  if ($('hostEnd') && !$('hostEnd').value) $('hostEnd').value = 22;
+  if (!hostSelectedCourtIds().length) hostRenderCourtPicker([]);
+  renderHostSessions();
+  renderHostApplications();
+}
+
+function hostResetForm() {
+  $('hostSessionId').value = '';
+  $('hostFormTitle').textContent = 'Publish Host Session';
+  $('hostTitle').value = '';
+  $('hostDate').value = hostToday();
+  $('hostStart').value = 17;
+  $('hostEnd').value = 22;
+  $('hostStatus').value = 'published';
+  $('hostMaxPlayers').value = 16;
+  $('hostFee').value = 0;
+  $('hostPayment').value = '';
+  $('hostNotes').value = '';
+  hostRenderCourtPicker([]);
+}
+
+function editHostSession(id) {
+  const s = _hostCenter.sessions.find(x => String(x.id) === String(id));
+  if (!s) return;
+  $('hostSessionId').value = s.id;
+  $('hostFormTitle').textContent = 'Edit Host Session';
+  $('hostTitle').value = s.title || '';
+  $('hostDate').value = s.date || hostToday();
+  $('hostStart').value = s.startHour ?? 17;
+  $('hostEnd').value = s.endHour ?? 22;
+  $('hostStatus').value = s.status || 'published';
+  $('hostMaxPlayers').value = s.maxPlayers || 16;
+  $('hostFee').value = s.feePerPlayer || 0;
+  $('hostPayment').value = s.paymentInstructions || '';
+  $('hostNotes').value = s.notes || '';
+  hostRenderCourtPicker(s.courtIds || []);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function hostValidateAvailability(date, courtIds, startHour, endHour, currentId = '') {
+  const bookings = await DB.getBookings({ date, activeOnly: true });
+  const requested = new Set(Array.from({ length: endHour - startHour }, (_, i) => startHour + i));
+  const conflict = bookings.find(b =>
+    courtIds.includes(String(b.courtId)) &&
+    (b.email !== 'reserve@hold.internal' || b.status === 'verifying') &&
+    (b.slots || []).some(slot => requested.has(Number(slot)))
+  );
+  if (conflict) return `${conflict.courtName || 'Court'} already has a booking at ${conflict.startTime || hostFmtTime(Math.min(...(conflict.slots || [startHour])))}.`;
+
+  const sessionConflict = _hostCenter.sessions.find(s =>
+    String(s.id) !== String(currentId) &&
+    s.date === date &&
+    s.status !== 'cancelled' &&
+    (s.courtIds || []).some(id => courtIds.includes(String(id))) &&
+    startHour < Number(s.endHour) &&
+    endHour > Number(s.startHour)
+  );
+  if (sessionConflict) return `Another host session already overlaps ${hostFmtTime(sessionConflict.startHour)} - ${hostFmtTime(sessionConflict.endHour)}.`;
+  return '';
+}
+
+async function saveHostSession() {
+  const id = $('hostSessionId').value;
+  const title = $('hostTitle').value.trim();
+  const date = $('hostDate').value;
+  const startHour = Number($('hostStart').value);
+  const endHour = Number($('hostEnd').value);
+  const courtIds = hostSelectedCourtIds();
+  const maxPlayers = Math.max(1, Number($('hostMaxPlayers').value || 16));
+  const feePerPlayer = Math.max(0, Number($('hostFee').value || 0));
+  if (!title) { toast('Enter a session title.', 'err'); return; }
+  if (!date) { toast('Choose a session date.', 'err'); return; }
+  if (date < hostToday()) { toast('Choose today or a future date.', 'err'); return; }
+  if (endHour <= startHour) { toast('End time must be after start time.', 'err'); return; }
+  if (!courtIds.length) { toast('Select at least one court.', 'err'); return; }
+  const availabilityMsg = await hostValidateAvailability(date, courtIds, startHour, endHour, id);
+  if (availabilityMsg) { toast(availabilityMsg, 'err'); return; }
+
+  const sessionData = {
+    hostUserId: sess?.id || null,
+    hostName: sess?.fullName || 'Open Play Host',
+    hostEmail: sess?.email || '',
+    title,
+    date,
+    startHour,
+    endHour,
+    courtIds,
+    courtNames: hostCourtNames(courtIds),
+    maxPlayers,
+    feePerPlayer,
+    status: $('hostStatus').value || 'published',
+    paymentInstructions: $('hostPayment').value.trim(),
+    notes: $('hostNotes').value.trim(),
+  };
+  try {
+    if (id) await DB.updateOpenPlayHostSession(id, sessionData);
+    else await DB.createOpenPlayHostSession(sessionData);
+    toast('Host session saved.');
+    hostResetForm();
+    await renderHostCenter();
+  } catch(e) {
+    toast(e?.message || 'Could not save host session.', 'err');
+  }
+}
+
+function renderHostSessions() {
+  const list = $('hostSessionList');
+  const count = $('hostSessionCount');
+  if (!list) return;
+  const sessions = hostVisibleSessions(_hostCenter.sessions || []);
+  if (count) count.textContent = `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`;
+  if (!sessions.length) {
+    list.innerHTML = '<div class="gm-empty">No host sessions yet.</div>';
+    return;
+  }
+  const statusBadge = s => s === 'published'
+    ? '<span class="bdg bdg-c">Published</span>'
+    : s === 'cancelled'
+    ? '<span class="bdg bdg-x">Cancelled</span>'
+    : '<span class="bdg bdg-d">Draft</span>';
+  list.innerHTML = sessions.map(s => `
+    <div class="host-session-card">
+      <div class="host-session-head">
+        <div>
+          <div class="host-session-title">${esc(s.title)}</div>
+          <div class="host-meta">${fmtD(s.date)} · ${hostFmtTime(s.startHour)} - ${hostFmtTime(s.endHour)} · ${(s.courtNames || []).map(esc).join(', ') || 'No courts'}</div>
+        </div>
+        ${statusBadge(s.status)}
+      </div>
+      <div class="host-mini-row"><span>Host</span><strong>${esc(s.hostName || 'Open Play Host')}</strong></div>
+      <div class="host-mini-row"><span>Players / Fee</span><strong>${Number(s.maxPlayers || 0)} max · ${fmt(s.feePerPlayer || 0)} each</strong></div>
+      ${(s.notes || s.paymentInstructions) ? `<div class="host-meta">${esc(s.notes || s.paymentInstructions)}</div>` : ''}
+      <div class="host-session-actions">
+        <button class="btn btn-g btn-sm" onclick="editHostSession('${jsArg(s.id)}')">Edit</button>
+        <button class="btn btn-p btn-sm" onclick="hostCopy('${jsArg(hostShareUrl(s.id))}','Share link copied.')">Copy Share Link</button>
+        ${s.status !== 'cancelled' ? `<button class="btn btn-d btn-sm" onclick="cancelHostSession('${jsArg(s.id)}')">Cancel</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function cancelHostSession(id) {
+  if (!confirm('Cancel this host session?')) return;
+  await DB.updateOpenPlayHostSession(id, { status: 'cancelled' });
+  await renderHostCenter();
+  toast('Host session cancelled.', 'inf');
+}
+
+function renderHostApplications() {
+  const panel = $('hostApplicationsPanel');
+  if (panel) panel.style.display = hostCanManageApplications() ? '' : 'none';
+  if (!hostCanManageApplications()) return;
+  const list = $('hostApplicationList');
+  const count = $('hostAppCount');
+  const apps = _hostCenter.applications || [];
+  const pending = apps.filter(a => a.status === 'pending').length;
+  if (count) count.textContent = `${pending} pending`;
+  if (!apps.length) {
+    list.innerHTML = '<div class="gm-empty">No host applications yet.</div>';
+    return;
+  }
+  const badge = s => s === 'approved' ? '<span class="bdg bdg-c">Approved</span>' : s === 'rejected' ? '<span class="bdg bdg-x">Rejected</span>' : '<span class="bdg bdg-p">Pending</span>';
+  list.innerHTML = apps.map(a => `
+    <div class="host-app-card">
+      <div class="host-session-head">
+        <div>
+          <div class="host-session-title">${esc(a.fullName)}</div>
+          <div class="host-meta">${esc(a.contactNumber)} · ${esc(a.email)} · Applied ${fmtD(String(a.createdAt || '').slice(0,10))}</div>
+        </div>
+        ${badge(a.status)}
+      </div>
+      ${a.preferredSchedule ? `<div class="host-mini-row"><span>Schedule</span><strong>${esc(a.preferredSchedule)}</strong></div>` : ''}
+      ${a.notes ? `<div class="host-meta">${esc(a.notes)}</div>` : ''}
+      <div class="host-session-actions">
+        ${a.status === 'pending' ? `<button class="btn btn-p btn-sm" onclick="reviewHostApplication('${jsArg(a.id)}','approved')">Approve</button><button class="btn btn-d btn-sm" onclick="reviewHostApplication('${jsArg(a.id)}','rejected')">Reject</button>` : ''}
+        <button class="btn btn-g btn-sm" onclick="prefillHostAccount('${jsArg(a.id)}')">Create Login</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function reviewHostApplication(id, status) {
+  const note = status === 'approved' ? 'Approved for host dashboard access.' : 'Application rejected.';
+  await DB.updateOpenPlayHostApplication(id, { status, reviewNote: note, reviewedBy: sess?.id || null, reviewedAt: new Date().toISOString() });
+  toast(status === 'approved' ? 'Application approved. Create a host login from Accounts.' : 'Application rejected.', status === 'approved' ? 'ok' : 'inf');
+  await renderHostCenter();
+}
+
+function prefillHostAccount(id) {
+  const app = (_hostCenter.applications || []).find(a => String(a.id) === String(id));
+  if (!app) return;
+  openAccModal();
+  $('amFull').value = app.fullName || '';
+  $('amEmail').value = app.email || '';
+  $('amUser').value = String(app.email || '').split('@')[0].replace(/[^a-z0-9._-]/gi, '').toLowerCase();
+  $('amRole').value = 'host';
+  $('amPass').focus();
 }
 
 /* ── SELF-SERVICE CHANGE PASSWORD (any signed-in user) ── */
@@ -6048,8 +6441,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   updateThemeBtn();
 
   // User info + role-based visibility
-  const ROLE_LABELS = { owner: 'System Owner', court_owner: 'Court Owner', staff: 'Court Staff' };
-  const ROLE_CLASSES = { owner: 'r-owner', court_owner: 'r-court-owner', staff: 'r-staff' };
+  const ROLE_LABELS = { owner: 'System Owner', court_owner: 'Court Owner', staff: 'Court Staff', host: 'Open Play Host' };
+  const ROLE_CLASSES = { owner: 'r-owner', court_owner: 'r-court-owner', staff: 'r-staff', host: 'r-host' };
   const role = sess.role;
   $('uName').textContent = sess.fullName;
   $('uRole').textContent = ROLE_LABELS[role] || role;
@@ -6063,6 +6456,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   // Land on the first section this role is allowed to see
   const firstAllowed = Auth.can('dashboard', role) ? 'dash'
     : Auth.can('bookings', role) ? 'bookings'
+    : Auth.can('host_open_play', role) ? 'hosts'
     : 'payments';
   // Show agreement gate for court_owner before entering dashboard
   const gated = await checkAgreementGate(sess);

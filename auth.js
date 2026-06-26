@@ -7,19 +7,21 @@ const Auth = (() => {
   // owner       → System Owner   (full access: everything + accounts)
   // court_owner → Court Owner    (operations + settings, no account mgmt)
   // staff       → Court Staff    (front-desk: bookings, payments, open play)
-  const ROLES = ['owner', 'court_owner', 'staff'];
+  const ROLES = ['owner', 'court_owner', 'staff', 'host'];
 
   const ROLE_LABELS = {
     owner: 'System Owner',
     court_owner: 'Court Owner',
     staff: 'Court Staff',
+    host: 'Open Play Host',
   };
 
   // Permission matrix — which roles may perform each action.
   const ROLE_PERMISSIONS = {
-    owner:       ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only', 'fees'],
-    court_owner: ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'maintenance', 'payments', 'export', 'settings', 'fees'],
+    owner:       ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only', 'fees'],
+    court_owner: ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'export', 'settings', 'fees'],
     staff:       ['bookings', 'open_play', 'payments'],
+    host:        ['host_open_play'],
   };
 
   function permissionsFor(role) {

@@ -354,6 +354,76 @@ function accountToRow(a) {
   };
 }
 
+function rowToOpenPlayHostApplication(r) {
+  return {
+    id: r.id,
+    fullName: r.full_name,
+    contactNumber: r.contact_number,
+    email: r.email,
+    preferredSchedule: r.preferred_schedule || '',
+    notes: r.notes || '',
+    status: r.status || 'pending',
+    reviewedBy: r.reviewed_by || null,
+    reviewedAt: r.reviewed_at || null,
+    reviewNote: r.review_note || '',
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function hostApplicationToRow(app) {
+  return {
+    full_name: app.fullName,
+    contact_number: app.contactNumber,
+    email: app.email,
+    preferred_schedule: app.preferredSchedule || null,
+    notes: app.notes || null,
+    status: app.status || 'pending',
+    review_note: app.reviewNote || null,
+  };
+}
+
+function rowToOpenPlayHostSession(r) {
+  return {
+    id: r.id,
+    hostUserId: r.host_user_id || null,
+    hostName: r.host_name,
+    hostEmail: r.host_email || '',
+    title: r.title,
+    date: r.date,
+    startHour: Number(r.start_hour),
+    endHour: Number(r.end_hour),
+    courtIds: r.court_ids || [],
+    courtNames: r.court_names || [],
+    maxPlayers: Number(r.max_players || 0),
+    feePerPlayer: Number(r.fee_per_player || 0),
+    status: r.status || 'published',
+    notes: r.notes || '',
+    paymentInstructions: r.payment_instructions || '',
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function hostSessionToRow(session) {
+  return {
+    host_user_id: session.hostUserId || null,
+    host_name: session.hostName,
+    host_email: session.hostEmail || null,
+    title: session.title,
+    date: session.date,
+    start_hour: session.startHour,
+    end_hour: session.endHour,
+    court_ids: session.courtIds || [],
+    court_names: session.courtNames || [],
+    max_players: session.maxPlayers || 16,
+    fee_per_player: session.feePerPlayer || 0,
+    status: session.status || 'published',
+    notes: session.notes || null,
+    payment_instructions: session.paymentInstructions || null,
+  };
+}
+
 // =============================================
 // DB — Async Data Layer (replaces localStorage)
 // =============================================
@@ -550,6 +620,63 @@ window.DB = {
     const { error } = await _sb.from('open_play_registrations').delete().eq('id', id);
     if (error) console.error('deleteOpenPlayRegistration:', error);
     _pbClearFastCache(['openPlayRegistrations', 'openPlayCount', 'openPlayCounts']);
+  },
+
+  // ---- OPEN PLAY HOSTS ----
+  async getOpenPlayHostApplications() {
+    const { data, error } = await _sb.from('open_play_host_applications').select('*').order('created_at', { ascending: false });
+    if (error) { console.error('getOpenPlayHostApplications:', error); return []; }
+    return (data || []).map(rowToOpenPlayHostApplication);
+  },
+
+  async addOpenPlayHostApplication(app) {
+    const { error } = await _sb.from('open_play_host_applications').insert({
+      ...hostApplicationToRow(app),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    });
+    if (error) { console.error('addOpenPlayHostApplication:', error); throw error; }
+  },
+
+  async updateOpenPlayHostApplication(id, updates) {
+    const row = {};
+    if (updates.status !== undefined) row.status = updates.status;
+    if (updates.reviewNote !== undefined) row.review_note = updates.reviewNote;
+    if (updates.reviewedBy !== undefined) row.reviewed_by = updates.reviewedBy;
+    if (updates.reviewedAt !== undefined) row.reviewed_at = updates.reviewedAt;
+    const { data, error } = await _sb.from('open_play_host_applications').update(row).eq('id', id).select('*').single();
+    if (error) { console.error('updateOpenPlayHostApplication:', error); throw error; }
+    return data ? rowToOpenPlayHostApplication(data) : null;
+  },
+
+  async getOpenPlayHostSessions() {
+    const { data, error } = await _sb.from('open_play_host_sessions').select('*').order('date', { ascending: true }).order('start_hour', { ascending: true });
+    if (error) { console.error('getOpenPlayHostSessions:', error); return []; }
+    return (data || []).map(rowToOpenPlayHostSession);
+  },
+
+  async createOpenPlayHostSession(session) {
+    const { data, error } = await _sb.from('open_play_host_sessions').insert(hostSessionToRow(session)).select('*').single();
+    if (error) { console.error('createOpenPlayHostSession:', error); throw error; }
+    return rowToOpenPlayHostSession(data);
+  },
+
+  async updateOpenPlayHostSession(id, updates) {
+    const row = {};
+    if (updates.status !== undefined) row.status = updates.status;
+    if (updates.title !== undefined) row.title = updates.title;
+    if (updates.date !== undefined) row.date = updates.date;
+    if (updates.startHour !== undefined) row.start_hour = updates.startHour;
+    if (updates.endHour !== undefined) row.end_hour = updates.endHour;
+    if (updates.courtIds !== undefined) row.court_ids = updates.courtIds;
+    if (updates.courtNames !== undefined) row.court_names = updates.courtNames;
+    if (updates.maxPlayers !== undefined) row.max_players = updates.maxPlayers;
+    if (updates.feePerPlayer !== undefined) row.fee_per_player = updates.feePerPlayer;
+    if (updates.notes !== undefined) row.notes = updates.notes;
+    if (updates.paymentInstructions !== undefined) row.payment_instructions = updates.paymentInstructions;
+    const { data, error } = await _sb.from('open_play_host_sessions').update(row).eq('id', id).select('*').single();
+    if (error) { console.error('updateOpenPlayHostSession:', error); throw error; }
+    return data ? rowToOpenPlayHostSession(data) : null;
   },
 
   // ---- OPEN PLAY GAME MANAGER ----
@@ -1047,6 +1174,8 @@ window.DB = {
       courts: defaultCourts(),
       bookings: [],
       openPlayRegistrations: [],
+      openPlayHostApplications: [],
+      openPlayHostSessions: [],
       openPlayGameSessions: [],
       openPlayGamePlayers: [],
       openPlayGameRounds: [],
@@ -1072,6 +1201,8 @@ window.DB = {
       courts: Array.isArray(parsed.courts) && parsed.courts.length ? parsed.courts : defaultCourts(),
       bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
       openPlayRegistrations: Array.isArray(parsed.openPlayRegistrations) ? parsed.openPlayRegistrations : [],
+      openPlayHostApplications: Array.isArray(parsed.openPlayHostApplications) ? parsed.openPlayHostApplications : [],
+      openPlayHostSessions: Array.isArray(parsed.openPlayHostSessions) ? parsed.openPlayHostSessions : [],
       openPlayGameSessions: Array.isArray(parsed.openPlayGameSessions) ? parsed.openPlayGameSessions : [],
       openPlayGamePlayers: Array.isArray(parsed.openPlayGamePlayers) ? parsed.openPlayGamePlayers : [],
       openPlayGameRounds: Array.isArray(parsed.openPlayGameRounds) ? parsed.openPlayGameRounds : [],
@@ -1208,6 +1339,81 @@ window.DB = {
       const db = readDb();
       db.openPlayRegistrations = db.openPlayRegistrations.filter(r => String(r.id) !== String(id));
       writeDb(db);
+    },
+
+    async getOpenPlayHostApplications() {
+      return readDb().openPlayHostApplications.sort((a, b) => String(b.createdAt || b.created_at || '').localeCompare(String(a.createdAt || a.created_at || '')));
+    },
+    async addOpenPlayHostApplication(app) {
+      const db = readDb();
+      db.openPlayHostApplications.unshift({
+        id: localRef('hostapp'),
+        fullName: app.fullName,
+        contactNumber: app.contactNumber,
+        email: app.email,
+        preferredSchedule: app.preferredSchedule || '',
+        notes: app.notes || '',
+        status: 'pending',
+        reviewNote: '',
+        reviewedBy: null,
+        reviewedAt: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      });
+      writeDb(db);
+    },
+    async updateOpenPlayHostApplication(id, updates) {
+      const db = readDb();
+      let saved = null;
+      db.openPlayHostApplications = db.openPlayHostApplications.map(app => {
+        if (String(app.id) !== String(id)) return app;
+        saved = { ...app, ...updates, updatedAt: nowIso() };
+        return saved;
+      });
+      writeDb(db);
+      return saved;
+    },
+    async getOpenPlayHostSessions() {
+      return readDb().openPlayHostSessions.sort((a, b) =>
+        String(a.date || '').localeCompare(String(b.date || '')) ||
+        Number(a.startHour || a.start_hour || 0) - Number(b.startHour || b.start_hour || 0)
+      );
+    },
+    async createOpenPlayHostSession(session) {
+      const db = readDb();
+      const row = {
+        id: localRef('hosts'),
+        hostUserId: session.hostUserId || null,
+        hostName: session.hostName,
+        hostEmail: session.hostEmail || '',
+        title: session.title,
+        date: session.date,
+        startHour: session.startHour,
+        endHour: session.endHour,
+        courtIds: session.courtIds || [],
+        courtNames: session.courtNames || [],
+        maxPlayers: session.maxPlayers || 16,
+        feePerPlayer: session.feePerPlayer || 0,
+        status: session.status || 'published',
+        notes: session.notes || '',
+        paymentInstructions: session.paymentInstructions || '',
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      db.openPlayHostSessions.unshift(row);
+      writeDb(db);
+      return row;
+    },
+    async updateOpenPlayHostSession(id, updates) {
+      const db = readDb();
+      let saved = null;
+      db.openPlayHostSessions = db.openPlayHostSessions.map(session => {
+        if (String(session.id) !== String(id)) return session;
+        saved = { ...session, ...updates, updatedAt: nowIso() };
+        return saved;
+      });
+      writeDb(db);
+      return saved;
     },
 
     async getOpenPlayGameSessions() {
@@ -1453,12 +1659,13 @@ window.Auth = {
   // owner       → System Owner   (full access: everything + accounts)
   // court_owner → Court Owner    (operations + settings, no account mgmt)
   // staff       → Court Staff    (front-desk: bookings, payments, open play)
-  ROLES: ['owner', 'court_owner', 'staff'],
-  ROLE_LABELS: { owner: 'System Owner', court_owner: 'Court Owner', staff: 'Court Staff' },
+  ROLES: ['owner', 'court_owner', 'staff', 'host'],
+  ROLE_LABELS: { owner: 'System Owner', court_owner: 'Court Owner', staff: 'Court Staff', host: 'Open Play Host' },
   ROLE_PERMISSIONS: {
-    owner:       ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
-    court_owner: ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'maintenance', 'payments', 'export', 'settings', 'court_owner_only'],
+    owner:       ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
+    court_owner: ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'export', 'settings', 'court_owner_only'],
     staff:       ['bookings', 'open_play', 'payments'],
+    host:        ['host_open_play'],
   },
 
   permissionsFor(role) {

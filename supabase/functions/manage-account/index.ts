@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-type Role = "owner" | "court_owner" | "staff";
+type Role = "owner" | "court_owner" | "staff" | "host";
 
 type Payload = {
   action?: "create" | "update" | "delete";
@@ -17,7 +17,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const roles = new Set<Role>(["owner", "court_owner", "staff"]);
+const roles = new Set<Role>(["owner", "court_owner", "staff", "host"]);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
