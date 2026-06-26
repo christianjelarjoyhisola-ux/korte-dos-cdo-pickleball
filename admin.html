@@ -2270,6 +2270,14 @@ function platformFeeLabel(cfg, { short = false } = {}) {
 function bookingBillableHours(b) {
   return Number(b.duration) || (Array.isArray(b.slots) ? b.slots.length : 0) || 1;
 }
+function isManualImportBooking(b) {
+  const ref = String(b?.ref || '');
+  const method = String(b?.paymentMethod || b?.payment_method || '').toLowerCase();
+  return ref.startsWith('MANUAL-') || method === 'manual';
+}
+function isPlatformBillableBooking(b) {
+  return (b?.status === 'confirmed' || b?.status === 'completed') && !isManualImportBooking(b);
+}
 function calcPlatformFeeForBooking(b, cfg) {
   return cfg.type === 'flat' ? cfg.amount : cfg.amount * bookingBillableHours(b);
 }
@@ -2543,10 +2551,11 @@ async function renderMaintFee() {
   if ($('mfRateDisplay')) $('mfRateDisplay').textContent = isFlat ? `₱${_maintRate.toFixed(2)} / transaction` : `₱${_maintRate.toFixed(2)} / hr`;
 
   const bks = await DB.getBookings();
-  // Only count confirmed + completed bookings in the selected month
+  // Only bill confirmed/completed platform bookings in the selected month.
+  // Spreadsheet/manual imports remain visible but do not generate a platform fee.
   const filtered = bks.filter(b =>
     b.date?.startsWith(selectedMonth) &&
-    (b.status === 'confirmed' || b.status === 'completed')
+    isPlatformBillableBooking(b)
   );
 
   const totalBookings = filtered.length;
@@ -2570,7 +2579,7 @@ async function renderMaintFee() {
   const monthLabel = new Date(yr, parseInt(mo) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 
   if (totalBookings === 0) {
-    $('mfBreakdown').innerHTML = `<span style="color:var(--text3)">No confirmed/completed bookings found for ${monthLabel}.</span>`;
+    $('mfBreakdown').innerHTML = `<span style="color:var(--text3)">No billable online bookings found for ${monthLabel}. Manual spreadsheet imports are excluded.</span>`;
     return;
   }
 
@@ -4387,11 +4396,10 @@ async function generateWeeklyStatement() {
       r.week_start === startDate && r.week_end === endDate
     );
 
-    // Fee applies to a CONFIRMED booking (one that successfully reserved a
-    // slot). Cancelled / rejected / verifying holds are never billed. Bookings
-    // already stamped to another statement are skipped to avoid double billing.
+    // Fee applies only to online platform bookings. Spreadsheet/manual imports
+    // stay in the schedule/history but are never billed for platform remittance.
     const eligible = bookings.filter(b =>
-      (b.status === 'confirmed' || b.status === 'completed') &&
+      isPlatformBillableBooking(b) &&
       b.date >= startDate && b.date <= endDate &&
       (!b.weeklyFeeId || (existing && String(b.weeklyFeeId) === String(existing.id)))
     );
