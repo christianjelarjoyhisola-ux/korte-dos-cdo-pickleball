@@ -2741,7 +2741,7 @@ async function renderBookings(){
     const rules = _nbMaintenanceCfg ? (Array.isArray(_nbMaintenanceCfg.rules) ? _nbMaintenanceCfg.rules : [_nbMaintenanceCfg]) : [];
     const allCourts = await DB.getCourts();
     const dt = new Date(fd + 'T00:00:00'), dow = dt.getDay(), dom = dt.getDate();
-    const mtLabelMap = {closed:'🚫 Closed',maintenance:'🔧 Maintenance',reserved:'🔒 Reserved',blocked:'⛔ Blocked',private:'👥 Private Event',group:'🏓 Group Session'};
+    const mtLabelMap = {closed:'🚫 Closed',maintenance:'🔧 Maintenance',reserved:'🔒 Reserved',blocked:'⛔ Blocked',private:'👥 Private Event',group:'🏓 Group Session',openplay:'🏓 Open Play Session'};
     const fmtHr = h => { const h12 = h % 12 || 12; return `${h12}:00 ${h < 12 ? 'AM' : 'PM'}`; };
     const matched = rules.filter(r => {
       if (!r || !r.enabled) return false;
@@ -2971,7 +2971,7 @@ function calNav(dir){
   renderCalendar();
 }
 
-const _calMtLabels = {maintenance:'🔧 Maintenance',reserved:'🔒 Reserved',blocked:'⛔ Blocked',private:'👥 Private Event',group:'🏓 Group Session'};
+const _calMtLabels = {maintenance:'🔧 Maintenance',reserved:'🔒 Reserved',blocked:'⛔ Blocked',private:'👥 Private Event',group:'🏓 Group Session',openplay:'🏓 Open Play Session'};
 
 function _calGetMtRulesForDate(ds) {
   const cfg = _nbMaintenanceCfg;
@@ -3425,7 +3425,7 @@ function nbToggleSlot(h) {
   if (_nbIsOpenPlayHour(date, h, courtId)) { toast('Reserved for Open Play.', 'inf'); return; }
   if (_nbIsMaintenanceHour(date, h, court.id)) {
     const rule = (() => { if (!_nbMaintenanceCfg) return null; if (Array.isArray(_nbMaintenanceCfg.rules)) return _nbMaintenanceCfg.rules.find(r => _nbCheckRule(r, date, h, court.id)) || null; return _nbCheckRule(_nbMaintenanceCfg, date, h, court.id) ? _nbMaintenanceCfg : null; })();
-    const lbl = {maintenance:'Maintenance',reserved:'Reserved',blocked:'Blocked',private:'Private Event',group:'Group Session'}[rule?.label] || 'Maintenance';
+    const lbl = {maintenance:'Maintenance',reserved:'Reserved',blocked:'Blocked',private:'Private Event',group:'Group Session',openplay:'Open Play Session'}[rule?.label] || 'Maintenance';
     toast(`This slot is ${lbl.toLowerCase()}.`, 'inf'); return;
   }
 
@@ -6254,6 +6254,7 @@ function mtRuleHtml(rule, n) {
       <option value="blocked"${rule.label==='blocked'?' selected':''}>⛔ Blocked</option>
       <option value="private"${rule.label==='private'?' selected':''}>👥 Private Event</option>
       <option value="group"${rule.label==='group'?' selected':''}>🏓 Group Session</option>
+      <option value="openplay"${rule.label==='openplay'?' selected':''}>🏓 Open Play Session</option>
     </select>
   </div>
   <div class="frow" style="margin-bottom:14px">
