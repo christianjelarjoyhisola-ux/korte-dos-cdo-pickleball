@@ -11,6 +11,7 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 ### Changed
 - **Moved Host application prompt** - removed the Open Play host invite from the booking wizard and made it a centered main-page popup that returns on refresh.
 - **Improved Host prompt contrast** - changed the centered host popup to a dark navy panel with a lime border so it stands apart from the white booking page.
+- **Host prompt modal behavior** - added a dim blurred backdrop, locked page scrolling while the host prompt is visible, and auto-closes it after 3 seconds.
 - **Uploaded circular Korte DOS logo** - replaced the generated SVG display with the court-provided circular PNG logo and updated public, login, admin, and favicon references.
 - **Four-column booking slot grid** - public court-card time slots now stay in a cleaner 4-column layout across desktop and mobile breakpoints.
 - **Compact booking fee breakdown** - per-hour booking fees now show the total first, followed by the short formula, for example `₱40.00 (₱10.00/hr × 4 hrs)`.

@@ -1950,6 +1950,17 @@ body.light #splashScreen { background: var(--bg); }
 .wiz-court-badge { margin-left:auto; font-size:.65rem; font-weight:800; padding:3px 9px; border-radius:20px; flex-shrink:0; }
 .wiz-court-badge.av  { background:var(--lime); color:var(--navy-dark); }
 .wiz-court-badge.mnt { background:rgba(140,140,140,.6); color:#fff; }
+.host-invite-backdrop {
+  position:fixed;
+  inset:0;
+  z-index:259;
+  background:rgba(8,21,34,.52);
+  backdrop-filter:blur(7px);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .22s ease;
+}
+.host-invite-backdrop.show { opacity:1; pointer-events:auto; }
 .host-invite-pop {
   position:fixed;
   left:50%;
@@ -2194,6 +2205,7 @@ body.light #splashScreen { background: var(--bg); }
 
 <div class="toasts" id="toasts"></div>
 
+<div class="host-invite-backdrop" id="hostInviteBackdrop" onclick="dismissHostInvite(event)" aria-hidden="true"></div>
 <div class="host-invite-pop" id="hostInvitePopup" aria-live="polite">
   <div class="host-invite-head">
     <div>
@@ -2922,6 +2934,9 @@ let paymentAcceptanceMode = 'both'; // 'both', 'downpayment_only', 'full_payment
 let _serviceFeeRate = 0; // booking fee amount, loaded from settings
 let _serviceFeeType = 'per_hour'; // 'per_hour' or 'flat'
 let hostInviteTimer = null;
+let hostInviteAutoCloseTimer = null;
+let hostInviteScrollLocked = false;
+let hostInvitePreviousOverflow = '';
 let hostInviteDismissedThisView = false;
 function normalizePlatformFeeType(type) {
   return ['flat', 'booking', 'per_booking', 'per_transaction'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
@@ -2937,16 +2952,55 @@ function bookingFeeDisplay(totalFee, hrs) {
   return fmt(fee);
 }
 
-function maybeShowHostInvite() {
-  const popup = $('hostInvitePopup');
-  if (!popup) return;
-  const blockingModalOpen =
+function hostInviteHasBlockingModal() {
+  return (
     $('bookModal')?.classList.contains('active') ||
     $('opModal')?.classList.contains('active') ||
     $('hostApplyModal')?.classList.contains('show') ||
     $('hostSessionModal')?.classList.contains('show') ||
-    $('invModal')?.classList.contains('show');
-  popup.classList.toggle('show', !hostInviteDismissedThisView && !blockingModalOpen);
+    $('invModal')?.classList.contains('show')
+  );
+}
+
+function lockHostInviteScroll() {
+  if (hostInviteScrollLocked) return;
+  hostInvitePreviousOverflow = document.body.style.overflow || '';
+  document.body.style.overflow = 'hidden';
+  hostInviteScrollLocked = true;
+}
+
+function unlockHostInviteScroll() {
+  if (!hostInviteScrollLocked) return;
+  if (!hostInviteHasBlockingModal()) document.body.style.overflow = hostInvitePreviousOverflow;
+  hostInviteScrollLocked = false;
+  hostInvitePreviousOverflow = '';
+}
+
+function hideHostInvite({ dismiss = false, restoreScroll = true } = {}) {
+  if (dismiss) hostInviteDismissedThisView = true;
+  clearTimeout(hostInviteAutoCloseTimer);
+  $('hostInvitePopup')?.classList.remove('show');
+  $('hostInviteBackdrop')?.classList.remove('show');
+  if (restoreScroll) unlockHostInviteScroll();
+}
+
+function showHostInvite() {
+  const popup = $('hostInvitePopup');
+  const backdrop = $('hostInviteBackdrop');
+  if (!popup || !backdrop) return;
+  popup.classList.add('show');
+  backdrop.classList.add('show');
+  lockHostInviteScroll();
+  clearTimeout(hostInviteAutoCloseTimer);
+  hostInviteAutoCloseTimer = setTimeout(() => hideHostInvite({ dismiss: true }), 3000);
+}
+
+function maybeShowHostInvite() {
+  if (!hostInviteDismissedThisView && !hostInviteHasBlockingModal()) {
+    showHostInvite();
+  } else {
+    hideHostInvite({ restoreScroll: !hostInviteHasBlockingModal() });
+  }
 }
 
 function initHostInvitePopup() {
@@ -2957,15 +3011,14 @@ function initHostInvitePopup() {
 
 function dismissHostInvite(e) {
   if (e) e.stopPropagation();
-  hostInviteDismissedThisView = true;
-  $('hostInvitePopup')?.classList.remove('show');
+  hideHostInvite({ dismiss: true });
 }
 
 function openHostApplyModal(e) {
   if (e) e.stopPropagation();
   const modal = $('hostApplyModal');
   if (!modal) return;
-  $('hostInvitePopup')?.classList.remove('show');
+  hideHostInvite({ restoreScroll: false });
   $('haName').value = $('bName')?.value?.trim() || '';
   $('haPhone').value = $('bPhone')?.value?.trim() || '';
   $('haEmail').value = $('bEmail')?.value?.trim() || '';
@@ -3995,7 +4048,7 @@ async function proceedToBookLegacy(courtId) {
   wizStartStep = 3;
   $('bookModal').classList.add('active');
   document.body.style.overflow = 'hidden';
-  $('hostInvitePopup')?.classList.remove('show');
+  hideHostInvite({ restoreScroll: false });
   const _mb1 = $('mobileBookBar'); if (_mb1) _mb1.style.display = 'none';
   wizGoTo(3);
   startSlotCountdown();
@@ -4097,7 +4150,7 @@ async function proceedToBook(courtId = null) {
   wizStartStep = 3;
   $('bookModal').classList.add('active');
   document.body.style.overflow = 'hidden';
-  $('hostInvitePopup')?.classList.remove('show');
+  hideHostInvite({ restoreScroll: false });
   const mobileBar = $('mobileBookBar');
   if (mobileBar) mobileBar.style.display = 'none';
   wizGoTo(3);
