@@ -2215,9 +2215,9 @@ body.light #splashScreen { background: var(--bg); }
     <button type="button" class="host-invite-x" onclick="dismissHostInvite(event)" aria-label="Dismiss host invite">×</button>
   </div>
   <div class="host-invite-features">
-    <div class="host-invite-feature"><b>Auto payment check</b>Amount, ref, date/time, and receiver are verified.</div>
-    <div class="host-invite-feature"><b>Auto approve players</b>Valid receipts confirm player spots automatically.</div>
-    <div class="host-invite-feature"><b>Share session link</b>Send one join link to ReClub or group chats.</div>
+    <div class="host-invite-feature"><b>Payment checks</b>Amount, ref, date/time, receiver, and duplicate use are checked.</div>
+    <div class="host-invite-feature"><b>Auto approve</b>Valid receipts confirm player spots automatically.</div>
+    <div class="host-invite-feature"><b>10-min window</b>Share one join link; players pay before the hold expires.</div>
   </div>
   <div class="host-invite-actions">
     <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
@@ -3001,7 +3001,7 @@ function showHostInvite() {
   backdrop.classList.add('show');
   lockHostInviteScroll();
   clearTimeout(hostInviteAutoCloseTimer);
-  hostInviteAutoCloseTimer = setTimeout(() => hideHostInvite({ dismiss: true }), 3000);
+  hostInviteAutoCloseTimer = setTimeout(() => hideHostInvite({ dismiss: true }), 10000);
 }
 
 function maybeShowHostInvite() {
