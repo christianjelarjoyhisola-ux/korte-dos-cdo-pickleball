@@ -1991,22 +1991,19 @@ body.light #splashScreen { background: var(--bg); }
 .host-invite-title { font-weight:900; color:var(--text); font-size:.94rem; }
 .host-invite-copy { color:var(--muted); font-size:.78rem; line-height:1.45; margin-top:3px; }
 .host-invite-x { border:0; background:transparent; color:var(--muted); font-size:1rem; cursor:pointer; padding:2px 4px; line-height:1; }
-.host-invite-features { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:10px 0; }
-.host-invite-feature { background:var(--input); border:1px solid var(--border); border-radius:9px; padding:8px; font-size:.68rem; color:var(--muted); line-height:1.35; }
-.host-invite-feature b { display:block; color:var(--text); font-size:.72rem; margin-bottom:2px; }
+.host-invite-features { display:grid; gap:5px; margin:11px 0 12px; color:#d9e8f2; font-size:.74rem; line-height:1.35; }
+.host-invite-feature { font-weight:800; color:#fff; }
 .host-invite-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .host-invite-pop .host-invite-title { color:#fff; }
 .host-invite-pop .host-invite-copy { color:#d9e8f2; }
 .host-invite-pop .host-invite-x { color:#d9e8f2; background:rgba(255,255,255,.10); border-radius:50%; width:24px; height:24px; }
 .host-invite-pop .host-invite-x:hover { background:rgba(255,255,255,.18); color:#fff; }
-.host-invite-pop .host-invite-feature { background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.18); color:#d9e8f2; }
-.host-invite-pop .host-invite-feature b { color:#fff; }
 .host-invite-pop .btn-g { background:rgba(255,255,255,.10); color:#fff; border-color:rgba(255,255,255,.24); }
 .host-invite-pop .btn-g:hover { background:rgba(255,255,255,.18); }
 .host-apply-modal { max-width:560px; }
 .host-apply-note { background:var(--input); border:1px solid var(--border); border-radius:var(--r-sm); padding:10px 12px; color:var(--muted); font-size:.78rem; line-height:1.5; margin-bottom:14px; }
 @media(max-width:700px) { .host-invite-pop { width:calc(100vw - 24px); padding:14px; } }
-@media(max-width:560px) { .host-invite-features { grid-template-columns:1fr; } .host-invite-actions .btn { flex:1; justify-content:center; } }
+@media(max-width:560px) { .host-invite-actions .btn { flex:1; justify-content:center; } }
 .wiz-date-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
 .wiz-date-row label { font-size:.77rem; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); white-space:nowrap; }
 .wiz-date-row .fi { flex:1; }
@@ -2215,9 +2212,11 @@ body.light #splashScreen { background: var(--bg); }
     <button type="button" class="host-invite-x" onclick="dismissHostInvite(event)" aria-label="Dismiss host invite">×</button>
   </div>
   <div class="host-invite-features">
-    <div class="host-invite-feature"><b>Payment checks</b>Amount, ref, date/time, receiver, and duplicate use are checked.</div>
-    <div class="host-invite-feature"><b>Auto approve</b>Valid receipts confirm player spots automatically.</div>
-    <div class="host-invite-feature"><b>10-min window</b>Share one join link; players pay before the hold expires.</div>
+    <div class="host-invite-feature">Payment verification system</div>
+    <div class="host-invite-feature">Auto approve verified players</div>
+    <div class="host-invite-feature">Share session link</div>
+    <div class="host-invite-feature">Track player list</div>
+    <div class="host-invite-feature">Prevent duplicate payment references</div>
   </div>
   <div class="host-invite-actions">
     <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
