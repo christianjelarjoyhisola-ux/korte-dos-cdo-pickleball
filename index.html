@@ -46,8 +46,7 @@ a { color:var(--accent); text-decoration:none; }
 body.dark .nav { background:rgba(9,21,33,.94); }
 .logo { display:flex; align-items:center; gap:10px; }
 .logo-img {
-  height:44px; width:44px; border-radius:var(--r-sm);
-  object-fit:cover;
+  height:44px; width:44px; border-radius:50%;
   object-fit:contain;
   background:#fff;
   padding:2px;
@@ -1834,7 +1833,8 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 }
 /* Logo */
 .sp-logo-img {
-  width: 96px; height: 96px; border-radius:var(--r-lg); object-fit: cover;
+  width: 96px; height: 96px; border-radius:50%; object-fit: contain;
+  background:#fff;
   border: 2px solid rgba(var(--ac),.45);
   box-shadow: 0 0 32px rgba(var(--ac),.22), 0 16px 48px rgba(0,0,0,.6);
   margin-bottom: 24px;
