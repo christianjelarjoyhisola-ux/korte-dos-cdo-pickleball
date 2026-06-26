@@ -1200,6 +1200,22 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .m-x:hover { background:var(--red); }
 .m-body { padding:22px 24px; }
 .m-foot { padding:14px 24px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; }
+#lateExtModal { z-index:1200; }
+.late-ext-modal { max-width:460px; overflow:hidden; border-color:rgba(var(--lime-rgb),.38); box-shadow:0 26px 80px rgba(8,21,34,.55); }
+.late-ext-modal .m-hd { background:linear-gradient(135deg,rgba(var(--lime-rgb),.16),rgba(var(--ac),.08)); }
+.late-ext-kicker { color:rgb(var(--lime-rgb)); font-size:.72rem; font-weight:900; text-transform:uppercase; letter-spacing:.9px; margin-bottom:4px; }
+.late-ext-title { font-size:1.22rem; font-weight:900; color:var(--text); line-height:1.15; }
+.late-ext-copy { color:var(--muted); font-size:.88rem; line-height:1.55; margin-bottom:14px; }
+.late-ext-time { background:rgba(var(--lime-rgb),.08); border:1px solid rgba(var(--lime-rgb),.26); border-radius:var(--r); padding:12px; display:grid; gap:6px; margin-bottom:12px; }
+.late-ext-time strong { color:rgb(var(--lime-rgb)); font-size:1rem; }
+.late-ext-time span { color:var(--muted); font-size:.78rem; }
+.late-ext-courts { color:var(--text); font-size:.82rem; font-weight:800; line-height:1.45; }
+.late-ext-note { color:var(--muted); font-size:.76rem; line-height:1.45; margin-top:10px; }
+.late-ext-modal .m-foot { align-items:center; justify-content:space-between; }
+@media(max-width:520px) {
+  .late-ext-modal .m-foot { flex-direction:column-reverse; align-items:stretch; }
+  .late-ext-modal .m-foot .btn { justify-content:center; width:100%; }
+}
 /* ── BOOKING CONFIRMATION TICKET ─────────────────────────── */
 #invModal { align-items:flex-end; padding:0; }
 @media(min-width:600px){ #invModal { align-items:center; padding:20px; } }
@@ -2224,6 +2240,31 @@ body.light #splashScreen { background: var(--bg); }
   <div class="host-invite-actions">
     <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
     <button type="button" class="btn btn-g btn-sm" onclick="dismissHostInvite(event)">Not now</button>
+  </div>
+</div>
+
+<div class="overlay" id="lateExtModal" aria-hidden="true">
+  <div class="modal late-ext-modal" role="dialog" aria-modal="true" aria-labelledby="lateExtTitle">
+    <div class="m-hd">
+      <div>
+        <div class="late-ext-kicker">Late-night extension</div>
+        <div class="late-ext-title" id="lateExtTitle">Extend booking until 1:00 AM?</div>
+      </div>
+      <button type="button" class="m-x" onclick="resolveLateNightExtension(false)" aria-label="Continue without extension">&times;</button>
+    </div>
+    <div class="m-body">
+      <p class="late-ext-copy">The next hour is also available. Add it now so your booking continues after midnight.</p>
+      <div class="late-ext-time">
+        <strong id="lateExtTime">12:00 AM - 1:00 AM</strong>
+        <span id="lateExtDate">Next day</span>
+      </div>
+      <div class="late-ext-courts" id="lateExtCourts"></div>
+      <div class="late-ext-note">This will be added as a separate next-day booking item in the same reservation.</div>
+    </div>
+    <div class="m-foot">
+      <button type="button" class="btn btn-g" onclick="resolveLateNightExtension(false)">No, continue 11PM only</button>
+      <button type="button" class="btn btn-p" onclick="resolveLateNightExtension(true)">Yes, add 12AM - 1AM</button>
+    </div>
   </div>
 </div>
 
@@ -3508,14 +3549,23 @@ function bookingItemsDuration(items = activeBookingItems()) {
 
 function bookingItemsCourtLabel(items = activeBookingItems()) {
   if (items.length === 0) return '-';
-  if (items.length === 1) return items[0].courtName;
-  return `${items.length} courts: ${items.map(item => item.courtName).join(', ')}`;
+  const courts = [];
+  items.forEach(item => {
+    const key = String(item.courtId || item.courtName || '');
+    if (!courts.some(c => c.key === key)) courts.push({ key, name: item.courtName });
+  });
+  if (courts.length === 1) return courts[0].name;
+  return `${courts.length} courts: ${courts.map(c => c.name).join(', ')}`;
 }
 
 function bookingItemsTimeLabel(items = activeBookingItems()) {
   if (items.length === 0) return '-';
+  const dates = [...new Set(items.map(item => item.date).filter(Boolean))];
   if (items.length === 1) return items[0].timeLabel || itemTimeLabel(items[0]);
-  return items.map(item => `${item.courtName}: ${item.timeLabel || itemTimeLabel(item)}`).join('; ');
+  return items.map(item => {
+    const datePart = dates.length > 1 ? ` (${fmtDc(item.date)})` : '';
+    return `${item.courtName}${datePart}: ${item.timeLabel || itemTimeLabel(item)}`;
+  }).join('; ');
 }
 
 function bookingItemsDate(items = activeBookingItems()) {
@@ -3537,14 +3587,16 @@ function bookingItemsSummaryHtml(items = activeBookingItems()) {
   const total = bookingItemsTotal(items);
   const svcFee = bookingItemsServiceFee(items);
   const hrs = bookingItemsDuration(items);
-  const dateStr = bookingItemsDate(items) ? fmtD(bookingItemsDate(items)) : '-';
+  const dates = [...new Set(items.map(item => item.date).filter(Boolean))];
+  const dateStr = dates.length > 1 ? dates.map(fmtD).join(' + ') : bookingItemsDate(items) ? fmtD(bookingItemsDate(items)) : '-';
   const rows = [
     `Court: ${bookingItemsCourtLabel(items)}`,
     `Date: ${dateStr}`,
   ];
   items.forEach(item => {
     const separateNote = slotsAreConsecutive(item.slots) ? '' : ` <span style="color:var(--warn);font-weight:700">(separate hours)</span>`;
-    rows.push(`Time: ${item.courtName}: ${item.timeLabel || itemTimeLabel(item)} &nbsp;(${item.duration} hr${item.duration !== 1 ? 's' : ''})${separateNote}`);
+    const datePart = dates.length > 1 ? ` (${fmtDc(item.date)})` : '';
+    rows.push(`Time: ${item.courtName}${datePart}: ${item.timeLabel || itemTimeLabel(item)} &nbsp;(${item.duration} hr${item.duration !== 1 ? 's' : ''})${separateNote}`);
   });
   rows.push(`Court Fee: <strong style="color:var(--muted)">${fmt(bookingItemsCourtFee(items))}</strong>`);
   if (svcFee > 0) rows.push(`Booking Fee: <strong style="color:var(--muted)">${bookingFeeDisplay(svcFee, hrs)}</strong>`);
@@ -3625,6 +3677,11 @@ const nowHour = () => new Date().getHours();
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const isToday = d => d === todayStr();
 const dayOfWeek = d => new Date(`${d}T00:00:00`).getDay();
+function addDaysYmd(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + Number(days || 0));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function maskName(fullName) {
   if (!fullName) return 'Booked';
   const parts = fullName.trim().split(/\s+/);
@@ -4258,6 +4315,80 @@ function bookingHoldsSlot(b) {
   return true;
 }
 
+let lateNightExtensionResolver = null;
+
+function selectedOnlyElevenToMidnight(selections = []) {
+  return selections.length > 0 && selections.every(sel => {
+    const slots = normalizedSlots(sel.slots);
+    return slots.length === 1 && slots[0] === 23;
+  });
+}
+
+async function isLateNightExtensionAvailable(sel, nextDate, blockedDates = []) {
+  if (!sel || !nextDate || blockedDates.includes(nextDate)) return false;
+  if (getCourtRepair(sel.courtName, nextDate)) return false;
+  if (isOpenPlayHour(nextDate, 0, sel.courtId) || isMaintenanceHour(nextDate, 0, sel.courtId)) return false;
+  const bookings = await DB.getBookings({ courtId: sel.courtId, date: nextDate, activeOnly: true });
+  return !(bookings || []).some(b =>
+    String(b.courtId) === String(sel.courtId) &&
+    b.date === nextDate &&
+    bookingHoldsSlot(b) &&
+    (b.slots || []).map(Number).includes(0)
+  );
+}
+
+async function lateNightExtensionCandidate(selections = []) {
+  if (!selectedOnlyElevenToMidnight(selections)) return null;
+  const selectedDate = selections[0]?.date;
+  if (!selectedDate || selections.some(sel => sel.date !== selectedDate)) return null;
+  const nextDate = addDaysYmd(selectedDate, 1);
+  const blockedDates = await DB.getBlockedDates().catch(() => []);
+  const availability = await Promise.all(selections.map(sel => isLateNightExtensionAvailable(sel, nextDate, blockedDates)));
+  if (!availability.every(Boolean)) return null;
+  return {
+    nextDate,
+    courts: selections.map(sel => sel.courtName || `Court ${sel.courtId}`),
+    selections: selections.map(sel => ({
+      ...sel,
+      date: nextDate,
+      slots: [0],
+    })),
+  };
+}
+
+function closeLateNightExtensionModal(choice = false) {
+  const modal = $('lateExtModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  document.body.style.overflow = '';
+  const resolver = lateNightExtensionResolver;
+  lateNightExtensionResolver = null;
+  if (resolver) resolver(!!choice);
+}
+
+function resolveLateNightExtension(choice) {
+  closeLateNightExtensionModal(choice);
+}
+
+function showLateNightExtensionPrompt(candidate) {
+  if (!candidate) return Promise.resolve(false);
+  const modal = $('lateExtModal');
+  if (!modal) return Promise.resolve(false);
+  const courts = candidate.courts || [];
+  if ($('lateExtDate')) $('lateExtDate').textContent = `${fmtD(candidate.nextDate)} · next calendar day`;
+  if ($('lateExtCourts')) {
+    $('lateExtCourts').textContent = courts.length > 1
+      ? `Applies to ${courts.join(', ')}.`
+      : `Applies to ${courts[0] || 'your selected court'}.`;
+  }
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  return new Promise(resolve => { lateNightExtensionResolver = resolve; });
+}
+
 async function proceedToBookLegacy(courtId) {
   await ensureCourt(courtId);
   const visibleDate = $('cDate_' + courtId)?.value || cardSel.date;
@@ -4354,6 +4485,13 @@ async function proceedToBook(courtId = null) {
     return;
   }
 
+  let bookingSelections = selections;
+  const extensionCandidate = await lateNightExtensionCandidate(selections);
+  if (extensionCandidate) {
+    const addExtension = await showLateNightExtensionPrompt(extensionCandidate);
+    if (addExtension) bookingSelections = [...selections, ...extensionCandidate.selections];
+  }
+
   const courts = await DB.getCourts();
   const primary = courtId
     ? selections.find(sel => String(sel.courtId) === String(courtId)) || selections[0]
@@ -4366,9 +4504,9 @@ async function proceedToBook(courtId = null) {
   };
   if (court) pricingTiers = getPricingTiersForCourt(court);
 
-  const groupRef = selections.length > 1 ? genRef() + '-G' : null;
+  const groupRef = bookingSelections.length > 1 ? genRef() + '-G' : null;
   const reserveStartedAt = new Date().toISOString();
-  const reserveItems = selections.map(sel => makeBookingItemFromSelection(sel, genRef(), groupRef));
+  const reserveItems = bookingSelections.map(sel => makeBookingItemFromSelection(sel, genRef(), groupRef));
   const createdRefs = [];
 
   try {

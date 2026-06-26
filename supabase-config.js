@@ -1227,7 +1227,7 @@ window.DB = {
 
   const defaultSettings = () => ({
     open_hour: '6',
-    close_hour: '23',
+    close_hour: '24',
     open_play_config: JSON.stringify({
       enabled: true,
       start: 6,
