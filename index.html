@@ -1991,8 +1991,10 @@ body.light #splashScreen { background: var(--bg); }
 .host-invite-title { font-weight:900; color:var(--text); font-size:.94rem; }
 .host-invite-copy { color:var(--muted); font-size:.78rem; line-height:1.45; margin-top:3px; }
 .host-invite-x { border:0; background:transparent; color:var(--muted); font-size:1rem; cursor:pointer; padding:2px 4px; line-height:1; }
-.host-invite-features { display:grid; gap:5px; margin:11px 0 12px; color:#d9e8f2; font-size:.74rem; line-height:1.35; }
-.host-invite-feature { font-weight:800; color:#fff; }
+.host-invite-features { display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; margin:12px 0 14px; color:#d9e8f2; font-size:.74rem; line-height:1.35; }
+.host-invite-feature { min-width:0; color:#d9e8f2; }
+.host-invite-feature strong { color:rgb(var(--lime-rgb)); font-weight:900; }
+.host-invite-more { grid-column:1 / -1; margin-top:2px; color:#fff; font-weight:900; }
 .host-invite-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .host-invite-pop .host-invite-title { color:#fff; }
 .host-invite-pop .host-invite-copy { color:#d9e8f2; }
@@ -2003,7 +2005,7 @@ body.light #splashScreen { background: var(--bg); }
 .host-apply-modal { max-width:560px; }
 .host-apply-note { background:var(--input); border:1px solid var(--border); border-radius:var(--r-sm); padding:10px 12px; color:var(--muted); font-size:.78rem; line-height:1.5; margin-bottom:14px; }
 @media(max-width:700px) { .host-invite-pop { width:calc(100vw - 24px); padding:14px; } }
-@media(max-width:560px) { .host-invite-actions .btn { flex:1; justify-content:center; } }
+@media(max-width:560px) { .host-invite-features { grid-template-columns:1fr; } .host-invite-more { grid-column:auto; } .host-invite-actions .btn { flex:1; justify-content:center; } }
 .wiz-date-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
 .wiz-date-row label { font-size:.77rem; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); white-space:nowrap; }
 .wiz-date-row .fi { flex:1; }
@@ -2212,11 +2214,12 @@ body.light #splashScreen { background: var(--bg); }
     <button type="button" class="host-invite-x" onclick="dismissHostInvite(event)" aria-label="Dismiss host invite">×</button>
   </div>
   <div class="host-invite-features">
-    <div class="host-invite-feature">Payment verification system</div>
-    <div class="host-invite-feature">Auto approve verified players</div>
-    <div class="host-invite-feature">Share session link</div>
-    <div class="host-invite-feature">Track player list</div>
-    <div class="host-invite-feature">Prevent duplicate payment references</div>
+    <div class="host-invite-feature"><strong>Payment verification</strong> system</div>
+    <div class="host-invite-feature"><strong>Auto approve</strong> verified players</div>
+    <div class="host-invite-feature"><strong>Share</strong> session link</div>
+    <div class="host-invite-feature"><strong>Track</strong> player list</div>
+    <div class="host-invite-feature"><strong>Prevent</strong> duplicate payment refs</div>
+    <div class="host-invite-feature host-invite-more">And much more</div>
   </div>
   <div class="host-invite-actions">
     <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
