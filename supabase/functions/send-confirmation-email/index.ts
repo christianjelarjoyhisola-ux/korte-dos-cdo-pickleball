@@ -56,36 +56,38 @@ function buildHtml(p: Payload): string {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="color-scheme" content="dark"/>
+<meta name="supported-color-schemes" content="dark"/>
 <title>Booking Confirmed - KORTE DOS</title>
 </head>
-<body style="margin:0;padding:0;background:#101820;font-family:'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#101820;padding:32px 0;">
+<body style="margin:0;padding:0;background:#06111f;background-image:linear-gradient(#06111f,#06111f);font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#06111f;background-image:linear-gradient(#06111f,#06111f);padding:32px 0;">
   <tr><td align="center">
-    <table width="560" cellpadding="0" cellspacing="0" style="background:#172231;border:1px solid #2d4058;border-radius:14px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.28);max-width:560px;width:100%;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#0b1f34;background-image:linear-gradient(#0b1f34,#0b1f34);border:1px solid #26415f;border-radius:14px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.38);max-width:560px;width:100%;">
 
-      <tr><td style="background:#132a46;padding:34px 36px 30px;text-align:center;border-top:6px solid #f36b21;border-bottom:1px solid #2d4058;">
+      <tr><td style="background:#09213a;background-image:linear-gradient(#09213a,#09213a);padding:34px 36px 30px;text-align:center;border-top:6px solid #f36b21;border-bottom:1px solid #26415f;">
         <img src="${LOGO_URL}" width="96" height="96" alt="Korte DOS logo" style="display:block;width:96px;height:96px;margin:0 auto 14px;border-radius:50%;background:#fff;padding:6px;border:4px solid #0f1720;"/>
         <div style="font-family:'Bebas Neue',Georgia,serif;font-size:1.6rem;letter-spacing:3px;color:#fff;line-height:1.1;">KORTE DOS</div>
         <div style="font-size:.75rem;color:#f8a45c;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">Bayabas, Cagayan de Oro City</div>
       </td></tr>
 
-      <tr><td style="background:#f36b21;padding:14px 36px;text-align:center;">
-        <div style="color:#fff;font-size:1rem;font-weight:800;letter-spacing:1px;">&#9989; BOOKING CONFIRMED</div>
+      <tr><td style="background:#d9541e;background-image:linear-gradient(#d9541e,#d9541e);padding:14px 36px;text-align:center;">
+        <div style="color:#fff7ed;font-size:1rem;font-weight:800;letter-spacing:1px;">&#9989; BOOKING CONFIRMED</div>
       </td></tr>
 
-      <tr><td style="padding:32px 36px;background:#172231;">
+      <tr><td style="padding:32px 36px;background:#0b1f34;background-image:linear-gradient(#0b1f34,#0b1f34);">
         <p style="margin:0 0 20px;font-size:1rem;color:#f7fafc;">Hi <strong>${fullName}</strong>,</p>
         <p style="margin:0 0 24px;font-size:.95rem;color:#d7dee8;line-height:1.6;">
           Great news! KORTE DOS booking has been <strong style="color:#7bd97b;">confirmed</strong>.
           ${isFullPay ? "Your full payment has been received and your slot is locked in." : "Your downpayment has been received and your slot is locked in."} See you on the court!
         </p>
 
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#101a27;border:1.5px solid #36506d;border-radius:10px;margin-bottom:24px;">
-          <tr><td style="padding:18px 22px;border-bottom:1px solid #293c52;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#07192b;background-image:linear-gradient(#07192b,#07192b);border:1.5px solid #355273;border-radius:10px;margin-bottom:24px;">
+          <tr><td style="padding:18px 22px;border-bottom:1px solid #243d5a;">
             <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#aab6c5;margin-bottom:4px;">Booking Reference</div>
             <div style="font-size:1.1rem;font-weight:800;color:#f36b21;font-family:monospace;letter-spacing:1px;">${bookingRef}</div>
           </td></tr>
-          <tr><td style="padding:14px 22px;border-bottom:1px solid #293c52;">
+          <tr><td style="padding:14px 22px;border-bottom:1px solid #243d5a;">
             <table width="100%"><tr>
               <td width="50%" style="vertical-align:top;">
                 <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#aab6c5;margin-bottom:3px;">Court</div>
@@ -97,7 +99,7 @@ function buildHtml(p: Payload): string {
               </td>
             </tr></table>
           </td></tr>
-          <tr><td style="padding:14px 22px;border-bottom:1px solid #293c52;">
+          <tr><td style="padding:14px 22px;border-bottom:1px solid #243d5a;">
             <table width="100%"><tr>
               <td width="50%" style="vertical-align:top;">
                 <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#aab6c5;margin-bottom:3px;">Time</div>
@@ -123,7 +125,7 @@ function buildHtml(p: Payload): string {
           </td></tr>
         </table>
 
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#241f14;border:1.5px solid #b86b18;border-radius:10px;margin-bottom:24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#221809;background-image:linear-gradient(#221809,#221809);border:1.5px solid #d97724;border-radius:10px;margin-bottom:24px;">
           <tr><td style="padding:14px 18px;">
             <div style="font-size:.82rem;color:#f2d6b3;line-height:1.6;">
               <strong>&#128203; Reminders:</strong><br/>
@@ -139,7 +141,7 @@ function buildHtml(p: Payload): string {
         </p>
       </td></tr>
 
-      <tr><td style="background:#111a25;padding:18px 36px;text-align:center;border-top:1px solid #293c52;">
+      <tr><td style="background:#07192b;background-image:linear-gradient(#07192b,#07192b);padding:18px 36px;text-align:center;border-top:1px solid #243d5a;">
         <div style="font-size:.75rem;color:#f36b21;letter-spacing:1px;">KORTE DOS</div>
         <div style="font-size:.72rem;color:#7f8ea3;margin-top:4px;">This is an automated confirmation email.</div>
       </td></tr>
