@@ -3734,6 +3734,32 @@ function maskName(fullName) {
   return mask(parts[0]) + ' ' + mask(parts[parts.length - 1]);
 }
 
+function maskGcashOwnerName(fullName) {
+  const clean = String(fullName || '').trim().replace(/\s+/g, ' ');
+  if (!clean) return '';
+  const parts = clean.split(' ').filter(Boolean);
+  const letters = s => String(s || '').replace(/[^A-Za-z]/g, '');
+  const maskFirst = part => {
+    const word = letters(part);
+    if (!word) return part;
+    return word[0].toUpperCase() + '*'.repeat(Math.max(2, word.length - 1));
+  };
+  const maskMiddle = part => {
+    const word = letters(part);
+    if (!word) return part;
+    if (word.length <= 2) return word[0].toUpperCase() + '*';
+    if (word.length <= 4) return word.slice(0, 1).toUpperCase() + '*'.repeat(word.length - 2) + word.slice(-1).toUpperCase();
+    return word.slice(0, 2).toUpperCase() + '*'.repeat(Math.max(2, word.length - 3)) + word.slice(-1).toUpperCase();
+  };
+  const initial = part => {
+    const word = letters(part);
+    return word ? `${word[0].toUpperCase()}.` : part;
+  };
+  if (parts.length === 1) return maskFirst(parts[0]);
+  if (parts.length === 2) return `${maskFirst(parts[0])} ${initial(parts[1])}`;
+  return [maskFirst(parts[0]), maskMiddle(parts[1]), ...parts.slice(2).map(initial)].join(' ');
+}
+
 function isOpenPlayCourt(courtId) {
   if (!openPlayConfig || !openPlayConfig.enabled) return false;
   const courtIds = Array.isArray(openPlayConfig.courtIds) ? openPlayConfig.courtIds.map(String).filter(Boolean) : [];
@@ -4002,7 +4028,7 @@ function applyPaymentSettings(settings) {
   paymentAcceptanceMode = settings.payment_acceptance_mode || 'both';
 
   if ($('gcMerchantNumber')) $('gcMerchantNumber').textContent = gcashSettings.merchantNumber;
-  if ($('gcMerchantName')) $('gcMerchantName').textContent = gcashSettings.merchantName;
+  if ($('gcMerchantName')) $('gcMerchantName').textContent = maskGcashOwnerName(gcashSettings.merchantName) || 'Court owner account';
   if ($('gtMerchantNumber')) $('gtMerchantNumber').textContent = paymentReceiverSettings.gotyme.number || 'Scan QR';
   if ($('gtMerchantName')) $('gtMerchantName').textContent = paymentReceiverSettings.gotyme.name;
   if ($('pnMerchantNumber')) $('pnMerchantNumber').textContent = paymentReceiverSettings.pnb.number || 'Scan QR';
@@ -6698,6 +6724,9 @@ function opPickPay(method) {
       pnb: { icon: '🏛️', label: 'PNB', receiver: paymentReceiverSettings.pnb },
     }[method];
     const receiver = meta.receiver;
+    const displayReceiverName = method === 'gcash'
+      ? (maskGcashOwnerName(receiver.name) || 'Court owner account')
+      : (receiver.name || 'Court owner account');
     const copyValue = (receiver.number || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const qrDisplay = receiver.qrImage
       ? `<img class="op-qr-img qr-clickable" src="${receiver.qrImage}" alt="${meta.label} QR" onclick="openQrZoomFromImg(this,'${meta.label} QR')" />`
@@ -6713,7 +6742,7 @@ function opPickPay(method) {
               <span class="op-number">${receiver.number}</span>
               <button type="button" class="op-mini-btn" onclick="copyToClipboard('${copyValue}')">Copy</button>
             </div>` : ''}
-            <div class="op-send-name">${receiver.name || 'Court owner account'}</div>
+            <div class="op-send-name">${esc(displayReceiverName)}</div>
           </div>
         </div>
       <div class="op-pay-card">
@@ -6727,7 +6756,7 @@ function opPickPay(method) {
               <span class="op-number">${receiver.number}</span>
               <button type="button" class="op-mini-btn" onclick="copyToClipboard('${copyValue}')">📋 Copy</button>
             </div>` : ''}
-            <div class="op-send-name">${receiver.name || 'Court owner account'}</div>
+            <div class="op-send-name">${esc(displayReceiverName)}</div>
           </div>
         </div>
         <div class="payment-guide">
