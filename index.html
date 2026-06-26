@@ -244,15 +244,15 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   z-index: 2;
 }
 
-/* SLOT GRID — 5 columns */
+/* SLOT GRID - 4 columns */
 .cc-slots-grid {
   display:grid;
-  grid-template-columns:repeat(5,1fr);
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:8px;
 }
 /* responsive time label: full on desktop, compact on mobile */
 .csl-time .t-compact { display:none; }
-@media(max-width:900px){ .cc-slots-grid{ grid-template-columns:repeat(4,1fr); } }
+@media(max-width:900px){ .cc-slots-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
 @media(max-width:700px){
   .cc { flex-direction:column; display:none; }
   .cc.active-mobile { display:flex; }
@@ -260,14 +260,14 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   .cc-photo-feats { display:none; }
   .cc-times { padding:10px 12px 12px; }
   .cc-times-sub { display:none; }
-  .cc-slots-grid{ grid-template-columns:repeat(3,1fr); gap:6px; }
+  .cc-slots-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
   .cc-slot-btn { padding:6px 4px; min-height:auto; }
   .csl-time  { font-size:.7rem; }
   .csl-time .t-full { display:none; }
   .csl-time .t-compact { display:inline; }
   .csl-price { font-size:.66rem; }
 }
-@media(max-width:480px){ .cc-slots-grid{ grid-template-columns:repeat(3,1fr); gap:5px; } }
+@media(max-width:480px){ .cc-slots-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; } }
 @media(max-width:340px){
   .cc-slot-btn { padding:5px 2px; min-height:44px; }
   .csl-time { font-size:.6rem; }
