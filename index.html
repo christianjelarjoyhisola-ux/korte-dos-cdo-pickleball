@@ -3041,6 +3041,11 @@ function hostInviteHasBlockingModal() {
   );
 }
 
+function isSplashActive() {
+  const splash = $('splashScreen');
+  return !!splash && splash.style.display !== 'none' && !splash.classList.contains('dismissed');
+}
+
 function lockHostInviteScroll() {
   if (hostInviteScrollLocked) return;
   hostInvitePreviousOverflow = document.body.style.overflow || '';
@@ -3050,7 +3055,11 @@ function lockHostInviteScroll() {
 
 function unlockHostInviteScroll() {
   if (!hostInviteScrollLocked) return;
-  if (!hostInviteHasBlockingModal()) document.body.style.overflow = hostInvitePreviousOverflow;
+  if (!hostInviteHasBlockingModal()) {
+    document.body.style.overflow = isSplashActive()
+      ? 'hidden'
+      : (hostInvitePreviousOverflow === 'hidden' ? '' : hostInvitePreviousOverflow);
+  }
   hostInviteScrollLocked = false;
   hostInvitePreviousOverflow = '';
 }
@@ -3075,6 +3084,11 @@ function showHostInvite() {
 }
 
 function maybeShowHostInvite() {
+  if (isSplashActive()) {
+    clearTimeout(hostInviteTimer);
+    hostInviteTimer = setTimeout(maybeShowHostInvite, 800);
+    return;
+  }
   if (!hostInviteDismissedThisView && !hostInviteHasBlockingModal()) {
     showHostInvite();
   } else {
