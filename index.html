@@ -1950,17 +1950,43 @@ body.light #splashScreen { background: var(--bg); }
 .wiz-court-badge { margin-left:auto; font-size:.65rem; font-weight:800; padding:3px 9px; border-radius:20px; flex-shrink:0; }
 .wiz-court-badge.av  { background:var(--lime); color:var(--navy-dark); }
 .wiz-court-badge.mnt { background:rgba(140,140,140,.6); color:#fff; }
-.host-invite-card { margin-bottom:14px; border:1px solid rgba(var(--ac),.28); background:linear-gradient(135deg,rgba(var(--ac),.10),rgba(var(--lime-rgb),.07)); border-radius:var(--r); padding:14px; }
+.host-invite-pop {
+  position:fixed;
+  right:22px;
+  bottom:22px;
+  z-index:260;
+  width:min(380px,calc(100vw - 32px));
+  border:1px solid rgba(var(--ac),.28);
+  background:var(--card);
+  border-radius:var(--r-lg);
+  box-shadow:0 18px 55px rgba(8,21,34,.28);
+  padding:16px;
+  opacity:0;
+  pointer-events:none;
+  transform:translateY(12px) scale(.98);
+  transition:opacity .22s ease, transform .22s ease;
+}
+.host-invite-pop.show { opacity:1; pointer-events:auto; transform:translateY(0) scale(1); }
+.host-invite-pop::before {
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background:linear-gradient(135deg,rgba(var(--ac),.08),rgba(var(--lime-rgb),.07));
+  pointer-events:none;
+}
+.host-invite-pop > * { position:relative; z-index:1; }
 .host-invite-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px; }
 .host-invite-title { font-weight:900; color:var(--text); font-size:.94rem; }
 .host-invite-copy { color:var(--muted); font-size:.78rem; line-height:1.45; margin-top:3px; }
-.host-invite-x { border:0; background:transparent; color:var(--muted); font-size:1rem; cursor:pointer; padding:2px 4px; }
+.host-invite-x { border:0; background:transparent; color:var(--muted); font-size:1rem; cursor:pointer; padding:2px 4px; line-height:1; }
 .host-invite-features { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:10px 0; }
 .host-invite-feature { background:var(--input); border:1px solid var(--border); border-radius:9px; padding:8px; font-size:.68rem; color:var(--muted); line-height:1.35; }
 .host-invite-feature b { display:block; color:var(--text); font-size:.72rem; margin-bottom:2px; }
 .host-invite-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .host-apply-modal { max-width:560px; }
 .host-apply-note { background:var(--input); border:1px solid var(--border); border-radius:var(--r-sm); padding:10px 12px; color:var(--muted); font-size:.78rem; line-height:1.5; margin-bottom:14px; }
+@media(max-width:700px) { .host-invite-pop { left:12px; right:12px; bottom:82px; width:auto; padding:14px; } }
 @media(max-width:560px) { .host-invite-features { grid-template-columns:1fr; } .host-invite-actions .btn { flex:1; justify-content:center; } }
 .wiz-date-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
 .wiz-date-row label { font-size:.77rem; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); white-space:nowrap; }
@@ -2159,6 +2185,25 @@ body.light #splashScreen { background: var(--bg); }
 <body class="light">
 
 <div class="toasts" id="toasts"></div>
+
+<div class="host-invite-pop" id="hostInvitePopup" aria-live="polite">
+  <div class="host-invite-head">
+    <div>
+      <div class="host-invite-title">Are you an Open Play host?</div>
+      <div class="host-invite-copy">Apply for Host Dashboard access to publish sessions, manage courts/time, and share one link with players.</div>
+    </div>
+    <button type="button" class="host-invite-x" onclick="dismissHostInvite(event)" aria-label="Dismiss host invite">×</button>
+  </div>
+  <div class="host-invite-features">
+    <div class="host-invite-feature"><b>Multi-court</b>Select multiple courts and a start/end time.</div>
+    <div class="host-invite-feature"><b>Share link</b>Post your session link in ReClub or chats.</div>
+    <div class="host-invite-feature"><b>Player list</b>Prepare confirmed players and payment tracking.</div>
+  </div>
+  <div class="host-invite-actions">
+    <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
+    <button type="button" class="btn btn-g btn-sm" onclick="dismissHostInvite(event)">Not now</button>
+  </div>
+</div>
 
 <!-- SPLASH SCREEN -->
 <div id="splashScreen" onclick="dismissSplash()">
@@ -2369,24 +2414,6 @@ body.light #splashScreen { background: var(--bg); }
 
         <!-- ── STEP 1: PICK COURT ── -->
         <div class="wiz-panel on" id="wizPanel1">
-          <div class="host-invite-card" id="hostInviteCard">
-            <div class="host-invite-head">
-              <div>
-                <div class="host-invite-title">Are you an Open Play host?</div>
-                <div class="host-invite-copy">Apply for Host Dashboard access to publish sessions, manage courts/time, and share one link with players.</div>
-              </div>
-              <button type="button" class="host-invite-x" onclick="dismissHostInvite(event)" aria-label="Dismiss host invite">×</button>
-            </div>
-            <div class="host-invite-features">
-              <div class="host-invite-feature"><b>Multi-court</b>Select multiple courts and a start/end time.</div>
-              <div class="host-invite-feature"><b>Share link</b>Post your session link in ReClub or chats.</div>
-              <div class="host-invite-feature"><b>Player list</b>Prepare for confirmed players and payment tracking.</div>
-            </div>
-            <div class="host-invite-actions">
-              <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
-              <button type="button" class="btn btn-g btn-sm" onclick="dismissHostInvite(event)">Not now</button>
-            </div>
-          </div>
           <div class="wiz-sec-title">🏟️ Select a Court</div>
           <div class="wiz-court-list" id="wizCourtList">
             <div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading courts</div></div>
@@ -2406,19 +2433,6 @@ body.light #splashScreen { background: var(--bg); }
 
         <!-- ── STEP 3: YOUR DETAILS ── -->
         <div class="wiz-panel" id="wizPanel3">
-          <div class="host-invite-card">
-            <div class="host-invite-head">
-              <div>
-                <div class="host-invite-title">Are you an Open Play host?</div>
-                <div class="host-invite-copy">Apply for Host Dashboard access before you finish booking. The court owner can review and approve your host login.</div>
-              </div>
-              <button type="button" class="host-invite-x" onclick="dismissHostInvite(event)" aria-label="Dismiss host invite">×</button>
-            </div>
-            <div class="host-invite-actions">
-              <button type="button" class="btn btn-p btn-sm" onclick="openHostApplyModal(event)">Apply as Host</button>
-              <button type="button" class="btn btn-g btn-sm" onclick="dismissHostInvite(event)">Not now</button>
-            </div>
-          </div>
           <div class="wiz-sec-title">👤 Your Details</div>
           <div class="frow">
             <div class="fg" style="margin:0">
@@ -2899,7 +2913,8 @@ let openPlayMaxPlayers = 40; // default 40, overridden by settings
 let paymentAcceptanceMode = 'both'; // 'both', 'downpayment_only', 'full_payment_only'
 let _serviceFeeRate = 0; // booking fee amount, loaded from settings
 let _serviceFeeType = 'per_hour'; // 'per_hour' or 'flat'
-const HOST_INVITE_DISMISS_KEY = 'korte_host_invite_dismissed';
+const HOST_INVITE_DISMISS_KEY = 'korte_host_invite_popup_dismissed';
+let hostInviteTimer = null;
 function normalizePlatformFeeType(type) {
   return ['flat', 'booking', 'per_booking', 'per_transaction'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
 }
@@ -2915,21 +2930,35 @@ function bookingFeeDisplay(totalFee, hrs) {
 }
 
 function maybeShowHostInvite() {
-  document.querySelectorAll('.host-invite-card').forEach(card => {
-    card.style.display = localStorage.getItem(HOST_INVITE_DISMISS_KEY) === '1' ? 'none' : '';
-  });
+  const popup = $('hostInvitePopup');
+  if (!popup) return;
+  const isDismissed = localStorage.getItem(HOST_INVITE_DISMISS_KEY) === '1';
+  const blockingModalOpen =
+    $('bookModal')?.classList.contains('active') ||
+    $('opModal')?.classList.contains('active') ||
+    $('hostApplyModal')?.classList.contains('show') ||
+    $('hostSessionModal')?.classList.contains('show') ||
+    $('invModal')?.classList.contains('show');
+  popup.classList.toggle('show', !isDismissed && !blockingModalOpen);
+}
+
+function initHostInvitePopup() {
+  if (localStorage.getItem(HOST_INVITE_DISMISS_KEY) === '1') return;
+  clearTimeout(hostInviteTimer);
+  hostInviteTimer = setTimeout(maybeShowHostInvite, 1400);
 }
 
 function dismissHostInvite(e) {
   if (e) e.stopPropagation();
   localStorage.setItem(HOST_INVITE_DISMISS_KEY, '1');
-  document.querySelectorAll('.host-invite-card').forEach(card => { card.style.display = 'none'; });
+  $('hostInvitePopup')?.classList.remove('show');
 }
 
 function openHostApplyModal(e) {
   if (e) e.stopPropagation();
   const modal = $('hostApplyModal');
   if (!modal) return;
+  $('hostInvitePopup')?.classList.remove('show');
   $('haName').value = $('bName')?.value?.trim() || '';
   $('haPhone').value = $('bPhone')?.value?.trim() || '';
   $('haEmail').value = $('bEmail')?.value?.trim() || '';
@@ -2939,6 +2968,7 @@ function openHostApplyModal(e) {
 
 function closeHostApplyModal() {
   $('hostApplyModal')?.classList.remove('show');
+  maybeShowHostInvite();
 }
 
 async function submitHostApplication() {
@@ -3958,7 +3988,7 @@ async function proceedToBookLegacy(courtId) {
   wizStartStep = 3;
   $('bookModal').classList.add('active');
   document.body.style.overflow = 'hidden';
-  maybeShowHostInvite();
+  $('hostInvitePopup')?.classList.remove('show');
   const _mb1 = $('mobileBookBar'); if (_mb1) _mb1.style.display = 'none';
   wizGoTo(3);
   startSlotCountdown();
@@ -4060,7 +4090,7 @@ async function proceedToBook(courtId = null) {
   wizStartStep = 3;
   $('bookModal').classList.add('active');
   document.body.style.overflow = 'hidden';
-  maybeShowHostInvite();
+  $('hostInvitePopup')?.classList.remove('show');
   const mobileBar = $('mobileBookBar');
   if (mobileBar) mobileBar.style.display = 'none';
   wizGoTo(3);
@@ -5826,6 +5856,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await expireStaleVerifyingBookings();
   await renderCourts();
   await maybeOpenHostSessionLink();
+  initHostInvitePopup();
   startRealtime();
   $('bDate').min = todayStr();
   initBookingValidationHighlights();

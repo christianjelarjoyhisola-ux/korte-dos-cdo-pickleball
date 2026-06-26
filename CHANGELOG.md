@@ -9,6 +9,7 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 ## [2026-06-26] - Public Booking Polish & Branding
 
 ### Changed
+- **Moved Host application prompt** - removed the Open Play host invite from the booking wizard and made it a dismissible main-page popup so it does not interrupt the reservation details step.
 - **Uploaded circular Korte DOS logo** - replaced the generated SVG display with the court-provided circular PNG logo and updated public, login, admin, and favicon references.
 - **Four-column booking slot grid** - public court-card time slots now stay in a cleaner 4-column layout across desktop and mobile breakpoints.
 - **Compact booking fee breakdown** - per-hour booking fees now show the total first, followed by the short formula, for example `₱40.00 (₱10.00/hr × 4 hrs)`.
