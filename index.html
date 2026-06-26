@@ -3017,6 +3017,7 @@ let hostInviteAutoCloseTimer = null;
 let hostInviteScrollLocked = false;
 let hostInvitePreviousOverflow = '';
 let hostInviteDismissedThisView = false;
+const HOST_INVITE_ENABLED = false;
 function normalizePlatformFeeType(type) {
   return ['flat', 'booking', 'per_booking', 'per_transaction'].includes(String(type || '').toLowerCase()) ? 'flat' : 'per_hour';
 }
@@ -3073,6 +3074,7 @@ function hideHostInvite({ dismiss = false, restoreScroll = true } = {}) {
 }
 
 function showHostInvite() {
+  if (!HOST_INVITE_ENABLED) return;
   const popup = $('hostInvitePopup');
   const backdrop = $('hostInviteBackdrop');
   if (!popup || !backdrop) return;
@@ -3084,6 +3086,10 @@ function showHostInvite() {
 }
 
 function maybeShowHostInvite() {
+  if (!HOST_INVITE_ENABLED) {
+    hideHostInvite({ restoreScroll: true });
+    return;
+  }
   if (isSplashActive()) {
     clearTimeout(hostInviteTimer);
     hostInviteTimer = setTimeout(maybeShowHostInvite, 800);
@@ -3097,6 +3103,10 @@ function maybeShowHostInvite() {
 }
 
 function initHostInvitePopup() {
+  if (!HOST_INVITE_ENABLED) {
+    hideHostInvite({ restoreScroll: true });
+    return;
+  }
   hostInviteDismissedThisView = false;
   clearTimeout(hostInviteTimer);
   hostInviteTimer = setTimeout(maybeShowHostInvite, 1400);
