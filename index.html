@@ -1956,10 +1956,10 @@ body.light #splashScreen { background: var(--bg); }
   top:50%;
   z-index:260;
   width:min(380px,calc(100vw - 32px));
-  border:1px solid rgba(var(--ac),.28);
-  background:var(--card);
+  border:1.5px solid rgba(var(--lime-rgb),.78);
+  background:linear-gradient(135deg,var(--navy-dark) 0%,var(--navy) 58%,var(--court-blue) 100%);
   border-radius:var(--r-lg);
-  box-shadow:0 18px 55px rgba(8,21,34,.28);
+  box-shadow:0 22px 70px rgba(8,21,34,.42),0 0 0 1px rgba(255,255,255,.08) inset;
   padding:16px;
   opacity:0;
   pointer-events:none;
@@ -1972,7 +1972,7 @@ body.light #splashScreen { background: var(--bg); }
   position:absolute;
   inset:0;
   border-radius:inherit;
-  background:linear-gradient(135deg,rgba(var(--ac),.08),rgba(var(--lime-rgb),.07));
+  background:radial-gradient(circle at top left,rgba(var(--lime-rgb),.22),transparent 42%);
   pointer-events:none;
 }
 .host-invite-pop > * { position:relative; z-index:1; }
@@ -1984,6 +1984,14 @@ body.light #splashScreen { background: var(--bg); }
 .host-invite-feature { background:var(--input); border:1px solid var(--border); border-radius:9px; padding:8px; font-size:.68rem; color:var(--muted); line-height:1.35; }
 .host-invite-feature b { display:block; color:var(--text); font-size:.72rem; margin-bottom:2px; }
 .host-invite-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.host-invite-pop .host-invite-title { color:#fff; }
+.host-invite-pop .host-invite-copy { color:#d9e8f2; }
+.host-invite-pop .host-invite-x { color:#d9e8f2; background:rgba(255,255,255,.10); border-radius:50%; width:24px; height:24px; }
+.host-invite-pop .host-invite-x:hover { background:rgba(255,255,255,.18); color:#fff; }
+.host-invite-pop .host-invite-feature { background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.18); color:#d9e8f2; }
+.host-invite-pop .host-invite-feature b { color:#fff; }
+.host-invite-pop .btn-g { background:rgba(255,255,255,.10); color:#fff; border-color:rgba(255,255,255,.24); }
+.host-invite-pop .btn-g:hover { background:rgba(255,255,255,.18); }
 .host-apply-modal { max-width:560px; }
 .host-apply-note { background:var(--input); border:1px solid var(--border); border-radius:var(--r-sm); padding:10px 12px; color:var(--muted); font-size:.78rem; line-height:1.5; margin-bottom:14px; }
 @media(max-width:700px) { .host-invite-pop { width:calc(100vw - 24px); padding:14px; } }
