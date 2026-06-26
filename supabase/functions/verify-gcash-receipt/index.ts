@@ -27,10 +27,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Payment must happen within this many minutes after the booking is started.
-// The booking form holds the slot for 15 minutes, so the receipt timestamp must
-// sit inside the same window.
-const PAYMENT_WINDOW_MINUTES = 15;
+// Payment must happen within this many minutes after the booking/session join
+// is started.
+const PAYMENT_WINDOW_MINUTES = 10;
 // OCR usually reads only minute-level timestamps. A receipt paid during the
 // same minute as the hold can look a few seconds "before" the booking.
 const PAYMENT_EARLY_TOLERANCE_MINUTES = 2;
