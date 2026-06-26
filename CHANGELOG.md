@@ -6,6 +6,22 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-06-26] - Public Booking Polish & Branding
+
+### Changed
+- **Uploaded circular Korte DOS logo** - replaced the generated SVG display with the court-provided circular PNG logo and updated public, login, admin, and favicon references.
+- **Four-column booking slot grid** - public court-card time slots now stay in a cleaner 4-column layout across desktop and mobile breakpoints.
+- **Compact booking fee breakdown** - per-hour booking fees now show the total first, followed by the short formula, for example `₱40.00 (₱10.00/hr × 4 hrs)`.
+- **Plain slot status labels** - processing slots now show `Processing...` without an emoji, and booked slots show `Booked` instead of masked names or `TAKEN`.
+
+### Fixed
+- **Logo edge cleanup** - the new PNG has transparent corners so the logo appears as a true circle instead of a square image with rounded styling.
+- **Restored full public page after label update** - repaired the public `index.html` deployment after a bad redirected verification output briefly replaced the local file.
+
+**Files affected:** `index.html`, `admin.html`, `login.html`, `korte-dos-logo.png`, `korte-dos-logo.svg`
+
+---
+
 ## [2026-06-25] - Public Booking Mobile UX & Slot Indicators
 
 ### Added
