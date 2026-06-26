@@ -4318,7 +4318,8 @@ function bookingHoldsSlot(b) {
 let lateNightExtensionResolver = null;
 
 function selectedOnlyElevenToMidnight(selections = []) {
-  return selections.length > 0 && selections.every(sel => {
+  const distinctCourts = new Set(selections.map(sel => String(sel.courtId || '')));
+  return distinctCourts.size >= 2 && selections.every(sel => {
     const slots = normalizedSlots(sel.slots);
     return slots.length === 1 && slots[0] === 23;
   });
