@@ -5763,6 +5763,7 @@ async function submitBookingLegacy(e) {
         booking.status = 'confirmed';
         booking.paymentStatus = (booking.downpayment >= booking.total - 1) ? 'paid' : 'downpayment_paid';
         DB.notifyBookingUpdate(booking, 'payment_verified', 'Receipt auto-verified.').catch(() => {});
+        sendCustomerConfirmationEmail(booking);
       } else {
         // manual_review or OCR error — downgrade from verifying to pending so
         // slot shows as taken (red) while admin reviews it, not yellow forever.
@@ -5979,6 +5980,7 @@ async function submitBooking(e) {
           row.paymentStatus = (row.downpayment >= row.total - 1) ? 'paid' : 'downpayment_paid';
         });
         DB.notifyBookingUpdate(booking, 'payment_verified', 'Receipt auto-verified.').catch(() => {});
+        sendCustomerConfirmationEmail(booking);
       } else {
         booking.status = 'pending';
         booking.paymentStatus = 'for_verification';
@@ -6078,6 +6080,11 @@ async function verifyUploadedReceipt(bookingRef, method, inlineData = null) {
     if (st) { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = '🕓 Receipt uploaded — the owner will verify it manually.'; }
     return { status: 'manual_review', message: 'Receipt uploaded — pending manual verification.', flags: [], extracted: null, confidence: null, receiptImageUrl: null, receiptImageHash: null, receiptPhash: null, receiptVerifiedAt: new Date().toISOString() };
   }
+}
+
+function sendCustomerConfirmationEmail(booking) {
+  if (!booking?.email || booking.status !== 'confirmed') return;
+  DB.sendConfirmationEmail(booking, { allowFailure: true }).catch(() => {});
 }
 
 function resetForm() {
