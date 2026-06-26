@@ -185,17 +185,44 @@ function normalizeReferenceForProvider(value: string, provider: "gcash" | "gotym
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+function flexibleDigitPattern(digits: string): RegExp {
+  return new RegExp(digits.split("").join("[^0-9]*"));
+}
+
 // Extract candidate 13-digit GCash reference numbers from OCR text.
-function extractGcashRef(text: string): string | null {
-  const cleaned = text.replace(/[^\d\s]/g, " ");
-  const groups = cleaned.match(/(?:\d[\d\s]{11,20}\d)/g) || [];
+function extractGcashRef(text: string, typedRef = ""): string | null {
+  const normalizedTyped = digitsOnly(typedRef);
+
+  // If the customer-entered ref is visible in the OCR text, trust it. This
+  // avoids false mismatches when OCR sees the receiver mobile number before the
+  // "Ref No." line and a broad numeric scan accidentally joins nearby digits.
+  if (normalizedTyped.length === 13 && flexibleDigitPattern(normalizedTyped).test(text)) {
+    return normalizedTyped;
+  }
+
+  // Prefer numbers immediately following receipt reference labels.
+  const labelPattern = /\b(?:ref(?:erence)?(?:\s*(?:no|number|#))?\.?)\s*[:#]?\s*([0-9][0-9\s-]{11,30}[0-9])/gi;
+  let labelMatch: RegExpExecArray | null;
+  while ((labelMatch = labelPattern.exec(text)) !== null) {
+    const d = digitsOnly(labelMatch[1]);
+    if (d.length === 13) return d;
+    if (normalizedTyped.length === 13 && d.includes(normalizedTyped)) return normalizedTyped;
+  }
+
+  // Fallback: any standalone 13-digit run.
+  const standalone = text.match(/\b\d{13}\b/);
+  if (standalone) return standalone[0];
+
+  // Last resort: tolerate OCR spaces inside a single long numeric group.
+  // Keep this after label/typed matching because phone numbers and amounts can
+  // otherwise be accidentally joined into a fake 13-digit reference.
+  const cleaned = text.replace(/[^\d\s-]/g, " ");
+  const groups = cleaned.match(/(?:\d[\d\s-]{11,30}\d)/g) || [];
   for (const g of groups) {
     const d = digitsOnly(g);
     if (d.length === 13) return d;
   }
-  // Fallback: any standalone 13-digit run.
-  const m = text.match(/\b\d{13}\b/);
-  return m ? m[0] : null;
+  return null;
 }
 
 function extractReference(
@@ -203,7 +230,7 @@ function extractReference(
   provider: "gcash" | "gotyme" | "pnb",
   typedRef: string,
 ): string | null {
-  if (provider === "gcash") return extractGcashRef(text);
+  if (provider === "gcash") return extractGcashRef(text, typedRef);
 
   // GoTyme/PNB references are not guaranteed to be 13-digit GCash-style refs.
   // For those providers, trust the customer-entered reference only if OCR sees
