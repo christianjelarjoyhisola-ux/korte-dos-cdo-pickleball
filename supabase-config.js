@@ -1788,14 +1788,14 @@ window.Auth = {
 
   // ── Role model ──────────────────────────────────────────
   // owner       → System Owner   (full access: everything + accounts)
-  // court_owner → Court Owner    (operations + settings, no account mgmt)
-  // staff       → Court Staff    (front-desk: bookings, payments, open play)
+  // court_owner → Court Owner    (operations + payment settings, no account mgmt)
+  // staff       → Court Staff    (front-desk: bookings, payment review, open play)
   ROLES: ['owner', 'court_owner', 'staff', 'host'],
   ROLE_LABELS: { owner: 'System Owner', court_owner: 'Court Owner', staff: 'Court Staff', host: 'Open Play Host' },
   ROLE_PERMISSIONS: {
-    owner:       ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
-    court_owner: ['dashboard', 'bookings', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'export', 'settings', 'court_owner_only'],
-    staff:       ['bookings', 'open_play', 'payments'],
+    owner:       ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
+    court_owner: ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'export', 'settings', 'court_owner_only'],
+    staff:       ['bookings', 'open_play', 'payment_review'],
     host:        ['host_open_play'],
   },
 

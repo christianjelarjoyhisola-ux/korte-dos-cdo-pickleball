@@ -884,7 +884,7 @@ tr:hover td { background: var(--bg2); }
       <div class="nav-grp">Overview</div>
       <div class="nav-item on" data-s="dash" data-perm="dashboard" onclick="goto('dash')"><span>&#128202;</span> Dashboard</div>
       <div class="nav-item" data-s="bookings" data-perm="bookings" onclick="goto('bookings')"><span>&#128203;</span> Bookings</div>
-      <div class="nav-item" data-s="payreview" data-perm="payments" onclick="goto('payreview')"><span>&#128269;</span> Payment Review</div>
+      <div class="nav-item" data-s="payreview" data-perm="payment_review" onclick="goto('payreview')"><span>&#128269;</span> Payment Review</div>
       <div class="nav-item" data-s="reports" data-perm="reports" onclick="goto('reports')"><span>&#128200;</span> Reports</div>
     </div>
     <div class="sb-section">
@@ -1928,7 +1928,7 @@ tr:hover td { background: var(--bg2); }
       <div class="fg" style="margin-top:12px"><label class="fl">Role</label>
         <select class="fi" id="amRole">
           <option value="host">Open Play Host - publish and share host sessions</option>
-          <option value="staff">Court Staff — front-desk: bookings, payments, open play</option>
+          <option value="staff">Court Staff — front-desk: bookings, payment review, open play</option>
           <option value="court_owner">Court Owner — operations + settings (no account mgmt)</option>
           <option value="owner">System Owner — full access</option>
         </select>
@@ -2447,7 +2447,7 @@ let sess;
    NAVIGATION
    ============================================== */
 const titles={dash:'Dashboard',bookings:'Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',blocked:'Open Play',hosts:'Host Center',gamemgr:'Game Manager',maintenance:'Maintenance',payments:'Payments'};
-const SECTION_PERM={dash:'dashboard',bookings:'bookings',payreview:'payments',reports:'reports',courts:'courts',accounts:'accounts',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
+const SECTION_PERM={dash:'dashboard',bookings:'bookings',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'accounts',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
 const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:renderGameManager,maintenance:renderMaintenance,payments:renderPaymentSettings};
 let _curSection=null;
 async function goto(s){
@@ -4195,6 +4195,7 @@ async function renderIntegrationStatus() {
 }
 
 async function renderPaymentSettings() {
+  if (!Auth.can('payments', sess.role)) { toast('You do not have access to this section.', 'err'); return; }
   const settings = await DB.getSettings();
   const cashOn = settings.payment_method_cash !== '0';
   const gcashOn = settings.payment_method_gcash !== '0';
@@ -4649,6 +4650,7 @@ async function savePlatformRemittance() {
 }
 
 function handlePlatformQrUpload(e) {
+  if (!Auth.can('owner_only', sess.role)) { toast('Only system owner can edit this.', 'err'); e.target.value = ''; return; }
   const file = e.target.files[0];
   if (!file) return;
   if (file.size > 4 * 1024 * 1024) { toast('Image too large (max 4MB).', 'err'); e.target.value = ''; return; }
@@ -4670,6 +4672,7 @@ function handlePlatformQrUpload(e) {
 }
 
 async function removePlatformQr() {
+  if (!Auth.can('owner_only', sess.role)) { toast('Only system owner can edit this.', 'err'); return; }
   try {
     await DB.saveSetting('platform_gcash_qr', '');
     $('platformGcashQrPreview').src = '';
@@ -4682,6 +4685,7 @@ async function removePlatformQr() {
 }
 
 async function removeQr(type) {
+  if (!Auth.can('payments', sess.role)) { toast('You do not have access to edit payment settings.', 'err'); return; }
   const key = type === 'gcash' ? 'gcash_qr_image' : type === 'gotyme' ? 'gotyme_qr_image' : 'pnb_qr_image';
   const previewId = type === 'gcash' ? 'gcashQrPreview' : type === 'gotyme' ? 'gotymeQrPreview' : 'pnbQrPreview';
   const wrapId = type === 'gcash' ? 'gcashQrPreviewWrap' : type === 'gotyme' ? 'gotymeQrPreviewWrap' : 'pnbQrPreviewWrap';
@@ -4698,6 +4702,7 @@ async function removeQr(type) {
 }
 
 function handleQrUpload(type, e) {
+  if (!Auth.can('payments', sess.role)) { toast('You do not have access to edit payment settings.', 'err'); e.target.value = ''; return; }
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -4727,6 +4732,7 @@ function handleQrUpload(type, e) {
 }
 
 async function savePaymentSettings() {
+  if (!Auth.can('payments', sess.role)) { toast('You do not have access to edit payment settings.', 'err'); return; }
   const cashOn = $('payMethodCashOn').checked;
   const gcashOn = $('payMethodGcashOn').checked;
   const gotymeOn = $('payMethodGotymeOn').checked;
