@@ -3620,6 +3620,10 @@ function slotsTimeLabel(slots) {
   return slotGroups(slots).map(g => `${fmtT(g.start)} - ${fmtT(g.end)}`).join(', ');
 }
 
+function slotsCompactTimeLabel(slots) {
+  return slotGroups(slots).map(g => `${fmtTc(g.start)} - ${fmtTc(g.end)}`).join(', ');
+}
+
 function itemTimeLabel(item) {
   return slotsTimeLabel(item?.slots || []);
 }
@@ -3629,7 +3633,7 @@ function selectionSummaryText(sel, includeFee = true) {
   const hrs = sel.slots.length;
   const amount = includeFee ? selectionTotal(sel) : selectionCourtFee(sel);
   const splitNote = slotsAreConsecutive(sel.slots) ? '' : ' separate';
-  return `${fmtDc(sel.date)} | ${itemTimeLabel(sel)} | ${hrs}${splitNote} hr${hrs > 1 ? 's' : ''} | ${fmt(amount)}`;
+  return `${fmtDc(sel.date)} | ${slotsCompactTimeLabel(sel.slots)} | ${hrs}${splitNote} hr${hrs > 1 ? 's' : ''} | ${fmt(amount)}`;
 }
 
 function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
