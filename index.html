@@ -592,7 +592,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   .cc-book-bar { display:none !important; }
   .courts { padding-bottom:72px; }
 }
-.cc-book-sum { font-size:.8rem; font-weight:600; color:var(--accent); flex:1; }
+.cc-book-sum { font-size:.8rem; font-weight:600; color:var(--accent); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cc-date-pick {
   background:var(--input); border:1px solid var(--border);
   border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
@@ -3624,12 +3624,12 @@ function itemTimeLabel(item) {
   return slotsTimeLabel(item?.slots || []);
 }
 
-function selectionSummaryText(sel, includeFee = false) {
+function selectionSummaryText(sel, includeFee = true) {
   if (!sel || !sel.slots?.length) return '';
   const hrs = sel.slots.length;
   const amount = includeFee ? selectionTotal(sel) : selectionCourtFee(sel);
   const splitNote = slotsAreConsecutive(sel.slots) ? '' : ' separate';
-  return `${itemTimeLabel(sel)} | ${hrs}${splitNote} hr${hrs > 1 ? 's' : ''} | ${fmt(amount)}`;
+  return `${fmtDc(sel.date)} | ${itemTimeLabel(sel)} | ${hrs}${splitNote} hr${hrs > 1 ? 's' : ''} | ${fmt(amount)}`;
 }
 
 function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
