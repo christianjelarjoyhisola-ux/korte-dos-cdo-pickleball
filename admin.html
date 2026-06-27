@@ -990,7 +990,7 @@ tr:hover td { background: var(--bg2); }
         <div class="tbl-hd"><h3>🕒 Recent Bookings</h3><button class="btn btn-g btn-sm" onclick="goto('bookings')">View All →</button></div>
         <div class="tbl-scroll">
           <table>
-            <thead><tr><th>Ref</th><th>Name</th><th>Court</th><th>Date</th><th>Status</th></tr></thead>
+            <thead><tr><th>Ref</th><th>Name</th><th>Court</th><th>Schedule</th><th>Status</th></tr></thead>
             <tbody id="recentBody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No bookings yet.</td></tr></tbody>
           </table>
         </div>
@@ -1109,8 +1109,8 @@ tr:hover td { background: var(--bg2); }
         </div>
         <div class="tbl-scroll">
           <table>
-            <thead><tr><th>When</th><th>Type</th><th>Reference</th><th>Name</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead>
-            <tbody id="prLogBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No payment activity yet.</td></tr></tbody>
+            <thead><tr><th>When</th><th>Schedule</th><th>Type</th><th>Reference</th><th>Name</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="prLogBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No payment activity yet.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1158,7 +1158,7 @@ tr:hover td { background: var(--bg2); }
 
       <!-- Monthly trend -->
       <div class="panel" style="margin-top:16px">
-        <h4>Monthly Trend (Last 6 Months)</h4>
+        <h4>Monthly Trend</h4>
         <div id="rpTrend"><p class="rp-empty">No data.</p></div>
       </div>
     </div>
@@ -2689,26 +2689,28 @@ async function renderDash(){
   // Exclude placeholder slot-holds ("Reserving…") — they are temporary locks, not real bookings.
   const realBks=bks.filter(isDashboardReportBooking);
   const active=realBks.filter(b=>b.status!=='cancelled');
-  const rev=active.reduce((s,b)=>s+b.total,0);
-  const todayBks=realBks.filter(b=>b.date===today);
+  const realTxns=groupBookings(realBks);
+  const activeTxns=groupBookings(active);
+  const rev=activeTxns.reduce((s,b)=>s+b.total,0);
+  const todayBks=realTxns.filter(b=>b.date===today);
   const cc={};active.forEach(b=>{cc[b.courtName]=(cc[b.courtName]||0)+1;});
   const most=Object.entries(cc).sort((a,b)=>b[1]-a[1])[0];
-  $('dTotal').textContent=realBks.length;
+  $('dTotal').textContent=realTxns.length;
   $('dToday').textContent=todayBks.length;
   $('dRev').textContent=fmt(rev);
   $('dMost').textContent=most?most[0]:'—';
-  const gc=active.filter(b=>b.paymentMethod==='gcash').reduce((s,b)=>s+b.total,0);
-  const ca=active.filter(b=>b.paymentMethod==='cash').reduce((s,b)=>s+b.total,0);
+  const gc=activeTxns.filter(b=>b.paymentMethod==='gcash').reduce((s,b)=>s+b.total,0);
+  const ca=activeTxns.filter(b=>b.paymentMethod==='cash').reduce((s,b)=>s+b.total,0);
   $('pGcash').textContent=fmt(gc); $('pCash').textContent=fmt(ca);
   const tot=gc+ca;
   $('gBar').style.width=(tot>0?Math.round(gc/tot*100):0)+'%';
   $('cBar').style.width=(tot>0?Math.round(ca/tot*100):0)+'%';
-  const recent=[...realBks].slice(0,5);
+  const recent=realTxns.slice(0,5);
   $('recentBody').innerHTML=recent.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No bookings yet.</td></tr>':
-    recent.map(b=>`<tr><td data-label="Ref"><code style="color:var(--green);font-size:.78rem">${esc(b.ref)}</code></td><td data-label="Name">${esc(b.fullName)}</td><td data-label="Court">${esc(b.courtName)}</td><td data-label="Date">${fmtD(b.date)}</td><td data-label="Status">${statusBdg(b.status)}</td></tr>`).join('');
+    recent.map(b=>`<tr><td data-label="Ref"><code style="color:var(--green);font-size:.78rem">${esc(b.displayRef || b.ref)}</code></td><td data-label="Name">${esc(b.fullName)}</td><td data-label="Court">${esc(b.courtName)}</td><td data-label="Schedule">${esc(b.scheduleLabel || b.dateLabel || fmtD(b.date))}</td><td data-label="Status">${statusBdg(b.status)}</td></tr>`).join('');
 
   // ── Charts ──
-  renderDashCharts(active);
+  renderDashCharts(activeTxns);
 }
 
 // ── MAINTENANCE FEE ─────────────────────────────────────────
@@ -2816,13 +2818,20 @@ let _chartBookings = null, _chartRevenue = null;
 function renderDashCharts(bookings) {
   // Only chart confirmed + completed — exclude verifying/pending with null totals
   const chartBks = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
-  const months = [];
-  const now = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    months.push({ key, label: d.toLocaleString('default',{month:'short',year:'2-digit'}) });
+  let monthKeys = [...new Set(chartBks.map(b => (b.date || '').slice(0, 7)).filter(Boolean))].sort().slice(-6);
+  if (!monthKeys.length) {
+    const now = new Date();
+    monthKeys = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      monthKeys.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+    }
   }
+  const months = monthKeys.map(key => {
+    const [y, m] = key.split('-').map(Number);
+    const d = new Date(y, m - 1, 1);
+    return { key, label: d.toLocaleString('default',{month:'short',year:'2-digit'}) };
+  });
   const countByMonth = {}, revByMonth = {};
   months.forEach(m => { countByMonth[m.key] = 0; revByMonth[m.key] = 0; });
   chartBks.forEach(b => {
@@ -3082,6 +3091,7 @@ async function renderPaymentReview() {
       courtName: b.courtName || '--',
       dateLabel: b.dateLabel || fmtD(b.date),
       timeLabel: b.timeLabel || `${b.startTime || '--'}-${b.endTime || '--'}`,
+      scheduleLabel: b.scheduleLabel || `${b.dateLabel || fmtD(b.date)} · ${b.timeLabel || `${b.startTime || '--'}-${b.endTime || '--'}`}`,
       method: b.paymentMethod,
       amount: b.downpayment || b.total || 0,
       status: bookingReviewStatus(b),
@@ -3098,6 +3108,7 @@ async function renderPaymentReview() {
       courtName: r.court_name || '--',
       dateLabel: fmtD(r.date),
       timeLabel: r.time_label || '--',
+      scheduleLabel: `${fmtD(r.date)} · ${r.time_label || '--'}`,
       method: r.payment_method,
       amount: r.amount || 0,
       status: openPlayReviewStatus(r),
@@ -3131,13 +3142,14 @@ async function renderPaymentReview() {
   const recent = items.slice(0, 30);
   $('prLogBody').innerHTML = recent.length ? recent.map(i => `<tr>
     <td data-label="When">${shortDateTime(i.createdAt)}</td>
+    <td data-label="Schedule"><div style="font-weight:700">${esc(i.dateLabel || '--')}</div><div style="font-size:.72rem;color:var(--muted);font-weight:600">${esc(i.timeLabel || '--')}</div></td>
     <td data-label="Type">${i.type === 'booking' ? 'Court Booking' : 'Open Play Reservation'}</td>
     <td data-label="Reference"><code style="color:var(--green)">${esc(i.ref)}</code></td>
     <td data-label="Name">${esc(i.name)}</td>
     <td data-label="Payment">${paymentMethodLabel(i.method)} <span style="color:var(--muted)">/</span> ${fmt(i.amount || 0)}</td>
     <td data-label="Status">${statusPill(i.status)}</td>
     <td data-label="Action">${paymentReviewAction(i)}</td>
-  </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No payment activity yet.</td></tr>';
+  </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No payment activity yet.</td></tr>';
 }
 
 let calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
@@ -4006,18 +4018,21 @@ async function renderReport(){
       <div class="rp-bar-val">${fmt(rev)}</div>
     </div>`).join('');
 
-  // Monthly trend — last 6 months (only confirmed/completed bookings)
-  const now2=new Date();
-  const months=[];
-  for(let i=5;i>=0;i--){
-    const d=new Date(now2.getFullYear(),now2.getMonth()-i,1);
-    months.push({label:d.toLocaleDateString('en-PH',{month:'short',year:'2-digit'}),key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`});
-  }
+  // Monthly trend follows the active report filter and shows booked months with revenue.
   const monthMap={};
-  groupBookings(allBks.filter(isPlatformBillableBooking)).forEach(b=>{
+  txns.forEach(b=>{
     const mk=(b.date||'').substring(0,7);
-    if(months.find(m=>m.key===mk)) monthMap[mk]=(monthMap[mk]||0)+(b.total||0);
+    if(mk) monthMap[mk]=(monthMap[mk]||0)+(b.total||0);
   });
+  const months=Object.keys(monthMap).sort().slice(-12).map(key=>{
+    const [y,m]=key.split('-').map(Number);
+    const d=new Date(y,m-1,1);
+    return {key,label:d.toLocaleDateString('en-PH',{month:'short',year:'2-digit'})};
+  });
+  if(!months.length){
+    $('rpTrend').innerHTML='<p class="rp-empty">No bookings in this period.</p>';
+    return;
+  }
   const maxMon=Math.max(...months.map(m=>monthMap[m.key]||0),1);
   $('rpTrend').innerHTML=months.map(m=>{
     const rev=monthMap[m.key]||0;
