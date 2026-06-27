@@ -2355,6 +2355,21 @@ function bookingGroupBreakdownHtml(items = []) {
       <strong style="color:var(--text)">${fmt(b.total || 0)}</strong>
     </div>`).join('');
 }
+function bookingGroupScheduleLabel(items = []) {
+  const dates = [...new Set(items.map(b => b.date).filter(Boolean))].sort();
+  if (dates.length <= 1) return `${bookingGroupDateLabel(items)} | ${bookingGroupTimeLabel(items)}`;
+  return sortBookingsChronologically(items)
+    .map(b => `${fmtD(b.date)} | ${b.startTime || '--'}-${b.endTime || '--'}`)
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .join(' | ');
+}
+function bookingGroupBreakdownHtml(items = []) {
+  return sortBookingsChronologically(items).map(b => `
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--border)">
+      <span>${esc(b.courtName)} | ${esc(b.startTime || '--')} - ${esc(b.endTime || '--')}</span>
+      <strong style="color:var(--text)">${fmt(b.total || 0)}</strong>
+    </div>`).join('');
+}
 function groupBookings(bookings = []) {
   const map = new Map();
   bookings.forEach(b => {
