@@ -1982,6 +1982,7 @@ tr:hover td { background: var(--bg2); }
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>Schedule</span><span id="vmDate">—</span></div>
         <div style="display:flex;justify-content:space-between;padding:6px 0"><span>Downpayment</span><strong style="color:var(--yellow)" id="vmAmount">—</strong></div>
       </div>
+      <div id="vmGroupBreakdown" style="display:none;margin-top:8px;font-size:.76rem;color:var(--muted)"></div>
       <div id="vmReceiptWrap" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
         <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Auto-Verification</div>
         <div id="vmReceiptStatus" style="font-size:.82rem;font-weight:700;border-radius:8px;padding:8px 10px;margin-bottom:8px"></div>
@@ -2281,6 +2282,146 @@ function isPlatformBillableBooking(b) {
 function isDashboardReportBooking(b) {
   return b?.email !== 'reserve@hold.internal' && !isManualImportBooking(b);
 }
+function bookingStartHour(b) {
+  const raw = String(b?.startTime || '').trim();
+  const m = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (!m) return 0;
+  let h = Number(m[1]) || 0;
+  const ap = m[3].toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return h;
+}
+function sortBookingsChronologically(items = []) {
+  return [...items].sort((a, b) =>
+    String(a.date || '').localeCompare(String(b.date || '')) ||
+    bookingStartHour(a) - bookingStartHour(b) ||
+    String(a.courtName || '').localeCompare(String(b.courtName || '')) ||
+    String(a.ref || '').localeCompare(String(b.ref || ''))
+  );
+}
+function bookingGroupKey(b) {
+  if (b?.groupRef) return `group:${b.groupRef}`;
+  const method = String(b?.paymentMethod || '').toLowerCase();
+  const ref = String(b?.gcashRef || '').trim();
+  if (ref && ['gcash', 'gotyme', 'pnb'].includes(method)) return `payment:${method}:${ref}`;
+  return `single:${b?.ref || ''}`;
+}
+function commonBookingPrefix(refs = []) {
+  const parts = refs.map(r => String(r || '')).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || '';
+  const trimmed = parts.map(r => r.includes('-') ? r.slice(0, r.lastIndexOf('-')) : r);
+  return trimmed.every(r => r === trimmed[0]) ? trimmed[0] : parts[0];
+}
+function commonValue(items, key, fallback = '') {
+  const vals = [...new Set(items.map(item => item?.[key]).filter(v => v !== undefined && v !== null && v !== ''))];
+  return vals.length === 1 ? vals[0] : fallback;
+}
+function bookingGroupStatus(items, key) {
+  const vals = [...new Set(items.map(item => item?.[key] || (key === 'paymentStatus' ? 'unpaid' : '')).filter(Boolean))];
+  return vals.length === 1 ? vals[0] : 'mixed';
+}
+function bookingGroupReceiptStatus(items) {
+  const statuses = items.map(b => b.receiptStatus || 'none');
+  if (statuses.includes('rejected')) return 'rejected';
+  if (statuses.includes('manual_review')) return 'manual_review';
+  if (statuses.includes('auto_approved') && statuses.every(s => s === 'auto_approved' || s === 'none')) return 'auto_approved';
+  return statuses.find(s => s !== 'none') || 'none';
+}
+function bookingGroupCourtLabel(items = []) {
+  return [...new Set(sortBookingsChronologically(items).map(b => b.courtName || 'Court'))].join(', ');
+}
+function bookingGroupDateLabel(items = []) {
+  const dates = [...new Set(items.map(b => b.date).filter(Boolean))].sort();
+  return dates.length === 1 ? fmtD(dates[0]) : dates.map(fmtD).join(' + ');
+}
+function bookingGroupTimeLabel(items = []) {
+  const sorted = sortBookingsChronologically(items);
+  const labels = [...new Set(sorted.map(b => `${b.startTime || '--'}-${b.endTime || '--'}`))];
+  return labels.join(', ');
+}
+function bookingGroupScheduleLabel(items = []) {
+  const dates = [...new Set(items.map(b => b.date).filter(Boolean))].sort();
+  if (dates.length <= 1) return `${bookingGroupDateLabel(items)} Â· ${bookingGroupTimeLabel(items)}`;
+  return sortBookingsChronologically(items)
+    .map(b => `${fmtD(b.date)} Â· ${b.startTime || '--'}-${b.endTime || '--'}`)
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .join(' | ');
+}
+function bookingGroupBreakdownHtml(items = []) {
+  return sortBookingsChronologically(items).map(b => `
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--border)">
+      <span>${esc(b.courtName)} Â· ${esc(b.startTime || '--')}â€“${esc(b.endTime || '--')}</span>
+      <strong style="color:var(--text)">${fmt(b.total || 0)}</strong>
+    </div>`).join('');
+}
+function groupBookings(bookings = []) {
+  const map = new Map();
+  bookings.forEach(b => {
+    const key = bookingGroupKey(b);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(b);
+  });
+  return [...map.entries()].map(([key, rawItems]) => {
+    const items = sortBookingsChronologically(rawItems);
+    const primary = items[0] || {};
+    const refs = items.map(b => b.ref).filter(Boolean);
+    const total = items.reduce((sum, b) => sum + (Number(b.total) || 0), 0);
+    const downpayment = items.reduce((sum, b) => {
+      const dp = b.downpayment !== undefined && b.downpayment !== null ? Number(b.downpayment) : ((Number(b.total) || 0) / 2);
+      return sum + (Number.isFinite(dp) ? dp : 0);
+    }, 0);
+    const receiptFlags = [...new Set(items.flatMap(b => b.receiptFlags || []))];
+    return {
+      ...primary,
+      isGroup: items.length > 1,
+      groupKey: key,
+      items,
+      refs,
+      displayRef: primary.groupRef ? String(primary.groupRef).replace(/-G$/, '') : commonBookingPrefix(refs),
+      primaryRef: primary.ref,
+      fullName: commonValue(items, 'fullName', primary.fullName || '--'),
+      email: commonValue(items, 'email', primary.email || ''),
+      contactNumber: commonValue(items, 'contactNumber', primary.contactNumber || ''),
+      courtName: bookingGroupCourtLabel(items),
+      dateLabel: bookingGroupDateLabel(items),
+      timeLabel: bookingGroupTimeLabel(items),
+      scheduleLabel: bookingGroupScheduleLabel(items),
+      total,
+      downpayment,
+      paymentMethod: commonValue(items, 'paymentMethod', primary.paymentMethod || ''),
+      paymentStatus: bookingGroupStatus(items, 'paymentStatus'),
+      status: bookingGroupStatus(items, 'status'),
+      gcashRef: commonValue(items, 'gcashRef', primary.gcashRef || ''),
+      receiptStatus: bookingGroupReceiptStatus(items),
+      receiptFlags,
+      receiptExtracted: items.find(b => b.receiptExtracted)?.receiptExtracted || primary.receiptExtracted,
+      receiptConfidence: primary.receiptConfidence,
+      receiptImageUrl: primary.receiptImageUrl,
+      receiptVerifiedAt: primary.receiptVerifiedAt,
+      createdAt: items.map(b => b.createdAt).filter(Boolean).sort()[0] || primary.createdAt,
+      duration: items.reduce((sum, b) => sum + (Number(b.duration) || 0), 0),
+    };
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+async function getBookingGroupByRef(ref) {
+  const first = await DB.getBookingByRef(ref);
+  if (!first) return null;
+  const all = await DB.getBookings();
+  return groupBookings(all.filter(b => bookingGroupKey(b) === bookingGroupKey(first)))[0] || { ...first, items: [first], refs: [first.ref], primaryRef: first.ref };
+}
+async function updateBookingGroupByRef(ref, updates) {
+  const group = await getBookingGroupByRef(ref);
+  if (!group) throw new Error('Booking not found.');
+  await Promise.all(group.items.map(b => DB.updateBooking(b.ref, updates)));
+  return group;
+}
+async function deleteBookingGroupByRef(ref) {
+  const group = await getBookingGroupByRef(ref);
+  if (!group) throw new Error('Booking not found.');
+  await Promise.all(group.items.map(b => DB.deleteBooking(b.ref)));
+  return group;
+}
 function calcPlatformFeeForBooking(b, cfg) {
   return cfg.type === 'flat' ? cfg.amount : cfg.amount * bookingBillableHours(b);
 }
@@ -2400,6 +2541,39 @@ function bookingActionsHtml(b, canDelete){
 }
 function bookingPayStateSelect(b){
   return `<select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${jsArg(b.ref)}',this.value)">
+    <option value="unpaid" ${(!b.paymentStatus||b.paymentStatus==='unpaid')?'selected':''}>Unpaid</option>
+    <option value="downpayment_paid" ${b.paymentStatus==='downpayment_paid'?'selected':''}>Downpayment Paid</option>
+    <option value="paid" ${b.paymentStatus==='paid'?'selected':''}>Fully Paid</option>
+    <option value="for_verification" ${b.paymentStatus==='for_verification'?'selected':''}>For Verification</option>
+    <option value="rejected" ${b.paymentStatus==='rejected'?'selected':''}>Rejected</option>
+  </select>`;
+}
+function bookingDetailsButton(b){
+  if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
+  if (!['gcash','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
+  const actionRef = b.primaryRef || b.ref;
+  return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(actionRef)}')">Details</button>`;
+}
+function bookingActionsHtml(b, canDelete){
+  const grouped = Array.isArray(b.items) && b.items.length > 1;
+  const actionRef = b.primaryRef || b.ref;
+  return `${bookingDetailsButton(b)}
+    ${!grouped && b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')">Reschedule</button>`:''}
+    ${!grouped && b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
+    <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${jsArg(actionRef)}',this.value)">
+      ${b.status==='mixed'?'<option value="mixed" selected disabled>Mixed</option>':''}
+      <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
+      <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
+      <option value="verifying" ${b.status==='verifying'?'selected':''}>Processing</option>
+      <option value="completed" ${b.status==='completed'?'selected':''}>Completed</option>
+      <option value="cancelled" ${b.status==='cancelled'?'selected':''}>Cancelled</option>
+    </select>
+    ${canDelete?`<button class="btn btn-d btn-sm" onclick="delBooking('${jsArg(actionRef)}')">Delete</button>`:''}`;
+}
+function bookingPayStateSelect(b){
+  const actionRef = b.primaryRef || b.ref;
+  return `<select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${jsArg(actionRef)}',this.value)">
+    ${b.paymentStatus==='mixed'?'<option value="mixed" selected disabled>Mixed</option>':''}
     <option value="unpaid" ${(!b.paymentStatus||b.paymentStatus==='unpaid')?'selected':''}>Unpaid</option>
     <option value="downpayment_paid" ${b.paymentStatus==='downpayment_paid'?'selected':''}>Downpayment Paid</option>
     <option value="paid" ${b.paymentStatus==='paid'?'selected':''}>Fully Paid</option>
@@ -2561,7 +2735,8 @@ async function renderMaintFee() {
     isPlatformBillableBooking(b)
   );
 
-  const totalBookings = filtered.length;
+  const filteredTxns = groupBookings(filtered);
+  const totalBookings = filteredTxns.length;
   const totalHours = filtered.reduce((s, b) => s + (parseInt(b.duration) || 0), 0);
   const totalFee = isFlat ? totalBookings * _maintRate : totalHours * _maintRate;
 
@@ -2742,6 +2917,7 @@ async function renderBookings(){
   if(q) bks=bks.filter(b=>b.ref.toLowerCase().includes(q)||b.fullName.toLowerCase().includes(q)||b.email.toLowerCase().includes(q)||b.courtName.toLowerCase().includes(q));
   if(fd) bks=bks.filter(b=>b.date===fd);
   if(fs) bks=bks.filter(b=>b.status===fs);
+  bks = groupBookings(bks);
 
   // Inject maintenance/block rows when a date filter is active
   let mtRowsHtml = '';
@@ -2781,7 +2957,7 @@ async function renderBookings(){
 
   const bkRowsHtml = bks.map(b=>`<tr class="booking-row">
       <td class="booking-mobile-card">${mobileBookingCard(b, canDelete)}</td>
-      <td data-label="Ref"><code style="color:var(--green);font-size:.76rem">${esc(b.ref)}</code></td>
+      <td data-label="Ref"><code style="color:var(--green);font-size:.76rem">${esc(b.displayRef || b.ref)}</code>${b.isGroup?`<div style="font-size:.68rem;color:var(--muted);margin-top:3px">${b.items.length} courts</div>`:''}</td>
       <td data-label="Customer"><div style="font-weight:600">${esc(b.fullName)}</div><div style="font-size:.75rem;color:var(--text)">${esc(b.email)}</div></td>
       <td data-label="Court">${esc(b.courtName)}</td>
       <td data-label="Schedule">${fmtD(b.date)}<div style="font-size:.75rem;color:var(--text);font-weight:600">${esc(b.startTime)}–${esc(b.endTime)}</div></td>
@@ -2897,16 +3073,15 @@ function paymentReviewRow(item) {
 
 async function renderPaymentReview() {
   const [bookings, regs] = await Promise.all([DB.getBookings(), DB.getOpenPlayRegistrations()]);
-  const bookingItems = bookings
-    .filter(b => b.email !== 'reserve@hold.internal' && isDigitalPayment(b.paymentMethod))
+  const bookingItems = groupBookings(bookings.filter(b => b.email !== 'reserve@hold.internal' && isDigitalPayment(b.paymentMethod)))
     .map(b => ({
       type: 'booking',
-      id: b.ref,
-      ref: b.gcashRef || b.ref,
+      id: b.primaryRef || b.ref,
+      ref: b.gcashRef || b.displayRef || b.ref,
       name: b.fullName || '--',
       courtName: b.courtName || '--',
-      dateLabel: fmtD(b.date),
-      timeLabel: `${b.startTime || '--'}-${b.endTime || '--'}`,
+      dateLabel: b.dateLabel || fmtD(b.date),
+      timeLabel: b.timeLabel || `${b.startTime || '--'}-${b.endTime || '--'}`,
       method: b.paymentMethod,
       amount: b.downpayment || b.total || 0,
       status: bookingReviewStatus(b),
@@ -3076,7 +3251,7 @@ function calDayClick(dateStr){
 
 async function updatePaymentStatus(ref, status) {
   try {
-    await DB.updateBooking(ref, { paymentStatus: status });
+    await updateBookingGroupByRef(ref, { paymentStatus: status });
     const labels = { unpaid: 'Unpaid', downpayment_paid: 'Downpayment Paid', paid: 'Fully Paid', for_verification: 'For Verification' };
     toast(`Payment marked as: ${labels[status] || status}.`);
   } catch(e) {
@@ -3102,7 +3277,7 @@ async function notifyBookingUpdateSafe(bookingOrRef, event, note = '') {
 }
 
 async function updateStatus(ref, status) {
-  await DB.updateBooking(ref, { status });
+  await updateBookingGroupByRef(ref, { status });
   toast(`Status updated to ${status}.`);
 
   // Refresh table immediately; email and alerts run in the background.
@@ -3123,18 +3298,25 @@ async function updateStatus(ref, status) {
 }
 
 async function openVerifyModal(ref) {
-  const b = await DB.getBookingByRef(ref);
+  const b = await getBookingGroupByRef(ref);
   if (!b) { toast('Booking not found.', 'err'); return; }
   $('vmMethod').textContent = b.paymentMethod === 'gotyme' ? 'GoTyme' : b.paymentMethod === 'pnb' ? 'PNB' : 'GCash';
   $('vmGcashRef').textContent = b.gcashRef || '—';
   $('vmName').textContent = b.fullName;
   $('vmContact').textContent = b.contactNumber;
-  $('vmRef').textContent = b.ref;
+  $('vmRef').textContent = b.displayRef || b.ref;
   $('vmCourt').textContent = b.courtName;
   $('vmDate').textContent = `${fmtD(b.date)} · ${b.startTime}–${b.endTime}`;
   $('vmAmount').textContent = fmt(b.downpayment || b.total / 2);
+  if ($('vmDate') && b.scheduleLabel) $('vmDate').textContent = b.scheduleLabel;
+  const breakdown = $('vmGroupBreakdown');
+  if (breakdown) {
+    breakdown.style.display = b.isGroup ? '' : 'none';
+    breakdown.innerHTML = b.isGroup ? bookingGroupBreakdownHtml(b.items) : '';
+  }
   await vmPopulateReceipt(b);
   $('verifyModal').dataset.ref = ref;
+  $('verifyModal').dataset.refs = JSON.stringify(b.refs || [ref]);
   $('verifyModal').classList.add('show');
 }
 
@@ -3180,10 +3362,10 @@ async function verifyAndConfirm() {
   const ref = $('verifyModal').dataset.ref;
   if (!ref) return;
   try {
-    const bkForPay = await DB.getBookingByRef(ref);
+    const bkForPay = await getBookingGroupByRef(ref);
     const isFullyPaid = bkForPay && bkForPay.downpayment >= bkForPay.total;
     const verifiedPayStatus = isFullyPaid ? 'paid' : 'downpayment_paid';
-    await DB.updateBooking(ref, { status: 'confirmed', paymentStatus: verifiedPayStatus });
+    await updateBookingGroupByRef(ref, { status: 'confirmed', paymentStatus: verifiedPayStatus });
 
     closeModal('verifyModal');
     toast('Payment verified & booking confirmed!');
@@ -3219,7 +3401,7 @@ async function rejectPayment() {
   if (!ref) return;
   if (!confirm(`Cancel booking ${ref}? This cannot be undone.`)) return;
   try {
-    await DB.updateBooking(ref, { status: 'cancelled', paymentStatus: 'rejected' });
+    await updateBookingGroupByRef(ref, { status: 'cancelled', paymentStatus: 'rejected' });
     closeModal('verifyModal');
     toast('Booking cancelled — payment not verified.', 'err');
     await renderBookings();
@@ -3233,7 +3415,7 @@ async function rejectPayment() {
 
 async function delBooking(ref){
   if(!confirm(`Delete booking ${ref}?`)) return;
-  await DB.deleteBooking(ref);
+  await deleteBookingGroupByRef(ref);
   toast('Booking deleted.','inf');
   renderBookings();
   renderDash();
@@ -3729,8 +3911,9 @@ async function exportCSV(){
   if(q) bks=bks.filter(b=>b.ref.toLowerCase().includes(q)||b.fullName.toLowerCase().includes(q));
   if(fd) bks=bks.filter(b=>b.date===fd);
   if(fs) bks=bks.filter(b=>b.status===fs);
-  const h=['Ref','Name','Email','Contact','Court','Date','Start','End','Hrs','Rate','Total','Payment','Status','Created'];
-  const rows=bks.map(b=>[b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.date,b.startTime,b.endTime,b.duration,b.rate,b.total,b.paymentMethod,b.status,b.createdAt]);
+  bks = groupBookings(bks.filter(b=>b.email!=='reserve@hold.internal'));
+  const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Payment','Payment Status','Booking Status','Created','Child Refs'];
+  const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,b.paymentMethod,b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
   const csv=[h,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
@@ -3783,16 +3966,17 @@ async function renderReport(){
   let bks=allBks.filter(isPlatformBillableBooking);
   if(from) bks=bks.filter(b=>b.date>=from);
   if(to)   bks=bks.filter(b=>b.date<=to);
-  _rpBks=bks;
+  const txns = groupBookings(bks);
+  _rpBks=txns;
 
   // Gross revenue = only from confirmed/completed online bookings
-  const gross=bks.reduce((s,b)=>s+(b.total||0),0);
-  const collected=bks.filter(b=>b.paymentStatus==='paid').reduce((s,b)=>s+(b.total||0),0);
-  const pending=bks.filter(b=>!b.paymentStatus||b.paymentStatus==='unpaid'||b.paymentStatus==='downpayment_paid').reduce((s,b)=>s+(b.total||0),0);
+  const gross=txns.reduce((s,b)=>s+(b.total||0),0);
+  const collected=txns.filter(b=>b.paymentStatus==='paid').reduce((s,b)=>s+(b.total||0),0);
+  const pending=txns.filter(b=>!b.paymentStatus||b.paymentStatus==='unpaid'||b.paymentStatus==='downpayment_paid').reduce((s,b)=>s+(b.total||0),0);
   $('rpGross').textContent=fmt(gross);
   $('rpCollected').textContent=fmt(collected);
   $('rpPending').textContent=fmt(pending);
-  $('rpCount').textContent=bks.length;
+  $('rpCount').textContent=txns.length;
 
   // Revenue by court
   const courtMap={};
@@ -3808,7 +3992,7 @@ async function renderReport(){
 
   // Revenue by payment method
   const payMap={};
-  bks.forEach(b=>{const k=b.paymentMethod==='gotyme'?'GoTyme':b.paymentMethod.toUpperCase();payMap[k]=(payMap[k]||0)+(b.total||0);});
+  txns.forEach(b=>{const k=b.paymentMethod==='gotyme'?'GoTyme':String(b.paymentMethod || '').toUpperCase();payMap[k]=(payMap[k]||0)+(b.total||0);});
   const payEntries=Object.entries(payMap).sort((a,b)=>b[1]-a[1]);
   const maxPay=payEntries[0]?payEntries[0][1]:1;
   $('rpPayChart').innerHTML=payEntries.length===0?'<p class="rp-empty">No bookings in this period.</p>':
@@ -3826,7 +4010,7 @@ async function renderReport(){
     months.push({label:d.toLocaleDateString('en-PH',{month:'short',year:'2-digit'}),key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`});
   }
   const monthMap={};
-  allBks.filter(isPlatformBillableBooking).forEach(b=>{
+  groupBookings(allBks.filter(isPlatformBillableBooking)).forEach(b=>{
     const mk=(b.date||'').substring(0,7);
     if(months.find(m=>m.key===mk)) monthMap[mk]=(monthMap[mk]||0)+(b.total||0);
   });
@@ -3843,9 +4027,9 @@ async function renderReport(){
 }
 
 async function exportReportCSV(){
-  const bks=_rpBks.length?_rpBks:(await DB.getBookings()).filter(b=>isDashboardReportBooking(b) && b.status!=='cancelled');
-  const h=['Ref','Name','Email','Contact','Court','Date','Start','End','Hrs','Total','Downpayment','Payment Method','Payment Status','Booking Status','Created'];
-  const rows=bks.map(b=>[b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.date,b.startTime,b.endTime,b.duration,b.total,b.downpayment??'',b.paymentMethod,b.paymentStatus||'unpaid',b.status,b.createdAt]);
+  const bks=_rpBks.length?_rpBks:groupBookings((await DB.getBookings()).filter(b=>isDashboardReportBooking(b) && b.status!=='cancelled'));
+  const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Amount Paid/Downpayment','Payment Method','Payment Status','Booking Status','Created','Child Refs'];
+  const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,b.downpayment??'',b.paymentMethod,b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
   const csv=[h,...rows].map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
@@ -4408,9 +4592,14 @@ async function generateWeeklyStatement() {
       b.date >= startDate && b.date <= endDate &&
       (!b.weeklyFeeId || (existing && String(b.weeklyFeeId) === String(existing.id)))
     );
-    const billedRefs = eligible.map(b => b.ref).filter(Boolean);
-    const bookingsCount = billedRefs.length;
-    const amountDue = eligible.reduce((sum, b) => sum + calcPlatformFeeForBooking(b, feeCfg), 0);
+    const eligibleGroups = groupBookings(eligible);
+    const billedRefs = eligibleGroups.flatMap(g => g.refs || [g.ref]).filter(Boolean);
+    const bookingsCount = eligibleGroups.length;
+    const amountDue = eligibleGroups.reduce((sum, g) => {
+      return sum + (feeCfg.type === 'flat'
+        ? feeCfg.amount
+        : (g.items || [g]).reduce((s, b) => s + calcPlatformFeeForBooking(b, feeCfg), 0));
+    }, 0);
 
     const due = new Date(end);
     due.setDate(end.getDate() + 5); // five days after month end
@@ -4453,7 +4642,7 @@ async function generateWeeklyStatement() {
     // Stamp each billed booking so it is auditable and never billed twice.
     if (weeklyFeeId) await DB.markBookingsBilled(billedRefs, weeklyFeeId);
 
-    toast(`Monthly remittance statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligible, feeCfg)} = ${fmt(amountDue)}`);
+    toast(`Monthly remittance statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligibleGroups, feeCfg)} = ${fmt(amountDue)}`);
     await renderWeeklyBilling();
   } catch (e) {
     console.error('[billGenerate] error:', e);
