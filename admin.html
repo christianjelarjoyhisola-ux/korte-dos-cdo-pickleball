@@ -3386,6 +3386,8 @@ async function verifyAndConfirm() {
 }
 
 async function resendConfirmationEmail(ref) {
+  const group = await getBookingGroupByRef(ref);
+  if (group?.isGroup) { toast('Grouped booking emails are handled from the original combined confirmation.', 'inf'); return; }
   const bk = await DB.getBookingByRef(ref);
   if (!bk?.email) { toast('No email address on file for this booking.', 'err'); return; }
   toast('Sending email...', 'inf');
@@ -3810,6 +3812,8 @@ function updateRsEndTime() {
 }
 
 async function openRescheduleModal(ref) {
+  const group = await getBookingGroupByRef(ref);
+  if (group?.isGroup) { toast('Grouped bookings must be rescheduled court-by-court from individual booking records.', 'inf'); return; }
   const b = await DB.getBookingByRef(ref);
   if (!b) { toast('Booking not found.', 'err'); return; }
 
