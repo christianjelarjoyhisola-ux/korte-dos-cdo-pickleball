@@ -2279,8 +2279,7 @@ function isPlaceholderHold(b) {
   return b?.email === 'reserve@hold.internal';
 }
 function isCancelledBooking(b) {
-  return String(b?.status || '').toLowerCase() === 'cancelled' ||
-    String(b?.paymentStatus || b?.payment_status || '').toLowerCase() === 'rejected';
+  return String(b?.status || '').toLowerCase() === 'cancelled';
 }
 function isScheduleActiveBooking(b) {
   return !isPlaceholderHold(b) && !isCancelledBooking(b);
