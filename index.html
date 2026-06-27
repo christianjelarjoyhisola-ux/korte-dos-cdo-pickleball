@@ -551,7 +551,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   padding:10px 12px; margin-top:2px;
   background:linear-gradient(135deg,rgba(var(--ac),.12),rgba(var(--ac),.04));
   border:1px solid rgba(var(--ac),.3); border-radius:var(--r-sm);
-  display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  display:none !important; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
 }
 .cc-slot-legend {
   display:flex; align-items:center; flex-wrap:wrap;
@@ -4589,8 +4589,8 @@ function updateCardUI(courtId) {
   const mobileCtEl  = $('mobileBookCourt');
   if (sel && sel.slots.length > 0) {
     const txt   = selectionSummaryText(sel);
-    sum.textContent = txt;
-    bar.style.display = 'flex';
+    if (sum) sum.textContent = txt;
+    bar.style.display = 'none';
     if (mobileBar) {
       if (mobileSumEl) mobileSumEl.textContent = txt;
       if (mobileCtEl) {
@@ -4610,6 +4610,7 @@ function updateCardUI(courtId) {
       const total = selections.reduce((sum, item) => sum + selectionTotal(item), 0);
       const hrs = selections.reduce((sum, item) => sum + item.slots.length, 0);
       if (mobileSumEl) mobileSumEl.textContent = `${hrs} hr${hrs !== 1 ? 's' : ''} · ${fmt(total)}`;
+      if (mobileSumEl && selections.length === 1) mobileSumEl.textContent = selectionSummaryText(selections[0]);
       if (mobileCtEl) mobileCtEl.textContent = selections.length === 1 ? selections[0].courtName : `${selections.length} courts selected`;
       mobileBar.style.display = 'flex';
     } else {
