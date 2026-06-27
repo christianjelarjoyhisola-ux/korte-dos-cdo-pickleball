@@ -1024,7 +1024,6 @@ tr:hover td { background: var(--bg2); }
           <span><span class="cal-dot confirmed"></span>Confirmed</span>
           <span><span class="cal-dot completed"></span>Completed</span>
           <span><span class="cal-dot verifying"></span>Processing</span>
-          <span><span class="cal-dot cancelled"></span>Cancelled</span>
         </div>
       </div>
 
@@ -2276,11 +2275,34 @@ function isManualImportBooking(b) {
   const method = String(b?.paymentMethod || b?.payment_method || '').toLowerCase();
   return ref.startsWith('MANUAL-') || method === 'manual';
 }
+function isPlaceholderHold(b) {
+  return b?.email === 'reserve@hold.internal';
+}
+function isCancelledBooking(b) {
+  return String(b?.status || '').toLowerCase() === 'cancelled' ||
+    String(b?.paymentStatus || b?.payment_status || '').toLowerCase() === 'rejected';
+}
+function isScheduleActiveBooking(b) {
+  return !isPlaceholderHold(b) && !isCancelledBooking(b);
+}
 function isPlatformBillableBooking(b) {
-  return (b?.status === 'confirmed' || b?.status === 'completed') && !isManualImportBooking(b);
+  return isDashboardReportBooking(b) &&
+    (b?.status === 'confirmed' || b?.status === 'completed');
 }
 function isDashboardReportBooking(b) {
-  return b?.email !== 'reserve@hold.internal' && !isManualImportBooking(b);
+  return !isPlaceholderHold(b) && !isManualImportBooking(b);
+}
+function isDashboardActiveBooking(b) {
+  return isDashboardReportBooking(b) && !isCancelledBooking(b);
+}
+function bookingHoldsAdminSlot(b) {
+  if (!b || isCancelledBooking(b)) return false;
+  if (String(b.status || '').toLowerCase() !== 'verifying') return true;
+  const created = b.createdAt || b.created_at;
+  if (!created) return true;
+  const createdMs = new Date(created).getTime();
+  if (!Number.isFinite(createdMs)) return true;
+  return (Date.now() - createdMs) < 15 * 60 * 1000;
 }
 function bookingStartHour(b) {
   const raw = String(b?.startTime || '').trim();
@@ -2703,14 +2725,13 @@ async function renderDash(){
   const today=new Date().toISOString().split('T')[0];
   // Exclude placeholder slot-holds ("Reserving…") — they are temporary locks, not real bookings.
   const realBks=bks.filter(isDashboardReportBooking);
-  const active=realBks.filter(b=>b.status!=='cancelled');
-  const realTxns=groupBookings(realBks);
+  const active=realBks.filter(isDashboardActiveBooking);
   const activeTxns=groupBookings(active);
   const rev=activeTxns.reduce((s,b)=>s+b.total,0);
-  const todayBks=realTxns.filter(b=>b.date===today);
+  const todayBks=activeTxns.filter(b=>b.date===today);
   const cc={};active.forEach(b=>{cc[b.courtName]=(cc[b.courtName]||0)+1;});
   const most=Object.entries(cc).sort((a,b)=>b[1]-a[1])[0];
-  $('dTotal').textContent=realTxns.length;
+  $('dTotal').textContent=activeTxns.length;
   $('dToday').textContent=todayBks.length;
   $('dRev').textContent=fmt(rev);
   $('dMost').textContent=most?most[0]:'—';
@@ -2720,7 +2741,7 @@ async function renderDash(){
   const tot=gc+ca;
   $('gBar').style.width=(tot>0?Math.round(gc/tot*100):0)+'%';
   $('cBar').style.width=(tot>0?Math.round(ca/tot*100):0)+'%';
-  const recent=realTxns.slice(0,5);
+  const recent=activeTxns.slice(0,5);
   $('recentBody').innerHTML=recent.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No bookings yet.</td></tr>':
     recent.map(b=>`<tr><td data-label="Ref"><code style="color:var(--green);font-size:.78rem">${esc(b.displayRef || b.ref)}</code></td><td data-label="Name">${esc(b.fullName)}</td><td data-label="Court">${esc(b.courtName)}</td><td data-label="Schedule">${esc(b.scheduleLabel || b.dateLabel || fmtD(b.date))}</td><td data-label="Status">${statusBdg(b.status)}</td></tr>`).join('');
 
@@ -3222,7 +3243,7 @@ async function renderCalendar(){
 
   // Build booking map: date → status counts
   const bkMap={};
-  bks.forEach(b=>{
+  bks.filter(isScheduleActiveBooking).forEach(b=>{
     if(!bkMap[b.date]) bkMap[b.date]={pending:0,confirmed:0,completed:0,cancelled:0,total:0};
     bkMap[b.date][b.status]=(bkMap[b.date][b.status]||0)+1;
     bkMap[b.date].total++;
@@ -3242,7 +3263,7 @@ async function renderCalendar(){
     const isToday=today.getFullYear()===calYear&&today.getMonth()===calMonth&&today.getDate()===d;
     const bk=bkMap[ds]||{};
     const total=bk.total||0;
-    const dots=['pending','confirmed','completed','cancelled']
+    const dots=['pending','confirmed','completed','verifying']
       .filter(s=>bk[s])
       .flatMap(s=>Array(Math.min(bk[s],4)).fill(`<div class="cal-dot ${s}"></div>`))
       .join('');
@@ -3565,7 +3586,7 @@ async function nbRenderSlots() {
   // Fetch booked slots for this court + date
   const allBks = await DB.getBookings();
   _nbBookedSlots = new Set();
-  allBks.filter(b => String(b.courtId) === String(court.id) && b.date === date && b.status !== 'cancelled')
+  allBks.filter(b => String(b.courtId) === String(court.id) && b.date === date && bookingHoldsAdminSlot(b))
     .forEach(b => (b.slots || []).forEach(s => _nbBookedSlots.add(s)));
 
   const now = new Date();
@@ -3793,7 +3814,8 @@ async function saveNewBooking() {
     closeModal('newBookingModal');
     toast(`Booking created! Ref: ${booking.ref}`);
     await renderBookings();
-    renderDash();
+    await renderDash();
+    if (_curSection === 'reports') await renderReport();
 
     notifyBookingUpdateSafe(booking, status === 'confirmed' ? 'admin_booking_created' : 'new_booking', 'Created from admin panel.');
 

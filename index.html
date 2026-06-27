@@ -5551,7 +5551,7 @@ async function onDate() {
 async function getBookedSlots(cid, date) {
   const bookings = await DB.getBookings({ courtId: cid, date, activeOnly: true });
   const s = new Set();
-  bookings.forEach(b => {
+  bookings.filter(bookingHoldsSlot).forEach(b => {
     b.slots.forEach(h => s.add(h));
   });
   return s;
