@@ -141,6 +141,24 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .find-time-entry strong { display:block; font-size:.95rem; color:var(--text); }
 .find-time-entry span { display:block; font-size:.78rem; color:var(--muted); margin-top:2px; }
 .find-time-entry .btn { flex-shrink:0; }
+.shared-date-entry {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  margin:-4px 0 18px; padding:14px 16px;
+  background:var(--card); border:1px solid var(--border); border-radius:var(--r);
+}
+.shared-date-entry strong { display:block; font-size:.95rem; color:var(--text); }
+.shared-date-entry span { display:block; font-size:.78rem; color:var(--muted); margin-top:2px; }
+.shared-date-control { display:flex; flex-direction:column; align-items:flex-end; gap:5px; min-width:190px; }
+.shared-date-control label {
+  font-size:.68rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.7px; color:var(--muted);
+}
+.shared-date-control input {
+  width:100%; background:var(--input); border:1px solid var(--border);
+  border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
+  font-size:.9rem; padding:10px 11px; min-height:42px;
+}
+.shared-date-control input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--ac),.13); }
 .ft-modal { max-width:560px; }
 .ft-form {
   display:grid; grid-template-columns:1fr 1fr 110px; gap:10px;
@@ -176,6 +194,8 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 @media(max-width:700px) {
   .find-time-entry { flex-direction:column; align-items:stretch; margin-top:-6px; }
   .find-time-entry .btn { width:100%; justify-content:center; }
+  .shared-date-entry { flex-direction:column; align-items:stretch; }
+  .shared-date-control { align-items:stretch; min-width:0; }
   .ft-form { grid-template-columns:1fr; }
   .ft-result { align-items:stretch; flex-direction:column; }
   .ft-result .btn { width:100%; justify-content:center; }
@@ -2510,6 +2530,16 @@ body.light #splashScreen { background: #071320; }
     <button class="btn btn-p" type="button" onclick="openFindTimeModal()">Find Available Time</button>
   </div>
   <div class="court-tabs-hint">👇 Tap a court to view available times 👇</div>
+  <div class="shared-date-entry">
+    <div>
+      <strong>Booking date</strong>
+      <span>One date controls Court 1, Court 2, and Court 3 availability.</span>
+    </div>
+    <div class="shared-date-control">
+      <label for="courtSharedDate">Select Date</label>
+      <input type="date" id="courtSharedDate" onchange="onSharedCourtDate(this.value)" />
+    </div>
+  </div>
   <div id="courtTabs" class="court-tabs"></div>
   <div class="courts" id="courtsGrid">
     <div class="pb-loader">
@@ -3560,6 +3590,45 @@ let payFull = false; // false = 50% downpayment, true = 100% full payment
 let cardSel   = { courtId: null, courtName: '', date: null, slots: [], rate: 0, tiers: [] };
 let cardSelections = {};
 let bookingItems = [];
+let sharedCourtDate = '';
+
+function normalizedCourtBrowseDate(date) {
+  const today = todayStr();
+  return date && date >= today ? date : today;
+}
+
+function selectedCourtBrowseDate() {
+  const input = $('courtSharedDate');
+  sharedCourtDate = normalizedCourtBrowseDate(input?.value || sharedCourtDate || cardSelectionDate() || todayStr());
+  if (input) {
+    input.min = todayStr();
+    input.value = sharedCourtDate;
+  }
+  return sharedCourtDate;
+}
+
+function syncSharedCourtDateUI(date = selectedCourtBrowseDate()) {
+  const safeDate = normalizedCourtBrowseDate(date);
+  sharedCourtDate = safeDate;
+  const sharedInput = $('courtSharedDate');
+  if (sharedInput) {
+    sharedInput.min = todayStr();
+    sharedInput.value = safeDate;
+  }
+  document.querySelectorAll('[id^="cDate_"]').forEach(inp => { inp.value = safeDate; });
+}
+
+async function onSharedCourtDate(date) {
+  const nextDate = normalizedCourtBrowseDate(date);
+  const prevDate = selectedCourtBrowseDate();
+  sharedCourtDate = nextDate;
+  syncSharedCourtDateUI(nextDate);
+  if (prevDate !== nextDate && cardSelectionList().length) {
+    clearCardSelection();
+    toast('Date changed. Please choose time slots again.', 'inf');
+  }
+  await renderCourts();
+}
 
 function emptyCardSelection() {
   return { courtId: null, courtName: '', date: null, slots: [], rate: 0, tiers: [] };
@@ -4504,9 +4573,9 @@ async function selectFindTimeResult(courtId, date, start, duration) {
   const slots = Array.from({ length: duration }, (_, i) => start + i);
   closeFindTimeModal();
   clearCardSelection();
-  const dateInput = $('cDate_' + courtId);
-  if (dateInput) dateInput.value = date;
-  await onCardDate(courtId, date);
+  sharedCourtDate = normalizedCourtBrowseDate(date);
+  syncSharedCourtDateUI(sharedCourtDate);
+  await renderCourts();
   await ensureCourt(courtId);
   cardSelections[String(courtId)] = {
     courtId: String(courtId),
@@ -5240,18 +5309,22 @@ async function ensureCourt(courtId) {
    ============================================= */
 async function renderCourts() {
   const today = todayStr();
+  const selectedDate = selectedCourtBrowseDate();
+  const isSelectedToday = selectedDate === today;
+  const isSelectedPast = selectedDate < today;
   const [courts, bookings, , openPlayCountsByCourt] = await Promise.all([
     DB.getCourts(),
-    DB.getBookings({ date: today, activeOnly: true }),
+    DB.getBookings({ date: selectedDate, activeOnly: true }),
     loadOperatingHours(),
-    DB.getOpenPlayCountsForDate ? DB.getOpenPlayCountsForDate(today) : Promise.resolve({}),
+    DB.getOpenPlayCountsForDate ? DB.getOpenPlayCountsForDate(selectedDate) : Promise.resolve({}),
   ]);
-  const curHour = nowHour();
+  const curHour = isSelectedToday ? nowHour() : (isSelectedPast ? 999 : -1);
   const courtsGrid = $('courtsGrid');
   if (!courtsGrid) return;
+  syncSharedCourtDateUI(selectedDate);
   const openPlayTodayByCourt = {};
   courts.forEach(c => {
-    const session = getOpenPlaySessionForDate(today, c.id);
+    const session = getOpenPlaySessionForDate(selectedDate, c.id);
     const count = session ? Number(openPlayCountsByCourt?.[String(c.id)] || 0) : 0;
     openPlayTodayByCourt[c.id] = {
       session,
@@ -5266,7 +5339,7 @@ async function renderCourts() {
     // Build slot → booking name map
     const slotNameMap = {};
     const verifyingHoursSet = new Set();
-    bookings.filter(b => b.courtId === c.id && b.date === today && bookingHoldsSlot(b))
+    bookings.filter(b => b.courtId === c.id && b.date === selectedDate && bookingHoldsSlot(b))
             .forEach(b => b.slots.forEach(h => {
               slotNameMap[h] = b.fullName || '';
               if (b.status === 'verifying') verifyingHoursSet.add(Number(h));
@@ -5277,8 +5350,8 @@ async function renderCourts() {
     const todayOpenPlaySession = todayOpenPlay.session;
     const todayOpenPlaySpotsLeft = todayOpenPlay.spotsLeft || 0;
 
-    const availToday = blk ? 0 : allSlots.filter(h => h > curHour && !bookedHours.has(h) && !isOpenPlayHour(today, h, c.id) && !isMaintenanceHour(today, h, c.id)).length;
-    const bookableToday = blk ? 0 : allSlots.filter(h => h > curHour && !isOpenPlayHour(today, h, c.id) && !isMaintenanceHour(today, h, c.id)).length;
+    const availToday = blk ? 0 : allSlots.filter(h => h > curHour && !bookedHours.has(h) && !isOpenPlayHour(selectedDate, h, c.id) && !isMaintenanceHour(selectedDate, h, c.id)).length;
+    const bookableToday = blk ? 0 : allSlots.filter(h => h > curHour && !isOpenPlayHour(selectedDate, h, c.id) && !isMaintenanceHour(selectedDate, h, c.id)).length;
     const availBadgeCls = blk ? 'mnt' : availToday > 0 ? 'av' : bookableToday === 0 ? 'av' : 'full';
     const availBadgeTxt = blk ? '🔧 Maintenance' : availToday > 0 ? `⚡ ${availToday} available` : bookableToday === 0 ? '🏓 Open Play only' : '⛔ Fully booked';
 
@@ -5300,7 +5373,7 @@ async function renderCourts() {
       ? openPlaySessionHtml({
           courtId: c.id,
           courtName: c.name,
-          date: today,
+          date: selectedDate,
           session: todayOpenPlaySession,
           spotsLeft: todayOpenPlaySpotsLeft,
           maxPlayers: openPlayMaxPlayers || 40,
@@ -5313,18 +5386,18 @@ async function renderCourts() {
       : openPlayCardHtml + allSlots.map(h => {
           const isPast_   = h <= curHour;
           const isBooked_ = bookedHours.has(h);
-          const isOpenPlay_ = isOpenPlayHour(today, h, c.id);
-          const isMaint_ = isMaintenanceHour(today, h, c.id);
-          const isSelectedSlot_ = !!cardSelection && cardSelection.date === today && cardSelection.slots.includes(h);
+          const isOpenPlay_ = isOpenPlayHour(selectedDate, h, c.id);
+          const isMaint_ = isMaintenanceHour(selectedDate, h, c.id);
+          const isSelectedSlot_ = !!cardSelection && cardSelection.date === selectedDate && cardSelection.slots.includes(h);
           const timeRange = slotTimeLabel(h);
-          if (isPast_)    return `<div class="cc-slot-btn past-slot"><div class="csl-time">${timeRange}</div><div class="csl-tag">Done</div></div>`;
+          if (isPast_)    return `<div class="cc-slot-btn past-slot"><div class="csl-time">${timeRange}</div><div class="csl-tag">${isSelectedPast ? 'Past' : 'Done'}</div></div>`;
           if (isBooked_ && verifyingHoursSet.has(h)) return `<div class="cc-slot-btn processing"><div class="csl-time">${timeRange}</div><div class="csl-tag">Processing...</div></div>`;
           if (isBooked_) return `<div class="cc-slot-btn taken"><div class="csl-time">${timeRange}</div><div class="csl-name">Booked</div></div>`;
-          if (isMaint_)  { const _ml=getMaintenanceLabel(today,h,c.id); return `<div class="cc-slot-btn maintenance"><div class="csl-time">${timeRange}</div><div class="csl-tag">${esc(_ml.icon)} ${esc(_ml.text)}</div></div>`; }
+          if (isMaint_)  { const _ml=getMaintenanceLabel(selectedDate,h,c.id); return `<div class="cc-slot-btn maintenance"><div class="csl-time">${timeRange}</div><div class="csl-tag">${esc(_ml.icon)} ${esc(_ml.text)}</div></div>`; }
           if (isOpenPlay_) return '';
-          return `<div class="cc-slot-btn${isSelectedSlot_ ? ' selected' : ''}" data-h="${h}" onclick="event.stopPropagation(); toggleCardSlot('${jsArg(c.id)}','${jsArg(today)}',${h})"><div class="csl-time">${timeRange}</div><div class="csl-price">₱${_cRate(h)}</div></div>`;
+          return `<div class="cc-slot-btn${isSelectedSlot_ ? ' selected' : ''}" data-h="${h}" onclick="event.stopPropagation(); toggleCardSlot('${jsArg(c.id)}','${jsArg(selectedDate)}',${h})"><div class="csl-time">${timeRange}</div><div class="csl-price">₱${_cRate(h)}</div></div>`;
         }).join('');
-    const isSelectedCard = !blk && !!cardSelection && cardSelection.date === today && cardSelection.slots.length > 0;
+    const isSelectedCard = !blk && !!cardSelection && cardSelection.date === selectedDate && cardSelection.slots.length > 0;
     const selectedSummary = isSelectedCard
       ? selectionSummaryText(cardSelection)
       : '';
@@ -5335,7 +5408,7 @@ async function renderCourts() {
       <!-- MOBILE-ONLY HEADER -->
       <div class="cc-mobile-hd">
         <span>📍 ${esc(c.name)}</span>
-        <span class="cc-mobile-hd-date" id="cMobDate_${esc(c.id)}">Today</span>
+        <span class="cc-mobile-hd-date" id="cMobDate_${esc(c.id)}">${esc(isSelectedToday ? 'Today' : fmtD(selectedDate).replace(/^[^,]+,\s*/, ''))}</span>
       </div>
 
       <!-- LEFT: Photo -->
@@ -5356,11 +5429,9 @@ async function renderCourts() {
             <div class="cc-times-sub">Join Open Play or select any available court slots</div>
           </div>
           <div class="cc-date-wrap">
-            <span class="cc-date-lbl">Select Date</span>
-            <input type="date" class="cc-date-pick" id="cDate_${c.id}"
-              value="${today}" min="${today}"
-              onclick="event.stopPropagation()"
-              onchange="event.stopPropagation(); onCardDate('${c.id}', this.value)" />
+            <span class="cc-date-lbl">Selected Date</span>
+            <span class="cc-date-pick" id="cDateVal_${esc(c.id)}" style="border:none;background:transparent;padding:0;min-height:0;text-align:right">${esc(isSelectedToday ? 'Today' : fmtD(selectedDate))}</span>
+            <input type="hidden" id="cDate_${esc(c.id)}" value="${esc(selectedDate)}" />
           </div>
         </div>
 
@@ -5398,8 +5469,8 @@ async function renderCourts() {
   // Build mobile court tab strip
   const tabsEl = $('courtTabs');
   if (tabsEl) {
-    const today_ = todayStr();
-    const cur_   = nowHour();
+    const today_ = selectedDate;
+    const cur_   = curHour;
     const singleCourtTabs = courts.map(c => {
       const blk = c.blocked;
       const allSl_ = Array.from({length: closeHour - openHour}, (_, i) => i + openHour);
@@ -6582,24 +6653,11 @@ function closeModal() {
    ============================================= */
 let _rtDebounce = null;
 async function refreshLiveViews() {
-  // Capture any date-pickers the user navigated away from "today" so a live
-  // re-render doesn't snap their view back to today.
-  const openDates = {};
-  document.querySelectorAll('[id^="cDate_"]').forEach(inp => {
-    const id = inp.id.slice('cDate_'.length);
-    if (inp.value) openDates[id] = inp.value;
-  });
+  const openDate = selectedCourtBrowseDate();
 
   await loadOperatingHours();
+  sharedCourtDate = openDate;
   await renderCourts();
-
-  // Restore each court's selected date and re-render its slot grid with fresh data.
-  await Promise.all(Object.entries(openDates).map(([courtId, date]) => {
-    if (date === todayStr()) return null; // renderCourts already shows today
-    const inp = $('cDate_' + courtId);
-    if (inp) inp.value = date;
-    return onCardDate(courtId, date).catch(() => {});
-  }));
 
   // Keep the legacy wizard slot grid live too.
   if (court && $('bDate').value) renderSlots();
