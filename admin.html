@@ -2669,7 +2669,7 @@ function bookingActionsHtml(b, canDelete){
   const actionRef = b.primaryRef || b.ref;
   return `${bookingDetailsButton(b)}
     ${!grouped && b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')">Reschedule</button>`:''}
-    ${!grouped && b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
+    ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
     <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${jsArg(actionRef)}',this.value)">
       ${b.status==='mixed'?'<option value="mixed" selected disabled>Mixed</option>':''}
       <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
@@ -3398,14 +3398,15 @@ async function notifyBookingUpdateSafe(bookingOrRef, event, note = '') {
 }
 
 async function updateStatus(ref, status) {
-  await updateBookingGroupByRef(ref, { status });
+  const group = await updateBookingGroupByRef(ref, { status });
   toast(`Status updated to ${status}.`);
 
   // Refresh table immediately; email and alerts run in the background.
   await renderBookings();
   renderDash();
 
-  DB.getBookingByRef(ref).then(async bk => {
+  Promise.resolve(group).then(async bk => {
+    if (!bk) bk = await getBookingGroupByRef(ref);
     if (!bk) return;
     if (status === 'confirmed') {
       await Promise.all([
@@ -3495,7 +3496,7 @@ async function verifyAndConfirm() {
     if (_curSection === 'payreview') await renderPaymentReview();
     renderDash();
 
-    DB.getBookingByRef(ref).then(async bk => {
+    Promise.resolve(getBookingGroupByRef(ref)).then(async bk => {
       if (!bk) return;
       await Promise.all([
         sendBookingConfirmationNotice(bk),
@@ -3509,8 +3510,7 @@ async function verifyAndConfirm() {
 
 async function resendConfirmationEmail(ref) {
   const group = await getBookingGroupByRef(ref);
-  if (group?.isGroup) { toast('Grouped booking emails are handled from the original combined confirmation.', 'inf'); return; }
-  const bk = await DB.getBookingByRef(ref);
+  const bk = group || await DB.getBookingByRef(ref);
   if (!bk?.email) { toast('No email address on file for this booking.', 'err'); return; }
   toast('Sending email...', 'inf');
   try {

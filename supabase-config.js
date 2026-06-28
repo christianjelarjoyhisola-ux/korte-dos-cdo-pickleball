@@ -174,8 +174,13 @@ async function _authRestHeaders(extra = {}) {
 }
 
 function _bookingEmailPayload(b) {
+  const items = Array.isArray(b.items) && b.items.length
+    ? b.items
+    : Array.isArray(b.groupItems) && b.groupItems.length
+      ? b.groupItems
+      : [];
   return {
-    bookingRef: b.ref,
+    bookingRef: b.displayRef || b.ref,
     email: b.email,
     fullName: b.fullName,
     courtName: b.courtName,
@@ -186,6 +191,15 @@ function _bookingEmailPayload(b) {
     total: b.total,
     downpayment: b.downpayment || Math.round((b.total || 0) * 0.5),
     contactNumber: b.contactNumber,
+    bookingItems: items.map(item => ({
+      courtName: item.courtName,
+      date: item.date,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      duration: item.duration,
+      total: item.total,
+      downpayment: item.downpayment,
+    })),
   };
 }
 

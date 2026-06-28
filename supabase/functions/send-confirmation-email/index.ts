@@ -17,6 +17,15 @@ type Payload = {
   total: number;
   downpayment: number;
   contactNumber?: string;
+  bookingItems?: Array<{
+    courtName: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    duration: number;
+    total: number;
+    downpayment?: number;
+  }>;
 };
 
 function escapeHtml(value: unknown): string {
@@ -45,9 +54,31 @@ function fmtPHP(n: number): string {
 function buildHtml(p: Payload): string {
   const fullName = escapeHtml(p.fullName);
   const bookingRef = escapeHtml(p.bookingRef);
-  const courtName = escapeHtml(p.courtName);
-  const startTime = escapeHtml(p.startTime);
-  const endTime = escapeHtml(p.endTime);
+  const bookingItems = Array.isArray(p.bookingItems) && p.bookingItems.length > 0
+    ? p.bookingItems
+    : [{
+      courtName: p.courtName,
+      date: p.date,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      duration: p.duration,
+      total: p.total,
+      downpayment: p.downpayment,
+    }];
+  const courtName = escapeHtml([...new Set(bookingItems.map(item => item.courtName).filter(Boolean))].join(", ") || p.courtName);
+  const dates = [...new Set(bookingItems.map(item => item.date).filter(Boolean))];
+  const dateText = dates.length === 1 ? fmtDate(dates[0]) : dates.map(fmtDate).join("<br/>");
+  const timeRows = bookingItems.map(item =>
+    `${escapeHtml(item.courtName)}: ${escapeHtml(item.startTime)} &ndash; ${escapeHtml(item.endTime)}`
+  ).join("<br/>");
+  const duration = bookingItems.reduce((sum, item) => sum + Number(item.duration || 0), 0) || Number(p.duration || 0);
+  const itemRows = bookingItems.length > 1 ? bookingItems.map(item => `
+          <tr>
+            <td style="padding:10px 12px;border-top:1px solid #384033;color:#f7fafc;font-weight:700;">${escapeHtml(item.courtName)}</td>
+            <td style="padding:10px 12px;border-top:1px solid #384033;color:#d7dee8;">${fmtDate(item.date)}</td>
+            <td style="padding:10px 12px;border-top:1px solid #384033;color:#d7dee8;">${escapeHtml(item.startTime)} &ndash; ${escapeHtml(item.endTime)}</td>
+            <td style="padding:10px 12px;border-top:1px solid #384033;color:#f7fafc;font-weight:700;text-align:right;">${fmtPHP(Number(item.total || 0))}</td>
+          </tr>`).join("") : "";
   const isFullPay = Number(p.downpayment || 0) >= Number(p.total || 0) - 1;
   const balance = Number(p.total || 0) - Number(p.downpayment || 0);
 
@@ -95,7 +126,7 @@ function buildHtml(p: Payload): string {
               </td>
               <td width="50%" style="vertical-align:top;">
                 <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#aab6c5;margin-bottom:3px;">Date</div>
-                <div style="font-size:.92rem;font-weight:700;color:#f7fafc;">${fmtDate(p.date)}</div>
+                <div style="font-size:.92rem;font-weight:700;color:#f7fafc;">${dateText}</div>
               </td>
             </tr></table>
           </td></tr>
@@ -103,14 +134,25 @@ function buildHtml(p: Payload): string {
             <table width="100%"><tr>
               <td width="50%" style="vertical-align:top;">
                 <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#aab6c5;margin-bottom:3px;">Time</div>
-                <div style="font-size:.92rem;font-weight:700;color:#f7fafc;">${startTime} &ndash; ${endTime}</div>
+                <div style="font-size:.92rem;font-weight:700;color:#f7fafc;">${timeRows}</div>
               </td>
               <td width="50%" style="vertical-align:top;">
                 <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#aab6c5;margin-bottom:3px;">Duration</div>
-                <div style="font-size:.92rem;font-weight:700;color:#f7fafc;">${p.duration} hour${p.duration !== 1 ? "s" : ""}</div>
+                <div style="font-size:.92rem;font-weight:700;color:#f7fafc;">${duration} hour${duration !== 1 ? "s" : ""}</div>
               </td>
             </tr></table>
           </td></tr>
+          ${itemRows ? `<tr><td style="padding:0 10px 10px;border-bottom:1px solid #384033;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:10px 12px;color:#aab6c5;font-size:.68rem;text-transform:uppercase;letter-spacing:1px;">Court</td>
+                <td style="padding:10px 12px;color:#aab6c5;font-size:.68rem;text-transform:uppercase;letter-spacing:1px;">Date</td>
+                <td style="padding:10px 12px;color:#aab6c5;font-size:.68rem;text-transform:uppercase;letter-spacing:1px;">Time</td>
+                <td style="padding:10px 12px;color:#aab6c5;font-size:.68rem;text-transform:uppercase;letter-spacing:1px;text-align:right;">Amount</td>
+              </tr>
+              ${itemRows}
+            </table>
+          </td></tr>` : ""}
           <tr><td style="padding:14px 22px;">
             <table width="100%"><tr>
               <td width="50%" style="vertical-align:top;">
