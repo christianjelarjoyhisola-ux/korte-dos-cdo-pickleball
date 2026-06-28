@@ -308,10 +308,6 @@ function selectedMethodMismatch(provider: PaymentProvider, text: string): boolea
   return false;
 }
 
-function hasGxiDestination(text: string): boolean {
-  return /\bg-?xchange\b|\bgxi\b|\bgcash\b|\bqrph\b/i.test(text);
-}
-
 function hasExpectedReceiverName(text: string, expectedName: string): boolean {
   const upper = text.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const expected = (expectedName || "Korte Dos").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -947,6 +943,7 @@ Deno.serve(async (req) => {
         if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
         if (!extractedInvoice) flags.push("INVOICE_UNREADABLE");
       } else if (provider === "maya") {
+        // Maya focused path: do not require GCash/GXI/BDO Pay evidence here.
         if (!extractedRef) flags.push("REF_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
 
@@ -963,7 +960,6 @@ Deno.serve(async (req) => {
 
         if (!hasMayaIndicator(ocrText)) flags.push("MAYA_UNREADABLE");
         if (!hasInstapayQrphIndicator(ocrText)) flags.push("INSTAPAY_QRPH_UNREADABLE");
-        if (!hasGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
         if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
       } else {
         if (!extractedRef) flags.push("REF_UNREADABLE");
