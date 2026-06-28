@@ -1946,7 +1946,7 @@ tr:hover td { background: var(--bg2); }
           <table>
             <thead>
               <tr>
-                <th>Month</th>
+                <th>Booking Period</th>
                 <th>Bookings</th>
                 <th>Booking Fee</th>
                 <th>Amount to Remit</th>
@@ -1958,13 +1958,13 @@ tr:hover td { background: var(--bg2); }
             <tbody id="myBillBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px">No statements yet.</td></tr></tbody>
           </table>
         </div>
-        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Remit the monthly player-paid booking fee to the GCash account shown when you click <strong>Remit Now</strong>. Then submit the GCash transaction ID for verification.</div>
+        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Remit the player-paid booking fee for each booking period to the GCash account shown when you click <strong>Remit Now</strong>. Then submit the GCash transaction ID for verification.</div>
       </div>
 
       <!-- BOOKING FEE REMITTANCE — System Owner only (where court owners send fees) -->
       <div class="panel" data-perm="owner_only" style="max-width:680px;margin-bottom:20px;border:1.5px solid rgba(255,160,0,.35);background:rgba(255,160,0,.04)">
         <h4>🏦 Booking Fee Remittance Account <span style="font-size:.7rem;background:rgba(255,160,0,.15);color:var(--yellow);padding:2px 8px;border-radius:8px;margin-left:6px;font-family:'DM Mono',monospace;letter-spacing:1px">SYSTEM OWNER</span></h4>
-        <p style="color:var(--muted);font-size:.84rem;margin:8px 0 14px">This is the GCash account where court owners remit monthly player-paid booking fees. Shown to them in the Remit Now dialog.</p>
+        <p style="color:var(--muted);font-size:.84rem;margin:8px 0 14px">This is the GCash account where court owners remit player-paid booking fees by booking period. Shown to them in the Remit Now dialog.</p>
         <div class="frow" style="gap:10px;margin-bottom:10px;">
           <div class="fg" style="margin:0;flex:1">
             <label class="fl">Remittance GCash Number</label>
@@ -2124,12 +2124,12 @@ tr:hover td { background: var(--bg2); }
         </div>
       </div>
 
-      <!-- MONTHLY BOOKING FEE REMITTANCE (owner only) -->
+      <!-- BOOKING-DATE BOOKING FEE REMITTANCE (owner only) -->
       <div class="panel" data-perm="owner_only" style="max-width:980px;margin-bottom:20px;border:1.5px solid rgba(var(--green-rgb),.35);background:rgba(var(--green-rgb),.04)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-          <h4 style="margin:0;color:var(--green)">🧾 Monthly Booking Fee Remittance</h4>
+          <h4 style="margin:0;color:var(--green)">🧾 Booking Fee Remittance by Booking Date</h4>
           <div class="bill-controls" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <label style="font-size:.78rem;color:var(--text3)">Statement Month:</label>
+            <label style="font-size:.78rem;color:var(--text3)">Booking Month:</label>
             <select class="fi" id="billWeekMode" style="padding:5px 10px;font-size:.82rem;width:auto">
               <option value="1" selected>Previous Month</option>
               <option value="0">Current Month</option>
@@ -2158,7 +2158,7 @@ tr:hover td { background: var(--bg2); }
           <table>
             <thead>
               <tr>
-                <th>Month</th>
+                <th>Booking Period</th>
                 <th>Court Owner</th>
                 <th>Bookings</th>
                 <th>Booking Fee</th>
@@ -2172,7 +2172,7 @@ tr:hover td { background: var(--bg2); }
             <tbody id="billBody"><tr><td colspan="9" style="text-align:center;color:var(--muted);padding:22px">No statements yet.</td></tr></tbody>
           </table>
         </div>
-        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Statements are generated monthly from <strong>confirmed</strong> and <strong>completed</strong> bookings only. Once generated, use <strong>Mark Received</strong> after verifying GCash remittance proof.</div>
+        <div style="margin-top:10px;font-size:.76rem;color:var(--text3)">Statements are generated from the month the booking was made, not the future court play date. Only <strong>confirmed</strong> and <strong>completed</strong> bookings are included. Once generated, use <strong>Mark Received</strong> after verifying GCash remittance proof.</div>
       </div>
     </div>
 
@@ -2594,6 +2594,24 @@ function platformFeeLabel(cfg, { short = false } = {}) {
 function bookingBillableHours(b) {
   return Number(b.duration) || (Array.isArray(b.slots) ? b.slots.length : 0) || 1;
 }
+function phDateKeyFromTimestamp(value) {
+  if (!value) return '';
+  const raw = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = type => parts.find(p => p.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+function bookingRevenueDate(b) {
+  return phDateKeyFromTimestamp(b?.createdAt || b?.created_at);
+}
 function isManualImportBooking(b) {
   const ref = String(b?.ref || '');
   const method = String(b?.paymentMethod || b?.payment_method || '').toLowerCase();
@@ -2778,7 +2796,7 @@ function groupBookings(bookings = []) {
       receiptConfidence: primary.receiptConfidence,
       receiptImageUrl: primary.receiptImageUrl,
       receiptVerifiedAt: primary.receiptVerifiedAt,
-      createdAt: items.map(b => b.createdAt).filter(Boolean).sort()[0] || primary.createdAt,
+      createdAt: items.map(b => b.createdAt || b.created_at).filter(Boolean).sort()[0] || primary.createdAt || primary.created_at,
       duration: items.reduce((sum, b) => sum + (Number(b.duration) || 0), 0),
     };
   }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -5135,7 +5153,7 @@ function _weekBounds(mode = 1) {
   return { startDate: toDate(start), endDate: toDate(end), start, end };
 }
 
-// Populate the "Statement Month" dropdown with recent calendar months.
+// Populate the "Booking Month" dropdown with recent calendar months.
 function populateBillWeekOptions(monthsBack = 12) {
   const sel = $('billWeekMode');
   if (!sel) return;
@@ -5217,7 +5235,7 @@ async function renderWeeklyBilling() {
       : '';
 
     return `<tr>
-      <td data-label="Month">${period}</td>
+      <td data-label="Booking Period">${period}</td>
       <td data-label="Court Owner"><div style="font-weight:700">${esc(ownerName)}</div><div style="font-size:.72rem;color:var(--muted)">${esc(r.court_owner_email || owner?.email || '—')}</div></td>
       <td data-label="Bookings">${r.bookings_count}</td>
       <td data-label="Booking Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
@@ -5260,18 +5278,18 @@ async function generateWeeklyStatement() {
     const feeCfg = getPlatformFeeConfig(settings);
     const feePerBooking = feeCfg.amount;
 
-    // One statement per (owner, month). Regenerating recomputes the same month
+    // One statement per (owner, booking month). Regenerating recomputes the same month
     // rather than creating a duplicate.
     const existing = (existingStatements || []).find(r =>
       r.court_owner_user_id === courtOwner.id &&
       r.week_start === startDate && r.week_end === endDate
     );
 
-    // Fee applies only to online platform bookings. Spreadsheet/manual imports
-    // stay in the schedule/history but are never billed for platform remittance.
+    // Fee applies only to online platform bookings. The remittance month is based
+    // on when the booking was made, not the future court reservation date.
     const eligible = bookings.filter(b =>
       isPlatformBillableBooking(b) &&
-      b.date >= startDate && b.date <= endDate &&
+      bookingRevenueDate(b) >= startDate && bookingRevenueDate(b) <= endDate &&
       (!b.weeklyFeeId || (existing && String(b.weeklyFeeId) === String(existing.id)))
     );
     const eligibleGroups = groupBookings(eligible);
@@ -5292,7 +5310,7 @@ async function generateWeeklyStatement() {
     let weeklyFeeId;
     if (existing) {
       if ((existing.status || '').toLowerCase() === 'paid') {
-        toast('This month is already marked received and cannot be regenerated.', 'err');
+        toast('This booking month is already marked received and cannot be regenerated.', 'err');
         return;
       }
       await DB.updateWeeklyFee(existing.id, {
@@ -5324,11 +5342,11 @@ async function generateWeeklyStatement() {
     // Stamp each billed booking so it is auditable and never billed twice.
     if (weeklyFeeId) await DB.markBookingsBilled(billedRefs, weeklyFeeId);
 
-    toast(`Monthly remittance statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligibleGroups, feeCfg)} = ${fmt(amountDue)}`);
+    toast(`Booking-date remittance statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligibleGroups, feeCfg)} = ${fmt(amountDue)}`);
     await renderWeeklyBilling();
   } catch (e) {
     console.error('[billGenerate] error:', e);
-    toast('Failed to generate monthly remittance statement: ' + (e?.message || e), 'err');
+    toast('Failed to generate booking-date remittance statement: ' + (e?.message || e), 'err');
   }
 }
 
@@ -5408,7 +5426,7 @@ async function renderMyBilling() {
           : `<span style="font-size:.74rem;color:var(--muted)">—</span>`;
 
     return `<tr>
-      <td data-label="Month">${period}${submittedLabel}</td>
+      <td data-label="Booking Period">${period}${submittedLabel}</td>
       <td data-label="Bookings">${r.bookings_count}</td>
       <td data-label="Booking Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
       <td data-label="Amount to Remit"><strong style="color:var(--yellow)">${fmt(r.amount_due)}</strong></td>
@@ -7427,10 +7445,10 @@ function applyRoleVisibility(role) {
       </ul>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">3. Booking Fee &amp; Monthly Remittance</h4>
-      <p id="agreeFeeIntro" style="margin:0 0 14px">In consideration of the platform access provided at no setup fee, one-time fee, monthly subscription fee, hidden fee, or other platform charge to the Court Owner, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner, and is separate from the court rental fee.<br><br>The System Owner sets the booking fee amount and charging method. The fee may be charged <strong>per booked hour per confirmed booking transaction</strong> or as a <strong>per confirmed booking transaction fee</strong>, added to the player's checkout, and included in the monthly remittance statement.</p>
+      <p id="agreeFeeIntro" style="margin:0 0 14px">In consideration of the platform access provided at no setup fee, one-time fee, monthly subscription fee, hidden fee, or other platform charge to the Court Owner, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner, and is separate from the court rental fee.<br><br>The System Owner sets the booking fee amount and charging method. The fee may be charged <strong>per booked hour per confirmed booking transaction</strong> or as a <strong>per confirmed booking transaction fee</strong>, added to the player's checkout, and included in the booking-period remittance statement based on booking date.</p>
       <p id="agreeFeeBillable" style="margin:0 0 14px"><strong>When it applies.</strong> The configured booking fee applies only to a <strong>confirmed booking transaction</strong> made through the platform, meaning a booking that successfully reserved a court slot. Bookings that are cancelled before confirmation, rejected during payment verification, expired, or never held a slot are <strong>not charged</strong>.</p>
       <p id="agreeFeeCollection" style="margin:0 0 14px"><strong>Collection.</strong> The Court Owner collects the configured booking fee from the customer together with the court rental fee at the time of booking, and holds the booking fee on behalf of the Platform Provider until remittance. The booking fee is not a fee charged to the Court Owner and is not part of the Court Owner's court rental revenue.</p>
-      <p id="agreeFeeWeekly" style="margin:0 0 14px"><strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering confirmed booking transactions from the previous <strong>calendar month</strong>. The amount to remit is calculated using the System Owner-selected booking fee amount and charging method in effect when the statement is generated. Each confirmed booking transaction is included <strong>only once</strong>.</p>
+      <p id="agreeFeeWeekly" style="margin:0 0 14px"><strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering confirmed booking transactions made during the previous <strong>booking calendar month</strong>, regardless of the future court play date. The amount to remit is calculated using the System Owner-selected booking fee amount and charging method in effect when the statement is generated. Each confirmed booking transaction is included <strong>only once</strong>.</p>
       <p style="margin:0 0 14px"><strong>Due date &amp; method.</strong> Remittance is due within <strong>five (5) calendar days</strong> of the statement date. The Court Owner remits that amount via <strong>GCash</strong> to the booking fee remittance account shown in the dashboard, then submits the GCash transaction reference and a screenshot of the receipt as remittance proof through the "Remit Now" function.</p>
       <p style="margin:0 0 14px"><strong>Non-remittance.</strong> Statements not remitted past the due date are marked <strong>overdue</strong>. The Platform Provider may suspend or restrict the Court Owner's access to the booking system until all outstanding statements are settled. Suspension does not waive any amounts already due.</p>
 
@@ -7544,10 +7562,10 @@ async function updateAgreementFeeCopy() {
     : `total booked hours from confirmed booking transactions × ${fmt(cfg.amount)}`;
   const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
 
-  setHtml('agreeFeeIntro', `In consideration of the platform access provided at no setup fee, one-time fee, monthly subscription fee, hidden fee, or other platform charge to the Court Owner, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee of ${fee}</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner, and is separate from the court rental fee.<br><br>The System Owner sets the booking fee amount and charging method. The fee is currently configured as <strong>${feeMethod}</strong> at <strong>${fmt(cfg.amount)}</strong>, added to the player's checkout, and included in the monthly remittance statement.`);
+  setHtml('agreeFeeIntro', `In consideration of the platform access provided at no setup fee, one-time fee, monthly subscription fee, hidden fee, or other platform charge to the Court Owner, the Court Owner <strong>authorizes</strong> the Platform Provider to add the current System Owner-selected <strong>non-refundable booking fee of ${fee}</strong> to each customer transaction processed through the system. This fee is charged to and paid by the <strong>customer/player</strong>, not the Court Owner, and is separate from the court rental fee.<br><br>The System Owner sets the booking fee amount and charging method. The fee is currently configured as <strong>${feeMethod}</strong> at <strong>${fmt(cfg.amount)}</strong>, added to the player's checkout, and included in the booking-period remittance statement based on booking date.`);
   setHtml('agreeFeeBillable', `<strong>When it applies.</strong> The configured ${configuredFeeText} applies only to a <strong>confirmed booking transaction</strong> made through the platform, meaning a booking that successfully reserved a court slot. Bookings that are cancelled before confirmation, rejected during payment verification, expired, or never held a slot are <strong>not charged</strong>.`);
   setHtml('agreeFeeCollection', `<strong>Collection.</strong> The Court Owner collects the configured ${configuredFeeText} from the customer together with the court rental fee at the time of booking, and holds the booking fee on behalf of the Platform Provider until remittance. The booking fee is not a fee charged to the Court Owner and is not part of the Court Owner's court rental revenue.`);
-  setHtml('agreeFeeWeekly', `<strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering confirmed booking transactions from the previous <strong>calendar month</strong>. The amount to remit is calculated as <strong>${formula}</strong>. Each confirmed booking transaction is included <strong>only once</strong>.`);
+  setHtml('agreeFeeWeekly', `<strong>Monthly remittance.</strong> Remittance is settled <strong>monthly</strong>. Each month the Platform Provider issues a statement covering confirmed booking transactions made during the previous <strong>booking calendar month</strong>, regardless of the future court play date. The amount to remit is calculated as <strong>${formula}</strong>. Each confirmed booking transaction is included <strong>only once</strong>.`);
   setHtml('agreeFeeRevenue', `All court rental fees set by the Court Owner (e.g. ₱200/hr, ₱250/hr) belong <strong>exclusively to the Court Owner</strong>. The Platform Provider does not take any share of the court rental revenue. The Court Owner receives 100% of the court rental rate from every confirmed booking. Only the separate configured booking fee of <strong>${fee}</strong> paid by the customer is for the Platform Provider.`);
   setHtml('agreeFeeCircumvention', `The Court Owner agrees <strong>not to direct, encourage, or assist customers to bypass the platform</strong> in order to avoid the configured booking fee of <strong>${fee}</strong>. This includes but is not limited to: advertising a direct booking channel at a lower price for platform-visible slots, accepting bookings verbally or via personal chat for slots available on the platform, waiving or hiding the booking fee outside the system, or instructing customers to "book directly" to avoid the fee.<br><br>Circumvention of the booking fee is a material breach of this Agreement and may result in immediate suspension or termination of platform access.`);
   setHtml('agreeFeeConfirmCollect', `You authorize the platform to collect the System Owner-selected booking fee of <strong>${fee}</strong> from customers on confirmed booking transactions.`);
