@@ -3779,6 +3779,25 @@ function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
   };
 }
 
+function bookingSelectionKey(sel) {
+  const slots = [...(sel?.slots || [])].map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  return [
+    String(sel?.courtId || ''),
+    String(sel?.date || ''),
+    slots.join(','),
+  ].join('|');
+}
+
+function uniqueBookingSelections(selections = []) {
+  const seen = new Set();
+  return selections.filter(sel => {
+    const key = bookingSelectionKey(sel);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function makeBookingItemFromCurrentForm() {
   if (!court || !selSlots.length || !$('bDate')?.value) return null;
   const sel = {
@@ -3850,7 +3869,7 @@ function bookingItemsRateLabel(items = activeBookingItems()) {
   return court ? fmt(court.rate) + '/hr' : '-';
 }
 
-function bookingItemsSummaryHtml(items = activeBookingItems()) {
+function bookingItemsSummaryHtml(items = uniqueBookingSelections(activeBookingItems())) {
   const total = bookingItemsTotal(items);
   const svcFee = bookingItemsServiceFee(items);
   const hrs = bookingItemsDuration(items);
@@ -5027,11 +5046,11 @@ async function proceedToBook(courtId = null) {
     return;
   }
 
-  let bookingSelections = selections;
+  let bookingSelections = uniqueBookingSelections(selections);
   const extensionCandidate = await lateNightExtensionCandidate(selections);
   if (extensionCandidate) {
     const addExtension = await showLateNightExtensionPrompt(extensionCandidate);
-    if (addExtension) bookingSelections = [...selections, ...extensionCandidate.selections];
+    if (addExtension) bookingSelections = uniqueBookingSelections([...bookingSelections, ...extensionCandidate.selections]);
   }
 
   const courts = await DB.getCourts();
@@ -5867,7 +5886,7 @@ function updatePriceLegacy() {
 }
 
 function updatePrice() {
-  const items = activeBookingItems();
+  const items = uniqueBookingSelections(activeBookingItems());
   const hrs = bookingItemsDuration(items);
   const courtTotal = bookingItemsCourtFee(items);
   const svcFee = bookingItemsServiceFee(items);
@@ -6383,7 +6402,7 @@ async function submitBooking(e) {
     submitBtn.textContent = 'Processing...';
   }
 
-  const items = activeBookingItems();
+  const items = uniqueBookingSelections(activeBookingItems());
   const bookingDate = bookingItemsDate(items);
   const payMethod = $('bPay').value;
   const gcashRef  = $('bGcashRef')?.value?.trim() || '';

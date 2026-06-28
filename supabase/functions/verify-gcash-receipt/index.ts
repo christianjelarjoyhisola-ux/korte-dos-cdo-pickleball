@@ -520,18 +520,39 @@ async function loadBookingGroup(
   return (data || []) as Array<Record<string, unknown>>;
 }
 
+function bookingLogicalKey(row: Record<string, unknown>): string {
+  const slots = Array.isArray(row.slots)
+    ? row.slots.map(Number).filter(Number.isFinite).sort((a, b) => a - b)
+    : [];
+  return [
+    String(row.court_id || row.courtId || ""),
+    String(row.date || ""),
+    slots.join(","),
+  ].join("|");
+}
+
+function uniqueBookingRows(rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = bookingLogicalKey(row);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function expectedBookingGroupAmount(
   db: any,
   bookings: Array<Record<string, unknown>>,
   settings: Record<string, string>,
 ): Promise<number> {
   let due = 0;
-  for (const row of bookings) due += await expectedBookingAmount(db, row, settings);
+  for (const row of uniqueBookingRows(bookings)) due += await expectedBookingAmount(db, row, settings);
   return roundMoney(due);
 }
 
 function bookingGroupStoredTotal(bookings: Array<Record<string, unknown>>): number {
-  return roundMoney(bookings.reduce((sum, row) => sum + toNumber(row.total), 0));
+  return roundMoney(uniqueBookingRows(bookings).reduce((sum, row) => sum + toNumber(row.total), 0));
 }
 
 function bookingUpdateQuery(

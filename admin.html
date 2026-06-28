@@ -2369,15 +2369,32 @@ function bookingGroupReceiptStatus(items) {
   if (statuses.includes('auto_approved') && statuses.every(s => s === 'auto_approved' || s === 'none')) return 'auto_approved';
   return statuses.find(s => s !== 'none') || 'none';
 }
+function bookingLogicalKey(b) {
+  const slots = Array.isArray(b?.slots) ? b.slots.map(Number).filter(Number.isFinite).sort((a, c) => a - c) : [];
+  return [
+    String(b?.courtId || b?.court_id || b?.courtName || ''),
+    String(b?.date || ''),
+    slots.join(',') || `${b?.startTime || ''}-${b?.endTime || ''}`,
+  ].join('|');
+}
+function uniqueBookingGroupItems(items = []) {
+  const seen = new Set();
+  return items.filter(item => {
+    const key = bookingLogicalKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 function bookingGroupCourtLabel(items = []) {
-  return [...new Set(sortBookingsChronologically(items).map(b => b.courtName || 'Court'))].join(', ');
+  return [...new Set(sortBookingsChronologically(uniqueBookingGroupItems(items)).map(b => b.courtName || 'Court'))].join(', ');
 }
 function bookingGroupDateLabel(items = []) {
-  const dates = [...new Set(items.map(b => b.date).filter(Boolean))].sort();
+  const dates = [...new Set(uniqueBookingGroupItems(items).map(b => b.date).filter(Boolean))].sort();
   return dates.length === 1 ? fmtD(dates[0]) : dates.map(fmtD).join(' + ');
 }
 function bookingGroupTimeLabel(items = []) {
-  const sorted = sortBookingsChronologically(items);
+  const sorted = sortBookingsChronologically(uniqueBookingGroupItems(items));
   const labels = [...new Set(sorted.map(b => `${b.startTime || '--'}-${b.endTime || '--'}`))];
   return labels.join(', ');
 }
@@ -2405,7 +2422,7 @@ function bookingGroupScheduleLabel(items = []) {
     .join(' | ');
 }
 function bookingGroupBreakdownHtml(items = []) {
-  return sortBookingsChronologically(items).map(b => `
+  return sortBookingsChronologically(uniqueBookingGroupItems(items)).map(b => `
     <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--border)">
       <span>${esc(b.courtName)} | ${esc(b.startTime || '--')} - ${esc(b.endTime || '--')}</span>
       <strong style="color:var(--text)">${fmt(b.total || 0)}</strong>
@@ -2419,9 +2436,10 @@ function groupBookings(bookings = []) {
     map.get(key).push(b);
   });
   return [...map.entries()].map(([key, rawItems]) => {
-    const items = sortBookingsChronologically(rawItems);
+    const allItems = sortBookingsChronologically(rawItems);
+    const items = uniqueBookingGroupItems(allItems);
     const primary = items[0] || {};
-    const refs = items.map(b => b.ref).filter(Boolean);
+    const refs = allItems.map(b => b.ref).filter(Boolean);
     const total = items.reduce((sum, b) => sum + (Number(b.total) || 0), 0);
     const downpayment = items.reduce((sum, b) => {
       const dp = b.downpayment !== undefined && b.downpayment !== null ? Number(b.downpayment) : ((Number(b.total) || 0) / 2);
@@ -2433,6 +2451,7 @@ function groupBookings(bookings = []) {
       isGroup: items.length > 1,
       groupKey: key,
       items,
+      allItems,
       refs,
       displayRef: primary.groupRef ? String(primary.groupRef).replace(/-G$/, '') : commonBookingPrefix(refs),
       primaryRef: primary.ref,
@@ -2469,13 +2488,13 @@ async function getBookingGroupByRef(ref) {
 async function updateBookingGroupByRef(ref, updates) {
   const group = await getBookingGroupByRef(ref);
   if (!group) throw new Error('Booking not found.');
-  await Promise.all(group.items.map(b => DB.updateBooking(b.ref, updates)));
+  await Promise.all((group.allItems || group.items).map(b => DB.updateBooking(b.ref, updates)));
   return group;
 }
 async function deleteBookingGroupByRef(ref) {
   const group = await getBookingGroupByRef(ref);
   if (!group) throw new Error('Booking not found.');
-  await Promise.all(group.items.map(b => DB.deleteBooking(b.ref)));
+  await Promise.all((group.allItems || group.items).map(b => DB.deleteBooking(b.ref)));
   return group;
 }
 function calcPlatformFeeForBooking(b, cfg) {
