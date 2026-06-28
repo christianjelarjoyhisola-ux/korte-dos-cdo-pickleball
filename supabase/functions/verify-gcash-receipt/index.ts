@@ -162,24 +162,35 @@ const MONTHS: Record<string, number> = {
 
 // Parse a GCash-style timestamp e.g. "Jun 13, 2026 10:30 AM" into a Date
 // interpreted as PH wall-clock (returned as a UTC+8-shifted Date for comparison
-// against phManilaNow()). Returns null if not found.
+// against phManilaNow()). If OCR only finds the date, return the date but no
+// shifted time so it routes to manual review instead of assuming midnight.
 function parseReceiptDateTime(text: string): { date: string | null; shifted: Date | null } {
-  const m = text.match(
-    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})\s*(am|pm)?)?/i,
+  const full = text.match(
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})[,\s]+(\d{1,2}):(\d{2})\s*([ap]\.?\s*m\.?)\b/i,
   );
-  if (!m) return { date: null, shifted: null };
-  const mon = MONTHS[m[1].toLowerCase().slice(0, 3)];
-  const day = parseInt(m[2], 10);
-  const year = parseInt(m[3], 10);
-  let hour = m[4] ? parseInt(m[4], 10) : 0;
-  const min = m[5] ? parseInt(m[5], 10) : 0;
-  const ap = m[6]?.toLowerCase();
-  if (ap === "pm" && hour !== 12) hour += 12;
-  if (ap === "am" && hour === 12) hour = 0;
+  if (full) {
+    const mon = MONTHS[full[1].toLowerCase().slice(0, 3)];
+    const day = parseInt(full[2], 10);
+    const year = parseInt(full[3], 10);
+    let hour = parseInt(full[4], 10);
+    const min = parseInt(full[5], 10);
+    const ap = full[6].toLowerCase().replace(/[^apm]/g, "");
+    if (ap === "pm" && hour !== 12) hour += 12;
+    if (ap === "am" && hour === 12) hour = 0;
+    const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const shifted = new Date(Date.UTC(year, mon, day, hour, min, 0));
+    return { date: dateStr, shifted };
+  }
+
+  const dateOnly = text.match(
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b/i,
+  );
+  if (!dateOnly) return { date: null, shifted: null };
+  const mon = MONTHS[dateOnly[1].toLowerCase().slice(0, 3)];
+  const day = parseInt(dateOnly[2], 10);
+  const year = parseInt(dateOnly[3], 10);
   const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  // Build as if UTC so the numbers represent PH wall clock; compare to phManilaNow().
-  const shifted = new Date(Date.UTC(year, mon, day, hour, min, 0));
-  return { date: dateStr, shifted };
+  return { date: dateStr, shifted: null };
 }
 
 function digitsOnly(s: string): string {
