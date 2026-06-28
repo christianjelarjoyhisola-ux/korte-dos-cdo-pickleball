@@ -56,6 +56,34 @@ const HARD_FLAGS = new Set([
 
 type PaymentProvider = "gcash" | "bdopay" | "maya" | "gotyme" | "pnb";
 
+function publicReceiptMessage(
+  result: "auto_approved" | "manual_review" | "rejected",
+  flags: string[],
+): string {
+  if (result === "auto_approved") return "Payment verified.";
+  if (result === "manual_review") return "Received - the owner will verify your payment shortly.";
+
+  const flagSet = new Set(flags);
+  if (flagSet.has("AMOUNT_MISMATCH")) {
+    return "Payment amount is lower than required. Please upload the correct payment receipt.";
+  }
+  if (flagSet.has("TIME_EXPIRED") || flagSet.has("TIME_FUTURE") || flagSet.has("DATE_NOT_TODAY")) {
+    return "Payment was sent outside the allowed 10-minute window. Please create a new booking.";
+  }
+  if (flagSet.has("IMAGE_UNREADABLE") || flagSet.has("OCR_UNAVAILABLE")) {
+    return "Receipt image is unreadable. Please upload a clearer screenshot.";
+  }
+  if (
+    flagSet.has("SUSPECTED_FAKE")
+    || flagSet.has("GCASH_RECEIPT_UNREADABLE")
+    || flagSet.has("BDO_PAY_UNREADABLE")
+    || flagSet.has("MAYA_UNREADABLE")
+  ) {
+    return "Payment could not be verified. Please upload a valid receipt or contact admin.";
+  }
+  return "Payment details do not match this booking. Please check your receipt and try again, or contact admin.";
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -1176,7 +1204,8 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       status: result,
-      flags,
+      flags: [],
+      publicReason: publicReceiptMessage(result, flags),
       extracted,
       confidence,
       receiptImageUrl: objectPath,

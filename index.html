@@ -3607,7 +3607,7 @@ async function verifyHostSessionReceipt(ref, method, inlineData) {
     bookingData: inlineData,
   });
   const status = res?.status || 'manual_review';
-  const msg = res?.message || 'Receipt received.';
+  const msg = res?.publicReason || res?.message || 'Receipt received.';
   if (st) {
     if (status === 'auto_approved') { st.style.background = 'rgba(var(--ac),.12)'; st.style.color = 'var(--accent)'; st.textContent = 'Payment verified. Your spot is confirmed.'; }
     else if (status === 'rejected') { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt rejected: ' + msg; }
@@ -6824,7 +6824,7 @@ async function verifyUploadedReceipt(bookingRef, method, inlineData = null) {
     if (inlineData) payload.bookingData = inlineData;
     const res = await DB.verifyGcashReceipt(payload);
     const status = res?.status || 'manual_review';
-    const msg = res?.message || 'Receipt received.';
+    const msg = res?.publicReason || res?.message || 'Receipt received.';
     if (st) {
       if (status === 'auto_approved') { st.style.background = 'rgba(var(--ac),.12)'; st.style.color = 'var(--accent)'; st.textContent = '✅ ' + msg; }
       else if (status === 'rejected') { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = '⚠️ ' + msg; }
@@ -7652,7 +7652,7 @@ async function verifyOpReceipt(ref, method, inlineData) {
       bookingData: inlineData,
     });
     const status = res?.status || 'manual_review';
-    const msg = res?.message || 'Receipt received.';
+    const msg = res?.publicReason || res?.message || 'Receipt received.';
     if (st) {
       if (status === 'auto_approved') { st.style.background = 'rgba(var(--ac),.12)'; st.style.color = 'var(--accent)'; st.textContent = '✅ ' + msg; }
       else if (status === 'rejected') { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = '⚠️ ' + msg; }
