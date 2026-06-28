@@ -207,6 +207,11 @@ function flexibleDigitPattern(digits: string): RegExp {
   return new RegExp(digits.split("").join("[^0-9]*"));
 }
 
+function maskedDigitPattern(digits: string): RegExp {
+  const mask = "[\\s\\-.*xX#\\u2022\\u2023\\u25E6\\u2043\\u2219]*";
+  return new RegExp(digits.split("").join(mask));
+}
+
 // Extract candidate 13-digit GCash reference numbers from OCR text.
 function extractGcashRef(text: string, typedRef = ""): string | null {
   const normalizedTyped = digitsOnly(typedRef);
@@ -574,6 +579,7 @@ function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
     }
   }
   // Masked receipts often reveal only the last 4 digits.
+  if (maskedDigitPattern(last4).test(text)) return "match";
   if (new RegExp(`(?:[•*xX#\\s\\-]{2,}|\\d)${last4}\\b`).test(text)) return "match";
   if (text.includes(last4)) return "match";
 
