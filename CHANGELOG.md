@@ -6,6 +6,39 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-06-27] - Booking Search, Grouped Transactions & Admin Fixes
+
+### Added
+- **Public available-time search** - added a modal that searches all courts for consecutive available slots by date, start time, and duration.
+- **Shared public booking date** - added one booking date control that updates Court 1, Court 2, and Court 3 availability together.
+- **Manual booking spreadsheet importer** - added a Python import tool for historical/manual bookings and marked imported records so reporting can exclude them where needed.
+
+### Changed
+- **Grouped multi-court booking transactions** - admin booking, dashboard, and payment review views now group related court bookings under one transaction-style summary.
+- **Selected booking summary flow** - moved the selected court/time summary into the sticky booking bar, compacted long time labels, and removed court feature chips from public court cards.
+- **Booking email theme** - updated confirmation and reschedule email styling to use the Korte DOS logo and darker orange-accented court branding.
+- **Manual import reporting rules** - excluded manual imports from analytics and platform-fee calculations so imported history does not inflate live booking metrics.
+- **Staff payment access** - staff access now targets payment review permissions instead of broader payment settings.
+- **Open Play maintenance blocking** - added support for Open Play maintenance block handling in public availability.
+- **Host invite visibility** - disabled and hard-hidden the host invite popup after the splash/booking flow changes.
+
+### Fixed
+- **GCash receipt reference extraction** - improved receipt parsing so reference numbers are read more reliably during verification.
+- **Grouped booking per-court actions** - guarded grouped booking actions so per-court status and payment updates do not affect the wrong booking item.
+- **Grouped schedule labels** - cleaned dashboard and payment-review schedule labels for grouped bookings across one or more dates.
+- **Cancelled booking dashboard counts** - cancelled bookings no longer inflate active booking and dashboard totals.
+- **Rejected receipt display** - confirmed bookings with rejected payment review now show the rejected payment state clearly.
+- **Temporary hold and booking refresh behavior** - preserved extension booking items during refresh and refreshed temporary holds after booking cancellation.
+- **Splash and host invite cleanup** - fixed host invite scroll unlock after the welcome splash and refined the splash photo overlay/tap styling.
+- **Public payment privacy** - masked the GCash receiver name on the public payment UI.
+
+### Security
+- **Public site headers and redirect support** - added Cloudflare security headers and worker redirect handling for the public site.
+
+**Files affected:** `_headers`, `_worker.js`, `admin.html`, `auth.js`, `index.html`, `login.html`, `supabase-config.js`, `supabase/functions/send-confirmation-email/index.ts`, `supabase/functions/send-reschedule-email/index.ts`, `supabase/functions/verify-gcash-receipt/index.ts`, `tools/import_manual_bookings.py`
+
+---
+
 ## [2026-06-26] - Public Booking Polish & Branding
 
 ### Changed

@@ -236,6 +236,8 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .sc-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 7px; }
 .sc-val { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: var(--green); line-height: 1; letter-spacing: 1px; }
 .sc-ic { position: absolute; top: 16px; right: 16px; font-size: 1.4rem; opacity: .35; }
+.dash-mobile-actions { display: none; }
+.mf-toggle { display: none; }
 
 /* ── REVENUE GRID ──────────────────────────────────────── */
 .rev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 26px; }
@@ -344,11 +346,16 @@ tr:hover td { background: var(--bg2); }
 .amount-down { font-size: .73rem; color: var(--text); font-weight: 700; }
 .amount-ref { font-size: .7rem; font-weight: 700; overflow-wrap: anywhere; }
 .booking-mobile-card { display: none; }
+.booking-toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .mb-book-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .mb-book-ref { font-size: .75rem; color: var(--green); font-family: 'DM Mono', monospace; overflow-wrap: anywhere; }
 .mb-book-meta { margin-top: 8px; font-size: .86rem; line-height: 1.45; }
 .mb-book-name { font-weight: 800; }
 .mb-book-sub { color: var(--muted); font-size: .78rem; }
+.mb-book-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mb-book-schedule { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; margin-top: 7px; }
+.mb-book-court { min-width: 0; color: var(--text2); font-size: .8rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-book-time { color: var(--text); font-weight: 900; white-space: nowrap; }
 .mb-book-pay { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 9px; }
 .mb-book-pay summary {
   cursor: pointer; font-size: .78rem; font-weight: 800; color: var(--yellow);
@@ -548,14 +555,88 @@ tr:hover td { background: var(--bg2); }
     display: block; padding: 12px 14px; width: 100%; border-bottom: none;
   }
   #bookBody .booking-mobile-card::before { content: none; }
+  #sec-bookings .toolbar { gap: 8px; margin-bottom: 12px; }
+  #sec-bookings .toolbar h2 { font-size: 1.55rem; line-height: 1; }
+  #sec-bookings .booking-toolbar-actions {
+    width: 100%; display: grid; grid-template-columns: 1fr auto auto;
+    gap: 8px; align-items: stretch;
+  }
+  #sec-bookings .booking-toolbar-actions .view-toggle { min-width: 0; }
+  #sec-bookings .booking-toolbar-actions .btn {
+    min-height: 40px; padding: 8px 12px; border-radius: 10px;
+    font-size: .86rem !important; white-space: nowrap;
+  }
+  #sec-bookings .booking-toolbar-actions .booking-export-btn { padding-inline: 10px; }
+  #tableView .tbl-wrap {
+    border-radius: 12px; overflow: hidden; background: var(--surface);
+  }
+  #tableView .tbl-hd {
+    position: static;
+    padding: 10px; background: var(--surface);
+    border-bottom: 1px solid var(--border); backdrop-filter: blur(10px);
+  }
+  #tableView .filters {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px; align-items: center; width: 100%;
+  }
+  #tableView .filters input, #tableView .filters select {
+    width: 100%; min-width: 0; height: 40px; padding: 8px 10px;
+    border-radius: 10px; font-size: .86rem !important;
+  }
+  #tableView .filters input[type="text"] { grid-column: 1 / -1; }
+  #tableView .filters input[type="date"] { grid-column: 1 / -1; }
+  #tableView .filters .btn {
+    min-height: 40px; padding: 8px 11px; border-radius: 10px;
+    font-size: .82rem !important; justify-content: center;
+  }
+  #bookBody .booking-row {
+    margin: 0; border-width: 0 0 1px; border-radius: 0; background: var(--surface);
+    box-shadow: none;
+  }
+  #bookBody .booking-row:last-child { border-bottom: 0; }
+  .mb-book-top { align-items: center; gap: 8px; }
+  .mb-book-ref {
+    font-size: .62rem; color: var(--text3); text-transform: uppercase;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mb-book-top .bdg { padding: 3px 8px; font-size: .58rem; letter-spacing: .3px; }
+  .mb-book-meta { margin-top: 8px; font-size: .84rem; line-height: 1.32; }
+  .mb-book-name {
+    display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 1rem; line-height: 1.2;
+  }
+  .mb-book-sub {
+    display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: .7rem; color: var(--text3);
+  }
+  .mb-book-schedule { margin-top: 9px; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .mb-book-court { font-size: .76rem; }
+  .mb-book-time { font-size: .84rem; text-align: right; }
+  .mb-book-pay { margin-top: 8px; padding-top: 8px; }
+  .mb-book-pay summary { min-height: 30px; font-size: .73rem; color: var(--text2); }
+  .mb-book-pay summary::after {
+    width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: var(--input); font-size: .92rem;
+  }
+  .mb-book-detail-grid { gap: 5px; margin-top: 7px; font-size: .74rem; }
+  .mb-book-detail-row { gap: 8px; }
+  .mb-book-detail-row > span:first-child { font-size: .6rem; letter-spacing: .35px; }
+  .mb-book-actions {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px; margin-top: 8px;
+  }
+  .mb-book-actions .btn, .mb-book-actions .fi {
+    width: 100% !important; min-height: 34px; padding: 6px 8px !important;
+    font-size: .72rem !important; justify-content: center;
+  }
   /* Long values (txn IDs, refs) wrap instead of overflowing the card */
   .tbl-scroll td code { word-break: break-all; white-space: normal; }
   /* Remittance panel header controls go full-width and stack */
   .bill-controls { width: 100%; }
   .bill-controls #billWeekMode { flex: 1 1 100%; width: 100% !important; }
   .bill-controls .btn { flex: 1 1 auto; justify-content: center; }
-  .filters { flex-direction: column; }
-  .filters input, .filters select { width: 100%; }
+  .filters:not(#tableView .filters) { flex-direction: column; }
+  .filters:not(#tableView .filters) input, .filters:not(#tableView .filters) select { width: 100%; }
   /* Modals */
   .modal { border-radius: 12px; }
   .m-hd { padding: 14px 16px; }
@@ -566,6 +647,16 @@ tr:hover td { background: var(--bg2); }
   .content { padding: 12px; }
   .frow { grid-template-columns: 1fr; }
   .stat-cards { grid-template-columns: 1fr; }
+  #sec-bookings .booking-toolbar-actions { grid-template-columns: 1fr 1fr; }
+  #sec-bookings .booking-toolbar-actions .view-toggle { grid-column: 1 / -1; }
+  #tableView .tbl-hd { padding: 8px; }
+  #tableView .filters { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+  #tableView .filters input, #tableView .filters select { height: 40px; padding: 7px 9px; font-size: .84rem !important; }
+  #tableView .filters .btn { min-height: 40px; padding: 7px 10px; font-size: .78rem !important; }
+  #bookBody .booking-mobile-card { padding: 12px; }
+  .mb-book-schedule { grid-template-columns: 1fr; gap: 3px; }
+  .mb-book-time { font-size: .82rem; text-align: left; }
+  .mb-book-actions { grid-template-columns: 1fr; }
   /* Modal footer buttons stack vertically */
   .m-foot { flex-direction: column; }
   .m-foot .btn { width: 100%; justify-content: center; }
@@ -575,6 +666,81 @@ tr:hover td { background: var(--bg2); }
   .modal { border-radius: 20px 20px 0 0; max-height: 92vh; }
   /* Long values inside modals wrap instead of overflowing */
   .m-body code { word-break: break-all; white-space: normal; }
+}
+
+@media (max-width: 700px) {
+  #sec-dash .stat-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px; margin-bottom: 12px;
+  }
+  #sec-dash .sc {
+    min-height: 86px; padding: 13px 12px; border-radius: 10px;
+  }
+  #sec-dash .sc::before { height: 2px; }
+  #sec-dash .sc-lbl {
+    font-size: .62rem; letter-spacing: .75px; margin-bottom: 6px;
+    max-width: calc(100% - 24px); line-height: 1.15;
+  }
+  #sec-dash .sc-val {
+    font-size: 1.75rem; letter-spacing: .5px; line-height: .95;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #sec-dash #dRev { font-size: 1.38rem; }
+  #sec-dash #dMost { font-size: .86rem !important; line-height: 1.1; margin-top: 0 !important; }
+  #sec-dash .sc-ic { top: 12px; right: 11px; font-size: 1rem; opacity: .28; }
+  .dash-mobile-actions {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px; margin: 0 0 12px;
+  }
+  .dash-mobile-actions .btn {
+    min-height: 40px; justify-content: center; padding: 8px 6px;
+    font-size: .72rem; border-radius: 10px; min-width: 0;
+  }
+  #maintFeePanel {
+    padding: 12px !important; margin-bottom: 12px !important;
+    border-radius: 12px !important;
+  }
+  #maintFeePanel .mf-head { margin-bottom: 10px !important; gap: 8px !important; }
+  #maintFeePanel .mf-head h4 {
+    font-size: .72rem !important; letter-spacing: .4px; flex: 1 1 100%;
+  }
+  #maintFeePanel .mf-month-wrap { width: 100%; justify-content: space-between; }
+  #maintFeePanel .mf-month-wrap input { flex: 1; max-width: 190px; min-height: 36px; }
+  #maintFeePanel .mf-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important; margin-bottom: 10px !important;
+  }
+  #maintFeePanel .mf-tile {
+    padding: 10px 8px !important; border-radius: 10px !important;
+    min-height: 74px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  #maintFeePanel .mf-tile-val,
+  #maintFeePanel #mfRateDisplay,
+  #maintFeePanel #mfFee { font-size: 1.28rem !important; line-height: 1 !important; }
+  #maintFeePanel .mf-tile-label { font-size: .6rem !important; line-height: 1.15 !important; }
+  .mf-toggle {
+    display: flex; width: 100%; justify-content: center; align-items: center;
+    min-height: 38px; margin: 2px 0 8px; border-radius: 10px;
+    border: 1px solid rgba(var(--yellow-rgb),.35);
+    background: rgba(var(--yellow-rgb),.1); color: var(--yellow);
+    font: inherit; font-size: .76rem; font-weight: 900; cursor: pointer;
+  }
+  #maintFeePanel.mf-collapsed #mfBreakdown { display: none; }
+  #maintFeePanel #mfBreakdown {
+    max-height: 260px; overflow: auto; padding: 10px !important;
+    font-size: .76rem !important; border-radius: 10px !important;
+  }
+  #maintFeePanel .mf-note { margin-top: 8px !important; font-size: .66rem !important; line-height: 1.35; }
+  #sec-dash .rev-grid { grid-template-columns: 1fr; gap: 12px; margin-bottom: 12px; }
+  #sec-dash .rev-grid .panel { padding: 13px; border-radius: 12px; }
+  #sec-dash .rev-grid canvas { max-height: 180px; }
+}
+
+@media (max-width: 360px) {
+  #sec-dash .sc-val { font-size: 1.55rem; }
+  #sec-dash #dRev { font-size: 1.18rem; }
+  .dash-mobile-actions { grid-template-columns: 1fr; }
 }
 
 /* ── CALENDAR VIEW ─────────────────────────────────────── */
@@ -621,39 +787,131 @@ tr:hover td { background: var(--bg2); }
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .cal-mobile-day { display: none; }
+.cal-cell.active { border-color: var(--green); background: rgba(var(--green-rgb), .08); }
+.cal-day-panel { display: none; }
 .cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; color: var(--text3); }
 .cal-legend span { display: flex; align-items: center; gap: 5px; }
 @media (max-width: 600px) {
   .view-toggle { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .view-btn { min-height: 42px; padding: 8px 10px; font-size: 16px !important; }
+  #sec-bookings .view-btn { min-height: 40px; padding: 8px 10px; font-size: .9rem !important; }
   #sec-bookings .panel > div:first-child { gap: 10px !important; }
   #sec-bookings .panel > div:first-child .btn { flex: 1 1 150px; justify-content: center; min-height: 44px; }
   .cal-header { margin: 8px 0 12px; }
   .cal-title { font-size: 18px; text-align: center; flex: 1; }
   .cal-nav-btn { width: 44px; height: 44px; border-radius: 12px; flex: 0 0 44px; }
-  .cal-grid { display: flex; flex-direction: column; gap: 8px; }
-  .cal-dh, .cal-cell.cal-other { display: none; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .cal-dh { display: block; font-size: 9px; padding: 2px 0 4px; letter-spacing: 0; }
+  .cal-cell.cal-other { visibility: hidden; pointer-events: none; }
   .cal-cell {
-    min-height: 0; padding: 12px; border-radius: 12px;
-    display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 12px; align-items: center;
+    min-height: 0; aspect-ratio: 1 / 1; padding: 5px 3px; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; text-align: center; touch-action: manipulation;
   }
   .cal-cell:hover:not(.cal-other) { transform: none; }
-  .cal-mobile-day { display: block; font-size: .68rem; color: var(--text3); text-transform: uppercase; letter-spacing: .7px; font-weight: 800; margin-bottom: 2px; }
-  .cal-dn { font-size: 1.45rem; line-height: 1; margin: 0; text-align: center; grid-row: 1 / span 3; }
-  .cal-dots, .cal-count, .cal-cell > div[style*="font-size:.6rem"] { grid-column: 2; min-width: 0; }
-  .cal-cell > div[style*="font-size:.6rem"] {
-    font-size: .78rem !important; margin-top: 5px !important; white-space: normal !important;
-    overflow: visible !important; text-overflow: clip !important;
-  }
+  .cal-mobile-day { display: none; }
+  .cal-dn { font-size: .95rem; line-height: 1; margin: 0; text-align: center; }
   .cal-meta { min-width: 0; }
-  .cal-dots { margin: 0 0 5px; gap: 5px; }
-  .cal-dot { width: 8px; height: 8px; }
-  .cal-count { font-size: .86rem; color: var(--text2); }
-  .cal-empty { color: var(--text3); font-size: .82rem; }
-  .cal-mt {
-    font-size: .78rem; margin-top: 5px; white-space: normal; overflow: visible; text-overflow: clip;
+  .cal-dots { margin: 0; gap: 2px; justify-content: center; max-width: 100%; overflow: hidden; }
+  .cal-dot { width: 5px; height: 5px; }
+  .cal-count {
+    font-size: .58rem; line-height: 1; color: var(--text2); font-weight: 800;
+    font-family: 'DM Sans', sans-serif; white-space: nowrap;
   }
-  .cal-legend { gap: 10px 14px; font-size: .78rem; padding-bottom: 4px; }
+  .cal-mt, .cal-cell > div[style*="font-size:.6rem"] {
+    width: 4px; height: 4px; padding: 0; margin: 0 !important; border-radius: 50%;
+    background: var(--yellow); color: transparent !important; overflow: hidden;
+  }
+  .cal-day-panel:not([hidden]) {
+    display: block; margin-top: 12px; padding: 13px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface); box-shadow: var(--shadow);
+  }
+  .cal-day-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .cal-day-panel-date { font-size: 1rem; font-weight: 900; color: var(--text); }
+  .cal-day-panel-sub { margin-top: 2px; font-size: .76rem; color: var(--muted); font-weight: 700; }
+  .cal-day-pill {
+    font-size: .72rem; font-weight: 900; border-radius: 999px; padding: 4px 9px;
+    background: rgba(var(--green-rgb), .12); color: var(--green); white-space: nowrap;
+  }
+  .cal-day-breakdown { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .cal-day-breakdown span {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px;
+    border-radius: 999px; background: var(--input); font-size: .72rem; color: var(--text2); font-weight: 800;
+  }
+  .cal-slot-scroller {
+    overflow-x: auto; padding-bottom: 4px; margin-top: 10px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .cal-slot-matrix {
+    display: grid; gap: 6px; min-width: var(--slot-board-min, 420px);
+  }
+  .cal-time-head, .cal-court-head {
+    position: sticky; top: 0; z-index: 1; min-height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; background: var(--bg2); border: 1px solid var(--border);
+    color: var(--muted); font-size: .68rem; font-weight: 900; text-transform: uppercase;
+  }
+  .cal-time-cell {
+    min-height: 54px; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; background: var(--bg2); color: var(--text2);
+    border: 1px solid var(--border); font-size: .7rem; font-weight: 900; text-align: center; line-height: 1.15;
+    white-space: nowrap;
+  }
+  .cal-slot-card {
+    min-height: 54px; width: 100%; min-width: 0; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    padding: 6px 5px; display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    text-align: center; font: inherit; color: var(--text); overflow: hidden;
+  }
+  button.cal-slot-card { cursor: pointer; }
+  button.cal-slot-card:active { transform: translateY(1px); }
+  .cal-slot-card.available {
+    border-color: rgba(var(--green-rgb), .32); background: rgba(var(--green-rgb), .08);
+  }
+  .cal-slot-card.booked, .cal-slot-card.completed {
+    border-color: rgba(79,195,247,.28); background: rgba(79,195,247,.10);
+  }
+  .cal-slot-card.pending, .cal-slot-card.verifying {
+    border-color: rgba(var(--yellow-rgb), .35); background: rgba(var(--yellow-rgb), .12);
+  }
+  .cal-slot-card.blocked, .cal-slot-card.openplay, .cal-slot-card.past {
+    background: var(--bg2); color: var(--muted);
+  }
+  .cal-slot-name {
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: .72rem; line-height: 1.1; font-weight: 900;
+  }
+  .cal-slot-meta {
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: .56rem; line-height: 1.1; color: var(--muted); font-weight: 800; text-transform: uppercase;
+  }
+  .cal-slot-state {
+    align-self: center; max-width: 100%; border-radius: 999px; padding: 2px 6px;
+    font-size: .54rem; line-height: 1.15; font-weight: 900; letter-spacing: 0;
+    background: var(--input); color: var(--text2); text-transform: uppercase;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cal-slot-card.available .cal-slot-state { background: rgba(var(--green-rgb), .15); color: var(--green); }
+  .cal-slot-card.pending .cal-slot-state, .cal-slot-card.verifying .cal-slot-state { background: rgba(var(--yellow-rgb), .18); color: var(--yellow); }
+  .cal-slot-card.booked .cal-slot-state, .cal-slot-card.completed .cal-slot-state { background: rgba(79,195,247,.18); color: #4fc3f7; }
+  .cal-day-bookings { display: grid; gap: 7px; margin: 10px 0; }
+  .cal-day-booking {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;
+    padding: 9px 10px; border-radius: 8px; background: var(--bg2); border: 1px solid var(--border);
+  }
+  .cal-day-booking b { display: block; font-size: .86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-day-booking small { display: block; margin-top: 2px; color: var(--muted); font-size: .72rem; font-weight: 700; }
+  .cal-day-note { color: var(--muted); font-size: .82rem; line-height: 1.45; margin: 8px 0 10px; }
+  .cal-day-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .cal-day-actions .btn { justify-content: center; min-height: 40px; }
+  .cal-legend { gap: 8px 10px; font-size: .68rem; padding-bottom: 4px; justify-content: center; }
+}
+@media (max-width: 360px) {
+  .cal-grid { gap: 4px; }
+  .cal-cell { border-radius: 8px; padding: 4px 2px; }
+  .cal-dn { font-size: .86rem; }
+  .cal-count { font-size: .52rem; }
+  .cal-day-actions { grid-template-columns: 1fr; }
 }
 
 /* ── REPORTS ───────────────────────────────────────────── */
@@ -972,37 +1230,44 @@ tr:hover td { background: var(--bg2); }
         <div class="sc"><div class="sc-lbl">Most Booked</div><div class="sc-val" style="font-size:1rem;margin-top:4px" id="dMost">—</div><div class="sc-ic">🏆</div></div>
       </div>
 
+      <div class="dash-mobile-actions">
+        <button class="btn btn-p" data-perm="bookings" onclick="openNewBookingModal()">+ Booking</button>
+        <button class="btn btn-g" data-perm="bookings" onclick="goto('bookings')">Bookings</button>
+        <button class="btn btn-g" data-perm="payment_review" onclick="goto('payreview')">Review</button>
+      </div>
+
       <!-- MAINTENANCE FEE SUMMARY -->
-      <div class="panel" id="maintFeePanel" style="margin-bottom:16px;border:1.5px solid rgba(var(--yellow-rgb),.35);background:rgba(var(--yellow-rgb),.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div class="panel mf-collapsed" id="maintFeePanel" style="margin-bottom:16px;border:1.5px solid rgba(var(--yellow-rgb),.35);background:rgba(var(--yellow-rgb),.04)">
+        <div class="mf-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
           <h4 style="margin:0;color:var(--yellow)">🛠️ Developer Maintenance Fee</h4>
-          <div style="display:flex;align-items:center;gap:8px">
+          <div class="mf-month-wrap" style="display:flex;align-items:center;gap:8px">
             <label style="font-size:.78rem;color:var(--text3)">Month:</label>
             <input type="month" id="maintMonth" style="font-size:.82rem;padding:5px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--input);color:var(--text);cursor:pointer" onchange="renderMaintFee()"/>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">
-          <div style="background:var(--input);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
-            <div style="font-size:1.6rem;font-weight:800;color:var(--text)" id="mfBookings">0</div>
-            <div style="font-size:.72rem;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.5px">Bookings</div>
+        <div class="mf-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">
+          <div class="mf-tile" style="background:var(--input);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+            <div class="mf-tile-val" style="font-size:1.6rem;font-weight:800;color:var(--text)" id="mfBookings">0</div>
+            <div class="mf-tile-label" style="font-size:.72rem;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.5px">Bookings</div>
           </div>
-          <div style="background:var(--input);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
-            <div style="font-size:1.6rem;font-weight:800;color:var(--text)" id="mfHours">0</div>
-            <div style="font-size:.72rem;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.5px">Total Hours</div>
+          <div class="mf-tile" style="background:var(--input);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+            <div class="mf-tile-val" style="font-size:1.6rem;font-weight:800;color:var(--text)" id="mfHours">0</div>
+            <div class="mf-tile-label" style="font-size:.72rem;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.5px">Total Hours</div>
           </div>
-          <div style="background:var(--input);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
-            <div style="font-size:.72rem;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Rate</div>
+          <div class="mf-tile" style="background:var(--input);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+            <div class="mf-tile-label" style="font-size:.72rem;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Rate</div>
             <div style="font-size:1rem;font-weight:700;color:var(--text)" id="mfRateDisplay">₱5.00 / hr</div>
           </div>
-          <div style="background:rgba(var(--yellow-rgb),.12);border:1.5px solid rgba(var(--yellow-rgb),.4);border-radius:10px;padding:14px;text-align:center">
+          <div class="mf-tile" style="background:rgba(var(--yellow-rgb),.12);border:1.5px solid rgba(var(--yellow-rgb),.4);border-radius:10px;padding:14px;text-align:center">
             <div style="font-size:1.6rem;font-weight:800;color:var(--yellow)" id="mfFee">₱0.00</div>
             <div style="font-size:.72rem;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.5px">Fee to Collect</div>
           </div>
         </div>
+        <button type="button" class="mf-toggle" id="mfToggle" onclick="toggleMaintBreakdown()">Show breakdown</button>
         <div style="background:var(--input);border:1px solid var(--border);border-radius:9px;padding:12px 14px;font-size:.82rem;color:var(--text2);line-height:1.7" id="mfBreakdown">
           —
         </div>
-        <div style="margin-top:10px;font-size:.75rem;color:var(--text3);text-align:center">
+        <div class="mf-note" style="margin-top:10px;font-size:.75rem;color:var(--text3);text-align:center">
           Only counts <strong>confirmed</strong> and <strong>completed</strong> bookings · Cancelled bookings are excluded
         </div>
       </div>
@@ -1053,13 +1318,13 @@ tr:hover td { background: var(--bg2); }
     <div id="sec-bookings" class="adm-sec">
       <div class="toolbar">
         <h2>📋 ALL BOOKINGS</h2>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="booking-toolbar-actions">
           <div class="view-toggle">
             <button id="viewBtnList" class="view-btn active" onclick="switchBookingView('list')">📋 List</button>
             <button id="viewBtnCal" class="view-btn" onclick="switchBookingView('cal')">📅 Calendar</button>
           </div>
-          <button class="btn btn-p btn-sm" data-perm="export" onclick="exportCSV()">📥 Export CSV</button>
-          <button class="btn btn-p btn-sm" onclick="openNewBookingModal()">➕ New Booking</button>
+          <button class="btn btn-g btn-sm booking-export-btn" data-perm="export" onclick="exportCSV()">Export</button>
+          <button class="btn btn-p btn-sm" onclick="openNewBookingModal()">+ New</button>
         </div>
       </div>
 
@@ -1071,6 +1336,7 @@ tr:hover td { background: var(--bg2); }
           <button class="cal-nav-btn" onclick="calNav(1)">›</button>
         </div>
         <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-day-panel" id="calDayPanel" hidden></div>
         <div class="cal-legend">
           <span><span class="cal-dot pending"></span>Pending</span>
           <span><span class="cal-dot confirmed"></span>Confirmed</span>
@@ -1084,7 +1350,7 @@ tr:hover td { background: var(--bg2); }
         <div class="tbl-wrap">
           <div class="tbl-hd">
             <div class="filters">
-              <input type="text" id="srch" placeholder="🔍 Search name, ref, email…" oninput="renderBookings()"/>
+              <input type="text" id="srch" placeholder="Search name, ref, email" oninput="renderBookings()"/>
               <input type="date" id="fDate" onchange="renderBookings()"/>
               <select id="fStatus" onchange="renderBookings()">
                 <option value="">All Status</option>
@@ -1399,7 +1665,7 @@ tr:hover td { background: var(--bg2); }
     <div id="sec-hosts" class="adm-sec">
       <div class="toolbar">
         <h2>OPEN PLAY HOST CENTER</h2>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="booking-toolbar-actions">
           <button class="btn btn-g btn-sm" onclick="renderHostCenter()">Refresh</button>
           <button class="btn btn-p btn-sm" onclick="hostResetForm()">New Session</button>
         </div>
@@ -2565,7 +2831,7 @@ function shortDateTime(v){
 }
 const RECEIPT_FLAG_LABELS = {
   DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', WRONG_GCASH_NUMBER:'Wrong receiver number',
-  AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:'Paid after 15 min',
+  AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:'Paid after 10 min',
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
   EDITED_METADATA:'Edited image metadata', SUSPECTED_FAKE:'Not a receipt', REF_FORMAT_INVALID:'Bad reference format',
@@ -2732,21 +2998,31 @@ function bookingPayStateSelect(b){
 function mobileBookingCard(b, canDelete){
   const dp = b.downpayment || b.total / 2;
   const payMethod = paymentMethodLabel(b.paymentMethod);
+  const refLabel = b.displayRef || b.ref;
+  const dateLabel = b.dateLabel || fmtD(b.date);
+  const timeLabel = b.timeLabel || `${b.startTime || ''}-${b.endTime || ''}`;
+  const courtLabel = b.courtName || 'Court';
   const bookedOn = b.createdAt ? (() => {
     const d = new Date(b.createdAt);
     return Number.isNaN(d.getTime()) ? '--' : `${d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})} ${d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true})}`;
   })() : '--';
   return `<div class="mb-book">
     <div class="mb-book-top">
-      <code class="mb-book-ref">${esc(b.ref)}</code>
+      <code class="mb-book-ref">${esc(refLabel)}</code>
       ${statusBdg(b.status)}
     </div>
     <div class="mb-book-meta">
-      <div><span class="mb-book-name">${esc(b.fullName)}</span> <span class="mb-book-sub">${esc(b.email)}</span></div>
-      <div>${esc(b.courtName)} · ${fmtD(b.date)} · <strong>${esc(b.startTime)}-${esc(b.endTime)}</strong></div>
+      <div class="mb-book-line">
+        <span class="mb-book-name">${esc(b.fullName || 'Guest')}</span>
+      </div>
+      ${b.email ? `<span class="mb-book-sub">${esc(b.email)}</span>` : ''}
+      <div class="mb-book-schedule">
+        <span class="mb-book-court">${esc(courtLabel)} | ${esc(dateLabel)}</span>
+        <span class="mb-book-time">${esc(timeLabel)}</span>
+      </div>
     </div>
     <details class="mb-book-pay">
-      <summary>Payment details</summary>
+      <summary>Payment & actions</summary>
       <div class="mb-book-detail-grid">
         <div class="mb-book-detail-row"><span>Total</span><span>${fmt(b.total)}</span></div>
         <div class="mb-book-detail-row"><span>Down</span><span>${dp >= b.total ? 'Full payment' : `${fmt(dp)} down`}</span></div>
@@ -2863,6 +3139,14 @@ async function renderDash(){
 // ── MAINTENANCE FEE ─────────────────────────────────────────
 let _maintRate = 5; // cached from DB settings
 let _maintFeeType = 'per_hour'; // selected booking fee charging method
+
+function toggleMaintBreakdown() {
+  const panel = $('maintFeePanel');
+  const btn = $('mfToggle');
+  if (!panel) return;
+  const collapsed = panel.classList.toggle('mf-collapsed');
+  if (btn) btn.textContent = collapsed ? 'Show breakdown' : 'Hide breakdown';
+}
 
 async function renderMaintFee() {
   const monthInput = $('maintMonth');
@@ -3299,7 +3583,7 @@ async function renderPaymentReview() {
   </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No payment activity yet.</td></tr>';
 }
 
-let calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
+let calYear=new Date().getFullYear(), calMonth=new Date().getMonth(), calSelectedDate='';
 
 function switchBookingView(mode){
   const isCal = mode==='cal';
@@ -3336,13 +3620,17 @@ function _calGetMtRulesForDate(ds) {
 }
 
 async function renderCalendar(){
-  const bks = await DB.getBookings();
+  const [bks, courts, settings] = await Promise.all([
+    DB.getBookings(),
+    DB.getCourts(),
+    DB.getSettings()
+  ]);
 
-  // Ensure maintenance config is loaded
-  if (!_nbMaintenanceCfg) {
-    const s = await DB.getSettings();
-    try { _nbMaintenanceCfg = s.maintenance_config ? JSON.parse(s.maintenance_config) : null; } catch(e) {}
-  }
+  _nbOpenHour = parseInt(settings.open_hour || '6');
+  _nbCloseHour = parseInt(settings.close_hour || '22');
+  try { _nbOpenPlayCfg = settings.open_play_config ? JSON.parse(settings.open_play_config) : null; } catch(e) { _nbOpenPlayCfg = null; }
+  try { _nbMaintenanceCfg = settings.maintenance_config ? JSON.parse(settings.maintenance_config) : null; } catch(e) { _nbMaintenanceCfg = null; }
+  _nbPricingTiers = parsePricingTiers(settings.pricing_tiers);
 
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   $('calTitle').textContent=`${MONTHS[calMonth]} ${calYear}`;
@@ -3351,6 +3639,8 @@ async function renderCalendar(){
   const firstDow=new Date(calYear,calMonth,1).getDay();
   const daysInMon=new Date(calYear,calMonth+1,0).getDate();
   const daysInPrev=new Date(calYear,calMonth,0).getDate();
+  const monthKey=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
+  if (calSelectedDate && !calSelectedDate.startsWith(monthKey)) calSelectedDate='';
 
   // Build booking map: date → status counts
   const bkMap={};
@@ -3388,7 +3678,7 @@ async function renderCalendar(){
       return `<div style="font-size:.6rem;font-weight:700;color:var(--yellow);margin-top:2px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_calMtLabels[lbl]||'🔧'} <span style="opacity:.75">${times}</span></div>`;
     }).join('');
 
-    html+=`<div class="cal-cell${isToday?' cal-today':''}" onclick="calDayClick('${ds}')">
+    html+=`<div class="cal-cell${isToday?' cal-today':''}${calSelectedDate===ds?' active':''}" role="button" tabindex="0" onclick="calDayClick('${ds}')">
       <div class="cal-dn">${d}</div>
       ${total?`<div class="cal-dots">${dots}</div><div class="cal-count">${total} bkg${total!==1?'s':''}</div>`:''}
       ${mtHtml}
@@ -3400,12 +3690,210 @@ async function renderCalendar(){
   if(rem) for(let i=1;i<=7-rem;i++) html+=`<div class="cal-cell cal-other"><div class="cal-dn">${i}</div></div>`;
 
   $('calGrid').innerHTML=html;
+  renderCalendarDayPanel(calSelectedDate, bks, bkMap, courts);
 }
 
-function calDayClick(dateStr){
+async function calDayClick(dateStr){
+  if (window.matchMedia('(max-width: 600px)').matches) {
+    calSelectedDate = dateStr;
+    await renderCalendar();
+    $('calDayPanel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  calViewDayBookings(dateStr);
+}
+
+function calViewDayBookings(dateStr){
   switchBookingView('list');
   $('fDate').value=dateStr;
   renderBookings();
+}
+
+function calStatusBreakdownHtml(counts = {}) {
+  const labels = { available: 'Available', confirmed: 'Booked', completed: 'Completed', pending: 'Pending', verifying: 'Processing', blocked: 'Blocked', past: 'Past' };
+  return ['available','confirmed','completed','pending','verifying','blocked','past']
+    .filter(s => counts[s])
+    .map(s => `<span><i class="cal-dot ${s === 'available' ? 'confirmed' : s === 'blocked' || s === 'past' ? 'pending' : s}"></i>${labels[s]} ${counts[s]}</span>`)
+    .join('');
+}
+
+function calClearDaySelection(){
+  calSelectedDate='';
+  renderCalendar();
+}
+
+function calHourFromTime(value) {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const ap = m[3].toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return h;
+}
+
+function calBookingSlots(b) {
+  if (Array.isArray(b?.slots) && b.slots.length) return b.slots.map(Number).filter(Number.isFinite);
+  const start = calHourFromTime(b?.startTime);
+  let end = calHourFromTime(b?.endTime);
+  if (!Number.isFinite(start)) return [];
+  if (!Number.isFinite(end)) end = start + (Number(b?.duration) || 1);
+  if (end <= start) end += 24;
+  const slots = [];
+  for (let h = start; h < end; h++) slots.push(h % 24);
+  return slots.length ? slots : [start];
+}
+
+function calCourtMatchesBooking(court, booking) {
+  return String(booking?.courtId ?? '') === String(court?.id ?? '') ||
+    (!booking?.courtId && String(booking?.courtName || '').trim().toLowerCase() === String(court?.name || '').trim().toLowerCase());
+}
+
+function calMaintenanceRuleForHour(dateStr, hour, courtId) {
+  if (!_nbMaintenanceCfg) return null;
+  const rules = Array.isArray(_nbMaintenanceCfg.rules) ? _nbMaintenanceCfg.rules : [_nbMaintenanceCfg];
+  return rules.find(rule => _nbCheckRule(rule, dateStr, hour, courtId)) || null;
+}
+
+function calTodayStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+}
+
+function calIsPastSlot(dateStr, hour) {
+  const today = calTodayStr();
+  if (dateStr < today) return true;
+  if (dateStr > today) return false;
+  return hour <= new Date().getHours();
+}
+
+function calShortHour(hour) {
+  const normalized = ((Number(hour) % 24) + 24) % 24;
+  if (normalized === 0) return '12am';
+  if (normalized === 12) return '12pm';
+  return `${normalized % 12 || 12}${normalized < 12 ? 'am' : 'pm'}`;
+}
+
+function calShortRange(hour) {
+  return `${calShortHour(hour)}-${calShortHour(hour + 1)}`;
+}
+
+function calSlotState(dateStr, hour, court, bookingMap) {
+  const key = `${String(court.id)}|${hour}`;
+  const booking = bookingMap.get(key);
+  if (booking) {
+    const status = String(booking.status || 'confirmed').toLowerCase();
+    return {
+      type: status === 'completed' ? 'completed' : status === 'pending' ? 'pending' : status === 'verifying' ? 'verifying' : 'booked',
+      label: status === 'completed' ? 'Completed' : status === 'pending' ? 'Pending' : status === 'verifying' ? 'Processing' : 'Booked',
+      title: booking.fullName || 'Booked',
+      meta: booking.ref || booking.paymentStatus || '',
+      booking
+    };
+  }
+  if (court.blocked) return { type: 'blocked', label: 'Blocked', title: 'Court blocked', meta: 'Not bookable' };
+  const mtRule = calMaintenanceRuleForHour(dateStr, hour, court.id);
+  if (mtRule) {
+    const label = {maintenance:'Maintenance',reserved:'Reserved',blocked:'Blocked',private:'Private Event',group:'Group Session',openplay:'Open Play'}[mtRule.label] || 'Blocked';
+    return { type: 'blocked', label, title: label, meta: 'Not bookable' };
+  }
+  if (_nbIsOpenPlayHour(dateStr, hour, court.id)) return { type: 'openplay', label: 'Open Play', title: 'Open Play', meta: 'Walk-in session' };
+  if (calIsPastSlot(dateStr, hour)) return { type: 'past', label: 'Past', title: 'Past slot', meta: 'No booking' };
+  return { type: 'available', label: 'Available', title: 'Available', meta: `${fmt(_nbGetRateForHour(court, hour))}/hr` };
+}
+
+function calSlotCardHtml(dateStr, hour, court, state) {
+  const body = `
+    <span class="cal-slot-name">${esc(state.title)}</span>
+    <span class="cal-slot-meta">${esc(state.meta || calShortRange(hour))}</span>
+    <span class="cal-slot-state">${esc(state.label)}</span>
+  `;
+  if (state.type === 'available') {
+    return `<button type="button" class="cal-slot-card available" onclick="calOpenBookingSlot('${jsArg(dateStr)}','${jsArg(court.id)}',${hour})">${body}</button>`;
+  }
+  return `<div class="cal-slot-card ${esc(state.type)}">${body}</div>`;
+}
+
+async function calOpenBookingSlot(dateStr, courtId, hour) {
+  await openNewBookingModal();
+  $('nbCourt').value = String(courtId);
+  $('nbDate').value = dateStr;
+  await nbRenderSlots();
+  if (!(_nbSelSlots || []).includes(hour)) nbToggleSlot(hour);
+}
+
+function renderCalendarDayPanel(dateStr, bookings = [], bkMap = {}, courts = []) {
+  const panel = $('calDayPanel');
+  if (!panel) return;
+  if (!dateStr) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+
+  let boardCourts = (courts || []).filter(Boolean);
+  if (!boardCourts.length) {
+    const names = [...new Set(bookings.filter(b => b.date === dateStr && b.courtName).map(b => b.courtName))];
+    boardCourts = names.map((name, i) => ({ id: `court-${i}`, name, rate: 0, blocked: false }));
+  }
+  if (!boardCourts.length) boardCourts = [{ id: 'court', name: 'Court', rate: 0, blocked: false }];
+
+  const dayBookings = bookings
+    .filter(b => b.date === dateStr && isScheduleActiveBooking(b))
+    .sort((a, b) => bookingStartHour(a) - bookingStartHour(b) || String(a.courtName || '').localeCompare(String(b.courtName || '')));
+  const bookingMap = new Map();
+  dayBookings.forEach(booking => {
+    boardCourts.filter(court => calCourtMatchesBooking(court, booking)).forEach(court => {
+      calBookingSlots(booking).forEach(hour => bookingMap.set(`${String(court.id)}|${hour}`, booking));
+    });
+  });
+  const slotCounts = { available: 0, confirmed: 0, completed: 0, pending: 0, verifying: 0, blocked: 0, past: 0 };
+  const hours = [];
+  for (let h = _nbOpenHour; h < _nbCloseHour; h++) hours.push(h);
+  const boardCells = [];
+  hours.forEach(hour => {
+    boardCells.push(`<div class="cal-time-cell">${calShortRange(hour)}</div>`);
+    boardCourts.forEach(court => {
+      const state = calSlotState(dateStr, hour, court, bookingMap);
+      if (state.type === 'booked') slotCounts.confirmed++;
+      else if (slotCounts[state.type] !== undefined) slotCounts[state.type]++;
+      boardCells.push(calSlotCardHtml(dateStr, hour, court, state));
+    });
+  });
+  const counts = { ...(bkMap[dateStr] || {}), ...slotCounts };
+  const mtRules = _calGetMtRulesForDate(dateStr);
+  const total = (bkMap[dateStr] || {}).total || 0;
+  const breakdown = calStatusBreakdownHtml(counts) || '<span>No bookings</span>';
+  const maintenance = mtRules.length
+    ? `<div class="cal-day-note">${mtRules.length} block${mtRules.length === 1 ? '' : 's'} or maintenance window${mtRules.length === 1 ? '' : 's'} scheduled.</div>`
+    : '';
+  const gridCols = `64px repeat(${Math.max(boardCourts.length, 1)}, minmax(104px, 1fr))`;
+  const minWidth = `${64 + Math.max(boardCourts.length, 1) * 104 + Math.max(boardCourts.length, 1) * 6}px`;
+
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="cal-day-panel-head">
+      <div>
+        <div class="cal-day-panel-date">${fmtD(dateStr)}</div>
+        <div class="cal-day-panel-sub">Tap View to manage this date in the booking list.</div>
+      </div>
+      <div class="cal-day-pill">${total} bkg${total === 1 ? '' : 's'}</div>
+    </div>
+    <div class="cal-day-breakdown">${breakdown}</div>
+    <div class="cal-slot-scroller">
+      <div class="cal-slot-matrix" style="grid-template-columns:${gridCols};--slot-board-min:${minWidth}">
+        <div class="cal-time-head">Time</div>
+        ${boardCourts.map(court => `<div class="cal-court-head">${esc(court.name || 'Court')}</div>`).join('')}
+        ${boardCells.join('')}
+      </div>
+    </div>
+    ${maintenance}
+    <div class="cal-day-actions">
+      <button class="btn btn-p btn-sm" onclick="calViewDayBookings('${jsArg(dateStr)}')">View bookings</button>
+      <button class="btn btn-g btn-sm" onclick="calClearDaySelection()">Close</button>
+    </div>
+  `;
 }
 
 async function updatePaymentStatus(ref, status) {
@@ -3593,6 +4081,7 @@ let _nbSelSlots = [];
 let _nbOpenHour = 6, _nbCloseHour = 22;
 let _nbOpenPlayCfg = null;
 let _nbMaintenanceCfg = null;
+let _nbPricingTiers = [];
 let _nbBookedSlots = new Set();
 
 async function openNewBookingModal() {
@@ -3608,6 +4097,7 @@ async function openNewBookingModal() {
   _nbCloseHour = parseInt(settings.close_hour || '22');
   try { _nbOpenPlayCfg = settings.open_play_config ? JSON.parse(settings.open_play_config) : null; } catch(e) { _nbOpenPlayCfg = null; }
   try { _nbMaintenanceCfg = settings.maintenance_config ? JSON.parse(settings.maintenance_config) : null; } catch(e) { _nbMaintenanceCfg = null; }
+  _nbPricingTiers = parsePricingTiers(settings.pricing_tiers);
 
   // Set min date to today
   const today = new Date();
@@ -3669,13 +4159,33 @@ function _nbIsMaintenanceHour(dateStr, h, courtId = null) {
   return _nbCheckRule(_nbMaintenanceCfg, dateStr, h, courtId);
 }
 
+function parsePricingTiers(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch (_) { raw = []; }
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw.map(t => ({
+    from: Number(t.from),
+    to: Number(t.to),
+    rate: Number(t.rate)
+  })).filter(t => Number.isFinite(t.from) && Number.isFinite(t.to) && Number.isFinite(t.rate) && t.from !== t.to);
+}
+
+function _nbGetPricingTiersForCourt(court) {
+  const courtTiers = parsePricingTiers(court?.rateSchedule);
+  if (courtTiers.length) return courtTiers;
+  if (_nbPricingTiers.length) return _nbPricingTiers;
+  return [];
+}
+
 function _nbGetRateForHour(court, h) {
-  const tiers = court.rateSchedule && court.rateSchedule.length ? court.rateSchedule : [];
+  const tiers = _nbGetPricingTiersForCourt(court);
   for (const t of tiers) {
     const inRange = t.from < t.to ? (h >= t.from && h < t.to) : (h >= t.from || h < t.to);
     if (inRange) return t.rate;
   }
-  return court.rate || 0;
+  return tiers.length ? Math.min(...tiers.map(t => t.rate)) : (Number(court?.rate) || 0);
 }
 
 async function nbRenderSlots() {

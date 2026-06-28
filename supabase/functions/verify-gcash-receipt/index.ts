@@ -45,7 +45,6 @@ const HARD_FLAGS = new Set([
   "DUPLICATE_REF",
   "DUPLICATE_INVOICE",
   "DUPLICATE_INSTAPAY_REF",
-  "DUPLICATE_IMAGE",
   "METHOD_MISMATCH",
   "REF_MISMATCH",
   "DATE_NOT_TODAY",
@@ -117,16 +116,6 @@ async function dHash(bytes: Uint8Array): Promise<string | null> {
   }
 }
 
-function hammingHex(a: string, b: string): number {
-  if (!a || !b || a.length !== b.length) return 999;
-  let dist = 0;
-  for (let i = 0; i < a.length; i++) {
-    let x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
-    while (x) { dist += x & 1; x >>= 1; }
-  }
-  return dist;
-}
-
 function phManilaNow(): Date {
   // Current instant shifted to UTC+8 wall clock.
   return new Date(Date.now() + 8 * 60 * 60 * 1000);
@@ -166,31 +155,33 @@ const MONTHS: Record<string, number> = {
 // against phManilaNow()). If OCR only finds the date, return the date but no
 // shifted time so it routes to manual review instead of assuming midnight.
 function parseReceiptDateTime(text: string): { date: string | null; shifted: Date | null } {
-  const full = text.match(
-    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})[,\s]+(\d{1,2}):(\d{2})\s*([ap]\.?\s*m\.?)\b/i,
-  );
-  if (full) {
-    const mon = MONTHS[full[1].toLowerCase().slice(0, 3)];
-    const day = parseInt(full[2], 10);
-    const year = parseInt(full[3], 10);
-    let hour = parseInt(full[4], 10);
-    const min = parseInt(full[5], 10);
-    const ap = full[6].toLowerCase().replace(/[^apm]/g, "");
-    if (ap === "pm" && hour !== 12) hour += 12;
-    if (ap === "am" && hour === 12) hour = 0;
-    const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const shifted = new Date(Date.UTC(year, mon, day, hour, min, 0));
-    return { date: dateStr, shifted };
-  }
-
-  const dateOnly = text.match(
-    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b/i,
-  );
+  const normalized = String(text || "")
+    .replace(/[|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const datePattern = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?[\s,.\-]+(\d{4})\b/i;
+  const dateOnly = normalized.match(datePattern);
   if (!dateOnly) return { date: null, shifted: null };
+
   const mon = MONTHS[dateOnly[1].toLowerCase().slice(0, 3)];
   const day = parseInt(dateOnly[2], 10);
   const year = parseInt(dateOnly[3], 10);
   const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  const afterDate = normalized.slice((dateOnly.index || 0) + dateOnly[0].length, (dateOnly.index || 0) + dateOnly[0].length + 80);
+  const beforeDate = normalized.slice(Math.max(0, (dateOnly.index || 0) - 40), dateOnly.index || 0);
+  const timePattern = /\b(\d{1,2})\s*[:;.]\s*(\d{2})\s*([ap](?:\s*\.?\s*m\.?)?|[ap])\b/i;
+  const time = afterDate.match(timePattern) || beforeDate.match(timePattern);
+  if (time) {
+    let hour = parseInt(time[1], 10);
+    const min = parseInt(time[2], 10);
+    const ap = time[3].toLowerCase().replace(/[^apm]/g, "");
+    if (ap.startsWith("p") && hour !== 12) hour += 12;
+    if (ap.startsWith("a") && hour === 12) hour = 0;
+    const shifted = new Date(Date.UTC(year, mon, day, hour, min, 0));
+    return { date: dateStr, shifted };
+  }
+
   return { date: dateStr, shifted: null };
 }
 
@@ -390,10 +381,16 @@ function expectedMerchantForProvider(
   settings: Record<string, string>,
   provider: PaymentProvider,
 ): { number: string; name: string } {
-  if (provider === "bdopay" || provider === "maya") {
+  if (provider === "bdopay") {
     return {
-      number: settings.gcash_merchant_number || "",
-      name: settings.gcash_merchant_name || "",
+      number: settings.bdopay_merchant_number || "",
+      name: settings.bdopay_merchant_name || settings.payment_merchant_name || "Korte DOS",
+    };
+  }
+  if (provider === "maya") {
+    return {
+      number: settings.maya_merchant_number || "",
+      name: settings.maya_merchant_name || settings.payment_merchant_name || "Korte DOS",
     };
   }
   if (provider === "gotyme") {
@@ -563,64 +560,6 @@ function bookingUpdateQuery(
   const groupRef = String(booking.booking_group_ref || "");
   const query = db.from("bookings").update(update);
   return groupRef ? query.eq("booking_group_ref", groupRef) : query.eq("ref", String(booking.ref || ""));
-}
-
-async function imagePreviouslyUsed(
-  db: any,
-  imageHash: string,
-  phash: string | null,
-  allowedBookingRefs: Set<string>,
-): Promise<boolean> {
-  const checks = [
-    { table: "bookings", id: "ref", fields: "ref,receipt_image_hash,receipt_phash" },
-    { table: "open_play_registrations", id: "id", fields: "id,receipt_image_hash,receipt_phash" },
-    { table: "open_play_host_session_registrations", id: "id", fields: "id,receipt_image_hash,receipt_phash" },
-  ];
-  for (const check of checks) {
-    const exact = await db
-      .from(check.table)
-      .select(check.fields)
-      .eq("receipt_image_hash", imageHash)
-      .limit(5);
-    if (exact.error) {
-      console.error(`duplicate exact-image lookup failed for ${check.table}:`, errMsg(exact.error));
-    } else if (hasDuplicateImageRow(exact.data || [], check.table, check.id, imageHash, phash, allowedBookingRefs)) {
-      return true;
-    }
-
-    if (phash) {
-      const near = await db
-        .from(check.table)
-        .select(check.fields)
-        .not("receipt_phash", "is", null)
-        .limit(500);
-      if (near.error) {
-        console.error(`duplicate near-image lookup failed for ${check.table}:`, errMsg(near.error));
-      } else if (hasDuplicateImageRow(near.data || [], check.table, check.id, imageHash, phash, allowedBookingRefs)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function hasDuplicateImageRow(
-  rows: Array<Record<string, unknown>>,
-  table: string,
-  idColumn: string,
-  imageHash: string,
-  phash: string | null,
-  allowedBookingRefs: Set<string>,
-): boolean {
-  for (const row of rows) {
-    const id = String(row[idColumn] || "");
-    if (table === "bookings" && allowedBookingRefs.has(id)) continue;
-    const rowHash = String(row.receipt_image_hash || "");
-    const rowPhash = String(row.receipt_phash || "");
-    if (rowHash && rowHash === imageHash) return true;
-    if (phash && rowPhash && hammingHex(phash, rowPhash) <= 5) return true;
-  }
-  return false;
 }
 
 function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
@@ -908,10 +847,9 @@ Deno.serve(async (req) => {
 
     const flags: string[] = [];
 
-    // ── duplicate-image checks (exact + perceptual) ─────────────────────────
-    if (await imagePreviouslyUsed(db, imageHash, phash, bookingGroupRefs)) {
-      flags.push("DUPLICATE_IMAGE");
-    }
+    // Do not flag duplicate-looking images. GCash/BDO Pay/Maya receipt screens
+    // share the same layout, so perceptual image matching creates false flags.
+    // Reuse protection is handled by exact payment refs/invoices below.
 
     // ── OCR ─────────────────────────────────────────────────────────────────
     const visionKey = Deno.env.get("GOOGLE_VISION_API_KEY") || "";
@@ -964,53 +902,76 @@ Deno.serve(async (req) => {
         flags.push("METHOD_MISMATCH");
       }
 
-      // Reference format
-      if (!extractedRef) {
-        if (provider === "gcash" && !flags.includes("REF_FORMAT_INVALID")) flags.push("REF_FORMAT_INVALID");
-        else if (provider !== "gcash") flags.push("REF_UNREADABLE");
-      } else if (typedRef && extractedRef !== typedRef) {
-        // The ref on the receipt doesn't match what the customer typed — possible fraud.
-        flags.push("REF_MISMATCH");
-      }
+      if (provider === "gcash") {
+        // GCash-to-GCash focused path. The receipt layout is consistent but OCR
+        // can miss the small right-aligned timestamp, so unreadable date/time is
+        // not a failure for GCash. Parsed dates/times are still enforced.
+        if (!extractedRef && !flags.includes("REF_FORMAT_INVALID")) flags.push("REF_FORMAT_INVALID");
+        else if (typedRef && extractedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
 
-      // Amount: allow overpay, flag underpay beyond tolerance; unreadable -> soft.
-      if (pricingError) flags.push("AMOUNT_MISMATCH");
-      else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-      else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+        if (pricingError) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
 
-      // Receipt date must match the date the booking was started/submitted (PH).
-      if (!receiptDate) flags.push("DATE_UNREADABLE");
-      else if (bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        if (receiptDate && bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        if (receiptDateTime && bookingStartedAt) {
+          if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
+          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+        }
 
-      // Receipt timestamp must be inside the 15-minute slot-reservation window.
-      if (!receiptDateTime) flags.push("TIME_UNREADABLE");
-      else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-      else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
-      else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+        if (!isGcashToGcashReceipt(ocrText)) flags.push("GCASH_RECEIPT_UNREADABLE");
 
-      if (provider === "bdopay") {
+        const numCheck = checkReceiverNumber(ocrText, expectedNumber);
+        if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
+        else if (numCheck === "unreadable" && expectedNumber) flags.push("NUMBER_UNREADABLE");
+
+        const nameCheck = checkReceiverName(ocrText, expectedName);
+        if (nameCheck === "mismatch") flags.push("RECEIVER_NAME_MISMATCH");
+      } else if (provider === "bdopay") {
+        // BDO Pay focused path: do not require GCash/GXI/Maya evidence here.
+        if (!extractedRef) flags.push("REF_UNREADABLE");
+        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+
+        if (pricingError) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+
+        if (!receiptDate) flags.push("DATE_UNREADABLE");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+        else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+
         if (!hasBdoPayIndicator(ocrText)) flags.push("BDO_PAY_UNREADABLE");
-        if (!hasGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
         if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
         if (!extractedInvoice) flags.push("INVOICE_UNREADABLE");
       } else if (provider === "maya") {
+        if (!extractedRef) flags.push("REF_UNREADABLE");
+        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+
+        if (pricingError) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+
+        if (!receiptDate) flags.push("DATE_UNREADABLE");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+        else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+
         if (!hasMayaIndicator(ocrText)) flags.push("MAYA_UNREADABLE");
         if (!hasInstapayQrphIndicator(ocrText)) flags.push("INSTAPAY_QRPH_UNREADABLE");
         if (!hasGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
         if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
       } else {
-        if (provider === "gcash" && !isGcashToGcashReceipt(ocrText)) {
-          flags.push("GCASH_RECEIPT_UNREADABLE");
-        }
+        if (!extractedRef) flags.push("REF_UNREADABLE");
+        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
 
-        // Receiver number.
-        const numCheck = checkReceiverNumber(ocrText, expectedNumber);
-        if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
-        else if (numCheck === "unreadable" && expectedNumber) flags.push("NUMBER_UNREADABLE");
-
-        // Receiver name (soft).
-        const nameCheck = checkReceiverName(ocrText, expectedName);
-        if (nameCheck === "mismatch") flags.push("RECEIVER_NAME_MISMATCH");
+        if (pricingError) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
       }
 
       // Authenticity heuristics — HARD: a non-receipt image should be rejected outright.

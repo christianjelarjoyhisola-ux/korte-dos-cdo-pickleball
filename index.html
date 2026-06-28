@@ -142,23 +142,103 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .find-time-entry span { display:block; font-size:.78rem; color:var(--muted); margin-top:2px; }
 .find-time-entry .btn { flex-shrink:0; }
 .shared-date-entry {
-  display:flex; align-items:center; justify-content:space-between; gap:14px;
-  margin:-4px 0 18px; padding:14px 16px;
-  background:var(--card); border:1px solid var(--border); border-radius:var(--r);
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin:-4px 0 14px; padding:10px 12px;
+  background:linear-gradient(135deg,rgba(var(--ac),.1),rgba(var(--ac),.035));
+  border:1px solid rgba(var(--ac),.24); border-radius:14px;
 }
-.shared-date-entry strong { display:block; font-size:.95rem; color:var(--text); }
-.shared-date-entry span { display:block; font-size:.78rem; color:var(--muted); margin-top:2px; }
-.shared-date-control { display:flex; flex-direction:column; align-items:flex-end; gap:5px; min-width:190px; }
-.shared-date-control label {
-  font-size:.68rem; font-weight:800; text-transform:uppercase;
-  letter-spacing:.7px; color:var(--muted);
+.shared-date-title {
+  min-width:0; display:flex; flex-direction:column; gap:1px;
 }
-.shared-date-control input {
-  width:100%; background:var(--input); border:1px solid var(--border);
-  border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
-  font-size:.9rem; padding:10px 11px; min-height:42px;
+.shared-date-title strong { display:block; font-size:.88rem; color:var(--text); line-height:1.15; }
+.shared-date-title span {
+  display:block; font-size:.66rem; color:var(--muted); font-weight:800;
+  letter-spacing:.45px; text-transform:uppercase; white-space:nowrap;
 }
-.shared-date-control input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--ac),.13); }
+.shared-date-control {
+  display:grid; grid-template-columns:34px minmax(132px,1fr) 34px auto;
+  align-items:center; gap:6px; min-width:min(100%,360px);
+}
+.shared-date-nav,
+.shared-date-today,
+.shared-date-display {
+  min-height:36px; border-radius:10px; border:1px solid var(--border);
+  background:var(--input); color:var(--text); font-family:'Outfit',sans-serif;
+  font-weight:900; cursor:pointer; transition:border-color .15s, background .15s, transform .15s;
+}
+.shared-date-nav {
+  width:34px; padding:0; display:flex; align-items:center; justify-content:center;
+  font-size:1.05rem; color:var(--accent);
+}
+.shared-date-display {
+  width:100%; padding:0 10px; text-align:center; font-size:.92rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.shared-date-today {
+  padding:0 11px; font-size:.72rem; color:var(--accent); text-transform:uppercase;
+  letter-spacing:.35px;
+}
+.shared-date-nav:active,
+.shared-date-today:active,
+.shared-date-display:active { transform:translateY(1px); }
+.shared-date-nav:hover,
+.shared-date-today:hover,
+.shared-date-display:hover,
+.shared-date-display:focus-visible,
+.shared-date-nav:focus-visible,
+.shared-date-today:focus-visible {
+  outline:none; border-color:var(--accent); background:rgba(var(--ac),.1);
+}
+.shared-date-native {
+  position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;
+}
+.date-picker-overlay {
+  position:fixed; inset:0; z-index:420; display:none;
+  background:rgba(0,0,0,.48); backdrop-filter:blur(3px);
+  align-items:center; justify-content:center; padding:18px;
+}
+.date-picker-overlay.show { display:flex; }
+.date-picker {
+  width:min(390px,100%); background:var(--card); border:1px solid var(--border);
+  border-radius:18px; box-shadow:0 22px 70px rgba(0,0,0,.5);
+  padding:14px; color:var(--text);
+}
+.date-picker-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;
+}
+.date-picker-title { font-size:1rem; font-weight:900; text-align:center; flex:1; }
+.date-picker-nav,
+.date-picker-close {
+  width:36px; height:36px; border-radius:10px; border:1px solid var(--border);
+  background:var(--input); color:var(--text); font:inherit; font-weight:900;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.date-picker-close { color:var(--muted); }
+.date-picker-week,
+.date-picker-grid {
+  display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px;
+}
+.date-picker-week span {
+  text-align:center; font-size:.62rem; font-weight:900; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.35px; padding:4px 0;
+}
+.date-day {
+  aspect-ratio:1/1; border-radius:10px; border:1px solid var(--border);
+  background:var(--input); color:var(--text); font:inherit; font-size:.78rem; font-weight:900;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:border-color .15s, background .15s, transform .15s;
+}
+.date-day:hover:not(:disabled) { border-color:var(--accent); background:rgba(var(--ac),.1); }
+.date-day:active:not(:disabled) { transform:translateY(1px); }
+.date-day.other { visibility:hidden; pointer-events:none; }
+.date-day.today { border-color:rgba(var(--ac),.6); color:var(--accent); }
+.date-day.selected {
+  background:var(--accent); border-color:var(--accent); color:#001018;
+  box-shadow:0 0 0 2px rgba(var(--ac),.16);
+}
+.date-day:disabled { opacity:.38; cursor:not-allowed; color:var(--muted); }
+.date-picker-foot { display:flex; gap:8px; margin-top:12px; }
+.date-picker-foot .btn { flex:1; justify-content:center; min-height:38px; padding:8px 12px; }
 .ft-modal { max-width:560px; }
 .ft-form {
   display:grid; grid-template-columns:1fr 1fr 110px; gap:10px;
@@ -194,8 +274,24 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 @media(max-width:700px) {
   .find-time-entry { flex-direction:column; align-items:stretch; margin-top:-6px; }
   .find-time-entry .btn { width:100%; justify-content:center; }
-  .shared-date-entry { flex-direction:column; align-items:stretch; }
-  .shared-date-control { align-items:stretch; min-width:0; }
+  .shared-date-entry { display:block; padding:9px 10px; margin-bottom:12px; }
+  .shared-date-title {
+    flex-direction:row; align-items:center; justify-content:space-between;
+    margin-bottom:7px; gap:10px;
+  }
+  .shared-date-title span { font-size:.6rem; }
+  .shared-date-control {
+    grid-template-columns:32px minmax(0,1fr) 32px 58px;
+    gap:5px; min-width:0;
+  }
+  .shared-date-nav,
+  .shared-date-today,
+  .shared-date-display { min-height:34px; border-radius:9px; }
+  .shared-date-display { font-size:.86rem; padding:0 8px; }
+  .shared-date-today { font-size:.64rem; padding:0 8px; }
+  .date-picker-overlay { align-items:flex-end; padding:12px; }
+  .date-picker { width:100%; border-radius:18px 18px 14px 14px; padding:13px; }
+  .date-day { border-radius:9px; font-size:.76rem; }
   .ft-form { grid-template-columns:1fr; }
   .ft-result { align-items:stretch; flex-direction:column; }
   .ft-result .btn { width:100%; justify-content:center; }
@@ -2561,13 +2657,16 @@ body.light #splashScreen { background: #071320; }
   </div>
   <div class="court-tabs-hint">👇 Tap a court to view available times 👇</div>
   <div class="shared-date-entry">
-    <div>
+    <div class="shared-date-title">
       <strong>Booking date</strong>
-      <span>One date controls Court 1, Court 2, and Court 3 availability.</span>
+      <span>All courts</span>
     </div>
     <div class="shared-date-control">
-      <label for="courtSharedDate">Select Date</label>
-      <input type="date" id="courtSharedDate" onchange="onSharedCourtDate(this.value)" />
+      <button class="shared-date-nav" type="button" onclick="shiftSharedCourtDate(-1)" aria-label="Previous day">‹</button>
+      <button class="shared-date-display" id="courtSharedDateDisplay" type="button" onclick="openSharedCourtDatePicker()">Today</button>
+      <button class="shared-date-nav" type="button" onclick="shiftSharedCourtDate(1)" aria-label="Next day">›</button>
+      <button class="shared-date-today" type="button" onclick="setSharedCourtDateToday()">Today</button>
+      <input class="shared-date-native" type="date" id="courtSharedDate" onchange="onSharedCourtDate(this.value)" aria-label="Booking date" />
     </div>
   </div>
   <div id="courtTabs" class="court-tabs"></div>
@@ -2575,6 +2674,25 @@ body.light #splashScreen { background: #071320; }
     <div class="pb-loader">
       <div class="pb-ball" aria-hidden="true"></div>
       <div class="pb-loader-txt">Loading courts</div>
+    </div>
+  </div>
+</div>
+
+<div class="date-picker-overlay" id="sharedDatePicker" onclick="datePickerBackdrop(event)">
+  <div class="date-picker" role="dialog" aria-modal="true" aria-labelledby="datePickerTitle">
+    <div class="date-picker-head">
+      <button class="date-picker-nav" type="button" onclick="navSharedDatePicker(-1)" aria-label="Previous month">‹</button>
+      <div class="date-picker-title" id="datePickerTitle">Select date</div>
+      <button class="date-picker-nav" type="button" onclick="navSharedDatePicker(1)" aria-label="Next month">›</button>
+      <button class="date-picker-close" type="button" onclick="closeSharedDatePicker()" aria-label="Close">×</button>
+    </div>
+    <div class="date-picker-week">
+      <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+    </div>
+    <div class="date-picker-grid" id="sharedDatePickerGrid"></div>
+    <div class="date-picker-foot">
+      <button class="btn btn-g" type="button" onclick="closeSharedDatePicker()">Cancel</button>
+      <button class="btn btn-p" type="button" onclick="setSharedDatePickerToday()">Today</button>
     </div>
   </div>
 </div>
@@ -3643,6 +3761,8 @@ let cardSel   = { courtId: null, courtName: '', date: null, slots: [], rate: 0, 
 let cardSelections = {};
 let bookingItems = [];
 let sharedCourtDate = '';
+let sharedDatePickerYear = 0;
+let sharedDatePickerMonth = 0;
 
 function normalizedCourtBrowseDate(date) {
   const today = todayStr();
@@ -3656,6 +3776,7 @@ function selectedCourtBrowseDate() {
     input.min = todayStr();
     input.value = sharedCourtDate;
   }
+  updateSharedCourtDateDisplay(sharedCourtDate);
   return sharedCourtDate;
 }
 
@@ -3667,7 +3788,91 @@ function syncSharedCourtDateUI(date = selectedCourtBrowseDate()) {
     sharedInput.min = todayStr();
     sharedInput.value = safeDate;
   }
+  updateSharedCourtDateDisplay(safeDate);
   document.querySelectorAll('[id^="cDate_"]').forEach(inp => { inp.value = safeDate; });
+}
+
+function sharedCourtDateLabel(date) {
+  if (!date) return 'Select date';
+  const d = new Date(date + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return 'Select date';
+  if (date === todayStr()) return 'Today';
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function updateSharedCourtDateDisplay(date) {
+  const display = $('courtSharedDateDisplay');
+  if (display) display.textContent = sharedCourtDateLabel(date);
+}
+
+function openSharedCourtDatePicker() {
+  const selected = selectedCourtBrowseDate();
+  const d = new Date(selected + 'T00:00:00');
+  sharedDatePickerYear = d.getFullYear();
+  sharedDatePickerMonth = d.getMonth();
+  renderSharedDatePicker();
+  $('sharedDatePicker')?.classList.add('show');
+}
+
+function closeSharedDatePicker() {
+  $('sharedDatePicker')?.classList.remove('show');
+}
+
+function datePickerBackdrop(e) {
+  if (e.target?.id === 'sharedDatePicker') closeSharedDatePicker();
+}
+
+function navSharedDatePicker(delta) {
+  sharedDatePickerMonth += Number(delta || 0);
+  if (sharedDatePickerMonth > 11) { sharedDatePickerMonth = 0; sharedDatePickerYear++; }
+  if (sharedDatePickerMonth < 0) { sharedDatePickerMonth = 11; sharedDatePickerYear--; }
+  renderSharedDatePicker();
+}
+
+function renderSharedDatePicker() {
+  const grid = $('sharedDatePickerGrid');
+  const title = $('datePickerTitle');
+  if (!grid || !title) return;
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  title.textContent = `${months[sharedDatePickerMonth]} ${sharedDatePickerYear}`;
+  const selected = selectedCourtBrowseDate();
+  const today = todayStr();
+  const firstDow = new Date(sharedDatePickerYear, sharedDatePickerMonth, 1).getDay();
+  const daysInMonth = new Date(sharedDatePickerYear, sharedDatePickerMonth + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push('<button class="date-day other" type="button" tabindex="-1"></button>');
+  for (let day = 1; day <= daysInMonth; day++) {
+    const ds = `${sharedDatePickerYear}-${String(sharedDatePickerMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const cls = [
+      'date-day',
+      ds === today ? 'today' : '',
+      ds === selected ? 'selected' : ''
+    ].filter(Boolean).join(' ');
+    cells.push(`<button class="${cls}" type="button" ${ds < today ? 'disabled' : ''} onclick="selectSharedDateFromPicker('${ds}')">${day}</button>`);
+  }
+  grid.innerHTML = cells.join('');
+}
+
+async function selectSharedDateFromPicker(date) {
+  closeSharedDatePicker();
+  await onSharedCourtDate(date);
+}
+
+async function shiftSharedCourtDate(days) {
+  const base = selectedCourtBrowseDate();
+  const d = new Date(base + 'T00:00:00');
+  d.setDate(d.getDate() + Number(days || 0));
+  const next = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  await onSharedCourtDate(next);
+}
+
+async function setSharedCourtDateToday() {
+  await onSharedCourtDate(todayStr());
+}
+
+async function setSharedDatePickerToday() {
+  closeSharedDatePicker();
+  await onSharedCourtDate(todayStr());
 }
 
 async function onSharedCourtDate(date) {
@@ -6982,7 +7187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initOpAnnounceSplash();
   initEasterSplash();
   initGrandSplash();
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeQrZoom(); closeFindTimeModal(); closeBookModal(); closeOpModal(); closeHostApplyModal(); closeHostSessionModal(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSharedDatePicker(); closeQrZoom(); closeFindTimeModal(); closeBookModal(); closeOpModal(); closeHostApplyModal(); closeHostSessionModal(); } });
   initScrollReveal();
 });
 
