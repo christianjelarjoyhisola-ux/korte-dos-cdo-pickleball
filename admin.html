@@ -433,6 +433,20 @@ tr:hover td { background: var(--bg2); }
   display: flex; gap: 10px; justify-content: flex-end;
   position: sticky; bottom: 0; background: var(--surface);
 }
+.verify-payment-modal { max-width: 720px; }
+.verify-payment-modal .m-hd { z-index: 2; }
+.verify-payment-modal .m-hd h2 { line-height: 1.15; margin: 0; }
+.verify-payment-modal .m-body { overflow-x: hidden; }
+.verify-payment-modal .receipt-detail-grid { max-width: 100%; }
+@media (max-width: 520px) {
+  .overlay { align-items: flex-start; padding: 12px; overflow-y: auto; }
+  .verify-payment-modal { max-width: 100%; max-height: calc(100dvh - 24px); }
+  .verify-payment-modal .m-hd { padding: 14px 16px; }
+  .verify-payment-modal .m-hd h2 { font-size: 1.25rem; letter-spacing: .4px; }
+  .verify-payment-modal .m-body { padding: 14px 16px; }
+  .verify-payment-modal .m-foot { padding: 12px 16px; }
+  .verify-payment-modal #vmGcashRef { font-size: 1.08rem; letter-spacing: .8px; overflow-wrap: anywhere; }
+}
 
 /* ── BLOCKED ───────────────────────────────────────────── */
 .blk-item {
@@ -1965,7 +1979,7 @@ tr:hover td { background: var(--bg2); }
 
 <!-- VERIFY PAYMENT MODAL -->
 <div class="overlay" id="verifyModal">
-  <div class="modal" style="max-width:400px">
+  <div class="modal verify-payment-modal">
     <div class="m-hd" style="background:linear-gradient(135deg,rgba(200,160,96,.1),transparent)">
       <h2 style="color:var(--yellow)">🔍 VERIFY PAYMENT</h2>
       <button class="m-x" onclick="closeModal('verifyModal')">✕</button>
@@ -2505,17 +2519,49 @@ function receiptReasonText(flags){
   if (!flags || !flags.length) return 'No specific reason saved';
   return flags.map(f => RECEIPT_FLAG_LABELS[f] || f).join(', ');
 }
+function removeReceiptFlags(flags, blocked){
+  const blockedSet = new Set(blocked);
+  return (flags || []).filter(f => !blockedSet.has(f));
+}
+function receiptFlagsForDisplay(b){
+  let flags = [...new Set(b?.receiptFlags || [])];
+  const method = String(b?.paymentMethod || b?.payment_method || '').toLowerCase();
+  const ex = b?.receiptExtracted || b?.receipt_extracted || {};
+  const ref = String(b?.gcashRef || b?.gcash_ref || ex.ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  if (method === 'bdopay' || method === 'maya') {
+    flags = removeReceiptFlags(flags, ['WRONG_GCASH_NUMBER', 'NUMBER_UNREADABLE', 'RECEIVER_NAME_MISMATCH']);
+  }
+  if (method === 'bdopay' && /^BN\d{16}$/.test(ref)) {
+    flags = removeReceiptFlags(flags, ['REF_FORMAT_INVALID']);
+  }
+  if (method === 'maya' && /^[A-Z0-9]{12}$/.test(ref)) {
+    flags = removeReceiptFlags(flags, ['REF_FORMAT_INVALID']);
+  }
+
+  const age = Number(ex.receiptAgeMinutes);
+  const earlyTolerance = Number(ex.allowedPaymentEarlyToleranceMinutes ?? 2);
+  const windowMinutes = Number(ex.allowedPaymentWindowMinutes ?? 10);
+  if (Number.isFinite(age) && age >= -earlyTolerance) {
+    flags = removeReceiptFlags(flags, ['TIME_FUTURE']);
+  }
+  if (Number.isFinite(age) && age <= windowMinutes) {
+    flags = removeReceiptFlags(flags, ['TIME_EXPIRED']);
+  }
+  return flags;
+}
 function receiptBadge(b){
   const s = b.receiptStatus || 'none';
   if (s === 'none') return '';
-  const reason = receiptReasonText(b.receiptFlags);
+  const displayFlags = receiptFlagsForDisplay(b);
+  const reason = receiptReasonText(displayFlags);
   const map = {
     auto_approved: ['var(--green)','rgba(var(--green-rgb),.15)','✅ Auto-verified'],
     manual_review: ['#b87e00','rgba(184,126,0,.15)','🕓 Review receipt'],
     rejected:      ['#e53935','rgba(229,57,53,.12)','⚠️ Receipt flagged'],
   };
   let [c,bg,lbl] = map[s] || ['#888','var(--input)',s];
-  if (s === 'rejected') lbl = `Rejected: ${reason}`;
+  if (s === 'rejected') lbl = displayFlags.length ? `Rejected: ${reason}` : 'Flagged earlier — review manually';
   return `<div class="receipt-badge" style="color:${c};background:${bg}">${lbl}</div>`;
 }
 function receiptFlagChips(flags){
@@ -2546,7 +2592,8 @@ function receiptReceiverValue(extracted){
 }
 function receiptDetailsHtml(b){
   const ex = b.receiptExtracted || {};
-  const reason = b.receiptFlags?.length ? receiptReasonText(b.receiptFlags) : 'All checks passed';
+  const displayFlags = receiptFlagsForDisplay(b);
+  const reason = displayFlags.length ? receiptReasonText(displayFlags) : 'All visible checks passed';
   const confidence = b.receiptConfidence != null ? `${Math.round(Number(b.receiptConfidence) * 100)}%` : '--';
   const rows = [
     ['OCR Ref', receiptDetailValue(ex.ref || b.gcashRef)],
@@ -3377,6 +3424,7 @@ async function openVerifyModal(ref) {
 async function vmPopulateReceipt(b){
   const wrap = $('vmReceiptWrap');
   const s = b.receiptStatus || 'none';
+  const displayFlags = receiptFlagsForDisplay(b);
   if (s === 'none' && !b.receiptImageUrl) { if (wrap) wrap.style.display = 'none'; return; }
   if (wrap) wrap.style.display = '';
   const st = $('vmReceiptStatus');
@@ -3387,10 +3435,10 @@ async function vmPopulateReceipt(b){
     none:          ['#888','var(--input)','No automated result'],
   };
   let [c,bg,lbl] = map[s] || map.none;
-  if (s === 'rejected') lbl = `Rejected: ${receiptReasonText(b.receiptFlags)}`;
-  if (s === 'manual_review' && b.receiptFlags?.length) lbl = `Needs review: ${receiptReasonText(b.receiptFlags)}`;
+  if (s === 'rejected') lbl = displayFlags.length ? `Rejected: ${receiptReasonText(displayFlags)}` : 'Flagged earlier — details parsed correctly; review manually';
+  if (s === 'manual_review' && displayFlags.length) lbl = `Needs review: ${receiptReasonText(displayFlags)}`;
   if (st) { st.style.color = c; st.style.background = bg; st.textContent = lbl; }
-  $('vmReceiptFlags').innerHTML = receiptFlagChips(b.receiptFlags);
+  $('vmReceiptFlags').innerHTML = receiptFlagChips(displayFlags);
   const detailBox = $('vmReceiptDetails');
   if (detailBox) {
     detailBox.innerHTML = receiptDetailsHtml(b);

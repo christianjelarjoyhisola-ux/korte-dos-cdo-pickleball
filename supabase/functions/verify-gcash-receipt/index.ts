@@ -342,6 +342,14 @@ function normalizedProvider(raw: string): PaymentProvider {
   return "gcash";
 }
 
+function paymentMethodProvider(raw: unknown): PaymentProvider | null {
+  const method = String(raw || "").toLowerCase();
+  if (method === "gcash" || method === "bdopay" || method === "maya" || method === "gotyme" || method === "pnb") {
+    return method as PaymentProvider;
+  }
+  return null;
+}
+
 function expectedMerchantForProvider(
   settings: Record<string, string>,
   provider: PaymentProvider,
@@ -774,7 +782,7 @@ Deno.serve(async (req) => {
   // ── verify a freshly-uploaded receipt ─────────────────────────────────────
   try {
     const bookingRef = String(body.bookingRef || "");
-    const provider = normalizedProvider(String(body.provider || "gcash"));
+    let provider = normalizedProvider(String(body.provider || "gcash"));
     const imageBase64 = String(body.imageBase64 || "");
     const contentType = String(body.contentType || "image/jpeg");
     // Optional: caller passes booking data so we can verify before saving to DB.
@@ -796,12 +804,13 @@ Deno.serve(async (req) => {
     } else {
       const { data: bk, error: bErr } = await db
         .from("bookings")
-        .select("ref, booking_group_ref, court_id, slots, total, downpayment, gcash_ref, date, payment_status, status, full_name, created_at")
+        .select("ref, booking_group_ref, court_id, slots, total, downpayment, gcash_ref, payment_method, date, payment_status, status, full_name, created_at")
         .eq("ref", bookingRef)
         .single();
       if (bErr || !bk) return json({ error: "Booking not found" }, 404);
       booking = bk as Record<string, unknown>;
     }
+    provider = paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) || provider;
 
     const settingsRows = await db.from("settings").select("key,value");
     const settings: Record<string, string> = {};
