@@ -46,6 +46,7 @@ const HARD_FLAGS = new Set([
   "DUPLICATE_INVOICE",
   "DUPLICATE_INSTAPAY_REF",
   "DUPLICATE_IMAGE",
+  "METHOD_MISMATCH",
   "REF_MISMATCH",
   "DATE_NOT_TODAY",
   "TIME_EXPIRED",
@@ -270,15 +271,50 @@ function extractReference(
 }
 
 function hasBdoPayIndicator(text: string): boolean {
-  return /\bbdo\s*pay\b|\bbdo\b|\binstapay\b|\bsend money\b|\btransfer\b/i.test(text);
+  return isBdoPayReceipt(text);
 }
 
 function hasMayaIndicator(text: string): boolean {
-  return /\bmaya\b|\bsent money via\b/i.test(text);
+  return isMayaReceipt(text);
 }
 
 function hasInstapayQrphIndicator(text: string): boolean {
   return /\binstapay\b|\bqrph\b|\bqr\s*ph\b/i.test(text);
+}
+
+function isBdoPayReceipt(text: string): boolean {
+  const t = text || "";
+  return /\bbdo\s*pay\b/i.test(t)
+    || /\bthank\s+you\s+for\s+using\s+bdo\b/i.test(t)
+    || (/\bbn[\s-]*\d{8}[\s-]*\d{8}\b/i.test(t) && /\binstapay\b/i.test(t));
+}
+
+function isMayaReceipt(text: string): boolean {
+  const t = text || "";
+  return /\bmaya\b/i.test(t)
+    && (/\bsent\s+money\s+via\b/i.test(t)
+      || /\breference\s+id\b/i.test(t)
+      || /\binstapay\s+ref\b/i.test(t)
+      || /\bqrph\b|\bqr\s*ph\b/i.test(t));
+}
+
+function isGcashToGcashReceipt(text: string): boolean {
+  const t = text || "";
+  if (isBdoPayReceipt(t) || isMayaReceipt(t)) return false;
+  return /\bsent\s+via\s+gcash\b/i.test(t)
+    || /\bsent\s+through\s+gcash\b/i.test(t)
+    || /\bgcash\s+receipt\b/i.test(t)
+    || /\btotal\s+amount\s+sent\b/i.test(t);
+}
+
+function selectedMethodMismatch(provider: PaymentProvider, text: string): boolean {
+  const bdoReceipt = isBdoPayReceipt(text);
+  const mayaReceipt = isMayaReceipt(text);
+  const gcashReceipt = isGcashToGcashReceipt(text);
+  if (provider === "gcash") return bdoReceipt || mayaReceipt;
+  if (provider === "bdopay") return gcashReceipt || mayaReceipt;
+  if (provider === "maya") return gcashReceipt || bdoReceipt;
+  return false;
 }
 
 function hasGxiDestination(text: string): boolean {
@@ -903,6 +939,10 @@ Deno.serve(async (req) => {
 
     // ── content checks (only when OCR text exists) ──────────────────────────
     if (ocrText) {
+      if (selectedMethodMismatch(provider, ocrText)) {
+        flags.push("METHOD_MISMATCH");
+      }
+
       // Reference format
       if (!extractedRef) {
         if (provider === "gcash" && !flags.includes("REF_FORMAT_INVALID")) flags.push("REF_FORMAT_INVALID");
@@ -938,6 +978,10 @@ Deno.serve(async (req) => {
         if (!hasGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
         if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
       } else {
+        if (provider === "gcash" && !isGcashToGcashReceipt(ocrText)) {
+          flags.push("GCASH_RECEIPT_UNREADABLE");
+        }
+
         // Receiver number.
         const numCheck = checkReceiverNumber(ocrText, expectedNumber);
         if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
@@ -1041,7 +1085,7 @@ Deno.serve(async (req) => {
       allowedPaymentEarlyToleranceMinutes: PAYMENT_EARLY_TOLERANCE_MINUTES,
       expectedAmount,
       provider,
-      expectedReceiverNumber: expectedNumber || null,
+      expectedReceiverNumber: provider === "bdopay" || provider === "maya" ? null : expectedNumber || null,
       expectedReceiverName: expectedName || null,
     };
 
