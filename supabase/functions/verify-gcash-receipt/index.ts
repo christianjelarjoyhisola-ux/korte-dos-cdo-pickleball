@@ -1,6 +1,6 @@
 // verify-gcash-receipt
 // ----------------------------------------------------------------------------
-// Server-side GCash / GoTyme / PNB receipt verification + fraud detection.
+// Server-side GCash / BDO Pay / GoTyme / PNB receipt verification + fraud detection.
 //
 // Actions (POST JSON):
 //   { action: "verify", bookingRef, provider, imageBase64, contentType }
@@ -43,6 +43,9 @@ const HARD_FLAGS = new Set([
   "SUSPECTED_FAKE",     // OCR ran and image has zero receipt-like content
   "IMAGE_UNREADABLE",   // OCR found NO text at all -> random/blank/non-receipt image
   "DUPLICATE_REF",
+  "DUPLICATE_INVOICE",
+  "DUPLICATE_INSTAPAY_REF",
+  "DUPLICATE_IMAGE",
   "REF_MISMATCH",
   "DATE_NOT_TODAY",
   "TIME_EXPIRED",
@@ -50,6 +53,8 @@ const HARD_FLAGS = new Set([
   "WRONG_GCASH_NUMBER",
   "AMOUNT_MISMATCH",    // Only hard if significantly underpaid (>₱5)
 ]);
+
+type PaymentProvider = "gcash" | "bdopay" | "maya" | "gotyme" | "pnb";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -81,7 +86,9 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", copy.buffer as ArrayBuffer);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -179,10 +186,18 @@ function digitsOnly(s: string): string {
   return (s || "").replace(/\D/g, "");
 }
 
-function normalizeReferenceForProvider(value: string, provider: "gcash" | "gotyme" | "pnb"): string {
+function normalizeReferenceForProvider(value: string, provider: PaymentProvider): string {
   const raw = value || "";
   if (provider === "gcash") return digitsOnly(raw);
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isBdoPayReference(value: string): boolean {
+  return /^BN\d{16}$/.test(normalizeReferenceForProvider(value, "bdopay"));
+}
+
+function isMayaReference(value: string): boolean {
+  return /^[A-Z0-9]{12}$/.test(normalizeReferenceForProvider(value, "maya"));
 }
 
 function flexibleDigitPattern(digits: string): RegExp {
@@ -227,18 +242,67 @@ function extractGcashRef(text: string, typedRef = ""): string | null {
 
 function extractReference(
   text: string,
-  provider: "gcash" | "gotyme" | "pnb",
+  provider: PaymentProvider,
   typedRef: string,
 ): string | null {
   if (provider === "gcash") return extractGcashRef(text, typedRef);
 
-  // GoTyme/PNB references are not guaranteed to be 13-digit GCash-style refs.
+  // BDO Pay/GoTyme/PNB references are not guaranteed to be 13-digit GCash-style refs.
   // For those providers, trust the customer-entered reference only if OCR sees
   // the same alphanumeric token in the receipt text.
   const normalizedTyped = normalizeReferenceForProvider(typedRef, provider);
   if (normalizedTyped.length >= 6) {
     const normalizedText = normalizeReferenceForProvider(text, provider);
     if (normalizedText.includes(normalizedTyped)) return normalizedTyped;
+  }
+  return null;
+}
+
+function hasBdoPayIndicator(text: string): boolean {
+  return /\bbdo\s*pay\b|\bbdo\b|\binstapay\b|\bsend money\b|\btransfer\b/i.test(text);
+}
+
+function hasMayaIndicator(text: string): boolean {
+  return /\bmaya\b|\bsent money via\b/i.test(text);
+}
+
+function hasInstapayQrphIndicator(text: string): boolean {
+  return /\binstapay\b|\bqrph\b|\bqr\s*ph\b/i.test(text);
+}
+
+function hasGxiDestination(text: string): boolean {
+  return /\bg-?xchange\b|\bgxi\b|\bgcash\b|\bqrph\b/i.test(text);
+}
+
+function hasExpectedReceiverName(text: string, expectedName: string): boolean {
+  const upper = text.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const expected = (expectedName || "Korte Dos").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (expected.length >= 3 && upper.includes(expected)) return true;
+  return upper.includes("KORTEDOS");
+}
+
+function extractBdoInvoiceNumber(text: string): string | null {
+  const patterns = [
+    /\binvoice\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{3,24}[0-9])\b/i,
+    /\binv\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{3,24}[0-9])\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const invoice = match ? digitsOnly(match[1]) : "";
+    if (invoice.length >= 4 && invoice.length <= 20) return invoice;
+  }
+  return null;
+}
+
+function extractMayaInstapayRefNo(text: string): string | null {
+  const patterns = [
+    /\binstapay\s*ref\.?\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{3,20}[0-9])\b/i,
+    /\binstapay\s*(?:reference|ref)\s*[:#]?\s*([0-9][0-9\s-]{3,20}[0-9])\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const ref = match ? digitsOnly(match[1]) : "";
+    if (ref.length >= 4 && ref.length <= 20) return ref;
   }
   return null;
 }
@@ -261,16 +325,22 @@ function normalizeMobile(d: string): string {
 
 type NumberCheck = "match" | "wrong" | "unreadable";
 
-function normalizedProvider(raw: string): "gcash" | "gotyme" | "pnb" {
+function normalizedProvider(raw: string): PaymentProvider {
   const provider = raw.toLowerCase();
-  if (provider === "gotyme" || provider === "pnb") return provider;
+  if (provider === "bdopay" || provider === "maya" || provider === "gotyme" || provider === "pnb") return provider;
   return "gcash";
 }
 
 function expectedMerchantForProvider(
   settings: Record<string, string>,
-  provider: "gcash" | "gotyme" | "pnb",
+  provider: PaymentProvider,
 ): { number: string; name: string } {
+  if (provider === "bdopay" || provider === "maya") {
+    return {
+      number: settings.gcash_merchant_number || "",
+      name: settings.gcash_merchant_name || "",
+    };
+  }
   if (provider === "gotyme") {
     return {
       number: settings.gotyme_merchant_number || "",
@@ -348,7 +418,7 @@ function expectedOpenPlayAmount(booking: Record<string, unknown>, settings: Reco
 }
 
 async function expectedBookingAmount(
-  db: ReturnType<typeof createClient>,
+  db: any,
   booking: Record<string, unknown>,
   settings: Record<string, string>,
 ): Promise<number> {
@@ -367,8 +437,9 @@ async function expectedBookingAmount(
     .single();
   if (courtErr || !court) throw courtErr || new Error("Court not found");
 
-  const courtRate = toNumber(court.rate);
-  const courtTiers = parseJsonArray(court.rate_schedule);
+  const courtRow = court as Record<string, unknown>;
+  const courtRate = toNumber(courtRow.rate);
+  const courtTiers = parseJsonArray(courtRow.rate_schedule);
   const settingTiers = parseJsonArray(settings.pricing_tiers);
   const tiers = courtTiers.length ? courtTiers : settingTiers.length ? settingTiers : [{ from: 0, to: 24, rate: courtRate }];
   const courtTotal = slots.reduce((sum, hour) => sum + rateForHour(hour, tiers, courtRate), 0);
@@ -380,7 +451,7 @@ async function expectedBookingAmount(
 }
 
 async function loadBookingGroup(
-  db: ReturnType<typeof createClient>,
+  db: any,
   booking: Record<string, unknown>,
 ): Promise<Array<Record<string, unknown>>> {
   const groupRef = String(booking.booking_group_ref || "");
@@ -395,7 +466,7 @@ async function loadBookingGroup(
 }
 
 async function expectedBookingGroupAmount(
-  db: ReturnType<typeof createClient>,
+  db: any,
   bookings: Array<Record<string, unknown>>,
   settings: Record<string, string>,
 ): Promise<number> {
@@ -409,13 +480,71 @@ function bookingGroupStoredTotal(bookings: Array<Record<string, unknown>>): numb
 }
 
 function bookingUpdateQuery(
-  db: ReturnType<typeof createClient>,
+  db: any,
   booking: Record<string, unknown>,
   update: Record<string, unknown>,
 ) {
   const groupRef = String(booking.booking_group_ref || "");
   const query = db.from("bookings").update(update);
   return groupRef ? query.eq("booking_group_ref", groupRef) : query.eq("ref", String(booking.ref || ""));
+}
+
+async function imagePreviouslyUsed(
+  db: any,
+  imageHash: string,
+  phash: string | null,
+  allowedBookingRefs: Set<string>,
+): Promise<boolean> {
+  const checks = [
+    { table: "bookings", id: "ref", fields: "ref,receipt_image_hash,receipt_phash" },
+    { table: "open_play_registrations", id: "id", fields: "id,receipt_image_hash,receipt_phash" },
+    { table: "open_play_host_session_registrations", id: "id", fields: "id,receipt_image_hash,receipt_phash" },
+  ];
+  for (const check of checks) {
+    const exact = await db
+      .from(check.table)
+      .select(check.fields)
+      .eq("receipt_image_hash", imageHash)
+      .limit(5);
+    if (exact.error) {
+      console.error(`duplicate exact-image lookup failed for ${check.table}:`, errMsg(exact.error));
+    } else if (hasDuplicateImageRow(exact.data || [], check.table, check.id, imageHash, phash, allowedBookingRefs)) {
+      return true;
+    }
+
+    if (phash) {
+      const near = await db
+        .from(check.table)
+        .select(check.fields)
+        .not("receipt_phash", "is", null)
+        .limit(500);
+      if (near.error) {
+        console.error(`duplicate near-image lookup failed for ${check.table}:`, errMsg(near.error));
+      } else if (hasDuplicateImageRow(near.data || [], check.table, check.id, imageHash, phash, allowedBookingRefs)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function hasDuplicateImageRow(
+  rows: Array<Record<string, unknown>>,
+  table: string,
+  idColumn: string,
+  imageHash: string,
+  phash: string | null,
+  allowedBookingRefs: Set<string>,
+): boolean {
+  for (const row of rows) {
+    const id = String(row[idColumn] || "");
+    if (table === "bookings" && allowedBookingRefs.has(id)) continue;
+    const rowHash = String(row.receipt_image_hash || "");
+    const rowPhash = String(row.receipt_phash || "");
+    if (rowHash && rowHash === imageHash) return true;
+    if (phash && rowPhash && hammingHex(phash, rowPhash) <= 5) return true;
+  }
+  return false;
 }
 
 function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
@@ -468,7 +597,7 @@ function looksLikeGcashReceipt(text: string): boolean {
   const t = text.toLowerCase();
   let score = 0;
   if (/ref(?:erence)?\s*(no|number|#)/.test(t)) score++;
-  if (/gcash|gotyme|maya|paymongo|qrph|instapay|pesonet/.test(t)) score++;
+  if (/gcash|bdo\s*pay|gotyme|maya|paymongo|qrph|instapay|pesonet|g-?xchange|gxi/.test(t)) score++;
   if (/sent|received|paid|transfer|amount/.test(t)) score++;
   if (/\d{4}/.test(t)) score++;
   return score >= 2;
@@ -703,6 +832,10 @@ Deno.serve(async (req) => {
     const flags: string[] = [];
 
     // ── duplicate-image checks (exact + perceptual) ─────────────────────────
+    if (await imagePreviouslyUsed(db, imageHash, phash, bookingGroupRefs)) {
+      flags.push("DUPLICATE_IMAGE");
+    }
+
     // ── OCR ─────────────────────────────────────────────────────────────────
     const visionKey = Deno.env.get("GOOGLE_VISION_API_KEY") || "";
     // OCR.space free key (no billing required). Defaults to the public demo key.
@@ -729,6 +862,8 @@ Deno.serve(async (req) => {
     // ── field extraction ────────────────────────────────────────────────────
     const typedRef = normalizeReferenceForProvider(String(booking.gcash_ref || ""), provider);
     const extractedRef = extractReference(ocrText, provider, typedRef);
+    const extractedInvoice = provider === "bdopay" ? extractBdoInvoiceNumber(ocrText) : null;
+    const extractedInstapayRefNo = provider === "maya" ? extractMayaInstapayRefNo(ocrText) : null;
     const extractedAmount = extractAmount(ocrText);
     const { date: receiptDate, shifted: receiptDateTime } = parseReceiptDateTime(ocrText);
     const bookingStartedAt = toPhWallClockDate(booking.created_at || booking.createdAt);
@@ -737,6 +872,12 @@ Deno.serve(async (req) => {
       ? (receiptDateTime.getTime() - bookingStartedAt.getTime()) / 60000
       : null;
     if (provider === "gcash" && typedRef.length !== 13) {
+      flags.push("REF_FORMAT_INVALID");
+    }
+    if (provider === "bdopay" && !isBdoPayReference(typedRef)) {
+      flags.push("REF_FORMAT_INVALID");
+    }
+    if (provider === "maya" && !isMayaReference(typedRef)) {
       flags.push("REF_FORMAT_INVALID");
     }
 
@@ -766,14 +907,26 @@ Deno.serve(async (req) => {
       else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
       else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
 
-      // Receiver number.
-      const numCheck = checkReceiverNumber(ocrText, expectedNumber);
-      if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
-      else if (numCheck === "unreadable" && expectedNumber) flags.push("NUMBER_UNREADABLE");
+      if (provider === "bdopay") {
+        if (!hasBdoPayIndicator(ocrText)) flags.push("BDO_PAY_UNREADABLE");
+        if (!hasGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
+        if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
+        if (!extractedInvoice) flags.push("INVOICE_UNREADABLE");
+      } else if (provider === "maya") {
+        if (!hasMayaIndicator(ocrText)) flags.push("MAYA_UNREADABLE");
+        if (!hasInstapayQrphIndicator(ocrText)) flags.push("INSTAPAY_QRPH_UNREADABLE");
+        if (!hasGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
+        if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
+      } else {
+        // Receiver number.
+        const numCheck = checkReceiverNumber(ocrText, expectedNumber);
+        if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
+        else if (numCheck === "unreadable" && expectedNumber) flags.push("NUMBER_UNREADABLE");
 
-      // Receiver name (soft).
-      const nameCheck = checkReceiverName(ocrText, expectedName);
-      if (nameCheck === "mismatch") flags.push("RECEIVER_NAME_MISMATCH");
+        // Receiver name (soft).
+        const nameCheck = checkReceiverName(ocrText, expectedName);
+        if (nameCheck === "mismatch") flags.push("RECEIVER_NAME_MISMATCH");
+      }
 
       // Authenticity heuristics — HARD: a non-receipt image should be rejected outright.
       if (!looksLikeGcashReceipt(ocrText)) flags.push("SUSPECTED_FAKE");
@@ -791,15 +944,37 @@ Deno.serve(async (req) => {
     const refForDedupe = rawRefForDedupe
       ? provider === "gcash" ? rawRefForDedupe : `${provider}:${rawRefForDedupe}`
       : null;
-    let refAlreadyClaimedByThisBooking = false;
+    const dedupeKeys: Array<{ key: string; providerKey: string; duplicateFlag: string }> = [];
     if (refForDedupe) {
+      dedupeKeys.push({ key: refForDedupe, providerKey: provider, duplicateFlag: "DUPLICATE_REF" });
+    }
+    if (provider === "bdopay" && extractedInvoice) {
+      dedupeKeys.push({
+        key: `bdopay_invoice:${extractedInvoice}`,
+        providerKey: "bdopay_invoice",
+        duplicateFlag: "DUPLICATE_INVOICE",
+      });
+    }
+    if (provider === "maya" && extractedInstapayRefNo) {
+      dedupeKeys.push({
+        key: `maya_instapay:${extractedInstapayRefNo}`,
+        providerKey: "maya_instapay",
+        duplicateFlag: "DUPLICATE_INSTAPAY_REF",
+      });
+    }
+
+    const alreadyClaimedByThisBooking = new Set<string>();
+    for (const item of dedupeKeys) {
       const { data: existingRef } = await db
         .from("used_gcash_refs")
         .select("booking_ref")
-        .eq("gcash_ref", refForDedupe)
+        .eq("gcash_ref", item.key)
         .maybeSingle();
-      if (existingRef && !bookingGroupRefs.has(String(existingRef.booking_ref || ""))) flags.push("DUPLICATE_REF");
-      else if (existingRef && bookingGroupRefs.has(String(existingRef.booking_ref || ""))) refAlreadyClaimedByThisBooking = true;
+      if (existingRef && !bookingGroupRefs.has(String(existingRef.booking_ref || ""))) {
+        flags.push(item.duplicateFlag);
+      } else if (existingRef && bookingGroupRefs.has(String(existingRef.booking_ref || ""))) {
+        alreadyClaimedByThisBooking.add(item.key);
+      }
     }
 
     // ── decision routing ────────────────────────────────────────────────────
@@ -810,17 +985,20 @@ Deno.serve(async (req) => {
     else if (hasSoftOrUnreadable) result = "manual_review";
     else result = "auto_approved";
 
-    // Race-safe claim of the payment reference. The table's primary key on
-    // gcash_ref is the source of truth: if another request claims the same ref
-    // between our earlier read and this insert, this receipt becomes duplicate.
-    if (result === "auto_approved" && refForDedupe && !refAlreadyClaimedByThisBooking) {
-      const { error: claimErr } = await db
-        .from("used_gcash_refs")
-        .insert({ gcash_ref: refForDedupe, booking_ref: bookingRef, provider });
-      if (claimErr) {
-        console.error("payment reference claim failed:", errMsg(claimErr));
-        if (!flags.includes("DUPLICATE_REF")) flags.push("DUPLICATE_REF");
-        result = "rejected";
+    // Race-safe claim of payment ledger keys. The table's primary key on
+    // gcash_ref is the source of truth if another request claims the same key.
+    if (result === "auto_approved") {
+      for (const item of dedupeKeys) {
+        if (alreadyClaimedByThisBooking.has(item.key)) continue;
+        const { error: claimErr } = await db
+          .from("used_gcash_refs")
+          .insert({ gcash_ref: item.key, booking_ref: bookingRef, provider: item.providerKey });
+        if (claimErr) {
+          console.error("payment ledger claim failed:", errMsg(claimErr));
+          if (!flags.includes(item.duplicateFlag)) flags.push(item.duplicateFlag);
+          result = "rejected";
+          break;
+        }
       }
     }
 
@@ -829,6 +1007,8 @@ Deno.serve(async (req) => {
 
     const extracted = {
       ref: extractedRef,
+      invoice: extractedInvoice,
+      instapayRefNo: extractedInstapayRefNo,
       amount: extractedAmount,
       date: receiptDate,
       time: receiptDateTime ? receiptDateTime.toISOString() : null,

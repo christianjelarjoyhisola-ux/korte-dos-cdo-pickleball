@@ -69,6 +69,8 @@ function adminUrl(): string {
 function paymentMethodLabel(method?: string): string {
   const labels: Record<string, string> = {
     gcash: "GCash",
+    bdopay: "BDO Pay",
+    maya: "Maya",
     gotyme: "GoTyme",
     pnb: "PNB",
     cash: "Cash",

@@ -1702,6 +1702,12 @@ tr:hover td { background: var(--bg2); }
               <input type="checkbox" id="payMethodGcashOn" /> GCash
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
+              <input type="checkbox" id="payMethodBdopayOn" /> BDO Pay
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
+              <input type="checkbox" id="payMethodMayaOn" /> Maya
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
               <input type="checkbox" id="payMethodGotymeOn" /> GoTyme
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
@@ -2325,7 +2331,7 @@ function bookingGroupKey(b) {
   if (b?.groupRef) return `group:${b.groupRef}`;
   const method = String(b?.paymentMethod || '').toLowerCase();
   const ref = String(b?.gcashRef || '').trim();
-  if (ref && ['gcash', 'gotyme', 'pnb'].includes(method)) return `payment:${method}:${ref}`;
+  if (ref && ['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'].includes(method)) return `payment:${method}:${ref}`;
   return `single:${b?.ref || ''}`;
 }
 function commonBookingPrefix(refs = []) {
@@ -2487,12 +2493,13 @@ function shortDateTime(v){
   return `${d.toLocaleDateString('en-PH',{month:'short',day:'numeric'})}<div style="font-size:.72rem;color:var(--muted);font-weight:600">${d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
 }
 const RECEIPT_FLAG_LABELS = {
-  DUPLICATE_REF:'Ref already used', WRONG_GCASH_NUMBER:'Wrong receiver number',
+  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', WRONG_GCASH_NUMBER:'Wrong receiver number',
   AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:'Paid after 15 min',
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   EDITED_METADATA:'Edited image metadata', SUSPECTED_FAKE:'Not a receipt', REF_FORMAT_INVALID:'Bad reference format',
-  REF_UNREADABLE:'Reference unreadable', LOW_OCR_CONFIDENCE:'Blurry / low OCR', OCR_UNAVAILABLE:'OCR unavailable', AMOUNT_UNREADABLE:'Amount unreadable',
+  REF_UNREADABLE:'Reference unreadable', INVOICE_UNREADABLE:'Invoice unreadable', LOW_OCR_CONFIDENCE:'Blurry / low OCR', OCR_UNAVAILABLE:'OCR unavailable', AMOUNT_UNREADABLE:'Amount unreadable',
   DATE_UNREADABLE:'Date unreadable', TIME_UNREADABLE:'Time unreadable', NUMBER_UNREADABLE:'Receiver number unreadable',
+  BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable',
 };
 function receiptReasonText(flags){
   if (!flags || !flags.length) return 'No specific reason saved';
@@ -2559,7 +2566,7 @@ function receiptDetailsHtml(b){
 }
 function bookingDetailsButton(b){
   if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
-  if (!['gcash','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
+  if (!['gcash','bdopay','maya','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`;
 }
 function bookingActionsHtml(b, canDelete){
@@ -2586,7 +2593,7 @@ function bookingPayStateSelect(b){
 }
 function bookingDetailsButton(b){
   if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
-  if (!['gcash','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
+  if (!['gcash','bdopay','maya','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
   const actionRef = b.primaryRef || b.ref;
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(actionRef)}')">Details</button>`;
 }
@@ -2619,7 +2626,7 @@ function bookingPayStateSelect(b){
 }
 function mobileBookingCard(b, canDelete){
   const dp = b.downpayment || b.total / 2;
-  const payMethod = b.paymentMethod === 'gotyme' ? 'GoTyme' : b.paymentMethod === 'pnb' ? 'PNB' : String(b.paymentMethod || 'cash').toUpperCase();
+  const payMethod = paymentMethodLabel(b.paymentMethod);
   const bookedOn = b.createdAt ? (() => {
     const d = new Date(b.createdAt);
     return Number.isNaN(d.getTime()) ? '--' : `${d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})} ${d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true})}`;
@@ -3011,7 +3018,7 @@ async function renderBookings(){
         ${(()=>{ const dp=b.downpayment||b.total/2; return dp>=b.total ? `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">✅ Full payment</div>` : `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">⚡ ${fmt(dp)} down</div>`; })()}
         ${b.gcashRef?`<div style="font-size:.7rem;margin-top:1px;font-weight:700">Ref: <code style="color:var(--text)">${esc(b.gcashRef)}</code></div>`:''}
       </div></td>
-      <td data-label="Payment"><span style="font-size:.76rem;background:var(--input);border-radius:4px;padding:2px 7px">${esc(b.paymentMethod==='gotyme'?'GoTyme':String(b.paymentMethod || '').toUpperCase())}</span></td>
+      <td data-label="Payment"><span style="font-size:.76rem;background:var(--input);border-radius:4px;padding:2px 7px">${esc(paymentMethodLabel(b.paymentMethod))}</span></td>
       <td data-label="Pay State"><div class="pay-state-stack">
         <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${jsArg(b.ref)}',this.value)">
           <option value="unpaid" ${(!b.paymentStatus||b.paymentStatus==='unpaid')?'selected':''}>Unpaid</option>
@@ -3024,7 +3031,7 @@ async function renderBookings(){
       </div></td>
       <td data-label="Status">${statusBdg(b.status)}</td>
       <td data-label="Actions"><div style="display:flex;gap:5px;flex-wrap:wrap">
-        ${(b.gcashRef || (b.receiptStatus && b.receiptStatus!=='none')) && (b.paymentMethod==='gcash'||b.paymentMethod==='gotyme'||b.paymentMethod==='pnb')?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
+        ${(b.gcashRef || (b.receiptStatus && b.receiptStatus!=='none')) && isDigitalPayment(b.paymentMethod)?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
         ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(b.ref)}')">📅 Reschedule</button>`:''}
         ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(b.ref)}')">📧 Resend Email</button>`:''}
         <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${jsArg(b.ref)}',this.value)">
@@ -3050,11 +3057,11 @@ function clearFilters(){
 
 /* ── CALENDAR VIEW ── */
 function paymentMethodLabel(m) {
-  return ({ gcash: 'GCash', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[m] || (m || 'Cash'));
+  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(m || '').toLowerCase()] || (m || 'Cash'));
 }
 
 function isDigitalPayment(m) {
-  return ['gcash', 'gotyme', 'pnb'].includes(String(m || '').toLowerCase());
+  return ['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'].includes(String(m || '').toLowerCase());
 }
 
 function bookingReviewStatus(b) {
@@ -3347,7 +3354,7 @@ async function updateStatus(ref, status) {
 async function openVerifyModal(ref) {
   const b = await getBookingGroupByRef(ref);
   if (!b) { toast('Booking not found.', 'err'); return; }
-  $('vmMethod').textContent = b.paymentMethod === 'gotyme' ? 'GoTyme' : b.paymentMethod === 'pnb' ? 'PNB' : 'GCash';
+  $('vmMethod').textContent = paymentMethodLabel(b.paymentMethod);
   $('vmGcashRef').textContent = b.gcashRef || '—';
   $('vmName').textContent = b.fullName;
   $('vmContact').textContent = b.contactNumber;
@@ -4044,7 +4051,7 @@ async function renderReport(){
 
   // Revenue by payment method
   const payMap={};
-  txns.forEach(b=>{const k=b.paymentMethod==='gotyme'?'GoTyme':String(b.paymentMethod || '').toUpperCase();payMap[k]=(payMap[k]||0)+(b.total||0);});
+  txns.forEach(b=>{const k=paymentMethodLabel(b.paymentMethod);payMap[k]=(payMap[k]||0)+(b.total||0);});
   const payEntries=Object.entries(payMap).sort((a,b)=>b[1]-a[1]);
   const maxPay=payEntries[0]?payEntries[0][1]:1;
   $('rpPayChart').innerHTML=payEntries.length===0?'<p class="rp-empty">No bookings in this period.</p>':
@@ -4438,6 +4445,8 @@ async function renderPaymentSettings() {
   const settings = await DB.getSettings();
   const cashOn = settings.payment_method_cash !== '0';
   const gcashOn = settings.payment_method_gcash !== '0';
+  const bdopayOn = settings.payment_method_bdopay !== '0';
+  const mayaOn = settings.payment_method_maya !== '0';
   const gotymeOn = settings.payment_method_gotyme !== '0';
   const pnbOn = settings.payment_method_pnb !== '0';
   const paymentAcceptanceMode = settings.payment_acceptance_mode || 'both';
@@ -4445,6 +4454,8 @@ async function renderPaymentSettings() {
   if ($('paymentAcceptanceModeSelect')) $('paymentAcceptanceModeSelect').value = paymentAcceptanceMode;
   $('payMethodCashOn').checked = cashOn;
   $('payMethodGcashOn').checked = gcashOn;
+  if ($('payMethodBdopayOn')) $('payMethodBdopayOn').checked = bdopayOn;
+  if ($('payMethodMayaOn')) $('payMethodMayaOn').checked = mayaOn;
   $('payMethodGotymeOn').checked = gotymeOn;
   $('payMethodPnbOn').checked = pnbOn;
 
@@ -4478,7 +4489,7 @@ async function renderPaymentSettings() {
     $('pnbQrPreviewWrap').style.display = '';
   }
 
-  const summaryParts = [`Methods: ${(cashOn?'Cash ':'')}${(gcashOn?'GCash ':'')}${(gotymeOn?'GoTyme ':'')}${(pnbOn?'PNB':'')}`.trim() || 'none'];
+  const summaryParts = [`Methods: ${(cashOn?'Cash ':'')}${(gcashOn?'GCash ':'')}${(bdopayOn?'BDO Pay ':'')}${(mayaOn?'Maya ':'')}${(gotymeOn?'GoTyme ':'')}${(pnbOn?'PNB':'')}`.trim() || 'none'];
   $('paySettingsSummary').textContent = summaryParts.join(' • ');
 
   // Platform remittance summary
@@ -4979,10 +4990,12 @@ async function savePaymentSettings() {
   if (!Auth.can('payments', sess.role)) { toast('You do not have access to edit payment settings.', 'err'); return; }
   const cashOn = $('payMethodCashOn').checked;
   const gcashOn = $('payMethodGcashOn').checked;
+  const bdopayOn = $('payMethodBdopayOn')?.checked || false;
+  const mayaOn = $('payMethodMayaOn')?.checked || false;
   const gotymeOn = $('payMethodGotymeOn').checked;
   const pnbOn = $('payMethodPnbOn').checked;
 
-  if (!cashOn && !gcashOn && !gotymeOn && !pnbOn) {
+  if (!cashOn && !gcashOn && !bdopayOn && !mayaOn && !gotymeOn && !pnbOn) {
     toast('Enable at least one payment method.', 'err');
     return;
   }
@@ -4992,6 +5005,8 @@ async function savePaymentSettings() {
     
     await DB.saveSetting('payment_method_cash', cashOn ? '1' : '0');
     await DB.saveSetting('payment_method_gcash', gcashOn ? '1' : '0');
+    await DB.saveSetting('payment_method_bdopay', bdopayOn ? '1' : '0');
+    await DB.saveSetting('payment_method_maya', mayaOn ? '1' : '0');
     await DB.saveSetting('payment_method_gotyme', gotymeOn ? '1' : '0');
     await DB.saveSetting('payment_method_pnb', pnbOn ? '1' : '0');
     await DB.saveSetting('payment_acceptance_mode', paymentAcceptanceMode);
@@ -5550,7 +5565,7 @@ async function renderOpRegistrations() {
     return;
   }
   const fmt = n => '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2 });
-  const methodLabel = m => ({ gcash: 'GCash', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[m] || (m || 'Cash'));
+  const methodLabel = paymentMethodLabel;
   const activeRegs = regs.filter(r => r.payment_status !== 'rejected');
   const maxPerCourt = $('opMaxPlayers')?.value || '?';
   el.innerHTML = `
@@ -5614,7 +5629,7 @@ async function openOpVerifyModal(id) {
   const regs = await DB.getOpenPlayRegistrations();
   const r = regs.find(x => String(x.id) === String(id));
   if (!r) { toast('Registration not found.', 'err'); return; }
-  const methodLabel = { gcash: 'GCash', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' };
+  const methodLabel = { gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' };
   $('ovMethod').textContent  = methodLabel[r.payment_method] || r.payment_method || 'GCash';
   $('ovGcashRef').textContent = r.gcash_ref || '—';
   $('ovName').textContent    = r.full_name;

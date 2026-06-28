@@ -1241,6 +1241,8 @@ window.DB = {
     payment_acceptance_mode: 'full_payment_only',
     payment_method_cash: '0',
     payment_method_gcash: '1',
+    payment_method_bdopay: '1',
+    payment_method_maya: '1',
     payment_method_gotyme: '0',
     payment_method_pnb: '0',
     gcash_merchant_number: '09XXXXXXXXX',
