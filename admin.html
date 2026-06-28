@@ -54,7 +54,7 @@
 
 /* ── RESET ─────────────────────────────────────────────── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; overflow-x: hidden; }
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
@@ -62,6 +62,7 @@ body {
   min-height: 100vh;
   transition: background var(--transition), color var(--transition);
   touch-action: manipulation;
+  overflow-x: hidden;
 }
 button, input, select, textarea, label, a, [role="button"], .btn, .btn-icon, .nav-tab, .op-day {
   touch-action: manipulation;
@@ -197,7 +198,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 }
 
 /* ── MAIN CONTENT ──────────────────────────────────────── */
-.main { flex: 1; display: flex; flex-direction: column; min-height: calc(100vh - 60px); }
+.main { flex: 1; display: flex; flex-direction: column; min-height: calc(100vh - 60px); min-width: 0; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 20px 28px 0;
@@ -214,7 +215,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .burger:hover { border-color: var(--green); }
 
 /* CONTENT */
-.content { padding: 28px; flex: 1; }
+.content { padding: 28px; flex: 1; min-width: 0; max-width: 100%; overflow-x: hidden; }
 .adm-sec { display: none; }
 .adm-sec.on { display: block; animation: fadeUp 0.3s ease; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
@@ -585,7 +586,7 @@ tr:hover td { background: var(--bg2); }
 }
 .view-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .view-btn:hover:not(.active) { color: var(--text); }
-.cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.cal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .cal-title { font-size: 16px; font-weight: 700; }
 .cal-nav-btn {
   background: var(--surface); border: 1px solid var(--border); color: var(--text);
@@ -594,12 +595,12 @@ tr:hover td { background: var(--bg2); }
   font-family: inherit; transition: all var(--transition);
 }
 .cal-nav-btn:hover { border-color: var(--green); }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; max-width: 100%; }
 .cal-dh { text-align: center; font-size: 11px; font-weight: 700; color: var(--text3); padding: 6px 0; text-transform: uppercase; letter-spacing: 0.5px; }
 .cal-cell {
   min-height: 72px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   padding: 7px 6px; cursor: pointer; background: var(--surface);
-  transition: border-color .15s, background .15s, transform .15s;
+  transition: border-color .15s, background .15s, transform .15s; min-width: 0; overflow: hidden;
 }
 .cal-cell:hover:not(.cal-other) { border-color: var(--green); transform: translateY(-1px); }
 .cal-cell.cal-other { border-color: transparent; background: transparent; cursor: default; opacity: .3; }
@@ -614,9 +615,46 @@ tr:hover td { background: var(--bg2); }
 .cal-dot.verifying { background: #4a9ad4; }
 .cal-dot.cancelled { background: var(--red); }
 .cal-count { font-size: 10px; color: var(--text3); font-family: 'DM Mono', monospace; }
+.cal-meta { margin-top: 2px; }
+.cal-mt {
+  font-size:.6rem; font-weight:700; color:var(--yellow); margin-top:2px; line-height:1.3;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cal-mobile-day { display: none; }
 .cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; color: var(--text3); }
 .cal-legend span { display: flex; align-items: center; gap: 5px; }
-@media (max-width: 600px) { .cal-cell { min-height: 52px; padding: 4px; } .cal-dn { font-size: 11px; } .cal-dot { width: 5px; height: 5px; } .cal-dh { font-size: 10px; } }
+@media (max-width: 600px) {
+  .view-toggle { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .view-btn { min-height: 42px; padding: 8px 10px; font-size: 16px !important; }
+  #sec-bookings .panel > div:first-child { gap: 10px !important; }
+  #sec-bookings .panel > div:first-child .btn { flex: 1 1 150px; justify-content: center; min-height: 44px; }
+  .cal-header { margin: 8px 0 12px; }
+  .cal-title { font-size: 18px; text-align: center; flex: 1; }
+  .cal-nav-btn { width: 44px; height: 44px; border-radius: 12px; flex: 0 0 44px; }
+  .cal-grid { display: flex; flex-direction: column; gap: 8px; }
+  .cal-dh, .cal-cell.cal-other { display: none; }
+  .cal-cell {
+    min-height: 0; padding: 12px; border-radius: 12px;
+    display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 12px; align-items: center;
+  }
+  .cal-cell:hover:not(.cal-other) { transform: none; }
+  .cal-mobile-day { display: block; font-size: .68rem; color: var(--text3); text-transform: uppercase; letter-spacing: .7px; font-weight: 800; margin-bottom: 2px; }
+  .cal-dn { font-size: 1.45rem; line-height: 1; margin: 0; text-align: center; grid-row: 1 / span 3; }
+  .cal-dots, .cal-count, .cal-cell > div[style*="font-size:.6rem"] { grid-column: 2; min-width: 0; }
+  .cal-cell > div[style*="font-size:.6rem"] {
+    font-size: .78rem !important; margin-top: 5px !important; white-space: normal !important;
+    overflow: visible !important; text-overflow: clip !important;
+  }
+  .cal-meta { min-width: 0; }
+  .cal-dots { margin: 0 0 5px; gap: 5px; }
+  .cal-dot { width: 8px; height: 8px; }
+  .cal-count { font-size: .86rem; color: var(--text2); }
+  .cal-empty { color: var(--text3); font-size: .82rem; }
+  .cal-mt {
+    font-size: .78rem; margin-top: 5px; white-space: normal; overflow: visible; text-overflow: clip;
+  }
+  .cal-legend { gap: 10px 14px; font-size: .78rem; padding-bottom: 4px; }
+}
 
 /* ── REPORTS ───────────────────────────────────────────── */
 .rp-period { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
