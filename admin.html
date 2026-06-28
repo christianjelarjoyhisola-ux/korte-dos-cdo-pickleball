@@ -1236,12 +1236,12 @@ tr:hover td { background: var(--bg2); }
         <button class="btn btn-g" data-perm="payment_review" onclick="goto('payreview')">Review</button>
       </div>
 
-      <!-- MAINTENANCE FEE SUMMARY -->
+      <!-- BOOKING-DATE FEE SUMMARY -->
       <div class="panel mf-collapsed" id="maintFeePanel" style="margin-bottom:16px;border:1.5px solid rgba(var(--yellow-rgb),.35);background:rgba(var(--yellow-rgb),.04)">
         <div class="mf-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-          <h4 style="margin:0;color:var(--yellow)">🛠️ Developer Maintenance Fee</h4>
+          <h4 style="margin:0;color:var(--yellow)">🛠️ Developer Booking Fee</h4>
           <div class="mf-month-wrap" style="display:flex;align-items:center;gap:8px">
-            <label style="font-size:.78rem;color:var(--text3)">Month:</label>
+            <label style="font-size:.78rem;color:var(--text3)">Booking Month:</label>
             <input type="month" id="maintMonth" style="font-size:.82rem;padding:5px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--input);color:var(--text);cursor:pointer" onchange="renderMaintFee()"/>
           </div>
         </div>
@@ -1268,7 +1268,7 @@ tr:hover td { background: var(--bg2); }
           —
         </div>
         <div class="mf-note" style="margin-top:10px;font-size:.75rem;color:var(--text3);text-align:center">
-          Only counts <strong>confirmed</strong> and <strong>completed</strong> bookings · Cancelled bookings are excluded
+          Counts by the month the booking was made, not the future court play date · Only <strong>confirmed</strong> and <strong>completed</strong> bookings are included
         </div>
       </div>
 
@@ -3179,10 +3179,10 @@ async function renderMaintFee() {
   if ($('mfRateDisplay')) $('mfRateDisplay').textContent = isFlat ? `₱${_maintRate.toFixed(2)} / transaction` : `₱${_maintRate.toFixed(2)} / hr`;
 
   const bks = await DB.getBookings();
-  // Only bill confirmed/completed platform bookings in the selected month.
+  // Only bill confirmed/completed platform bookings made in the selected month.
   // Spreadsheet/manual imports remain visible but do not generate a platform fee.
   const filtered = bks.filter(b =>
-    b.date?.startsWith(selectedMonth) &&
+    bookingRevenueDate(b).startsWith(selectedMonth) &&
     isPlatformBillableBooking(b)
   );
 
@@ -3208,7 +3208,7 @@ async function renderMaintFee() {
   const monthLabel = new Date(yr, parseInt(mo) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 
   if (totalBookings === 0) {
-    $('mfBreakdown').innerHTML = `<span style="color:var(--text3)">No billable online bookings found for ${monthLabel}. Manual spreadsheet imports are excluded.</span>`;
+    $('mfBreakdown').innerHTML = `<span style="color:var(--text3)">No billable online bookings made in ${monthLabel}. Manual spreadsheet imports are excluded.</span>`;
     return;
   }
 
@@ -3230,7 +3230,7 @@ async function renderMaintFee() {
     : `${totalHours} hr${totalHours !== 1 ? 's' : ''} × ₱${_maintRate.toFixed(2)} = <span style="color:var(--yellow);font-size:1rem">${fmt(totalFee)}</span>`;
 
   $('mfBreakdown').innerHTML = `
-    <div style="font-weight:700;margin-bottom:8px;color:var(--text)">📊 Breakdown for ${monthLabel}</div>
+    <div style="font-weight:700;margin-bottom:8px;color:var(--text)">📊 Booking-date breakdown for ${monthLabel}</div>
     ${rows}
     <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;font-weight:700;font-size:.9rem">
       <span>Total</span>
