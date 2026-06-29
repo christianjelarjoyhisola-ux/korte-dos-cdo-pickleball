@@ -144,8 +144,10 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .shared-date-entry {
   display:flex; align-items:center; justify-content:space-between; gap:12px;
   margin:-4px 0 14px; padding:10px 12px;
-  background:linear-gradient(135deg,rgba(var(--ac),.1),rgba(var(--ac),.035));
+  position:sticky; top:72px; z-index:190;
+  background:linear-gradient(135deg,rgba(var(--ac),.1),rgba(var(--ac),.035)), var(--card);
   border:1px solid rgba(var(--ac),.24); border-radius:14px;
+  box-shadow:0 8px 22px rgba(15,36,56,.08);
 }
 .shared-date-title {
   min-width:0; display:flex; flex-direction:column; gap:1px;
@@ -274,7 +276,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 @media(max-width:700px) {
   .find-time-entry { flex-direction:column; align-items:stretch; margin-top:-6px; }
   .find-time-entry .btn { width:100%; justify-content:center; }
-  .shared-date-entry { display:block; padding:9px 10px; margin-bottom:12px; }
+  .shared-date-entry { display:block; top:68px; padding:9px 10px; margin-bottom:12px; }
   .shared-date-title {
     flex-direction:row; align-items:center; justify-content:space-between;
     margin-bottom:7px; gap:10px;
