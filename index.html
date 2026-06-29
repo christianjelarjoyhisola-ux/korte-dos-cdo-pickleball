@@ -247,24 +247,41 @@ body.dark .shared-date-display {
 .date-day:disabled { opacity:.38; cursor:not-allowed; color:var(--muted); }
 .date-picker-foot { display:flex; gap:8px; margin-top:12px; }
 .date-picker-foot .btn { flex:1; justify-content:center; min-height:38px; padding:8px 12px; }
-.ft-modal { max-width:560px; }
-.ft-form {
-  display:grid; grid-template-columns:1fr 1fr 110px; gap:10px;
-  align-items:end; margin-bottom:14px;
+.ft-modal { max-width:500px; border-radius:18px; }
+.ft-modal .bk-modal-hd {
+  padding:15px 18px;
+  background:linear-gradient(135deg,rgba(var(--ac),.11),rgba(var(--ac),.03));
 }
-.ft-field { display:flex; flex-direction:column; gap:6px; }
+.ft-modal .bk-modal-court { font-size:1.35rem; letter-spacing:1.3px; line-height:1; }
+.ft-modal .bk-modal-meta { font-size:.78rem; line-height:1.35; max-width:310px; }
+.ft-modal .bk-modal-body { padding:16px 18px 18px; }
+.ft-modal .bk-modal-x { width:32px; height:32px; border-radius:10px; }
+.ft-form {
+  display:grid; grid-template-columns:1.1fr 1fr .8fr; gap:10px;
+  align-items:end; margin-bottom:12px;
+}
+.ft-field {
+  display:flex; flex-direction:column; gap:5px;
+  padding:8px; border:1px solid rgba(var(--ac),.14);
+  border-radius:12px; background:rgba(var(--ac),.035);
+}
 .ft-field label {
-  font-size:.68rem; font-weight:800; text-transform:uppercase;
-  letter-spacing:.7px; color:var(--muted);
+  font-size:.62rem; font-weight:900; text-transform:uppercase;
+  letter-spacing:.65px; color:var(--muted);
 }
 .ft-field input, .ft-field select {
-  width:100%; background:var(--input); border:1px solid var(--border);
+  width:100%; background:var(--card); border:1px solid var(--border);
   border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
-  font-size:.9rem; padding:10px 11px; min-height:42px;
+  font-size:.86rem; padding:8px 10px; min-height:38px;
 }
 .ft-field input:focus, .ft-field select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--ac),.13); }
-.ft-results { display:flex; flex-direction:column; gap:8px; min-height:72px; }
-.ft-note { color:var(--muted); font-size:.82rem; line-height:1.45; padding:10px 0; }
+.ft-modal .btn-full { min-height:40px; padding:10px 14px; border-radius:10px; }
+.ft-results { display:flex; flex-direction:column; gap:8px; min-height:44px; margin-top:10px; }
+.ft-note {
+  color:var(--muted); font-size:.76rem; line-height:1.4;
+  padding:9px 10px; border-radius:10px; background:rgba(var(--ac),.045);
+  border:1px solid rgba(var(--ac),.12);
+}
 .ft-section-title {
   margin-top:6px; font-size:.7rem; font-weight:900; text-transform:uppercase;
   letter-spacing:.8px; color:var(--accent);
@@ -301,7 +318,18 @@ body.dark .shared-date-display {
   .date-picker-overlay { align-items:flex-end; padding:12px; }
   .date-picker { width:100%; border-radius:18px 18px 14px 14px; padding:13px; }
   .date-day { border-radius:9px; font-size:.76rem; }
-  .ft-form { grid-template-columns:1fr; }
+  .ft-modal { border-radius:18px; }
+  .ft-modal .bk-modal-hd { padding:14px 14px 12px; }
+  .ft-modal .bk-modal-court { font-size:1.12rem; letter-spacing:1px; }
+  .ft-modal .bk-modal-meta { display:none; }
+  .ft-modal .bk-modal-body { padding:12px 14px 14px; }
+  .ft-form { grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+  .ft-field:first-child { grid-column:1 / -1; }
+  .ft-field { padding:7px; border-radius:10px; gap:4px; }
+  .ft-field input, .ft-field select { min-height:36px; font-size:16px; padding:7px 9px; }
+  .ft-modal .btn-full { min-height:38px; padding:9px 12px; font-size:.86rem; }
+  .ft-results { min-height:38px; margin-top:8px; }
+  .ft-note { font-size:.72rem; padding:8px 9px; }
   .ft-result { align-items:stretch; flex-direction:column; }
   .ft-result .btn { width:100%; justify-content:center; }
 }
@@ -2748,7 +2776,7 @@ body.light #splashScreen { background: #071320; }
           </select>
         </div>
       </div>
-      <button class="btn btn-p btn-full" type="button" onclick="searchAvailableTime()">Search Available Time</button>
+      <button class="btn btn-p btn-full" type="button" onclick="searchAvailableTime()">Search Times</button>
       <div class="ft-results" id="ftResults">
         <div class="ft-note">Choose a date and preferred start time, then search.</div>
       </div>
