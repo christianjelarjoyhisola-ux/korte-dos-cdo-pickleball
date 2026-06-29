@@ -257,23 +257,25 @@ body.dark .shared-date-display {
 .ft-modal .bk-modal-body { padding:16px 18px 18px; }
 .ft-modal .bk-modal-x { width:32px; height:32px; border-radius:10px; }
 .ft-form {
-  display:grid; grid-template-columns:1.1fr 1fr .8fr; gap:10px;
+  display:grid; grid-template-columns:1.1fr 1fr .8fr; gap:12px 10px;
   align-items:end; margin-bottom:12px;
 }
 .ft-field {
   display:flex; flex-direction:column; gap:5px;
-  padding:8px; border:1px solid rgba(var(--ac),.14);
-  border-radius:12px; background:rgba(var(--ac),.035);
+  min-width:0;
 }
 .ft-field label {
   font-size:.62rem; font-weight:900; text-transform:uppercase;
   letter-spacing:.65px; color:var(--muted);
 }
 .ft-field input, .ft-field select {
-  width:100%; background:var(--card); border:1px solid var(--border);
+  display:block; width:100%; min-width:0;
+  background:var(--input); border:1px solid var(--border);
   border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
   font-size:.86rem; padding:8px 10px; min-height:38px;
+  appearance:none; -webkit-appearance:none;
 }
+.ft-field input[type="date"] { text-align:left; }
 .ft-field input:focus, .ft-field select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--ac),.13); }
 .ft-modal .btn-full { min-height:40px; padding:10px 14px; border-radius:10px; }
 .ft-results { display:flex; flex-direction:column; gap:8px; min-height:44px; margin-top:10px; }
@@ -325,8 +327,8 @@ body.dark .shared-date-display {
   .ft-modal .bk-modal-body { padding:12px 14px 14px; }
   .ft-form { grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
   .ft-field:first-child { grid-column:1 / -1; }
-  .ft-field { padding:7px; border-radius:10px; gap:4px; }
-  .ft-field input, .ft-field select { min-height:36px; font-size:16px; padding:7px 9px; }
+  .ft-field { gap:4px; }
+  .ft-field input, .ft-field select { min-height:38px; font-size:16px; padding:8px 10px; }
   .ft-modal .btn-full { min-height:38px; padding:9px 12px; font-size:.86rem; }
   .ft-results { min-height:38px; margin-top:8px; }
   .ft-note { font-size:.72rem; padding:8px 9px; }
