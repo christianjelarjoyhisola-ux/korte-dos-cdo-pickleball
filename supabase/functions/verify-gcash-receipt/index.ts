@@ -55,6 +55,16 @@ const HARD_FLAGS = new Set([
 ]);
 
 type PaymentProvider = "gcash" | "bdopay" | "maya" | "gotyme" | "pnb";
+type OcrProvider = "google_vision" | "ocr_space" | "none";
+
+type OcrResult = {
+  text: string;
+  confidence: number;
+  provider: OcrProvider | "google_vision+ocr_space";
+  primaryProvider?: OcrProvider;
+  fallbackProvider?: OcrProvider;
+  fallbackReason?: string;
+};
 
 function publicReceiptMessage(
   result: "auto_approved" | "manual_review" | "rejected",
@@ -657,6 +667,32 @@ function editedBySoftware(bytes: Uint8Array): boolean {
   return /(adobe\s*photoshop|gimp|pixlr|snapseed|picsart|lightroom|inkscape)/i.test(s);
 }
 
+function googleVisionConfidence(annotation: Record<string, unknown> | null, text: string): number {
+  if (!annotation) return text.length > 40 ? 0.9 : text.length > 0 ? 0.5 : 0;
+  const pages = Array.isArray(annotation.pages) ? annotation.pages as Array<Record<string, unknown>> : [];
+  if (pages.length && typeof pages[0].confidence === "number" && pages[0].confidence > 0) {
+    return pages[0].confidence;
+  }
+
+  let total = 0;
+  let count = 0;
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== "object") return;
+    const item = node as Record<string, unknown>;
+    if (typeof item.confidence === "number" && item.confidence > 0) {
+      total += item.confidence;
+      count++;
+    }
+    for (const key of ["blocks", "paragraphs", "words", "symbols"]) {
+      const children = item[key];
+      if (Array.isArray(children)) children.forEach(visit);
+    }
+  };
+  pages.forEach(visit);
+  if (count > 0) return total / count;
+  return text.length > 40 ? 0.9 : text.length > 0 ? 0.5 : 0;
+}
+
 async function googleVisionOCR(apiKey: string, base64: string): Promise<{ text: string; confidence: number }> {
   const content = base64.startsWith("data:") ? base64.slice(base64.indexOf(",") + 1) : base64;
   const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
@@ -665,7 +701,7 @@ async function googleVisionOCR(apiKey: string, base64: string): Promise<{ text: 
     body: JSON.stringify({
       requests: [{
         image: { content },
-        features: [{ type: "TEXT_DETECTION", maxResults: 1 }],
+        features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
         imageContext: { languageHints: ["en"] },
       }],
     }),
@@ -675,12 +711,7 @@ async function googleVisionOCR(apiKey: string, base64: string): Promise<{ text: 
   const r = data?.responses?.[0];
   if (r?.error) throw new Error(`Vision: ${errMsg(r.error)}`);
   const text: string = r?.fullTextAnnotation?.text || r?.textAnnotations?.[0]?.description || "";
-  // Confidence from page blocks when available; fall back on text length.
-  let confidence = 0;
-  const pages = r?.fullTextAnnotation?.pages || [];
-  if (pages.length && typeof pages[0].confidence === "number") confidence = pages[0].confidence;
-  else confidence = text.length > 40 ? 0.9 : text.length > 0 ? 0.5 : 0;
-  return { text, confidence };
+  return { text, confidence: googleVisionConfidence(r?.fullTextAnnotation || null, text) };
 }
 
 // OCR.space — free OCR API that does NOT require a credit card / billing.
@@ -707,26 +738,76 @@ async function ocrSpaceOCR(apiKey: string, base64: string, contentType: string):
   return { text, confidence };
 }
 
-// Try Google Vision first (best quality); if it is unconfigured, billing-disabled,
-// or returns nothing, fall back to OCR.space so verification still works.
+// Try Google Vision first (best quality). If it is unconfigured, billing-disabled,
+// returns nothing, or misses ref/amount/date, use OCR.space as a fallback.
+function ocrCriticalGaps(text: string, provider: PaymentProvider, typedRef: string): string[] {
+  if (!text) return ["text"];
+  const gaps: string[] = [];
+  if (!extractReference(text, provider, typedRef)) gaps.push("reference");
+  if (extractAmount(text) == null) gaps.push("amount");
+  if (!parseReceiptDateTime(text).date) gaps.push("date");
+  return gaps;
+}
+
+function combineOcrText(primary: string, fallback: string): string {
+  const a = primary.trim();
+  const b = fallback.trim();
+  if (!a) return b;
+  if (!b) return a;
+  if (a.includes(b)) return a;
+  if (b.includes(a)) return b;
+  return `${a}\n\n${b}`;
+}
+
 async function runOCR(
   visionKey: string,
   ocrSpaceKey: string,
   base64: string,
   contentType: string,
-): Promise<{ text: string; confidence: number; provider: string }> {
+  provider: PaymentProvider,
+  typedRef: string,
+): Promise<OcrResult> {
   if (visionKey) {
     try {
       const v = await googleVisionOCR(visionKey, base64);
-      if (v.text) return { ...v, provider: "google_vision" };
-      console.error("Vision returned empty text — falling back to OCR.space");
+      const gaps = ocrCriticalGaps(v.text, provider, typedRef);
+      if (v.text && gaps.length === 0) {
+        return { ...v, provider: "google_vision", primaryProvider: "google_vision" };
+      }
+      if (ocrSpaceKey) {
+        try {
+          const o = await ocrSpaceOCR(ocrSpaceKey, base64, contentType);
+          const merged = combineOcrText(v.text, o.text);
+          const mergedGaps = ocrCriticalGaps(merged, provider, typedRef);
+          const useMerged = v.text && o.text && mergedGaps.length <= gaps.length;
+          return {
+            text: useMerged ? merged : o.text || v.text,
+            confidence: Math.max(v.confidence, o.confidence),
+            provider: useMerged ? "google_vision+ocr_space" : o.text ? "ocr_space" : v.text ? "google_vision" : "none",
+            primaryProvider: "google_vision",
+            fallbackProvider: "ocr_space",
+            fallbackReason: gaps.includes("text") ? "google_empty_text" : `google_missing_${gaps.join("_")}`,
+          };
+        } catch (e) {
+          console.error("OCR.space fallback failed:", errMsg(e));
+        }
+      }
+      if (v.text) {
+        return {
+          ...v,
+          provider: "google_vision",
+          primaryProvider: "google_vision",
+          fallbackReason: gaps.length ? `google_missing_${gaps.join("_")}` : undefined,
+        };
+      }
+      console.error("Vision OCR missing critical fields and no OCR.space fallback was available:", gaps.join(","));
     } catch (e) {
       console.error("Vision OCR failed, falling back to OCR.space:", errMsg(e));
     }
   }
   if (ocrSpaceKey) {
     const o = await ocrSpaceOCR(ocrSpaceKey, base64, contentType);
-    return { ...o, provider: "ocr_space" };
+    return { ...o, provider: "ocr_space", primaryProvider: "ocr_space" };
   }
   return { text: "", confidence: 0, provider: "none" };
 }
@@ -885,12 +966,21 @@ Deno.serve(async (req) => {
     const visionKey = Deno.env.get("GOOGLE_VISION_API_KEY") || "";
     // OCR.space free key (no billing required). Defaults to the public demo key.
     const ocrSpaceKey = Deno.env.get("OCRSPACE_API_KEY") || "helloworld";
+    const typedRef = normalizeReferenceForProvider(String(booking.gcash_ref || ""), provider);
     let ocrText = "";
     let ocrConfidence = 0;
+    let ocrProvider: OcrResult["provider"] = "none";
+    let ocrPrimaryProvider: OcrResult["primaryProvider"] = "none";
+    let ocrFallbackProvider: OcrResult["fallbackProvider"] | null = null;
+    let ocrFallbackReason: string | null = null;
     try {
-      const ocr = await runOCR(visionKey, ocrSpaceKey, imageBase64, contentType);
+      const ocr = await runOCR(visionKey, ocrSpaceKey, imageBase64, contentType, provider, typedRef);
       ocrText = ocr.text;
       ocrConfidence = ocr.confidence;
+      ocrProvider = ocr.provider;
+      ocrPrimaryProvider = ocr.primaryProvider || (ocr.provider === "google_vision+ocr_space" ? "google_vision" : ocr.provider);
+      ocrFallbackProvider = ocr.fallbackProvider || null;
+      ocrFallbackReason = ocr.fallbackReason || null;
     } catch (e) {
       console.error("OCR failed (all providers):", errMsg(e));
     }
@@ -905,7 +995,6 @@ Deno.serve(async (req) => {
     }
 
     // ── field extraction ────────────────────────────────────────────────────
-    const typedRef = normalizeReferenceForProvider(String(booking.gcash_ref || ""), provider);
     const extractedRef = extractReference(ocrText, provider, typedRef);
     const extractedInvoice = provider === "bdopay" ? extractBdoInvoiceNumber(ocrText) : null;
     const extractedInstapayRefNo = provider === "maya" ? extractMayaInstapayRefNo(ocrText) : null;
@@ -1097,6 +1186,12 @@ Deno.serve(async (req) => {
       allowedPaymentEarlyToleranceMinutes: PAYMENT_EARLY_TOLERANCE_MINUTES,
       expectedAmount,
       provider,
+      ocrProvider,
+      ocrPrimaryProvider,
+      ocrFallbackProvider,
+      ocrFallbackReason,
+      ocrConfidence,
+      ocrTextLength: ocrText.length,
       expectedReceiverNumber: provider === "bdopay" || provider === "maya" ? null : expectedNumber || null,
       expectedReceiverName: expectedName || null,
     };

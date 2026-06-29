@@ -2932,6 +2932,15 @@ function receiptAmountValue(value){
   const n = Number(value);
   return Number.isFinite(n) ? fmt(n) : '--';
 }
+function receiptOcrProviderLabel(value){
+  const v = String(value || '').toLowerCase();
+  return ({
+    google_vision: 'Google Vision',
+    ocr_space: 'OCR.space',
+    'google_vision+ocr_space': 'Google Vision + OCR.space',
+    none: 'None',
+  })[v] || (value ? esc(value) : '--');
+}
 function receiptTimeValue(extracted){
   if (!extracted) return '--';
   if (extracted.timePh12) return esc(extracted.timePh12);
@@ -2958,7 +2967,9 @@ function receiptDetailsHtml(b){
     ['Receipt Date', receiptDetailValue(ex.date)],
     ['Booking Started', receiptDetailValue(ex.bookingStartedAtPh12)],
     ['Window', ex.allowedPaymentWindowMinutes ? `${esc(ex.allowedPaymentWindowMinutes)} min` : '--'],
+    ['OCR Engine', receiptOcrProviderLabel(ex.ocrProvider)],
     ['Receiver', receiptReceiverValue(ex), true],
+    ...(ex.ocrFallbackReason ? [['OCR Fallback', receiptDetailValue(ex.ocrFallbackReason), true]] : []),
     ['Reason', receiptDetailValue(reason), true],
     ['Confidence', receiptDetailValue(confidence)],
   ];

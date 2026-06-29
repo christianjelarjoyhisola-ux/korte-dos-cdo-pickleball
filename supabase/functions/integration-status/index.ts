@@ -48,11 +48,11 @@ function receiptOcrService(): ServiceStatus {
     label: "Receipt OCR",
     configured,
     required: ["GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY"],
-    recommended: ["OCRSPACE_API_KEY"],
+    recommended: ["GOOGLE_VISION_API_KEY", "OCRSPACE_API_KEY fallback"],
     missing: configured ? [] : ["GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY"],
     note: configured
-      ? "Receipt verification can use a configured OCR provider."
-      : "The demo OCR.space key may be rate-limited; add a real OCR key for reliable checks.",
+      ? "Receipt verification uses Google Vision first when configured, with OCR.space as fallback."
+      : "Add Google Vision for primary receipt OCR. OCR.space can be kept as fallback.",
   };
 }
 
