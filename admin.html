@@ -3358,20 +3358,25 @@ function renderDashCharts(bookings) {
 let autoCompleteRan = false;
 async function autoCompleteBookings(bks) {
   if (autoCompleteRan) return;
-  autoCompleteRan = true;
   const now = new Date();
   const toComplete = bks.filter(b => {
     if (b.status !== 'confirmed') return false;
-    const [time, period] = b.endTime.split(' ');
+    if (!b.date || !b.endTime) return false;
+    const [time, period] = String(b.endTime).trim().split(/\s+/);
+    if (!time || !period) return false;
     let [hh] = time.split(':').map(Number);
+    if (!Number.isFinite(hh)) return false;
     if (period === 'PM' && hh !== 12) hh += 12;
     if (period === 'AM' && hh === 12) hh = 0;
     const endDt = new Date(`${b.date}T${String(hh).padStart(2,'0')}:00:00`);
+    if (Number.isNaN(endDt.getTime())) return false;
     return (now - endDt) > 24 * 60 * 60 * 1000;
   });
   if (toComplete.length > 0) {
     await Promise.all(toComplete.map(b => DB.updateBooking(b.ref, { status: 'completed' })));
   }
+  autoCompleteRan = true;
+  return toComplete.length;
 }
 
 let _bookingRenderSeq = 0;
@@ -3416,12 +3421,21 @@ async function renderBookings(){
   const canDelete=Auth.can('booking_delete', sess.role);
   const body = $('bookBody');
   if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">Loading bookings...</td></tr>';
-  let bks=await DB.getBookings();
+  let bks;
+  try {
+    bks=await DB.getBookings();
+  } catch (e) {
+    console.error('renderBookings getBookings failed:', e);
+    updateBookingFilterMeta(0, 0, bookingFilters());
+    if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">Could not load bookings. Please refresh and try again.</td></tr>';
+    return;
+  }
   if (seq !== _bookingRenderSeq) return;
-  await autoCompleteBookings(bks);
-  if (seq !== _bookingRenderSeq) return;
-  bks=await DB.getBookings(); // reload after auto-complete
-  if (seq !== _bookingRenderSeq) return;
+  autoCompleteBookings(bks)
+    .then(changed => {
+      if (changed > 0 && _curSection === 'bookings' && seq === _bookingRenderSeq) renderBookings();
+    })
+    .catch(e => console.warn('autoCompleteBookings skipped:', e));
   // Hide placeholder slot-holds ("Reserving…"): these are temporary locks created
   // when a customer clicks Book Now but hasn't submitted yet. A completed booking
   // carries the real customer email, so any row still on reserve@hold.internal is
