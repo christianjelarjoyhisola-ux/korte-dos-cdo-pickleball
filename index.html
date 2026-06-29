@@ -134,13 +134,13 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .sec-hd p { color:var(--muted); font-size:.88rem; }
 .find-time-entry {
   display:flex; align-items:center; justify-content:space-between; gap:14px;
-  margin:-10px 0 18px; padding:14px 16px;
-  background:linear-gradient(135deg,rgba(var(--ac),.12),rgba(var(--ac),.04));
-  border:1px solid rgba(var(--ac),.25); border-radius:var(--r);
+  margin:-10px 0 12px; padding:9px 10px 9px 12px;
+  background:rgba(var(--ac),.06);
+  border:1px solid rgba(var(--ac),.18); border-radius:10px;
 }
-.find-time-entry strong { display:block; font-size:.95rem; color:var(--text); }
-.find-time-entry span { display:block; font-size:.78rem; color:var(--muted); margin-top:2px; }
-.find-time-entry .btn { flex-shrink:0; }
+.find-time-entry strong { display:block; font-size:.82rem; color:var(--text); line-height:1.15; }
+.find-time-entry span { display:block; font-size:.68rem; color:var(--muted); margin-top:1px; }
+.find-time-entry .btn { flex-shrink:0; min-height:34px; padding:7px 13px; }
 .shared-date-entry {
   display:flex; align-items:center; justify-content:space-between; gap:12px;
   margin:-4px 0 14px; padding:10px 12px;
@@ -280,8 +280,9 @@ body.dark .shared-date-display {
 .ft-result-price { color:var(--accent); font-size:.8rem; font-weight:800; margin-top:3px; }
 .ft-result .btn { padding:8px 13px; }
 @media(max-width:700px) {
-  .find-time-entry { flex-direction:column; align-items:stretch; margin-top:-6px; }
-  .find-time-entry .btn { width:100%; justify-content:center; }
+  .find-time-entry { margin-top:-6px; gap:10px; }
+  .find-time-entry span { display:none; }
+  .find-time-entry .btn { justify-content:center; min-width:82px; }
   .shared-date-entry { display:block; top:68px; padding:9px 10px; margin-bottom:12px; }
   .shared-date-title {
     flex-direction:row; align-items:center; justify-content:space-between;
@@ -2671,9 +2672,9 @@ body.light #splashScreen { background: #071320; }
   <div class="find-time-entry">
     <div>
       <strong>Find an available time</strong>
-      <span>Pick a date, time, and duration to quickly search all courts.</span>
+      <span>Search all courts by date and duration.</span>
     </div>
-    <button class="btn btn-p" type="button" onclick="openFindTimeModal()">Find Available Time</button>
+    <button class="btn btn-p btn-sm" type="button" onclick="openFindTimeModal()">Search</button>
   </div>
   <div class="court-tabs-hint">👇 Tap a court to view available times 👇</div>
   <div class="shared-date-entry">
