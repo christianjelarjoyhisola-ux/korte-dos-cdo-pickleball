@@ -327,6 +327,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .cc-photo-avail.av  { background:var(--lime); color:var(--navy-dark); }
 .cc-photo-avail.full{ background:var(--red); color:#fff; }
 .cc-photo-avail.mnt { background:rgba(140,140,140,.85); color:#fff; }
+.cc-photo-avail.done{ background:#64748b; color:#fff; }
 .cc-photo-bar {
   position:absolute; bottom:0; left:0; right:0;
   background:linear-gradient(transparent,rgba(0,0,0,.82));
@@ -417,7 +418,7 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 @media(max-width:700px){
   .cc { flex-direction:column; display:none; }
   .cc.active-mobile { display:flex; }
-  .cc-photo { width:100%; min-height:140px; max-height:140px; }
+  .cc-photo { display:none; }
   .cc-times { padding:10px 12px 12px; }
   .cc-times-sub { display:none; }
   .cc-slots-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
@@ -541,16 +542,40 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 @media(max-width:700px) {
   .cc-mobile-hd {
     display:flex; align-items:center; justify-content:space-between;
-    padding:10px 14px 8px;
-    background:rgba(var(--ac),.07); border-bottom:1px solid rgba(var(--ac),.18);
-    font-size:.84rem; font-weight:700; color:var(--accent);
-    gap:8px;
+    padding:12px 14px;
+    background:linear-gradient(135deg,rgba(var(--ac),.10),rgba(var(--ac),.035));
+    border-bottom:1px solid rgba(var(--ac),.18);
+    gap:10px;
+  }
+  .cc-mobile-title {
+    display:flex; flex-direction:column; gap:2px; min-width:0;
+    color:var(--accent); font-weight:900;
+  }
+  .cc-mobile-name {
+    font-size:.9rem; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .cc-mobile-meta {
+    color:var(--muted); font-size:.7rem; font-weight:700; line-height:1.2;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .cc-mobile-side {
+    display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex:0 0 auto;
   }
   .cc-mobile-hd-date {
     font-size:.72rem; color:var(--muted); font-weight:500;
     background:var(--input); border:1px solid var(--border);
     border-radius:var(--r-sm); padding:2px 8px;
   }
+  .cc-mobile-status {
+    max-width:148px; border-radius:999px; padding:3px 8px;
+    font-size:.62rem; font-weight:900; line-height:1.15;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    border:1px solid transparent;
+  }
+  .cc-mobile-status.av { background:rgba(var(--lime-rgb),.16); color:var(--lime-ink); border-color:rgba(var(--lime-rgb),.34); }
+  .cc-mobile-status.full { background:rgba(220,38,38,.10); color:var(--red); border-color:rgba(220,38,38,.22); }
+  .cc-mobile-status.mnt { background:rgba(100,116,139,.12); color:var(--muted); border-color:rgba(100,116,139,.24); }
+  .cc-mobile-status.done { background:rgba(100,116,139,.12); color:var(--muted); border-color:rgba(100,116,139,.24); }
 }
 
 /* SLOT BUTTON — landscape style */
@@ -4266,6 +4291,27 @@ function getOpenPlaySessionState(date, session, spotsLeft = 1) {
   return 'joinable';
 }
 
+function courtAvailabilityBadge({ blocked, date, allSlots, curHour, bookedHours, courtId }) {
+  if (blocked) return { cls: 'mnt', text: '🔧 Maintenance' };
+
+  const isPastDate_ = date < todayStr();
+  const futureHours = allSlots.filter(h => h > curHour);
+  const maintenanceHours = futureHours.filter(h => isMaintenanceHour(date, h, courtId));
+  if (futureHours.length > 0 && maintenanceHours.length === futureHours.length) {
+    return { cls: 'mnt', text: '🔧 Maintenance' };
+  }
+
+  const activeHours = futureHours.filter(h => !isMaintenanceHour(date, h, courtId));
+  const regularHours = activeHours.filter(h => !isOpenPlayHour(date, h, courtId));
+  const openPlayHours = activeHours.filter(h => isOpenPlayHour(date, h, courtId));
+  const availableRegular = regularHours.filter(h => !bookedHours.has(h)).length;
+
+  if (availableRegular > 0) return { cls: 'av', text: `⚡ ${availableRegular} available` };
+  if (regularHours.length === 0 && openPlayHours.length > 0) return { cls: 'av', text: '🏓 Open Play only' };
+  if (activeHours.length === 0) return { cls: 'done', text: isPastDate_ ? 'Past date' : 'Done today' };
+  return { cls: 'full', text: '⛔ Fully booked' };
+}
+
 function openPlaySessionHtml({ courtId, courtName, date, session, spotsLeft, maxPlayers, compact = false }) {
   if (!session) return '';
   const state = getOpenPlaySessionState(date, session, spotsLeft);
@@ -4982,8 +5028,7 @@ function updateCardUI(courtId) {
     if (mobileBar) {
       if (mobileSumEl) mobileSumEl.textContent = txt;
       if (mobileCtEl) {
-        const hdEl = document.querySelector(`[data-id="${courtId}"] .cc-mobile-hd span:first-child`);
-        mobileCtEl.textContent = hdEl ? hdEl.textContent.replace('📍 ', '') : '';
+        mobileCtEl.textContent = sel.courtName || '';
       }
       mobileBar.style.display = 'flex';
     }
@@ -5595,15 +5640,14 @@ async function onCardDate(courtId, date, options = {}) {
   if (availBadgeEl) {
     const isToday_badge = date === todayStr();
     const curHour_badge = isToday_badge ? nowHour() : (isPastDate_ ? 999 : -1);
-    const avail = allSlots.filter(h => h > curHour_badge && !bookedHrs.has(h) && !isOpenPlayHour(date, h, courtId) && !isMaintenanceHour(date, h, courtId)).length;
-    const bookable = allSlots.filter(h => h > curHour_badge && !isOpenPlayHour(date, h, courtId) && !isMaintenanceHour(date, h, courtId)).length;
-    const [cls, txt] = avail > 0
-      ? ['av', `⚡ ${avail} available`]
-      : bookable === 0
-      ? ['av', '🏓 Open Play only']
-      : ['full', '⛔ Fully booked'];
-    availBadgeEl.className = `cc-photo-avail ${cls}`;
-    availBadgeEl.textContent = txt;
+    const badge = courtAvailabilityBadge({ blocked: false, date, allSlots, curHour: curHour_badge, bookedHours: bookedHrs, courtId });
+    availBadgeEl.className = `cc-photo-avail ${badge.cls}`;
+    availBadgeEl.textContent = badge.text;
+    const mobileBadgeEl = $('cMobAvail_' + courtId);
+    if (mobileBadgeEl) {
+      mobileBadgeEl.className = `cc-mobile-status ${badge.cls}`;
+      mobileBadgeEl.textContent = badge.text;
+    }
   }
 
   grid.innerHTML = openPlayCardHtml + allSlots.map(h => {
@@ -5675,10 +5719,9 @@ async function renderCourts() {
     const todayOpenPlaySession = todayOpenPlay.session;
     const todayOpenPlaySpotsLeft = todayOpenPlay.spotsLeft || 0;
 
-    const availToday = blk ? 0 : allSlots.filter(h => h > curHour && !bookedHours.has(h) && !isOpenPlayHour(selectedDate, h, c.id) && !isMaintenanceHour(selectedDate, h, c.id)).length;
-    const bookableToday = blk ? 0 : allSlots.filter(h => h > curHour && !isOpenPlayHour(selectedDate, h, c.id) && !isMaintenanceHour(selectedDate, h, c.id)).length;
-    const availBadgeCls = blk ? 'mnt' : availToday > 0 ? 'av' : bookableToday === 0 ? 'av' : 'full';
-    const availBadgeTxt = blk ? '🔧 Maintenance' : availToday > 0 ? `⚡ ${availToday} available` : bookableToday === 0 ? '🏓 Open Play only' : '⛔ Fully booked';
+    const availBadge = courtAvailabilityBadge({ blocked: blk, date: selectedDate, allSlots, curHour, bookedHours, courtId: c.id });
+    const availBadgeCls = availBadge.cls;
+    const availBadgeTxt = availBadge.text;
 
     // Use this court's own rate schedule, fall back to global tiers, then flat rate
     const _cTiers = getPricingTiersForCourt(c);
@@ -5732,8 +5775,14 @@ async function renderCourts() {
 
       <!-- MOBILE-ONLY HEADER -->
       <div class="cc-mobile-hd">
-        <span>📍 ${esc(c.name)}</span>
-        <span class="cc-mobile-hd-date" id="cMobDate_${esc(c.id)}">${esc(isSelectedToday ? 'Today' : fmtD(selectedDate).replace(/^[^,]+,\s*/, ''))}</span>
+        <div class="cc-mobile-title">
+          <span class="cc-mobile-name">📍 ${esc(c.name)}</span>
+          <span class="cc-mobile-meta">${esc(rateRange)} · ${esc(c.desc || 'Court')}</span>
+        </div>
+        <div class="cc-mobile-side">
+          <span class="cc-mobile-hd-date" id="cMobDate_${esc(c.id)}">${esc(isSelectedToday ? 'Today' : fmtD(selectedDate).replace(/^[^,]+,\s*/, ''))}</span>
+          <span class="cc-mobile-status ${availBadgeCls}" id="cMobAvail_${esc(c.id)}">${esc(availBadgeTxt)}</span>
+        </div>
       </div>
 
       <!-- LEFT: Photo -->
@@ -5803,8 +5852,8 @@ async function renderCourts() {
         bookings.filter(b => b.courtId === c.id && b.date === today_ && b.status !== 'cancelled')
                 .flatMap(b => b.slots)
       );
-      const avail_ = blk ? 0 : allSl_.filter(h => h > cur_ && !booked_.has(h) && !isOpenPlayHour(today_, h, c.id) && !isMaintenanceHour(today_, h, c.id)).length;
-      const dotCls  = blk ? 'tab-dot-mnt' : avail_ > 0 ? 'tab-dot-av' : 'tab-dot-full';
+      const tabBadge = courtAvailabilityBadge({ blocked: blk, date: today_, allSlots: allSl_, curHour: cur_, bookedHours: booked_, courtId: c.id });
+      const dotCls  = tabBadge.cls === 'mnt' || tabBadge.cls === 'done' ? 'tab-dot-mnt' : tabBadge.cls === 'av' ? 'tab-dot-av' : 'tab-dot-full';
       const shortName = c.name.replace(/^SMASH\s*/i, '');
       return `<button class="court-tab" data-court="${esc(c.id)}" onclick="switchCourtTab('${jsArg(c.id)}')" title="${esc(c.name)}">
         <span class="tab-dot ${dotCls}"></span>${esc(shortName)}
