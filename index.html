@@ -143,17 +143,12 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .find-time-entry .btn { flex-shrink:0; }
 .shared-date-entry {
   display:flex; align-items:center; justify-content:space-between; gap:12px;
-  margin:-4px 0 14px; padding:10px 12px 10px 16px;
+  margin:-4px 0 14px; padding:10px 12px;
   position:sticky; top:72px; z-index:190;
   background:linear-gradient(135deg,rgba(var(--ac),.18),rgba(var(--ac),.06)), var(--card);
   border:1.5px solid rgba(var(--ac),.42); border-radius:14px;
   box-shadow:0 10px 28px rgba(15,36,56,.14);
   overflow:hidden;
-}
-.shared-date-entry::before {
-  content:'';
-  position:absolute; left:0; top:0; bottom:0; width:5px;
-  background:var(--accent);
 }
 .shared-date-title {
   min-width:0; display:flex; flex-direction:column; gap:1px;
