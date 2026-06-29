@@ -227,6 +227,21 @@ function _telegramBookingPayload(b, extras = {}) {
 // ROW ↔ JS OBJECT MAPPING
 // SQL uses snake_case; JS objects use camelCase
 // =============================================
+const PB_DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'];
+
+function normalizePaymentKey(value, fallback = '') {
+  return String(value || fallback || '').toLowerCase().trim();
+}
+
+function receivedAccountForBooking(b = {}) {
+  const explicit = normalizePaymentKey(b.receivedAccount || b.received_account);
+  if (explicit) return explicit;
+
+  const method = normalizePaymentKey(b.paymentMethod || b.payment_method, 'cash');
+  if (PB_DIGITAL_PAYMENT_METHODS.includes(method)) return 'gcash';
+  return method || 'cash';
+}
+
 function _fmtBookingHour(h) {
   const hour = Number(h);
   if (!Number.isFinite(hour)) return '';
@@ -267,6 +282,7 @@ function rowToBooking(r) {
     rate:          r.rate,
     total:         r.total,
     paymentMethod: r.payment_method,
+    receivedAccount: receivedAccountForBooking(r),
     paymentFlow:   r.payment_flow || null,
     paymentStatus: r.payment_status || 'unpaid',
     paymentProvider: r.payment_provider || null,
@@ -330,6 +346,7 @@ function bookingToRow(b) {
     rate:           b.rate,
     total:          b.total,
     payment_method: b.paymentMethod,
+    received_account: receivedAccountForBooking(b),
     payment_flow:   b.paymentFlow || null,
     payment_status: b.paymentStatus || 'unpaid',
     payment_provider: b.paymentProvider || null,
@@ -558,6 +575,8 @@ window.DB = {
     if (updates.email     !== undefined) row.email = updates.email;
     if (updates.total     !== undefined) row.total = updates.total;
     if (updates.paymentMethod !== undefined) row.payment_method = updates.paymentMethod;
+    if (updates.receivedAccount !== undefined) row.received_account = receivedAccountForBooking(updates);
+    else if (updates.paymentMethod !== undefined) row.received_account = receivedAccountForBooking(updates);
     if (updates.paymentStatus !== undefined) row.payment_status = updates.paymentStatus;
     if (updates.paymentFlow !== undefined) row.payment_flow = updates.paymentFlow;
     if (updates.paymentProvider !== undefined) row.payment_provider = updates.paymentProvider;
@@ -1357,13 +1376,27 @@ window.DB = {
       if (hasSlotConflict(existing, booking)) {
         throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
       }
-      db.bookings.push({ ...booking, ref: booking.ref || localRef('PB'), createdAt: booking.createdAt || nowIso() });
+      const row = {
+        ...booking,
+        ref: booking.ref || localRef('PB'),
+        receivedAccount: receivedAccountForBooking(booking),
+        createdAt: booking.createdAt || nowIso(),
+      };
+      db.bookings.push(row);
       writeDb(db);
     },
     async getBookingByRef(ref) { return readDb().bookings.find(b => String(b.ref) === String(ref)) || null; },
     async updateBooking(ref, updates) {
       const db = readDb();
-      db.bookings = db.bookings.map(b => String(b.ref) === String(ref) ? { ...b, ...updates } : b);
+      db.bookings = db.bookings.map(b => {
+        if (String(b.ref) !== String(ref)) return b;
+        const next = { ...b, ...updates };
+        if (updates.receivedAccount === undefined && updates.paymentMethod !== undefined) {
+          next.receivedAccount = receivedAccountForBooking(next);
+        }
+        if (!next.receivedAccount) next.receivedAccount = receivedAccountForBooking(next);
+        return next;
+      });
       writeDb(db);
     },
     async markBookingsBilled(refs, weeklyFeeId) {

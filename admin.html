@@ -241,6 +241,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 
 /* ── REVENUE GRID ──────────────────────────────────────── */
 .rev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 26px; }
+#sec-reports .rp-ledger-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .panel {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r); padding: 18px;
@@ -933,12 +934,21 @@ tr:hover td { background: var(--bg2); }
 .rp-bar-track { flex: 1; height: 10px; background: var(--bg2); border-radius: 5px; overflow: hidden; }
 .rp-bar-fill { height: 100%; border-radius: 5px; transition: width .5s ease; background: var(--green); }
 .rp-bar-val { min-width: 80px; text-align: right; font-size: 13px; font-weight: 700; font-family: 'DM Mono', monospace; }
+.rp-panel-note {
+  margin-top: 12px; padding: 10px 11px; border-radius: 8px;
+  background: var(--input); border: 1px solid var(--border);
+  color: var(--text3); font-size: 12px; line-height: 1.45;
+}
+.rp-panel-note strong { color: var(--text); font-weight: 800; }
 .rp-trend-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .rp-trend-month { min-width: 64px; font-size: 13px; color: var(--text3); }
 .rp-trend-track { flex: 1; height: 22px; background: var(--bg2); border-radius: 5px; overflow: hidden; }
 .rp-trend-fill { height: 100%; border-radius: 5px; transition: width .5s ease; background: var(--green); display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 700; color: #0d2a00; white-space: nowrap; min-width: 0; }
 .rp-trend-val { min-width: 82px; text-align: right; font-size: 13px; font-weight: 700; font-family: 'DM Mono', monospace; }
 .rp-empty { font-size: 13px; color: var(--text3); font-style: italic; padding: 8px 0; }
+@media (max-width: 1100px) {
+  #sec-reports .rp-ledger-grid { grid-template-columns: 1fr; }
+}
 
 /* ── OPEN PLAY DAY CHIPS ──────────────────────────────── */
 .op-day {
@@ -1298,7 +1308,7 @@ tr:hover td { background: var(--bg2); }
 
       <div class="rev-grid">
         <div class="panel">
-          <h4>Payment Breakdown</h4>
+          <h4>Money Received To</h4>
           <div class="pay-row"><span>📲 GCash</span><span id="pGcash">₱0.00</span></div>
           <div class="bar bar-g"><div class="bar-fill" id="gBar" style="width:0%"></div></div>
           <div class="pay-row"><span>💵 Cash</span><span id="pCash">₱0.00</span></div>
@@ -1476,14 +1486,19 @@ tr:hover td { background: var(--bg2); }
       </div>
 
       <!-- Charts row -->
-      <div class="rev-grid">
+      <div class="rev-grid rp-ledger-grid">
         <div class="panel">
           <h4>Revenue by Court</h4>
           <div id="rpCourtChart"><p class="rp-empty">No data.</p></div>
         </div>
         <div class="panel">
-          <h4>Revenue by Payment Method</h4>
+          <h4>Revenue by Paid Using</h4>
           <div id="rpPayChart"><p class="rp-empty">No data.</p></div>
+        </div>
+        <div class="panel">
+          <h4>Money Received To</h4>
+          <div id="rpReceivedChart"><p class="rp-empty">No data.</p></div>
+          <div class="rp-panel-note"><strong>Accounting view:</strong> digital rails such as BDO Pay, Maya, GoTyme, and PNB are recorded as received to GCash unless a booking has an explicit receiving account.</div>
         </div>
       </div>
 
@@ -2801,6 +2816,7 @@ function groupBookings(bookings = []) {
       total,
       downpayment,
       paymentMethod: commonValue(items, 'paymentMethod', primary.paymentMethod || ''),
+      receivedAccount: commonValue(items, 'receivedAccount', primary.receivedAccount || receivedAccountKey(primary)),
       paymentStatus: bookingGroupStatus(items, 'paymentStatus'),
       status: bookingGroupStatus(items, 'status'),
       gcashRef: commonValue(items, 'gcashRef', primary.gcashRef || ''),
@@ -3166,8 +3182,8 @@ async function renderDash(){
   $('dToday').textContent=todayBks.length;
   $('dRev').textContent=fmt(rev);
   $('dMost').textContent=most?most[0]:'—';
-  const gc=activeTxns.filter(b=>b.paymentMethod==='gcash').reduce((s,b)=>s+b.total,0);
-  const ca=activeTxns.filter(b=>b.paymentMethod==='cash').reduce((s,b)=>s+b.total,0);
+  const gc=activeTxns.filter(b=>receivedAccountKey(b)==='gcash').reduce((s,b)=>s+b.total,0);
+  const ca=activeTxns.filter(b=>receivedAccountKey(b)==='cash').reduce((s,b)=>s+b.total,0);
   $('pGcash').textContent=fmt(gc); $('pCash').textContent=fmt(ca);
   const tot=gc+ca;
   $('gBar').style.width=(tot>0?Math.round(gc/tot*100):0)+'%';
@@ -3552,6 +3568,18 @@ function paymentMethodLabel(m) {
 
 function isDigitalPayment(m) {
   return ['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'].includes(String(m || '').toLowerCase());
+}
+
+function receivedAccountKey(b) {
+  const explicit = String(b?.receivedAccount || b?.received_account || '').toLowerCase().trim();
+  if (explicit) return explicit;
+  const method = String(b?.paymentMethod || b?.payment_method || '').toLowerCase();
+  if (isDigitalPayment(method)) return 'gcash';
+  return method || 'cash';
+}
+
+function receivedAccountLabel(b) {
+  return paymentMethodLabel(receivedAccountKey(b));
 }
 
 function bookingReviewStatus(b) {
@@ -4686,8 +4714,8 @@ async function exportCSV(){
   if(fd) bks=bks.filter(b=>b.date===fd);
   if(fs) bks=bks.filter(b=>b.status===fs);
   bks = groupBookings(bks.filter(b=>b.email!=='reserve@hold.internal'));
-  const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Payment','Payment Status','Booking Status','Created','Child Refs'];
-  const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,b.paymentMethod,b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
+  const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Paid Using','Money Received To','Payment Status','Booking Status','Created','Child Refs'];
+  const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,paymentMethodLabel(b.paymentMethod),receivedAccountLabel(b),b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
   const csv=[h,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
@@ -4732,6 +4760,24 @@ function _rpDateRange(){
   return{from:'',to:''};
 }
 
+function renderReportBars(targetId, entries, emptyCopy = 'No bookings in this period.') {
+  const target = $(targetId);
+  if (!target) return;
+  if (!entries.length) {
+    target.innerHTML = `<p class="rp-empty">${esc(emptyCopy)}</p>`;
+    return;
+  }
+  const max = Math.max(...entries.map(([, rev]) => Number(rev) || 0), 1);
+  target.innerHTML = entries.map(([name, rev]) => {
+    const value = Number(rev) || 0;
+    return `<div class="rp-bar-row">
+      <div class="rp-bar-label" title="${esc(name)}">${esc(name)}</div>
+      <div class="rp-bar-track"><div class="rp-bar-fill" style="width:${Math.round(value / max * 100)}%"></div></div>
+      <div class="rp-bar-val">${fmt(value)}</div>
+    </div>`;
+  }).join('');
+}
+
 async function renderReport(){
   const allBks=await DB.getBookings();
   const{from,to}=_rpDateRange();
@@ -4754,27 +4800,22 @@ async function renderReport(){
 
   // Revenue by court
   const courtMap={};
-  bks.forEach(b=>{courtMap[b.courtName]=(courtMap[b.courtName]||0)+(b.total||0);});
+  bks.forEach(b=>{const k=b.courtName||'Unknown Court';courtMap[k]=(courtMap[k]||0)+(b.total||0);});
   const courtEntries=Object.entries(courtMap).sort((a,b)=>b[1]-a[1]);
-  const maxCourt=courtEntries[0]?courtEntries[0][1]:1;
-  $('rpCourtChart').innerHTML=courtEntries.length===0?'<p class="rp-empty">No bookings in this period.</p>':
-    courtEntries.map(([name,rev])=>`<div class="rp-bar-row">
-      <div class="rp-bar-label" title="${name}">${name}</div>
-      <div class="rp-bar-track"><div class="rp-bar-fill" style="width:${Math.round(rev/maxCourt*100)}%"></div></div>
-      <div class="rp-bar-val">${fmt(rev)}</div>
-    </div>`).join('');
+  renderReportBars('rpCourtChart', courtEntries);
 
-  // Revenue by payment method
+  // Revenue by how the player paid. This is kept separate from where the money
+  // is ultimately recorded so receipt verification remains accurate.
   const payMap={};
   txns.forEach(b=>{const k=paymentMethodLabel(b.paymentMethod);payMap[k]=(payMap[k]||0)+(b.total||0);});
   const payEntries=Object.entries(payMap).sort((a,b)=>b[1]-a[1]);
-  const maxPay=payEntries[0]?payEntries[0][1]:1;
-  $('rpPayChart').innerHTML=payEntries.length===0?'<p class="rp-empty">No bookings in this period.</p>':
-    payEntries.map(([name,rev])=>`<div class="rp-bar-row">
-      <div class="rp-bar-label">${name}</div>
-      <div class="rp-bar-track"><div class="rp-bar-fill" style="width:${Math.round(rev/maxPay*100)}%"></div></div>
-      <div class="rp-bar-val">${fmt(rev)}</div>
-    </div>`).join('');
+  renderReportBars('rpPayChart', payEntries);
+
+  // Accounting view: all current digital payment rails settle/are recorded to GCash.
+  const receivedMap={};
+  txns.forEach(b=>{const k=receivedAccountLabel(b);receivedMap[k]=(receivedMap[k]||0)+(b.total||0);});
+  const receivedEntries=Object.entries(receivedMap).sort((a,b)=>b[1]-a[1]);
+  renderReportBars('rpReceivedChart', receivedEntries);
 
   // Monthly trend follows the active report filter and shows booked months with revenue.
   const monthMap={};
@@ -4806,8 +4847,8 @@ async function renderReport(){
 async function exportReportCSV(){
   if(!_rpBks.length && _curSection !== 'reports') await renderReport();
   const bks=_rpBks;
-  const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Amount Paid/Downpayment','Payment Method','Payment Status','Booking Status','Created','Child Refs'];
-  const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,b.downpayment??'',b.paymentMethod,b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
+  const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Amount Paid/Downpayment','Paid Using','Money Received To','Payment Status','Booking Status','Created','Child Refs'];
+  const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,b.downpayment??'',paymentMethodLabel(b.paymentMethod),receivedAccountLabel(b),b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
   const csv=[h,...rows].map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));

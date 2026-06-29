@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   rate                 numeric,
   total                numeric,
   payment_method       text,
+  received_account     text,
   payment_flow         text,
   payment_status       text NOT NULL DEFAULT 'unpaid'
     CHECK (payment_status IN ('unpaid','pending','for_verification','downpayment_paid','paid','failed')),
