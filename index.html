@@ -561,11 +561,6 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   .cc-mobile-side {
     display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex:0 0 auto;
   }
-  .cc-mobile-hd-date {
-    font-size:.72rem; color:var(--muted); font-weight:500;
-    background:var(--input); border:1px solid var(--border);
-    border-radius:var(--r-sm); padding:2px 8px;
-  }
   .cc-mobile-status {
     max-width:148px; border-radius:999px; padding:3px 8px;
     font-size:.62rem; font-weight:900; line-height:1.15;
@@ -734,14 +729,6 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   .courts { padding-bottom:72px; }
 }
 .cc-book-sum { font-size:.8rem; font-weight:600; color:var(--accent); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.cc-date-pick {
-  background:var(--input); border:1px solid var(--border);
-  border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif;
-  font-size:.75rem; padding:5px 9px; cursor:pointer; transition:border-color .2s; flex-shrink:0;
-}
-.cc-date-pick:focus { outline:none; border-color:var(--accent); }
-.cc-date-wrap { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
-.cc-date-lbl { font-size:.65rem; letter-spacing:.8px; color:var(--muted); text-transform:uppercase; }
 
 /* legacy — kept for compatibility */
 .ct,.cb-body,.cn,.cd,.cf,.cr,.cr-s,.feats,.feat,.cb,.cb-av,.cb-mt { display:none; }
@@ -879,7 +866,7 @@ select.fi option { background:var(--card); }
 /* Prevent iOS Safari auto-zoom on focus: touch devices need >=16px font on form controls */
 @media (pointer: coarse) {
   input, select, textarea { font-size:16px !important; }
-  .fi, .cc-date-pick { font-size:16px !important; }
+  .fi { font-size:16px !important; }
 }
 .court-disp {
   padding:11px 14px; background:var(--input);
@@ -5571,22 +5558,6 @@ async function onCardDate(courtId, date, options = {}) {
   if (!grid) return;
   clearCardSelection({ preserveBookingItems: !!options.preserveBookingItems });
 
-  // Update date banner display
-  const dateValEl = $('cDateVal_' + courtId);
-  if (dateValEl) {
-    const isToday_ = date === todayStr();
-    dateValEl.textContent = isToday_
-      ? 'Today — ' + new Date(date+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})
-      : new Date(date+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-  }
-
-  // Update mobile header date label
-  const mobDate = $('cMobDate_' + courtId);
-  if (mobDate) {
-    const isToday_ = date === todayStr();
-    mobDate.textContent = isToday_ ? 'Today' : fmtD(date).replace(/^[^,]+,\s*/, '');
-  }
-
   grid.innerHTML = `<div class="cc-slots-empty"><div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading times</div></div></div>`;
 
   const [courts, bookings, blockedDates] = await Promise.all([
@@ -5780,7 +5751,6 @@ async function renderCourts() {
           <span class="cc-mobile-meta">${esc(rateRange)} · ${esc(c.desc || 'Court')}</span>
         </div>
         <div class="cc-mobile-side">
-          <span class="cc-mobile-hd-date" id="cMobDate_${esc(c.id)}">${esc(isSelectedToday ? 'Today' : fmtD(selectedDate).replace(/^[^,]+,\s*/, ''))}</span>
           <span class="cc-mobile-status ${availBadgeCls}" id="cMobAvail_${esc(c.id)}">${esc(availBadgeTxt)}</span>
         </div>
       </div>
@@ -5802,11 +5772,7 @@ async function renderCourts() {
             <div class="cc-times-title">🕐 Available times</div>
             <div class="cc-times-sub">Join Open Play or select any available court slots</div>
           </div>
-          <div class="cc-date-wrap">
-            <span class="cc-date-lbl">Selected Date</span>
-            <span class="cc-date-pick" id="cDateVal_${esc(c.id)}" style="border:none;background:transparent;padding:0;min-height:0;text-align:right">${esc(isSelectedToday ? 'Today' : fmtD(selectedDate))}</span>
-            <input type="hidden" id="cDate_${esc(c.id)}" value="${esc(selectedDate)}" />
-          </div>
+          <input type="hidden" id="cDate_${esc(c.id)}" value="${esc(selectedDate)}" />
         </div>
 
         <div class="cc-slots-grid" id="cSlots_${c.id}">${slotsHtml}</div>
