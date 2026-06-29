@@ -238,8 +238,8 @@ function receivedAccountForBooking(b = {}) {
   if (explicit) return explicit;
 
   const method = normalizePaymentKey(b.paymentMethod || b.payment_method, 'cash');
-  if (PB_DIGITAL_PAYMENT_METHODS.includes(method)) return 'gcash';
-  return method || 'cash';
+  if (method === 'cash') return 'cash';
+  return 'gcash';
 }
 
 function _fmtBookingHour(h) {

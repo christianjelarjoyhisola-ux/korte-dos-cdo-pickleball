@@ -3574,8 +3574,7 @@ function receivedAccountKey(b) {
   const explicit = String(b?.receivedAccount || b?.received_account || '').toLowerCase().trim();
   if (explicit) return explicit;
   const method = String(b?.paymentMethod || b?.payment_method || '').toLowerCase();
-  if (isDigitalPayment(method)) return 'gcash';
-  return method || 'cash';
+  return method === 'cash' ? 'cash' : 'gcash';
 }
 
 function receivedAccountLabel(b) {
