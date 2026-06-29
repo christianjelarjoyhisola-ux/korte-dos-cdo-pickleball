@@ -273,6 +273,11 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
   flex-wrap: wrap; gap: 10px;
 }
 .tbl-hd h3 { font-size: 16px; font-weight: 700; font-family: 'DM Sans', sans-serif; }
+#tableView .booking-filter-shell { display: block; }
+#bookingFilterMeta {
+  display: block; width: 100%; margin-top: 8px; font-size: .74rem;
+  color: var(--text3); line-height: 1.35;
+}
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .filters input, .filters select {
   padding: 8px 12px; background: var(--bg2); border: 1px solid var(--border);
@@ -575,6 +580,9 @@ tr:hover td { background: var(--bg2); }
     padding: 10px; background: var(--surface);
     border-bottom: 1px solid var(--border); backdrop-filter: blur(10px);
   }
+  #tableView .booking-filter-shell {
+    padding: 10px; background: var(--surface); border-bottom: 1px solid var(--border);
+  }
   #tableView .filters {
     display: grid; grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px; align-items: center; width: 100%;
@@ -583,11 +591,15 @@ tr:hover td { background: var(--bg2); }
     width: 100%; min-width: 0; height: 40px; padding: 8px 10px;
     border-radius: 10px; font-size: .86rem !important;
   }
-  #tableView .filters input[type="text"] { grid-column: 1 / -1; }
+  #tableView .filters input[type="search"] { grid-column: 1 / -1; }
   #tableView .filters input[type="date"] { grid-column: 1 / -1; }
   #tableView .filters .btn {
     min-height: 40px; padding: 8px 11px; border-radius: 10px;
     font-size: .82rem !important; justify-content: center;
+  }
+  #bookingFilterMeta {
+    display: block; margin-top: 7px; font-size: .68rem; line-height: 1.35;
+    color: var(--text3); text-align: center;
   }
   #bookBody .booking-row {
     margin: 0; border-width: 0 0 1px; border-radius: 0; background: var(--surface);
@@ -1163,6 +1175,7 @@ tr:hover td { background: var(--bg2); }
   .bdg-p, .bdg-c, .bdg-d, .bdg-v, .r-mgr, .r-owner, .r-court-owner, .r-staff, .r-host { border: 1px solid #000 !important; padding: 1px 5px !important; font-weight: 700 !important; }
   @page { margin: 5mm; }
 }
+
 </style>
 </head>
 <body data-theme="light">
@@ -1348,11 +1361,11 @@ tr:hover td { background: var(--bg2); }
       <!-- LIST VIEW -->
       <div id="tableView">
         <div class="tbl-wrap">
-          <div class="tbl-hd">
+          <div class="tbl-hd booking-filter-shell">
             <div class="filters">
-              <input type="text" id="srch" placeholder="Search name, ref, email" oninput="renderBookings()"/>
-              <input type="date" id="fDate" onchange="renderBookings()"/>
-              <select id="fStatus" onchange="renderBookings()">
+              <input type="search" id="srch" placeholder="Search name, ref, email" aria-label="Search bookings" autocomplete="off" oninput="renderBookings()"/>
+              <input type="date" id="fDate" aria-label="Filter bookings by court date" onchange="renderBookings()"/>
+              <select id="fStatus" aria-label="Filter bookings by status" onchange="renderBookings()">
                 <option value="">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="confirmed">Confirmed</option>
@@ -1360,8 +1373,9 @@ tr:hover td { background: var(--bg2); }
                 <option value="verifying">Processing</option>
                 <option value="cancelled">Cancelled</option>
               </select>
-              <button class="btn btn-g btn-sm" onclick="clearFilters()">Clear</button>
+              <button type="button" class="btn btn-g btn-sm" id="bookingClearBtn" onclick="clearFilters()">Clear</button>
             </div>
+            <div id="bookingFilterMeta">Showing all bookings</div>
           </div>
           <div class="tbl-scroll">
             <table>
@@ -3077,6 +3091,7 @@ async function goto(s){
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
   _curSection=s;
+  if (s === 'bookings') resetBookingFilters({ render: false });
   if(SECTION_LOADERS[s]) await SECTION_LOADERS[s]();
 }
 
@@ -3359,33 +3374,78 @@ async function autoCompleteBookings(bks) {
   }
 }
 
+let _bookingRenderSeq = 0;
+function bookingFilters() {
+  return {
+    q: (($('srch') || {}).value || '').trim().toLowerCase(),
+    fd: (($('fDate') || {}).value || '').trim(),
+    fs: (($('fStatus') || {}).value || '').trim(),
+  };
+}
+function bookingFiltersActive(filters = bookingFilters()) {
+  return Boolean(filters.q || filters.fd || filters.fs);
+}
+function updateBookingFilterMeta(total, shown, filters = bookingFilters()) {
+  const meta = $('bookingFilterMeta');
+  const clearBtn = $('bookingClearBtn');
+  const active = bookingFiltersActive(filters);
+  if (clearBtn) {
+    clearBtn.disabled = !active;
+    clearBtn.style.opacity = active ? '1' : '.5';
+  }
+  if (!meta) return;
+  if (!active) {
+    meta.textContent = `Showing all ${total} booking${total === 1 ? '' : 's'}`;
+    return;
+  }
+  const parts = [];
+  if (filters.q) parts.push(`search "${filters.q}"`);
+  if (filters.fd) parts.push(`date ${fmtD(filters.fd)}`);
+  if (filters.fs) parts.push(`status ${filters.fs}`);
+  meta.textContent = `Showing ${shown} of ${total} booking${total === 1 ? '' : 's'} filtered by ${parts.join(', ')}`;
+}
+function resetBookingFilters({ render = true } = {}) {
+  if ($('srch')) $('srch').value = '';
+  if ($('fDate')) $('fDate').value = '';
+  if ($('fStatus')) $('fStatus').value = '';
+  updateBookingFilterMeta(0, 0, { q: '', fd: '', fs: '' });
+  if (render) renderBookings();
+}
 async function renderBookings(){
+  const seq = ++_bookingRenderSeq;
   const canDelete=Auth.can('booking_delete', sess.role);
+  const body = $('bookBody');
+  if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">Loading bookings...</td></tr>';
   let bks=await DB.getBookings();
+  if (seq !== _bookingRenderSeq) return;
   await autoCompleteBookings(bks);
+  if (seq !== _bookingRenderSeq) return;
   bks=await DB.getBookings(); // reload after auto-complete
+  if (seq !== _bookingRenderSeq) return;
   // Hide placeholder slot-holds ("Reserving…"): these are temporary locks created
   // when a customer clicks Book Now but hasn't submitted yet. A completed booking
   // carries the real customer email, so any row still on reserve@hold.internal is
   // just an in-progress or abandoned hold and adds no value to the admin list.
   bks=bks.filter(b=>b.email!=='reserve@hold.internal');
-  const q=($('srch')||{}).value?.toLowerCase()||'';
-  const fd=($('fDate')||{}).value||'';
-  const fs=($('fStatus')||{}).value||'';
-  if(q) bks=bks.filter(b=>b.ref.toLowerCase().includes(q)||b.fullName.toLowerCase().includes(q)||b.email.toLowerCase().includes(q)||b.courtName.toLowerCase().includes(q));
+  const totalRawBookings = bks.length;
+  const { q, fd, fs } = bookingFilters();
+  if(q) bks=bks.filter(b=>[b.ref,b.fullName,b.email,b.courtName,b.gcashRef].some(v=>String(v||'').toLowerCase().includes(q)));
   if(fd) bks=bks.filter(b=>b.date===fd);
   if(fs) bks=bks.filter(b=>b.status===fs);
-  bks = groupBookings(bks);
+  const groupedBookings = groupBookings(bks);
+  updateBookingFilterMeta(totalRawBookings, groupedBookings.length, { q, fd, fs });
 
   // Inject maintenance/block rows when a date filter is active
   let mtRowsHtml = '';
   if (fd && !q) {
     if (!_nbMaintenanceCfg) {
       const s = await DB.getSettings();
+      if (seq !== _bookingRenderSeq) return;
       try { _nbMaintenanceCfg = s.maintenance_config ? JSON.parse(s.maintenance_config) : null; } catch(e) {}
     }
     const rules = _nbMaintenanceCfg ? (Array.isArray(_nbMaintenanceCfg.rules) ? _nbMaintenanceCfg.rules : [_nbMaintenanceCfg]) : [];
     const allCourts = await DB.getCourts();
+    if (seq !== _bookingRenderSeq) return;
     const dt = new Date(fd + 'T00:00:00'), dow = dt.getDay(), dom = dt.getDate();
     const mtLabelMap = {closed:'🚫 Closed',maintenance:'🔧 Maintenance',reserved:'🔒 Reserved',blocked:'⛔ Blocked',private:'👥 Private Event',group:'🏓 Group Session',openplay:'🏓 Open Play Session'};
     const fmtHr = h => { const h12 = h % 12 || 12; return `${h12}:00 ${h < 12 ? 'AM' : 'PM'}`; };
@@ -3413,7 +3473,7 @@ async function renderBookings(){
     }).join('');
   }
 
-  const bkRowsHtml = bks.map(b=>`<tr class="booking-row">
+  const bkRowsHtml = groupedBookings.map(b=>`<tr class="booking-row">
       <td class="booking-mobile-card">${mobileBookingCard(b, canDelete)}</td>
       <td data-label="Ref"><code style="color:var(--green);font-size:.76rem">${esc(b.displayRef || b.ref)}</code>${b.isGroup?`<div style="font-size:.68rem;color:var(--muted);margin-top:3px">${b.items.length} courts</div>`:''}</td>
       <td data-label="Customer"><div style="font-weight:600">${esc(b.fullName)}</div><div style="font-size:.75rem;color:var(--text)">${esc(b.email)}</div></td>
@@ -3451,15 +3511,13 @@ async function renderBookings(){
         ${canDelete?`<button class="btn btn-d btn-sm" onclick="delBooking('${jsArg(b.ref)}')">🗑️</button>`:''}
       </div></td>
     </tr>`).join('');
-  const noResults = !mtRowsHtml && !bkRowsHtml ? '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">No bookings found.</td></tr>' : '';
+  const noCopy = bookingFiltersActive({ q, fd, fs }) ? 'No bookings match these filters.' : 'No bookings yet.';
+  const noResults = !mtRowsHtml && !bkRowsHtml ? `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">${noCopy}</td></tr>` : '';
   $('bookBody').innerHTML = mtRowsHtml + bkRowsHtml + noResults;
 }
 
 function clearFilters(){
-  if($('srch')) $('srch').value='';
-  if($('fDate')) $('fDate').value='';
-  if($('fStatus')) $('fStatus').value='';
-  renderBookings();
+  resetBookingFilters();
 }
 
 /* ── CALENDAR VIEW ── */
@@ -4598,10 +4656,8 @@ async function saveReschedule() {
 
 async function exportCSV(){
   let bks=await DB.getBookings();
-  const q=($('srch')||{}).value?.toLowerCase()||'';
-  const fd=($('fDate')||{}).value||'';
-  const fs=($('fStatus')||{}).value||'';
-  if(q) bks=bks.filter(b=>b.ref.toLowerCase().includes(q)||b.fullName.toLowerCase().includes(q));
+  const { q, fd, fs } = bookingFilters();
+  if(q) bks=bks.filter(b=>[b.ref,b.fullName,b.email,b.courtName,b.gcashRef].some(v=>String(v||'').toLowerCase().includes(q)));
   if(fd) bks=bks.filter(b=>b.date===fd);
   if(fs) bks=bks.filter(b=>b.status===fs);
   bks = groupBookings(bks.filter(b=>b.email!=='reserve@hold.internal'));
