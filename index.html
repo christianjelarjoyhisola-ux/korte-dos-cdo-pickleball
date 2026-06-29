@@ -143,11 +143,17 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .find-time-entry .btn { flex-shrink:0; }
 .shared-date-entry {
   display:flex; align-items:center; justify-content:space-between; gap:12px;
-  margin:-4px 0 14px; padding:10px 12px;
+  margin:-4px 0 14px; padding:10px 12px 10px 16px;
   position:sticky; top:72px; z-index:190;
-  background:linear-gradient(135deg,rgba(var(--ac),.1),rgba(var(--ac),.035)), var(--card);
-  border:1px solid rgba(var(--ac),.24); border-radius:14px;
-  box-shadow:0 8px 22px rgba(15,36,56,.08);
+  background:linear-gradient(135deg,rgba(var(--ac),.18),rgba(var(--ac),.06)), var(--card);
+  border:1.5px solid rgba(var(--ac),.42); border-radius:14px;
+  box-shadow:0 10px 28px rgba(15,36,56,.14);
+  overflow:hidden;
+}
+.shared-date-entry::before {
+  content:'';
+  position:absolute; left:0; top:0; bottom:0; width:5px;
+  background:var(--accent);
 }
 .shared-date-title {
   min-width:0; display:flex; flex-direction:column; gap:1px;
@@ -164,9 +170,14 @@ body.dark .nav { background:rgba(9,21,33,.94); }
 .shared-date-nav,
 .shared-date-today,
 .shared-date-display {
-  min-height:36px; border-radius:10px; border:1px solid var(--border);
-  background:var(--input); color:var(--text); font-family:'Outfit',sans-serif;
+  min-height:36px; border-radius:10px; border:1px solid rgba(var(--ac),.25);
+  background:rgba(255,255,255,.7); color:var(--text); font-family:'Outfit',sans-serif;
   font-weight:900; cursor:pointer; transition:border-color .15s, background .15s, transform .15s;
+}
+body.dark .shared-date-nav,
+body.dark .shared-date-today,
+body.dark .shared-date-display {
+  background:rgba(15,34,52,.82);
 }
 .shared-date-nav {
   width:34px; padding:0; display:flex; align-items:center; justify-content:center;
