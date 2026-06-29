@@ -1447,6 +1447,41 @@ tr:hover td { background: var(--bg2); }
       </div>
     </div>
 
+    <style id="reportsMobileCss">
+@media (max-width:700px){
+#sec-reports{padding-bottom:max(20px,env(safe-area-inset-bottom))}
+#sec-reports .toolbar{flex-direction:row;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+#sec-reports .toolbar h2{font-size:1.52rem;line-height:1;min-width:0}
+#sec-reports .toolbar .btn{min-height:40px;padding:8px 11px;border-radius:10px;font-size:.78rem!important;flex:0 0 auto}
+#sec-reports .rp-period{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 14px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}
+#sec-reports .rp-period .view-btn{width:100%;min-height:42px;padding:8px 9px;border-radius:10px;background:var(--bg2);box-shadow:none;color:var(--text2);font-size:.86rem!important}
+#sec-reports .rp-period .view-btn.active{background:var(--green);color:#fff;box-shadow:none}
+#sec-reports .rp-period>span:nth-of-type(1){grid-column:1/-1;display:grid!important;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:7px;align-items:center;margin:0!important;min-width:0}
+#sec-reports .rp-period>span:nth-of-type(1) .fi{min-width:0;width:100%;min-height:42px;padding:8px 10px!important;border-radius:10px;font-size:.9rem!important}
+#sec-reports .stat-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px!important}
+#sec-reports .sc{min-height:96px;padding:15px 13px;border-radius:12px}
+#sec-reports .sc::before{height:2px}
+#sec-reports .sc-lbl{font-size:.64rem;letter-spacing:.72px;line-height:1.18;margin-bottom:7px;max-width:calc(100% - 24px)}
+#sec-reports .sc-val{font-size:clamp(1.58rem,8vw,2.05rem);line-height:.95;letter-spacing:.4px;overflow-wrap:anywhere}
+#sec-reports .sc-ic{top:12px;right:12px;font-size:1.05rem;opacity:.28}
+#sec-reports .rev-grid{grid-template-columns:1fr;gap:12px;margin-bottom:12px}
+#sec-reports .panel{padding:13px;border-radius:12px;overflow:hidden}
+#sec-reports .panel h4{font-size:.68rem;letter-spacing:.7px;margin-bottom:12px}
+#sec-reports .rp-bar-row,#sec-reports .rp-trend-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;margin-bottom:12px;align-items:center}
+#sec-reports .rp-bar-label,#sec-reports .rp-trend-month{grid-column:1;grid-row:1;min-width:0;font-size:.82rem;font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sec-reports .rp-bar-val,#sec-reports .rp-trend-val{grid-column:2;grid-row:1;min-width:0;font-size:.76rem;text-align:right}
+#sec-reports .rp-bar-track,#sec-reports .rp-trend-track{grid-column:1/-1;grid-row:2;width:100%;height:10px}
+#sec-reports .rp-trend-track{height:20px}
+#sec-reports .rp-trend-fill{padding-left:6px;font-size:.66rem;color:var(--text)}
+}
+@media (max-width:380px){
+#sec-reports .stat-cards{gap:8px}
+#sec-reports .sc{padding:13px 11px;min-height:90px}
+#sec-reports .sc-val{font-size:clamp(1.35rem,7.4vw,1.75rem)}
+#sec-reports .toolbar .btn{padding-inline:9px}
+}
+    </style>
+
     <!-- REPORTS -->
     <div id="sec-reports" class="adm-sec">
       <div class="toolbar">
@@ -4685,11 +4720,13 @@ function setReportPeriod(p){
 }
 
 function _rpDateRange(){
-  const now=new Date();
+  const today=phDateKeyFromTimestamp(new Date().toISOString());
+  const now=new Date(`${today}T00:00:00`);
   const pad=n=>String(n).padStart(2,'0');
   const toStr=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   if(_rpPeriod==='week'){
-    const start=new Date(now); start.setDate(now.getDate()-now.getDay());
+    const daysSinceMonday=(now.getDay()+6)%7;
+    const start=new Date(now); start.setDate(now.getDate()-daysSinceMonday);
     const end=new Date(start); end.setDate(start.getDate()+6);
     return{from:toStr(start),to:toStr(end)};
   }
@@ -4707,9 +4744,16 @@ function _rpDateRange(){
   return{from:'',to:''};
 }
 
+function _rpSyncDateInputs(from='', to='') {
+  const fromEl=$('rpFrom'), toEl=$('rpTo');
+  if(fromEl && _rpPeriod!=='custom') fromEl.value=from;
+  if(toEl && _rpPeriod!=='custom') toEl.value=to;
+}
+
 async function renderReport(){
   const allBks=await DB.getBookings();
   const{from,to}=_rpDateRange();
+  _rpSyncDateInputs(from,to);
   // Reports start from online system usage only. Manual spreadsheet imports
   // remain schedule/history records but do not appear in analytics.
   let bks=allBks.filter(isPlatformBillableBooking);
@@ -4779,7 +4823,8 @@ async function renderReport(){
 }
 
 async function exportReportCSV(){
-  const bks=_rpBks.length?_rpBks:groupBookings((await DB.getBookings()).filter(b=>isDashboardReportBooking(b) && b.status!=='cancelled'));
+  if(!_rpBks.length && _curSection !== 'reports') await renderReport();
+  const bks=_rpBks;
   const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Amount Paid/Downpayment','Payment Method','Payment Status','Booking Status','Created','Child Refs'];
   const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,b.downpayment??'',b.paymentMethod,b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
   const csv=[h,...rows].map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
