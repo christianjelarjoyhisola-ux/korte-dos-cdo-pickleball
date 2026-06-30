@@ -1479,6 +1479,69 @@ tr:hover td { background: var(--bg2); }
 .nb-slots-summary .nb-sum-row { display: flex; justify-content: space-between; padding: 3px 0; color: var(--text2); }
 .nb-slots-summary .nb-sum-total { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; font-weight: 700; color: var(--text); }
 .nb-slots-summary .nb-sum-total span { color: var(--green); font-family: 'DM Mono', monospace; }
+.nb-modal { max-width: 760px; }
+.nb-section-label {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--muted); font-weight: 800; margin: 18px 0 10px;
+}
+.nb-court-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+.nb-court-chip {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text2);
+  border-radius: 999px; padding: 8px 12px; font-weight: 900; font-size: .8rem;
+  cursor: pointer; transition: .16s ease; min-height: 36px;
+}
+.nb-court-chip.active { background: rgba(var(--green-rgb), .13); border-color: var(--green); color: var(--green); }
+.nb-court-chip:hover { transform: translateY(-1px); border-color: var(--green); }
+.nb-slot-toolbar {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  margin: 12px 0 8px; color: var(--text3); font-size: .78rem; font-weight: 800;
+}
+.nb-slot-matrix-wrap {
+  border: 1px solid var(--border); border-radius: 12px; overflow: auto;
+  background: var(--surface); max-height: 440px;
+}
+.nb-slot-matrix {
+  display: grid; min-width: max-content;
+}
+.nb-slot-row { display: grid; grid-template-columns: 86px repeat(var(--nb-court-count, 1), minmax(104px, 1fr)); border-bottom: 1px solid var(--border); }
+.nb-slot-row:last-child { border-bottom: 0; }
+.nb-slot-head, .nb-slot-time-col, .nb-court-head {
+  padding: 9px 10px; font-size: .72rem; font-weight: 900; color: var(--text3);
+  background: var(--bg2); text-transform: uppercase; letter-spacing: .55px;
+}
+.nb-court-head { text-align: center; color: var(--text2); }
+.nb-slot-time-col {
+  display: flex; align-items: center; position: sticky; left: 0; z-index: 2;
+  border-right: 1px solid var(--border); color: var(--text);
+}
+.nb-slot-cell {
+  margin: 6px; min-height: 54px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); cursor: pointer; display: flex;
+  flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  transition: .16s ease; font: inherit;
+}
+.nb-slot-cell strong { font-size: .78rem; }
+.nb-slot-cell span { font-size: .64rem; color: var(--text3); font-weight: 800; text-transform: uppercase; letter-spacing: .45px; }
+.nb-slot-cell.free { border-color: rgba(var(--green-rgb), .35); background: rgba(var(--green-rgb), .07); }
+.nb-slot-cell.free:hover { border-color: var(--green); transform: translateY(-1px); }
+.nb-slot-cell.sel { background: var(--green); border-color: var(--green); color: #fff; box-shadow: 0 8px 20px rgba(var(--green-rgb), .18); }
+.nb-slot-cell.sel span { color: rgba(255,255,255,.82); }
+.nb-slot-cell.busy { cursor: not-allowed; opacity: .58; background: var(--bg2); }
+.nb-slot-cell.booked { border-color: rgba(229,57,53,.45); background: rgba(229,57,53,.08); }
+.nb-slot-cell.open-play { border-color: rgba(var(--yellow-rgb), .55); background: rgba(var(--yellow-rgb), .12); }
+.nb-slot-cell.maintenance { border-color: rgba(255,152,0,.5); background: rgba(255,152,0,.1); }
+.nb-slot-cell.past, .nb-slot-cell.now { opacity: .42; }
+.nb-slot-cell:disabled { pointer-events: auto; }
+.nb-sum-list { display: grid; gap: 6px; }
+.nb-sum-row strong { text-align: right; }
+.nb-sum-muted { color: var(--text3); font-size: .74rem; }
+@media (max-width: 700px) {
+  .nb-modal { width: calc(100vw - 20px); max-width: none; }
+  .nb-modal .m-body { padding: 16px; }
+  .nb-slot-row { grid-template-columns: 74px repeat(var(--nb-court-count, 1), 96px); }
+  .nb-slot-cell { min-height: 50px; margin: 5px; }
+  .nb-slot-head, .nb-slot-time-col, .nb-court-head { padding: 8px 7px; font-size: .64rem; }
+}
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 
 /* ── SWITCH ────────────────────────────────────────────── */
@@ -2737,14 +2800,14 @@ tr:hover td { background: var(--bg2); }
 
 <!-- NEW BOOKING MODAL -->
 <div class="overlay" id="newBookingModal">
-  <div class="modal" style="max-width:500px">
+  <div class="modal nb-modal">
     <div class="m-hd" style="background:linear-gradient(135deg,rgba(var(--green-rgb),.1),transparent)">
       <h2>➕ BOOK FOR CUSTOMER</h2>
       <button class="m-x" onclick="closeModal('newBookingModal')">✕</button>
     </div>
     <div class="m-body">
       <!-- Customer Info -->
-      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:700;margin-bottom:10px;">Customer Details</div>
+      <div class="nb-section-label" style="margin-top:0">Customer Details</div>
       <div class="frow">
         <div class="fg" style="margin:0"><label class="fl">Full Name *</label><input type="text" class="fi" id="nbName" placeholder="e.g. Juan Dela Cruz"/></div>
         <div class="fg" style="margin:0"><label class="fl">Contact Number *</label><input type="text" class="fi" id="nbPhone" placeholder="09XX XXX XXXX" inputmode="tel"/></div>
@@ -2752,22 +2815,26 @@ tr:hover td { background: var(--bg2); }
       <div class="fg" style="margin-top:12px"><label class="fl">Email <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></label><input type="text" class="fi" id="nbEmail" placeholder="customer@email.com" inputmode="email"/></div>
 
       <!-- Booking Details -->
-      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:700;margin:18px 0 10px;">Booking Details</div>
-      <div class="frow">
-        <div class="fg" style="margin:0"><label class="fl">Court *</label>
+      <div class="nb-section-label">Booking Details</div>
+      <div class="frow" style="grid-template-columns:1fr">
+        <div class="fg" style="margin:0;display:none"><label class="fl">Court *</label>
           <select class="fi" id="nbCourt" onchange="nbRenderSlots()">
             <option value="">— Select Court —</option>
           </select>
         </div>
         <div class="fg" style="margin:0"><label class="fl">Date *</label><input type="date" class="fi" id="nbDate" onchange="nbRenderSlots()"/></div>
       </div>
+      <div class="fg" style="margin-top:12px">
+        <label class="fl">Courts *</label>
+        <div id="nbCourtPicker" class="nb-court-picker"></div>
+      </div>
       <div id="nbSlotArea">
-        <div class="nb-slots-msg" id="nbSlotMsg">Select a court and date above to see real-time availability.</div>
+        <div class="nb-slots-msg" id="nbSlotMsg">Select a date and court(s) to see real-time availability.</div>
         <div id="nbSlotGrid"></div>
       </div>
 
       <!-- Payment -->
-      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:700;margin:18px 0 10px;">Payment</div>
+      <div class="nb-section-label">Payment</div>
       <div class="fg" style="margin:0"><label class="fl">Method *</label>
         <select class="fi" id="nbMethod" onchange="nbToggleRef()">
           <option value="cash">💵 Cash</option>
@@ -4606,6 +4673,9 @@ let _nbOpenPlayCfg = null;
 let _nbMaintenanceCfg = null;
 let _nbPricingTiers = [];
 let _nbBookedSlots = new Set();
+let _nbSelectedCourtIds = new Set();
+let _nbSelectedCells = new Set();
+let _nbBookedSlotMap = new Map();
 
 async function openNewBookingModal() {
   // Load courts
@@ -4973,6 +5043,391 @@ async function saveNewBooking() {
     btn.disabled = false;
     btn.textContent = '➕ Create Booking';
   }
+}
+
+/* Modern multi-court manual booking flow. These declarations intentionally
+   override the older single-court handlers above. */
+function nbCellKey(courtId, hour) {
+  return `${String(courtId)}|${Number(hour)}`;
+}
+
+function nbParseCellKey(key) {
+  const [courtId, rawHour] = String(key).split('|');
+  const hour = Number(rawHour);
+  return { courtId, hour };
+}
+
+function nbSelectedCourts() {
+  return _nbCourts.filter(c => _nbSelectedCourtIds.has(String(c.id)));
+}
+
+function nbSelectedEntries() {
+  return [..._nbSelectedCells]
+    .map(nbParseCellKey)
+    .filter(item => item.courtId && Number.isFinite(item.hour));
+}
+
+function nbMaintenanceRuleForHour(dateStr, hour, courtId) {
+  if (!_nbMaintenanceCfg) return null;
+  if (Array.isArray(_nbMaintenanceCfg.rules)) {
+    return _nbMaintenanceCfg.rules.find(rule => _nbCheckRule(rule, dateStr, hour, courtId)) || null;
+  }
+  return _nbCheckRule(_nbMaintenanceCfg, dateStr, hour, courtId) ? _nbMaintenanceCfg : null;
+}
+
+function nbMaintenanceLabel(rule) {
+  return {
+    maintenance: 'Maintenance',
+    reserved: 'Reserved',
+    blocked: 'Blocked',
+    private: 'Private Event',
+    group: 'Group Session',
+    openplay: 'Open Play',
+  }[rule?.label] || 'Maintenance';
+}
+
+function nbSlotState(court, dateStr, hour) {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const isToday = dateStr === todayStr;
+  const curHour = now.getHours();
+  const bookedSet = _nbBookedSlotMap.get(String(court.id)) || new Set();
+  const isPast = isToday && hour < curHour;
+  const isNow = isToday && hour === curHour;
+  const isBooked = bookedSet.has(hour);
+  const mtRule = nbMaintenanceRuleForHour(dateStr, hour, court.id);
+  const isOpenPlay = _nbIsOpenPlayHour(dateStr, hour, court.id);
+  const rate = _nbGetRateForHour(court, hour);
+
+  if (isPast) return { unavailable: true, cls: 'past busy', label: 'Past', detail: fmt(rate) };
+  if (isNow) return { unavailable: true, cls: 'now busy', label: 'Now', detail: fmt(rate) };
+  if (isBooked) return { unavailable: true, cls: 'booked busy', label: 'Taken', detail: fmt(rate) };
+  if (mtRule) return { unavailable: true, cls: 'maintenance busy', label: nbMaintenanceLabel(mtRule), detail: fmt(rate) };
+  if (isOpenPlay) return { unavailable: true, cls: 'open-play busy', label: 'Open Play', detail: fmt(rate) };
+  return { unavailable: false, cls: 'free', label: 'Available', detail: fmt(rate) };
+}
+
+function nbRenderCourtPicker() {
+  const picker = $('nbCourtPicker');
+  if (!picker) return;
+  if (!_nbCourts.length) {
+    picker.innerHTML = '<div class="nb-slots-msg" style="padding:8px 0">No active courts found.</div>';
+    return;
+  }
+  picker.innerHTML = _nbCourts.map(c => {
+    const id = String(c.id);
+    const active = _nbSelectedCourtIds.has(id);
+    return `<button type="button" class="nb-court-chip ${active ? 'active' : ''}" onclick="nbToggleCourt('${jsArg(id)}')">${esc(c.name)} <span style="opacity:.65">${fmt(c.rate)}/hr</span></button>`;
+  }).join('');
+}
+
+function nbToggleCourt(courtId) {
+  const id = String(courtId);
+  if (_nbSelectedCourtIds.has(id)) {
+    _nbSelectedCourtIds.delete(id);
+    for (const key of [..._nbSelectedCells]) {
+      if (nbParseCellKey(key).courtId === id) _nbSelectedCells.delete(key);
+    }
+  } else {
+    _nbSelectedCourtIds.add(id);
+  }
+  nbRenderCourtPicker();
+  nbRenderSlots();
+}
+
+function nbSelectionGroups() {
+  const byCourt = new Map();
+  for (const item of nbSelectedEntries()) {
+    if (!byCourt.has(item.courtId)) byCourt.set(item.courtId, []);
+    byCourt.get(item.courtId).push(item.hour);
+  }
+  const groups = [];
+  for (const [courtId, rawHours] of byCourt.entries()) {
+    const court = _nbCourts.find(c => String(c.id) === String(courtId));
+    if (!court) continue;
+    const hours = [...new Set(rawHours)].sort((a, b) => a - b);
+    let block = [];
+    const flush = () => {
+      if (!block.length) return;
+      const slots = [...block];
+      groups.push({
+        court,
+        slots,
+        startH: Math.min(...slots),
+        endH: Math.max(...slots) + 1,
+        total: slots.reduce((sum, h) => sum + _nbGetRateForHour(court, h), 0),
+      });
+      block = [];
+    };
+    hours.forEach(hour => {
+      if (!block.length || hour === block[block.length - 1] + 1) block.push(hour);
+      else { flush(); block.push(hour); }
+    });
+    flush();
+  }
+  return groups.sort((a, b) =>
+    String(a.court.name || '').localeCompare(String(b.court.name || '')) ||
+    a.startH - b.startH
+  );
+}
+
+async function openNewBookingModal() {
+  _nbCourts = (await DB.getCourts()).filter(c => !c.blocked);
+  _nbSelectedCourtIds = new Set(_nbCourts.map(c => String(c.id)));
+  _nbSelectedCells = new Set();
+  _nbBookedSlotMap = new Map();
+  _nbSelSlots = [];
+
+  const legacySelect = $('nbCourt');
+  if (legacySelect) {
+    legacySelect.innerHTML = '<option value="">Select Court</option>' +
+      _nbCourts.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  }
+
+  const settings = await DB.getSettings();
+  _nbOpenHour = parseInt(settings.open_hour || '6', 10);
+  _nbCloseHour = parseInt(settings.close_hour || '22', 10);
+  try { _nbOpenPlayCfg = settings.open_play_config ? JSON.parse(settings.open_play_config) : null; } catch (e) { _nbOpenPlayCfg = null; }
+  try { _nbMaintenanceCfg = settings.maintenance_config ? JSON.parse(settings.maintenance_config) : null; } catch (e) { _nbMaintenanceCfg = null; }
+  _nbPricingTiers = parsePricingTiers(settings.pricing_tiers);
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  $('nbDate').min = todayStr;
+  $('nbDate').value = todayStr;
+  $('nbName').value = '';
+  $('nbPhone').value = '';
+  $('nbEmail').value = '';
+  $('nbGcashRef').value = '';
+  $('nbMethod').value = 'cash';
+  $('nbStatus').value = 'confirmed';
+  $('nbRefWrap').style.display = 'none';
+  _nbDpFull = false;
+  nbSetDp(false);
+  $('nbStatus').value = 'confirmed';
+  nbRenderCourtPicker();
+  $('newBookingModal').classList.add('show');
+  await nbRenderSlots();
+}
+
+async function nbRenderSlots() {
+  const date = $('nbDate')?.value;
+  const grid = $('nbSlotGrid');
+  const msg = $('nbSlotMsg');
+  const courts = nbSelectedCourts();
+  if (!grid || !msg) return;
+
+  if (!date || !courts.length) {
+    grid.innerHTML = '';
+    msg.style.display = '';
+    msg.textContent = !date ? 'Pick a date to see availability.' : 'Select at least one court.';
+    _nbSelectedCells = new Set();
+    nbUpdateTotal();
+    return;
+  }
+
+  msg.style.display = 'none';
+  const allBookings = await DB.getBookings();
+  _nbBookedSlotMap = new Map(courts.map(c => [String(c.id), new Set()]));
+  allBookings
+    .filter(b => b.date === date && bookingHoldsAdminSlot(b) && _nbBookedSlotMap.has(String(b.courtId)))
+    .forEach(b => (b.slots || []).forEach(slot => _nbBookedSlotMap.get(String(b.courtId)).add(Number(slot))));
+
+  for (const key of [..._nbSelectedCells]) {
+    const item = nbParseCellKey(key);
+    const court = _nbCourts.find(c => String(c.id) === String(item.courtId));
+    if (!court || !_nbSelectedCourtIds.has(String(court.id)) || nbSlotState(court, date, item.hour).unavailable) {
+      _nbSelectedCells.delete(key);
+    }
+  }
+
+  let availableCount = 0;
+  let hasOpenPlay = false;
+  let hasMaint = false;
+  const header = `<div class="nb-slot-row">
+    <div class="nb-slot-head">Time</div>
+    ${courts.map(c => `<div class="nb-court-head">${esc(c.name)}</div>`).join('')}
+  </div>`;
+
+  let rows = '';
+  for (let hour = _nbOpenHour; hour < _nbCloseHour; hour += 1) {
+    rows += `<div class="nb-slot-row"><div class="nb-slot-time-col">${fmtHour(hour)}</div>`;
+    courts.forEach(court => {
+      const key = nbCellKey(court.id, hour);
+      const selected = _nbSelectedCells.has(key);
+      const state = nbSlotState(court, date, hour);
+      if (!state.unavailable) availableCount += 1;
+      if (state.cls.includes('open-play')) hasOpenPlay = true;
+      if (state.cls.includes('maintenance')) hasMaint = true;
+      const cls = selected ? 'sel' : state.cls;
+      const disabled = state.unavailable ? 'disabled' : '';
+      const label = selected ? 'Selected' : state.label;
+      rows += `<button type="button" class="nb-slot-cell ${esc(cls)}" ${disabled} onclick="nbToggleSlot('${jsArg(court.id)}', ${hour})" title="${esc(court.name)} ${fmtHour(hour)}">
+        <strong>${esc(state.detail)}</strong>
+        <span>${esc(label)}</span>
+      </button>`;
+    });
+    rows += '</div>';
+  }
+
+  const liveNote = `<div class="nb-slot-toolbar">
+    <span>${availableCount} available slot${availableCount === 1 ? '' : 's'}</span>
+    <span>${courts.length} court${courts.length === 1 ? '' : 's'} shown</span>
+  </div>`;
+  const legend = `<div class="nb-slots-legend">
+    <span>Available</span>
+    <span style="color:var(--green)">Selected</span>
+    <span style="color:var(--red)">Taken</span>
+    ${hasOpenPlay ? '<span style="color:var(--yellow)">Open Play</span>' : ''}
+    ${hasMaint ? '<span style="color:#ff9800">Maintenance</span>' : ''}
+  </div>`;
+
+  grid.innerHTML = liveNote + legend +
+    `<div class="nb-slot-matrix-wrap"><div class="nb-slot-matrix" style="--nb-court-count:${courts.length}">${header}${rows}</div></div>` +
+    '<div id="nbSlotSummary"></div>';
+  nbUpdateTotal();
+}
+
+function nbToggleSlot(courtId, hour) {
+  const date = $('nbDate')?.value;
+  const court = _nbCourts.find(c => String(c.id) === String(courtId));
+  if (!date || !court) return;
+  const state = nbSlotState(court, date, Number(hour));
+  if (state.unavailable) {
+    toast(`This slot is ${state.label.toLowerCase()}.`, 'inf');
+    return;
+  }
+  const key = nbCellKey(court.id, hour);
+  if (_nbSelectedCells.has(key)) _nbSelectedCells.delete(key);
+  else _nbSelectedCells.add(key);
+  _nbSelSlots = [...new Set(nbSelectedEntries().map(item => item.hour))].sort((a, b) => a - b);
+  nbRenderSlots();
+}
+
+function nbUpdateTotal() {
+  const groups = nbSelectionGroups();
+  const total = groups.reduce((sum, group) => sum + group.total, 0);
+  const half = Math.round(total / 2);
+
+  if ($('nbDp50Amt')) $('nbDp50Amt').textContent = fmt(half);
+  if ($('nbDp100Amt')) $('nbDp100Amt').textContent = fmt(total);
+
+  const sum = $('nbSlotSummary');
+  if (!sum) return;
+  if (!groups.length) {
+    sum.innerHTML = '';
+    return;
+  }
+  const rows = groups.map(group => `
+    <div class="nb-sum-row">
+      <span><strong>${esc(group.court.name)}</strong><br><span class="nb-sum-muted">${fmtHour(group.startH)} - ${fmtHour(group.endH)} (${group.slots.length} hr${group.slots.length === 1 ? '' : 's'})</span></span>
+      <strong>${fmt(group.total)}</strong>
+    </div>`).join('');
+  sum.innerHTML = `<div class="nb-slots-summary">
+    <div class="nb-sum-list">${rows}</div>
+    <div class="nb-sum-row nb-sum-total"><span>Total</span><span>${fmt(total)}</span></div>
+  </div>`;
+}
+
+function nbAggregateBooking(baseRef, groupRef, bookings, groups, total, downpayment) {
+  const primary = bookings[0] || {};
+  return {
+    ...primary,
+    ref: baseRef,
+    displayRef: baseRef,
+    groupRef: groupRef || null,
+    items: bookings,
+    refs: bookings.map(b => b.ref),
+    courtName: [...new Set(groups.map(g => g.court.name))].join(', '),
+    scheduleLabel: `${fmtD(primary.date)} | ${groups.map(g => `${g.court.name} ${fmtHour(g.startH)}-${fmtHour(g.endH)}`).join('; ')}`,
+    timeLabel: groups.map(g => `${fmtHour(g.startH)}-${fmtHour(g.endH)}`).join(', '),
+    total,
+    downpayment,
+    duration: groups.reduce((sum, group) => sum + group.slots.length, 0),
+  };
+}
+
+async function saveNewBooking() {
+  const name = $('nbName').value.trim();
+  const phoneRaw = $('nbPhone').value.trim();
+  const phone = phoneRaw.replace(/\s|-/g, '');
+  const email = $('nbEmail').value.trim();
+  const date = $('nbDate').value;
+  const method = $('nbMethod').value;
+  const gcashRef = $('nbGcashRef').value.trim() || null;
+  const status = $('nbStatus').value;
+  const groups = nbSelectionGroups();
+  const total = groups.reduce((sum, group) => sum + group.total, 0);
+  const downpayment = _nbDpFull ? total : Math.round(total / 2);
+  const payStatus = _nbDpFull ? 'paid' : 'downpayment_paid';
+
+  if (!name || name.length < 2) { toast('Enter a valid customer name.', 'err'); return; }
+  if (!/^(09|\+639)\d{9}$/.test(phone)) { toast('Enter a valid PH number (e.g. 09XX XXX XXXX).', 'err'); return; }
+  if (!date) { toast('Please select a date.', 'err'); return; }
+  if (!groups.length) { toast('Please select at least one available slot.', 'err'); return; }
+  if (method === 'gcash' && !gcashRef) { toast('Please enter the GCash reference number.', 'err'); return; }
+
+  const baseRef = nbGenRef();
+  const groupRef = groups.length > 1 ? `${baseRef}-G` : null;
+  const nowIso = new Date().toISOString();
+  const bookings = groups.map((group, index) => {
+    const ref = groupRef ? `${baseRef}-${String(index + 1).padStart(2, '0')}` : baseRef;
+    return {
+      ref,
+      groupRef,
+      fullName: name,
+      contactNumber: phoneRaw,
+      email: email || '',
+      courtId: group.court.id,
+      courtName: group.court.name,
+      date,
+      slots: group.slots,
+      startTime: fmtHour(group.startH),
+      endTime: fmtHour(group.endH),
+      duration: group.slots.length,
+      rate: group.court.rate,
+      total: group.total,
+      paymentMethod: method,
+      gcashRef,
+      downpayment: _nbDpFull ? group.total : Math.round(group.total / 2),
+      paymentStatus: payStatus,
+      paymentFlow: method,
+      status,
+      createdAt: nowIso,
+    };
+  });
+
+  const btn = $('nbSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    for (const booking of bookings) await DB.addBooking(booking);
+    const aggregate = nbAggregateBooking(baseRef, groupRef, bookings, groups, total, downpayment);
+    closeModal('newBookingModal');
+    toast(`Booking created! Ref: ${baseRef}`);
+    await renderBookings();
+    await renderDash();
+    if (_curSection === 'reports') await renderReport();
+    notifyBookingUpdateSafe(aggregate, status === 'confirmed' ? 'admin_booking_created' : 'new_booking', 'Created from admin panel.');
+    if (status === 'confirmed' && email) sendBookingConfirmationNotice(aggregate).catch(() => {});
+  } catch (e) {
+    toast(e.message || 'Failed to create booking.', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '+ Create Booking';
+  }
+}
+
+async function calOpenBookingSlot(dateStr, courtId, hour) {
+  await openNewBookingModal();
+  $('nbDate').value = dateStr;
+  _nbSelectedCourtIds = new Set([String(courtId)]);
+  _nbSelectedCells = new Set();
+  nbRenderCourtPicker();
+  await nbRenderSlots();
+  const key = nbCellKey(courtId, hour);
+  if (!_nbSelectedCells.has(key)) nbToggleSlot(courtId, hour);
 }
 
 /* ==============================================
