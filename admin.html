@@ -3111,10 +3111,13 @@ function sortBookingsChronologically(items = []) {
 }
 function bookingGroupKey(b) {
   if (b?.groupRef) return `group:${b.groupRef}`;
-  const method = String(b?.paymentMethod || '').toLowerCase();
-  const ref = String(b?.gcashRef || '').trim();
-  if (ref && ['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'].includes(method)) return `payment:${method}:${ref}`;
   return `single:${b?.ref || ''}`;
+}
+function normalizedPaymentRefKey(b) {
+  const method = String(b?.paymentMethod || '').toLowerCase();
+  if (!['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'].includes(method)) return '';
+  const ref = String(b?.gcashRef || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return ref ? `${method}:${ref}` : '';
 }
 function commonBookingPrefix(refs = []) {
   const parts = refs.map(r => String(r || '')).filter(Boolean);
@@ -3203,7 +3206,7 @@ function groupBookings(bookings = []) {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(b);
   });
-  return [...map.entries()].map(([key, rawItems]) => {
+  const groups = [...map.entries()].map(([key, rawItems]) => {
     const allItems = sortBookingsChronologically(rawItems);
     const items = uniqueBookingGroupItems(allItems);
     const primary = items[0] || {};
@@ -3245,6 +3248,21 @@ function groupBookings(bookings = []) {
       receiptVerifiedAt: primary.receiptVerifiedAt,
       createdAt: items.map(b => b.createdAt || b.created_at).filter(Boolean).sort()[0] || primary.createdAt || primary.created_at,
       duration: items.reduce((sum, b) => sum + (Number(b.duration) || 0), 0),
+    };
+  });
+  const refCounts = new Map();
+  groups.forEach(g => {
+    const key = normalizedPaymentRefKey(g);
+    if (!key) return;
+    refCounts.set(key, (refCounts.get(key) || 0) + 1);
+  });
+  return groups.map(g => {
+    const key = normalizedPaymentRefKey(g);
+    const count = key ? (refCounts.get(key) || 0) : 0;
+    return {
+      ...g,
+      duplicatePaymentRef: count > 1,
+      duplicatePaymentRefCount: count,
     };
   }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
@@ -3363,6 +3381,11 @@ function receiptBadge(b){
   let [c,bg,lbl] = map[s] || ['#888','var(--input)',s];
   if (s === 'rejected') lbl = displayFlags.length ? `Rejected: ${reason}` : 'Flagged earlier — review manually';
   return `<div class="receipt-badge" style="color:${c};background:${bg}">${lbl}</div>`;
+}
+function duplicatePaymentRefBadge(b){
+  if (!b?.duplicatePaymentRef) return '';
+  const count = Number(b.duplicatePaymentRefCount || 0);
+  return `<div class="receipt-badge" style="color:#e53935;background:rgba(229,57,53,.12)">Duplicate payment ref${count > 1 ? ` (${count})` : ''}</div>`;
 }
 function receiptFlagChips(flags){
   if (!flags || !flags.length) return '';
@@ -3514,6 +3537,7 @@ function mobileBookingCard(b, canDelete){
         <span class="mb-book-chip">${esc(payMethod)}</span>
         <span class="mb-book-chip ${['unpaid','rejected','failed'].includes(String(b.paymentStatus || '').toLowerCase()) ? 'warn' : ''}">${esc(payState)}</span>
       </div>
+      ${duplicatePaymentRefBadge(b)}
     </div>
     <details class="mb-book-pay">
       <summary>Actions</summary>
@@ -3524,6 +3548,7 @@ function mobileBookingCard(b, canDelete){
         <div class="mb-book-detail-row"><span>Payment</span><span>${esc(payMethod)}</span></div>
         <div class="mb-book-detail-row"><span>Booked</span><span>${esc(bookedOn)}</span></div>
         <div class="mb-book-detail-row"><span>Pay State</span><span>${bookingPayStateSelect(b)}</span></div>
+        ${b.duplicatePaymentRef ? `<div class="mb-book-detail-row"><span>Warning</span><span>${duplicatePaymentRefBadge(b)}</span></div>` : ''}
         ${b.receiptStatus && b.receiptStatus !== 'none' ? `<div class="mb-book-detail-row"><span>Receipt</span><span>${receiptBadge(b)}</span></div>` : ''}
       </div>
       <div class="mb-book-actions">${bookingActionsHtml(b, canDelete)}</div>
@@ -3960,6 +3985,7 @@ async function renderBookings(){
         <div class="amount-main">${fmt(b.total)}</div>
         ${(()=>{ const dp=b.downpayment||b.total/2; return dp>=b.total ? `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">✅ Full payment</div>` : `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">⚡ ${fmt(dp)} down</div>`; })()}
         ${b.gcashRef?`<div style="font-size:.7rem;margin-top:1px;font-weight:700">Ref: <code style="color:var(--text)">${esc(b.gcashRef)}</code></div>`:''}
+        ${duplicatePaymentRefBadge(b)}
       </div></td>
       <td data-label="Payment"><span style="font-size:.76rem;background:var(--input);border-radius:4px;padding:2px 7px">${esc(paymentMethodLabel(b.paymentMethod))}</span></td>
       <td data-label="Pay State"><div class="pay-state-stack">
@@ -3970,6 +3996,7 @@ async function renderBookings(){
           <option value="for_verification" ${b.paymentStatus==='for_verification'?'selected':''}>For Verification</option>
           <option value="rejected" ${b.paymentStatus==='rejected'?'selected':''}>Rejected</option>
         </select>
+        ${duplicatePaymentRefBadge(b)}
         ${receiptBadge(b)}
       </div></td>
       <td data-label="Status">${statusBdg(b.status)}</td>
