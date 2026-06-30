@@ -396,6 +396,63 @@ td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border)
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--bg2); }
 .tbl-scroll { overflow-x: auto; }
+.bill-breakdown {
+  min-width: 220px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input);
+}
+.bill-breakdown-title {
+  font-size: .66rem;
+  color: var(--text3);
+  font-weight: 900;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.bill-breakdown-row,
+.bill-breakdown-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  color: var(--text);
+}
+.bill-breakdown-row span:first-child,
+.bill-breakdown-total span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bill-breakdown-row span:nth-child(2),
+.bill-breakdown-total span:nth-child(2) {
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+  font-size: .74rem;
+  white-space: nowrap;
+}
+.bill-breakdown-row strong,
+.bill-breakdown-total strong {
+  color: var(--yellow);
+  font-family: 'DM Mono', monospace;
+  font-size: .74rem;
+  white-space: nowrap;
+}
+.bill-breakdown-total {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-weight: 900;
+}
+.bill-breakdown-empty {
+  font-size: .74rem;
+  color: var(--text3);
+  line-height: 1.35;
+}
 
 /* ── TOOLBAR ───────────────────────────────────────────── */
 .toolbar {
@@ -782,6 +839,15 @@ tr:hover td { background: var(--bg2); }
   .tbl-scroll td[data-label="Pay State"] .receipt-badge { max-width: 100%; width: fit-content; }
   .tbl-scroll td[data-label="Actions"] > div { width: 100%; gap: 6px !important; }
   .tbl-scroll td[data-label="Amount"] .amount-stack { width: 100%; }
+  .tbl-scroll td[data-label="Amount to Remit"] { display: block; }
+  .tbl-scroll td[data-label="Amount to Remit"]::before { display: block; min-width: 0; margin-bottom: 6px; }
+  .tbl-scroll td[data-label="Amount to Remit"] .bill-breakdown { width: 100%; min-width: 0; }
+  .bill-breakdown-row,
+  .bill-breakdown-total { grid-template-columns: minmax(0, 1fr) auto; }
+  .bill-breakdown-row strong,
+  .bill-breakdown-total strong { text-align: right; }
+  .bill-breakdown-row span:nth-child(2),
+  .bill-breakdown-total span:nth-child(2) { grid-column: 1 / 2; }
   #bookBody .booking-row { padding: 0; overflow: hidden; }
   #bookBody .booking-row > td:not(.booking-mobile-card) { display: none; }
   #bookBody .booking-mobile-card {
@@ -3292,6 +3358,80 @@ function platformFeeFormulaText(bookings, cfg) {
   if (cfg.type === 'flat') return `${count} confirmed booking transaction${count !== 1 ? 's' : ''} × ${fmt(cfg.amount)}`;
   const hours = bookings.reduce((sum, b) => sum + bookingBillableHours(b), 0);
   return `${hours} booked hour${hours !== 1 ? 's' : ''} × ${fmt(cfg.amount)}`;
+}
+function billedRefsFromStatement(statement = {}) {
+  const raw = statement.billed_refs ?? statement.billedRefs ?? [];
+  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (typeof raw === 'string') {
+    const text = raw.trim();
+    if (!text) return [];
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch (_) {}
+    return text.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+function bookingsForBillingStatement(statement, bookings = []) {
+  const refs = new Set(billedRefsFromStatement(statement));
+  if (refs.size) return bookings.filter(b => refs.has(String(b.ref || '')));
+  return bookings.filter(b =>
+    isPlatformBillableBooking(b) &&
+    bookingRevenueDate(b) >= statement.week_start &&
+    bookingRevenueDate(b) <= statement.week_end
+  );
+}
+function formatBillHours(hours) {
+  const n = Number(hours) || 0;
+  return `${Number.isInteger(n) ? n : n.toFixed(2).replace(/\.?0+$/, '')} hr${n === 1 ? '' : 's'}`;
+}
+function renderBillingCourtBreakdown(statement, bookings = [], courts = [], feeCfg = { amount: 0, type: 'per_hour' }) {
+  const items = bookingsForBillingStatement(statement, bookings);
+  const byCourt = new Map();
+  const ensureCourt = name => {
+    const key = String(name || 'Unassigned court').trim() || 'Unassigned court';
+    if (!byCourt.has(key)) byCourt.set(key, { name: key, hours: 0, amount: 0 });
+    return byCourt.get(key);
+  };
+
+  courts.map(c => c.name || c.courtName).filter(Boolean).forEach(ensureCourt);
+
+  items.forEach(b => {
+    const row = ensureCourt(b.courtName || 'Unassigned court');
+    const hours = bookingBillableHours(b);
+    row.hours += hours;
+    if (feeCfg.type !== 'flat') row.amount += hours * feeCfg.amount;
+  });
+
+  const rows = [...byCourt.values()]
+    .filter(row => row.hours > 0 || courts.length <= 6)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const totalHours = rows.reduce((sum, row) => sum + row.hours, 0);
+  const totalDue = Number(statement.amount_due) || 0;
+
+  if (!rows.length) {
+    return `<div class="bill-breakdown">
+      <div class="bill-breakdown-title">Court Hours Breakdown</div>
+      <div class="bill-breakdown-empty">No included court hours found for this statement.</div>
+    </div>`;
+  }
+
+  const rowHtml = rows.map(row => `<div class="bill-breakdown-row">
+    <span>${esc(row.name)}</span>
+    <span>${formatBillHours(row.hours)}</span>
+    <strong>${feeCfg.type === 'flat' ? '&mdash;' : fmt(row.amount)}</strong>
+  </div>`).join('');
+
+  return `<div class="bill-breakdown">
+    <div class="bill-breakdown-title">Court Hours Breakdown</div>
+    ${rowHtml}
+    <div class="bill-breakdown-total">
+      <span>Total</span>
+      <span>${formatBillHours(totalHours)}</span>
+      <strong>${fmt(totalDue)}</strong>
+    </div>
+  </div>`;
 }
 function statusBdg(s){const m={pending:'bdg-p',confirmed:'bdg-c',completed:'bdg-d',verifying:'bdg-v',cancelled:'bdg-x'};return`<span class="bdg ${m[s]||''}">${esc(s)}</span>`;}
 function payStatusBdg(s){
@@ -6255,10 +6395,12 @@ async function renderWeeklyBilling() {
   const body = $('billBody');
   if (!body || !Auth.can('owner_only', sess.role)) return;
 
-  const [rows, accounts, settings] = await Promise.all([
+  const [rows, accounts, settings, bookings, courts] = await Promise.all([
     DB.getWeeklyFees(),
     DB.getAccounts(),
     DB.getSettings(),
+    DB.getBookings(),
+    DB.getCourts(),
   ]);
   const feeCfg = getPlatformFeeConfig(settings);
   const ownerById = {};
@@ -6286,6 +6428,7 @@ async function renderWeeklyBilling() {
     const period = `${_dateLabel(r.week_start)} – ${_dateLabel(r.week_end)}`;
     const canMarkPaid = status !== 'paid';
     const canMarkOverdue = ['draft', 'sent'].includes(status);
+    const courtBreakdown = renderBillingCourtBreakdown(r, bookings, courts, feeCfg);
     const proofBtn = (status === 'submitted' && r.submitted_proof_url)
       ? `<button class="btn btn-sm" style="background:rgba(91,140,210,.12);color:#5b8cd2;border:1px solid rgba(91,140,210,.3)" onclick="viewBillingProof('${jsArg(r.id)}')">📎 Receipt</button>`
       : '';
@@ -6295,7 +6438,7 @@ async function renderWeeklyBilling() {
       <td data-label="Court Owner"><div style="font-weight:700">${esc(ownerName)}</div><div style="font-size:.72rem;color:var(--muted)">${esc(r.court_owner_email || owner?.email || '—')}</div></td>
       <td data-label="Bookings">${r.bookings_count}</td>
       <td data-label="Booking Fee">${platformFeeLabel({ amount: Number(r.fee_per_booking) || 0, type: feeCfg.type }, { short: true })}</td>
-      <td data-label="Amount to Remit"><strong style="color:var(--yellow)">${fmt(r.amount_due)}</strong></td>
+      <td data-label="Amount to Remit"><strong style="color:var(--yellow)">${fmt(r.amount_due)}</strong>${courtBreakdown}</td>
       <td data-label="Status">${_billStatusBadge(r.status)}</td>
       <td data-label="Due Date">${dueLabel}</td>
       <td data-label="Remittance Ref"><code style="font-size:.74rem;color:var(--text)">${esc(refDisplay)}</code></td>
@@ -6458,7 +6601,12 @@ async function renderMyBilling() {
   const body = $('myBillBody');
   if (!body || !Auth.can('court_owner_only', sess.role)) return;
 
-  const [all, settings] = await Promise.all([DB.getWeeklyFees(), DB.getSettings()]);
+  const [all, settings, bookings, courts] = await Promise.all([
+    DB.getWeeklyFees(),
+    DB.getSettings(),
+    DB.getBookings(),
+    DB.getCourts(),
+  ]);
   const feeCfg = getPlatformFeeConfig(settings);
   const mine = all.filter(r => r.court_owner_user_id === sess.id || r.court_owner_email === sess.email);
 
@@ -6488,6 +6636,7 @@ async function renderMyBilling() {
     const dueLabel = r.due_at ? new Date(r.due_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     const canPay = ['sent', 'overdue'].includes(status);
     const bookingsCount = Number(r.bookings_count) || 0;
+    const courtBreakdown = renderBillingCourtBreakdown(r, bookings, courts, feeCfg);
     const submittedMeta = status === 'submitted'
       ? `<div class="remit-card-meta">Submitted ref: <code>${esc(r.submitted_ref || '—')}</code></div>`
       : '';
@@ -6505,6 +6654,7 @@ async function renderMyBilling() {
         <div class="remit-card-period">${period}</div>
         <div class="remit-card-meta">${bookingsCount} booking transaction${bookingsCount !== 1 ? 's' : ''} included</div>
         ${submittedMeta}
+        ${courtBreakdown}
       </div>
       <div class="remit-card-field">
         <div class="remit-card-label">Booking Fee</div>
