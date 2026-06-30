@@ -445,6 +445,93 @@ tr:hover td { background: var(--bg2); }
   overflow-wrap: anywhere; line-height: 1.35;
 }
 .receipt-detail-full { grid-column: 1 / -1; }
+.pr-toolbar { align-items: flex-start; margin-bottom: 10px; }
+.pr-title { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pr-title h2 { margin: 0; line-height: 1; }
+.pr-subtitle { color: var(--text3); font-size: .78rem; font-weight: 700; }
+.pr-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pr-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.pr-stat {
+  position: relative; min-height: 76px; padding: 12px 13px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+}
+.pr-stat::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; background: var(--green);
+}
+.pr-stat-label { color: var(--text3); font-size: .64rem; font-weight: 900; text-transform: uppercase; letter-spacing: .7px; }
+.pr-stat-value {
+  margin-top: 6px; color: var(--green); font-size: 1.55rem;
+  line-height: 1; font-weight: 900; font-family: 'Bebas Neue', sans-serif;
+}
+.pr-stat-icon { position: absolute; right: 12px; bottom: 10px; font-size: 1.05rem; opacity: .32; }
+.pr-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; margin-bottom: 14px; }
+.pr-panel-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.pr-panel-title h3 {
+  margin: 0; font-size: 1rem; line-height: 1.1; font-family: 'DM Sans', sans-serif;
+  letter-spacing: 0; font-weight: 900; color: var(--text);
+}
+.pr-panel-title div { color: var(--text3); font-size: .74rem; font-weight: 700; margin-top: 3px; }
+.pr-filter-bar {
+  display: grid; grid-template-columns: minmax(180px, 1fr) minmax(130px, auto) minmax(150px, auto);
+  gap: 8px; width: 100%; max-width: 680px;
+}
+.pr-filter-bar input, .pr-filter-bar select {
+  min-width: 0; width: 100%; padding: 8px 10px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text); font-size: .84rem;
+}
+.pr-card-list { display: grid; gap: 10px; padding: 12px; }
+.pr-card {
+  display: grid; gap: 10px; padding: 12px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow);
+}
+.pr-card-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.pr-card-name { color: var(--text); font-weight: 900; font-size: .98rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-card-ref { color: var(--text3); font-size: .72rem; margin-top: 2px; overflow-wrap: anywhere; }
+.pr-card-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; color: var(--text2); font-size: .78rem; font-weight: 800; }
+.pr-type-pill { font-size: .68rem; font-weight: 900; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.pr-type-booking { background: rgba(74,154,220,.12); color: #5a9ad4; }
+.pr-type-open { background: rgba(56,189,248,.12); color: #38bdf8; }
+.pr-card-schedule {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px; padding: 9px 10px; border-radius: 10px;
+  background: var(--bg2); border: 1px solid var(--border);
+}
+.pr-card-court { color: var(--text); font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-card-time { color: var(--text2); font-size: .78rem; font-weight: 800; text-align: right; }
+.pr-card-flags { display: flex; gap: 6px; flex-wrap: wrap; min-height: 0; }
+.pr-card-flags .receipt-chip { font-size: .68rem; padding: 4px 7px; }
+.pr-card-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pr-card-bottom .btn { min-height: 34px; justify-content: center; }
+.pr-empty {
+  padding: 24px 16px; text-align: center; color: var(--text3);
+  border: 1px dashed var(--border); border-radius: 12px; background: var(--bg2);
+}
+.pr-log-panel { margin-bottom: 0; }
+.pr-log-panel summary {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; padding: 14px 16px; cursor: pointer; list-style: none;
+}
+.pr-log-panel summary::-webkit-details-marker { display: none; }
+.pr-log-panel summary h3 {
+  margin: 0; font-family: 'DM Sans', sans-serif; letter-spacing: 0;
+  font-size: .95rem; font-weight: 900;
+}
+.pr-log-list { display: grid; gap: 8px; padding: 0 12px 12px; border-top: 1px solid var(--border); }
+.pr-log-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px; align-items: center; padding: 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+}
+.pr-log-name { font-weight: 900; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-log-meta { color: var(--text3); font-size: .72rem; margin-top: 2px; }
+.pr-log-pay { text-align: right; font-size: .78rem; font-weight: 900; color: var(--text); white-space: nowrap; }
 .amount-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .amount-main { font-weight: 600; }
 .amount-down { font-size: .73rem; color: var(--text); font-weight: 700; }
@@ -744,6 +831,24 @@ tr:hover td { background: var(--bg2); }
   .bill-controls .btn { flex: 1 1 auto; justify-content: center; }
   .filters:not(#tableView .filters) { flex-direction: column; }
   .filters:not(#tableView .filters) input, .filters:not(#tableView .filters) select { width: 100%; }
+  #sec-payreview .pr-toolbar { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 10px; }
+  #sec-payreview .pr-toolbar > div { width: auto; }
+  #sec-payreview .pr-title { flex: 1; }
+  #sec-payreview .pr-title h2 { font-size: 1.45rem; }
+  #sec-payreview .pr-actions { flex: 0 0 auto; gap: 6px; }
+  #sec-payreview .pr-actions .btn { min-height: 36px; padding: 8px 10px; }
+  .pr-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .pr-stat { min-height: 70px; padding: 11px 12px; }
+  .pr-stat-value { font-size: 1.4rem; }
+  .pr-panel-head { padding: 12px; }
+  .pr-filter-bar { grid-template-columns: 1fr; max-width: none; }
+  .pr-card-list { padding: 10px; gap: 9px; }
+  .pr-card { padding: 11px; border-radius: 11px; }
+  .pr-card-schedule { grid-template-columns: 1fr; gap: 4px; }
+  .pr-card-time { text-align: left; }
+  .pr-card-bottom .btn { width: 100%; }
+  .pr-log-item { grid-template-columns: 1fr; }
+  .pr-log-pay { text-align: left; }
   /* Modals */
   .modal { border-radius: 12px; }
   .m-hd { padding: 14px 16px; }
@@ -1573,25 +1678,31 @@ tr:hover td { background: var(--bg2); }
 
     <!-- PAYMENT REVIEW -->
     <div id="sec-payreview" class="adm-sec">
-      <div class="toolbar">
-        <h2>PAYMENT REVIEW</h2>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="toolbar pr-toolbar">
+        <div class="pr-title">
+          <h2>Review Queue</h2>
+          <div class="pr-subtitle">Digital receipts that need attention</div>
+        </div>
+        <div class="pr-actions">
           <button class="btn btn-g btn-sm" onclick="renderPaymentReview()">Refresh</button>
-          <button class="btn btn-p btn-sm" onclick="goto('payments')">QR Settings</button>
+          <button class="btn btn-p btn-sm" onclick="goto('payments')">QR</button>
         </div>
       </div>
 
-      <div class="stat-cards">
-        <div class="sc"><div class="sc-lbl">Needs Review</div><div class="sc-val" id="prNeedsReview">0</div><div class="sc-ic">&#128269;</div></div>
-        <div class="sc"><div class="sc-lbl">Pending Digital</div><div class="sc-val" id="prPending">0</div><div class="sc-ic">&#9203;</div></div>
-        <div class="sc"><div class="sc-lbl">Auto-Verified</div><div class="sc-val" id="prAuto">0</div><div class="sc-ic">&#10003;</div></div>
-        <div class="sc"><div class="sc-lbl">Rejected</div><div class="sc-val" id="prRejected">0</div><div class="sc-ic">&#9888;</div></div>
+      <div class="pr-stat-grid">
+        <div class="pr-stat"><div class="pr-stat-label">Needs Review</div><div class="pr-stat-value" id="prNeedsReview">0</div><div class="pr-stat-icon">&#128269;</div></div>
+        <div class="pr-stat"><div class="pr-stat-label">Pending</div><div class="pr-stat-value" id="prPending">0</div><div class="pr-stat-icon">&#9203;</div></div>
+        <div class="pr-stat"><div class="pr-stat-label">Auto-Verified</div><div class="pr-stat-value" id="prAuto">0</div><div class="pr-stat-icon">&#10003;</div></div>
+        <div class="pr-stat"><div class="pr-stat-label">Rejected</div><div class="pr-stat-value" id="prRejected">0</div><div class="pr-stat-icon">&#9888;</div></div>
       </div>
 
-      <div class="tbl-wrap" style="margin-bottom:18px">
-        <div class="tbl-hd">
-          <h3>Manual Payment Review Queue</h3>
-          <div class="filters">
+      <div class="pr-panel">
+        <div class="pr-panel-head">
+          <div class="pr-panel-title">
+            <h3>Manual Payment Review</h3>
+            <div id="prQueueMeta">Showing payments that need attention</div>
+          </div>
+          <div class="pr-filter-bar">
             <input type="text" id="prSearch" placeholder="Search name, ref, court, date..." oninput="renderPaymentReview()"/>
             <select id="prType" onchange="renderPaymentReview()">
               <option value="">All Types</option>
@@ -1609,26 +1720,20 @@ tr:hover td { background: var(--bg2); }
             </select>
           </div>
         </div>
-        <div class="tbl-scroll">
-          <table>
-            <thead><tr><th>Type</th><th>Customer / Player</th><th>Court / Schedule</th><th>Method</th><th>Amount</th><th>Status</th><th>Flags</th><th>Action</th></tr></thead>
-            <tbody id="prQueueBody"><tr><td colspan="8" class="pb-loading-cell"><div class="pb-loader"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading payments</div></div></td></tr></tbody>
-          </table>
+        <div id="prQueueBody" class="pr-card-list">
+          <div class="pb-loader"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading payments</div></div>
         </div>
       </div>
 
-      <div class="tbl-wrap">
-        <div class="tbl-hd">
+      <details class="pr-panel pr-log-panel">
+        <summary>
           <h3>Recent Payment Log</h3>
-          <span style="font-size:.78rem;color:var(--muted)">Latest court booking and Open Play reservation payment activity</span>
+          <span style="font-size:.78rem;color:var(--muted)">Latest activity</span>
+        </summary>
+        <div id="prLogBody" class="pr-log-list">
+          <div class="pr-empty">No payment activity yet.</div>
         </div>
-        <div class="tbl-scroll">
-          <table>
-            <thead><tr><th>When</th><th>Schedule</th><th>Type</th><th>Reference</th><th>Name</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead>
-            <tbody id="prLogBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No payment activity yet.</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+      </details>
     </div>
 
     <!-- REPORTS -->
@@ -3803,31 +3908,52 @@ function statusPill(status) {
   return `<span style="font-size:.72rem;font-weight:800;padding:2px 8px;border-radius:20px;background:${bg};color:${c};white-space:nowrap">${label}</span>`;
 }
 
+function paymentReviewWhenText(v) {
+  if (!v) return '--';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '--';
+  return `${d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+}
+
 function paymentReviewAction(item) {
   if (item.type === 'booking') {
-    return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${esc(item.id)}')">Review</button>`;
+    return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(item.id)}')">Review</button>`;
   }
   if (item.type === 'open_play' && item.status !== 'paid') {
-    return `<button class="btn btn-sm" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.35);font-weight:700" onclick="openOpVerifyModal('${esc(item.id)}')">Review</button>`;
+    return `<button class="btn btn-sm" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.35);font-weight:700" onclick="openOpVerifyModal('${jsArg(item.id)}')">Review</button>`;
   }
   return '<span style="color:var(--muted);font-size:.78rem">No action</span>';
 }
 
 function paymentReviewRow(item) {
   const typeLabel = item.type === 'booking' ? 'Court Booking' : 'Open Play Reservation';
-  const typeBg = item.type === 'booking' ? 'rgba(74,154,220,.12)' : 'rgba(56,189,248,.12)';
-  const typeColor = item.type === 'booking' ? '#5a9ad4' : '#38bdf8';
-  const flags = item.flags?.length ? receiptFlagChips(item.flags) : '<span style="color:var(--muted);font-size:.74rem">--</span>';
-  return `<tr>
-    <td data-label="Type"><span style="font-size:.72rem;font-weight:800;padding:2px 8px;border-radius:20px;background:${typeBg};color:${typeColor};white-space:nowrap">${typeLabel}</span></td>
-    <td data-label="Customer"><div style="font-weight:700">${esc(item.name)}</div><div style="font-size:.72rem;color:var(--muted)"><code>${esc(item.ref)}</code></div></td>
-    <td data-label="Court / Schedule"><div style="font-weight:700">${esc(item.courtName || '--')}</div><div style="font-size:.76rem;color:var(--muted)">${esc(item.dateLabel)}</div><div style="font-size:.72rem;color:var(--muted);font-weight:600">${esc(item.timeLabel)}</div></td>
-    <td data-label="Method">${paymentMethodLabel(item.method)}</td>
-    <td data-label="Amount"><strong style="color:var(--text)">${fmt(item.amount || 0)}</strong></td>
-    <td data-label="Status">${statusPill(item.status)}</td>
-    <td data-label="Flags">${flags}</td>
-    <td data-label="Action">${paymentReviewAction(item)}</td>
-  </tr>`;
+  const typeClass = item.type === 'booking' ? 'pr-type-booking' : 'pr-type-open';
+  const flags = item.flags?.length
+    ? receiptFlagChips(item.flags)
+    : '<span style="color:var(--text3);font-size:.72rem;font-weight:800">No flags</span>';
+  return `<article class="pr-card">
+    <div class="pr-card-top">
+      <div>
+        <div class="pr-card-name">${esc(item.name)}</div>
+        <div class="pr-card-ref"><code>${esc(item.ref)}</code></div>
+      </div>
+      ${statusPill(item.status)}
+    </div>
+    <div class="pr-card-meta">
+      <span class="pr-type-pill ${typeClass}">${typeLabel}</span>
+      <span>${esc(paymentMethodLabel(item.method))}</span>
+      <span>${fmt(item.amount || 0)}</span>
+    </div>
+    <div class="pr-card-schedule">
+      <div class="pr-card-court">${esc(item.courtName || '--')}</div>
+      <div class="pr-card-time">${esc(item.dateLabel || '--')} · ${esc(item.timeLabel || '--')}</div>
+    </div>
+    <div class="pr-card-flags">${flags}</div>
+    <div class="pr-card-bottom">
+      <span style="color:var(--text3);font-size:.72rem;font-weight:800">${esc(typeLabel)} receipt</span>
+      ${paymentReviewAction(item)}
+    </div>
+  </article>`;
 }
 
 async function renderPaymentReview() {
@@ -3885,21 +4011,27 @@ async function renderPaymentReview() {
   if (typ) filtered = filtered.filter(i => i.type === typ);
   if (st === 'attention') filtered = filtered.filter(i => ['manual_review', 'pending', 'rejected'].includes(i.status));
   else if (st) filtered = filtered.filter(i => i.status === st);
+  if ($('prQueueMeta')) {
+    $('prQueueMeta').textContent = filtered.length === 1
+      ? 'Showing 1 payment'
+      : `Showing ${filtered.length} payments`;
+  }
   $('prQueueBody').innerHTML = filtered.length
     ? filtered.map(paymentReviewRow).join('')
-    : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No payments match this view.</td></tr>';
+    : '<div class="pr-empty">No payments match this view.</div>';
 
   const recent = items.slice(0, 30);
-  $('prLogBody').innerHTML = recent.length ? recent.map(i => `<tr>
-    <td data-label="When">${shortDateTime(i.createdAt)}</td>
-    <td data-label="Schedule"><div style="font-weight:700">${esc(i.dateLabel || '--')}</div><div style="font-size:.72rem;color:var(--muted);font-weight:600">${esc(i.timeLabel || '--')}</div></td>
-    <td data-label="Type">${i.type === 'booking' ? 'Court Booking' : 'Open Play Reservation'}</td>
-    <td data-label="Reference"><code style="color:var(--green)">${esc(i.ref)}</code></td>
-    <td data-label="Name">${esc(i.name)}</td>
-    <td data-label="Payment">${paymentMethodLabel(i.method)} <span style="color:var(--muted)">/</span> ${fmt(i.amount || 0)}</td>
-    <td data-label="Status">${statusPill(i.status)}</td>
-    <td data-label="Action">${paymentReviewAction(i)}</td>
-  </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No payment activity yet.</td></tr>';
+  $('prLogBody').innerHTML = recent.length ? recent.map(i => `<article class="pr-log-item">
+    <div>
+      <div class="pr-log-name">${esc(i.name)}</div>
+      <div class="pr-log-meta">${esc(paymentReviewWhenText(i.createdAt))} · ${esc(i.type === 'booking' ? 'Court Booking' : 'Open Play')} · <code>${esc(i.ref)}</code></div>
+      <div class="pr-log-meta">${esc(i.dateLabel || '--')} · ${esc(i.timeLabel || '--')}</div>
+    </div>
+    <div class="pr-log-pay">
+      <div>${esc(paymentMethodLabel(i.method))} / ${fmt(i.amount || 0)}</div>
+      <div style="margin-top:4px">${statusPill(i.status)}</div>
+    </div>
+  </article>`).join('') : '<div class="pr-empty">No payment activity yet.</div>';
 }
 
 let calYear=new Date().getFullYear(), calMonth=new Date().getMonth(), calSelectedDate='';
