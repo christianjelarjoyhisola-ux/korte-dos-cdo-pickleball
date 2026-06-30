@@ -1162,6 +1162,8 @@ window.DB = {
 
   async updateWeeklyFee(id, updates) {
     const row = {};
+    if (updates.courtOwnerUserId !== undefined) row.court_owner_user_id = updates.courtOwnerUserId;
+    if (updates.courtOwnerEmail !== undefined) row.court_owner_email = updates.courtOwnerEmail;
     if (updates.status !== undefined) row.status = updates.status;
     if (updates.paidAt !== undefined) row.paid_at = updates.paidAt;
     if (updates.paidRef !== undefined) row.paid_ref = updates.paidRef;

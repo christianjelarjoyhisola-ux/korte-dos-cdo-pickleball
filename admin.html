@@ -6380,6 +6380,22 @@ function _billStatusBadge(status) {
   return '<span class="bdg bdg-d">Draft</span>';
 }
 
+function selectRemittanceCourtOwner(accounts = []) {
+  const owners = accounts.filter(a => a.role === 'court_owner');
+  if (!owners.length) return accounts.find(a => a.role === 'owner') || accounts[0] || null;
+  return [...owners].sort((a, b) => {
+    const aEmail = String(a.email || '').toLowerCase();
+    const bEmail = String(b.email || '').toLowerCase();
+    const aProd = aEmail.endsWith('@kortedoscdo.club') ? 1 : 0;
+    const bProd = bEmail.endsWith('@kortedoscdo.club') ? 1 : 0;
+    if (aProd !== bProd) return bProd - aProd;
+    const aLocal = aEmail.endsWith('.local') ? 1 : 0;
+    const bLocal = bEmail.endsWith('.local') ? 1 : 0;
+    if (aLocal !== bLocal) return aLocal - bLocal;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  })[0];
+}
+
 async function viewBillingProof(id) {
   const all = await DB.getWeeklyFees();
   const r = all.find(x => x.id === id);
@@ -6467,22 +6483,23 @@ async function generateWeeklyStatement() {
       DB.getSettings(),
     ]);
 
-    // Look for court_owner, or fallback to system owner (for testing)
-    let courtOwner = accounts.find(a => a.role === 'court_owner');
-    if (!courtOwner) {
-      courtOwner = accounts.find(a => a.role === 'owner') || accounts[0];
-      if (!courtOwner) { toast('No accounts found.', 'err'); return; }
-    }
+    const courtOwner = selectRemittanceCourtOwner(accounts);
+    if (!courtOwner) { toast('No court owner account found.', 'err'); return; }
 
     const feeCfg = getPlatformFeeConfig(settings);
     const feePerBooking = feeCfg.amount;
 
-    // One statement per (owner, booking month). Regenerating recomputes the same month
-    // rather than creating a duplicate.
-    const existing = (existingStatements || []).find(r =>
+    // One statement per booking month for the venue. If an older statement was
+    // generated under a placeholder/local court-owner account, reassign it to
+    // the selected production court owner so it appears in their dashboard.
+    const exactExisting = (existingStatements || []).find(r =>
       r.court_owner_user_id === courtOwner.id &&
       r.week_start === startDate && r.week_end === endDate
     );
+    const periodExisting = (existingStatements || []).find(r =>
+      r.week_start === startDate && r.week_end === endDate
+    );
+    const existing = exactExisting || periodExisting;
 
     // Fee applies only to online platform bookings. The remittance month is based
     // on when the booking was made, not the future court reservation date.
@@ -6513,6 +6530,8 @@ async function generateWeeklyStatement() {
         return;
       }
       await DB.updateWeeklyFee(existing.id, {
+        courtOwnerUserId: courtOwner.id,
+        courtOwnerEmail: courtOwner.email,
         bookingsCount,
         amountDue,
         feePerBooking,
