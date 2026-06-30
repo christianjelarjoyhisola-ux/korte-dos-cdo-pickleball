@@ -5575,7 +5575,8 @@ function startSlotCountdown(initialSeconds = null) {
   if (!banner) return;
   banner.style.display = 'flex';
   banner.classList.remove('urgent');
-  let secsLeft = Number.isFinite(Number(initialSeconds))
+  const hasResumeSeconds = initialSeconds !== null && initialSeconds !== undefined && Number.isFinite(Number(initialSeconds));
+  let secsLeft = hasResumeSeconds
     ? Math.max(0, Math.floor(Number(initialSeconds)))
     : RESERVATION_MINUTES * 60;
   function fmt(s) {
