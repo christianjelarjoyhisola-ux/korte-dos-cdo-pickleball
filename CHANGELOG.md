@@ -6,6 +6,27 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-06-30] - Guest Resume, Manual Booking & Admin Mobile Polish
+
+### Added
+- **Guest booking auto-resume** - public bookings now save the active guest reservation and form draft in the same browser so a player can return and continue before the hold expires.
+- **Multi-court manual booking** - admin Book for Customer now supports selecting multiple courts and multiple time blocks in one modern time matrix, saved as grouped booking records.
+
+### Changed
+- **Booking hold countdown resume** - restored guest bookings continue from the original reservation time instead of restarting the 15-minute hold.
+- **Admin mobile layouts** - modernized Reports, Payment Review, Bookings, booking date stickiness, and Find Available Time surfaces to use denser mobile-friendly cards, filters, and controls.
+- **Payment review queue** - compacted payment review summary and queue cards for better mobile scanning.
+
+### Fixed
+- **Immediate booking expiration bug** - fixed Book Now opening with an expired countdown when starting a normal new booking.
+- **Booking date sticky styling** - removed the unintended left-edge accent artifact while keeping the booking date area visible on scroll.
+- **Find Available Time alignment** - corrected modal field alignment and tightened spacing.
+- **Bookings filter alignment** - fixed mobile filter box positioning in the Bookings admin view.
+
+**Files affected:** `index.html`, `admin.html`
+
+---
+
 ## [2026-06-27] - Booking Search, Grouped Transactions & Admin Fixes
 
 ### Added
