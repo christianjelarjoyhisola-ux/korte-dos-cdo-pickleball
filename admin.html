@@ -6396,9 +6396,23 @@ async function generateWeeklyStatement() {
     }
 
     // Stamp each billed booking so it is auditable and never billed twice.
-    if (weeklyFeeId) await DB.markBookingsBilled(billedRefs, weeklyFeeId);
+    // Older databases may still run the double-booking trigger on metadata-only
+    // updates; do not report the saved statement as failed if only this audit
+    // stamp is blocked.
+    let auditStampFailed = false;
+    if (weeklyFeeId && billedRefs.length) {
+      try {
+        await DB.markBookingsBilled(billedRefs, weeklyFeeId);
+      } catch (stampErr) {
+        auditStampFailed = true;
+        console.warn('[billGenerate] statement saved but booking audit stamp failed:', stampErr);
+      }
+    }
 
     toast(`Booking-date remittance statement ${existing ? 'updated' : 'generated'}: ${platformFeeFormulaText(eligibleGroups, feeCfg)} = ${fmt(amountDue)}`);
+    if (auditStampFailed) {
+      toast('Statement saved. Booking audit stamp was skipped because the database trigger needs the metadata-update migration.', 'inf');
+    }
     await renderWeeklyBilling();
   } catch (e) {
     console.error('[billGenerate] error:', e);

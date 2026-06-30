@@ -169,12 +169,25 @@ async function run() {
     CREATE OR REPLACE FUNCTION public.prevent_double_booking()
     RETURNS TRIGGER LANGUAGE plpgsql AS $$
     BEGIN
+      IF TG_OP = 'UPDATE'
+         AND NEW.court_id IS NOT DISTINCT FROM OLD.court_id
+         AND NEW.date IS NOT DISTINCT FROM OLD.date
+         AND NEW.status IS NOT DISTINCT FROM OLD.status
+         AND NEW.ref IS NOT DISTINCT FROM OLD.ref
+         AND NEW.slots IS NOT DISTINCT FROM OLD.slots THEN
+        RETURN NEW;
+      END IF;
       IF NEW.status = 'cancelled' THEN RETURN NEW; END IF;
       IF EXISTS (
         SELECT 1 FROM public.bookings b
         WHERE b.court_id = NEW.court_id AND b.date = NEW.date
           AND b.status != 'cancelled' AND b.ref != NEW.ref
           AND b.slots && NEW.slots
+          AND (
+            b.status != 'verifying'
+            OR b.created_at IS NULL
+            OR b.created_at > (now() - interval '15 minutes')
+          )
       ) THEN
         RAISE EXCEPTION 'One or more time slots are already booked for this court and date.';
       END IF;
