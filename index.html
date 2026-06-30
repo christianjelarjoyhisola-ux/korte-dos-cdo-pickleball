@@ -5086,6 +5086,7 @@ let _reservedRefs = [];
 let _reservationStartedAt = null;
 let _countdownInterval = null;
 const RESERVATION_MINUTES = 15;
+const GUEST_RESUME_KEY = 'pb_guest_booking_resume_v1';
 
 function reservedRefs() {
   return [...new Set([_reservedRef, ...(_reservedRefs || [])].filter(Boolean))];
@@ -5095,6 +5096,156 @@ function clearReservationState() {
   _reservedRef = null;
   _reservedRefs = [];
   _reservationStartedAt = null;
+  clearGuestBookingResume();
+}
+
+function reservationSecondsLeft(startedAt = _reservationStartedAt) {
+  const startedMs = new Date(startedAt || '').getTime();
+  if (!Number.isFinite(startedMs)) return RESERVATION_MINUTES * 60;
+  return Math.max(0, Math.ceil(((startedMs + RESERVATION_MINUTES * 60 * 1000) - Date.now()) / 1000));
+}
+
+function guestResumeFormDraft() {
+  return {
+    step: wizStep || 3,
+    name: $('bName')?.value || '',
+    phone: $('bPhone')?.value || '',
+    email: $('bEmail')?.value || '',
+    payMethod: $('bPay')?.value || '',
+    gcashRef: $('bGcashRef')?.value || '',
+    payFull: !!payFull,
+    policyAgreed: !!$('bookingPolicyAgree')?.checked,
+  };
+}
+
+function saveGuestBookingResume(extra = {}) {
+  const refs = reservedRefs();
+  if (!refs.length || !_reservationStartedAt) return;
+  try {
+    localStorage.setItem(GUEST_RESUME_KEY, JSON.stringify({
+      refs,
+      primaryRef: refs[0],
+      startedAt: _reservationStartedAt,
+      savedAt: new Date().toISOString(),
+      form: guestResumeFormDraft(),
+      ...extra,
+    }));
+  } catch (_) {}
+}
+
+function readGuestBookingResume() {
+  try {
+    const raw = localStorage.getItem(GUEST_RESUME_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.refs) || !data.refs.length || !data.startedAt) return null;
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearGuestBookingResume() {
+  try { localStorage.removeItem(GUEST_RESUME_KEY); } catch (_) {}
+}
+
+function bookingItemFromReservedBooking(b) {
+  const slots = [...(b.slots || [])].map(Number).filter(Number.isFinite).sort((a, c) => a - c);
+  const duration = Number(b.duration || slots.length || 0);
+  const serviceFee = calcSvcFee(duration);
+  const total = Number(b.total || 0);
+  return {
+    ref: b.ref,
+    groupRef: b.groupRef || null,
+    courtId: String(b.courtId),
+    courtName: b.courtName || `Court ${b.courtId}`,
+    date: b.date,
+    slots,
+    startTime: b.startTime || (slots.length ? fmtT(Math.min(...slots)) : ''),
+    endTime: b.endTime || (slots.length ? fmtT(Math.max(...slots) + 1) : ''),
+    timeLabel: b.timeLabel || slotsTimeLabel(slots),
+    duration,
+    rate: Number(b.rate || 0),
+    courtFee: Math.max(0, total - serviceFee),
+    serviceFee,
+    total,
+  };
+}
+
+function restoreGuestResumeDraft(form = {}) {
+  if ($('bName')) $('bName').value = form.name || '';
+  if ($('bPhone')) $('bPhone').value = form.phone || '';
+  if ($('bEmail')) $('bEmail').value = form.email || '';
+  if ($('bookingPolicyAgree')) $('bookingPolicyAgree').checked = !!form.policyAgreed;
+  if (form.payMethod && paymentMethods[form.payMethod]) pickPay(form.payMethod);
+  if ($('bGcashRef')) {
+    $('bGcashRef').value = normalizePaymentRef(form.gcashRef || '', $('bPay')?.value || form.payMethod || 'gcash');
+    updateRefCount();
+  }
+  setPayAmount(form.payFull ? 'full' : 'half');
+}
+
+function initGuestResumePersistence() {
+  ['bName', 'bPhone', 'bEmail', 'bGcashRef', 'bookingPolicyAgree'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    ['input', 'change'].forEach(evt => el.addEventListener(evt, () => saveGuestBookingResume()));
+  });
+  window.addEventListener('beforeunload', () => saveGuestBookingResume());
+}
+
+async function maybeResumeGuestBooking() {
+  const resume = readGuestBookingResume();
+  if (!resume) return;
+
+  if (reservationSecondsLeft(resume.startedAt) <= 0) {
+    await Promise.allSettled(resume.refs.map(ref =>
+      DB.updateBooking(ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {})
+    ));
+    clearGuestBookingResume();
+    return;
+  }
+
+  const rows = (await Promise.all(resume.refs.map(ref => DB.getBookingByRef(ref).catch(() => null))))
+    .filter(Boolean)
+    .filter(b => b.status === 'verifying' && isHeldVerifying(b));
+
+  if (!rows.length) {
+    clearGuestBookingResume();
+    return;
+  }
+
+  bookingItems = rows.map(bookingItemFromReservedBooking);
+  _reservedRefs = rows.map(b => b.ref);
+  _reservedRef = _reservedRefs[0] || null;
+  _reservationStartedAt = resume.startedAt;
+
+  const primary = bookingItems[0];
+  if (primary) {
+    const courts = await DB.getCourts();
+    court = courts.find(c => String(c.id) === String(primary.courtId)) || {
+      id: primary.courtId,
+      name: primary.courtName,
+      rate: primary.rate,
+    };
+    if (court) pricingTiers = getPricingTiersForCourt(court);
+    selSlots = [...primary.slots];
+    if ($('bDate')) $('bDate').value = primary.date;
+    sharedCourtDate = normalizedCourtBrowseDate(primary.date);
+    syncSharedCourtDateUI(sharedCourtDate);
+  }
+
+  await refreshBookingItemViews(bookingItems);
+  restoreGuestResumeDraft(resume.form || {});
+  updatePrice();
+  wizStartStep = 3;
+  $('bookModal')?.classList.add('active');
+  document.body.style.overflow = 'hidden';
+  hideHostInvite({ restoreScroll: false });
+  const resumeStep = Math.min(5, Math.max(3, Number(resume.form?.step || 3)));
+  wizGoTo(resumeStep);
+  startSlotCountdown(reservationSecondsLeft(resume.startedAt));
+  toast('Your reserved booking was restored. Continue before the timer ends.', 'ok');
 }
 
 function cancelReservedBookings(refs = reservedRefs()) {
@@ -5390,6 +5541,7 @@ async function proceedToBook(courtId = null) {
   _reservedRefs = reserveItems.map(item => item.ref);
   _reservedRef = _reservedRefs[0] || null;
   _reservationStartedAt = reserveStartedAt;
+  saveGuestBookingResume();
   selSlots = [...primary.slots];
   await refreshBookingItemViews(reserveItems);
   $('bDate').value = selectedDate;
@@ -5415,7 +5567,7 @@ function closeBookModal() {
   else clearSelectedBookingUi();
 }
 
-function startSlotCountdown() {
+function startSlotCountdown(initialSeconds = null) {
   stopSlotCountdown();
   const banner = $('slotCountdown');
   const timeEl = $('scdTime');
@@ -5423,7 +5575,9 @@ function startSlotCountdown() {
   if (!banner) return;
   banner.style.display = 'flex';
   banner.classList.remove('urgent');
-  let secsLeft = RESERVATION_MINUTES * 60;
+  let secsLeft = Number.isFinite(Number(initialSeconds))
+    ? Math.max(0, Math.floor(Number(initialSeconds)))
+    : RESERVATION_MINUTES * 60;
   function fmt(s) {
     const m = Math.floor(s / 60), sec = s % 60;
     return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
@@ -5529,6 +5683,7 @@ function wizGoTo(n) {
   }
   const body = document.querySelector('.bk-modal-body');
   if (body) body.scrollTop = 0;
+  saveGuestBookingResume();
 }
 
 function wizNext() {
@@ -6239,6 +6394,7 @@ function pickPay(m) {
   else $('bGcashRef')?.removeAttribute('required');
   syncBookingRefUi(m);
   updatePaymentAmountUI();
+  saveGuestBookingResume();
 }
 
 function syncGcashSharedPanel(method) {
@@ -6430,6 +6586,7 @@ function setPayAmount(mode) {
     if (btn100) btn100.classList.toggle('on',  payFull);
   });
   updatePrice();
+  saveGuestBookingResume();
 }
 
 /* =============================================
@@ -7229,6 +7386,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadOperatingHours();
   await expireStaleVerifyingBookings();
   await renderCourts();
+  initGuestResumePersistence();
+  await maybeResumeGuestBooking();
   await maybeOpenHostSessionLink();
   initHostInvitePopup();
   startRealtime();
@@ -7245,7 +7404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initScrollReveal();
 });
 
-// Cancel any booking stuck in 'verifying' for more than 10 minutes.
+// Cancel any booking stuck in 'verifying' beyond the reservation window.
 // These are slots where the user paid but closed the tab / lost connection
 // before OCR finished — slot must be freed so others can book it.
 async function expireStaleVerifyingBookings() {
