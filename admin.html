@@ -619,10 +619,6 @@ tr:hover td { background: var(--bg2); }
   .sign-out-text { display: none; }
   .sign-out-icon { display: inline; }
   .nav-actions .btn-d { padding: 8px 10px; font-size: 16px; min-width: 36px; justify-content: center; }
-  /* Reports period filter */
-  .rp-period { flex-direction: column; align-items: stretch; }
-  .rp-period > span { display: flex; gap: 6px; }
-  .rp-period > span input { flex: 1; }
   /* Mobile card tables */
   .tbl-scroll table thead { display: none; }
   .tbl-scroll table, .tbl-scroll tbody, .tbl-scroll tr, .tbl-scroll td { display: block; width: 100%; }
@@ -1031,15 +1027,29 @@ tr:hover td { background: var(--bg2); }
 .rp-heading h2 { margin: 0; line-height: 1; }
 .rp-subtitle { color: var(--text3); font-size: .78rem; font-weight: 700; }
 .rp-export { min-height: 36px; }
-.rp-period {
-  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-  margin-bottom: 12px; padding: 6px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 12px; width: fit-content;
+.rp-filter-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px;
 }
-.rp-period .view-btn { min-height: 34px; padding: 6px 12px; font-size: .82rem !important; }
-.rp-date-range { display: none; gap: 6px; align-items: center; margin-left: 2px; }
-.rp-period.is-custom .rp-date-range { display: flex; }
+.rp-period {
+  display: inline-flex; gap: 4px; flex-wrap: nowrap; align-items: center;
+  padding: 4px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; max-width: 100%;
+  overflow-x: auto;
+}
+.rp-period .view-btn {
+  flex: 0 0 auto; min-height: 32px; padding: 6px 11px;
+  font-size: .8rem !important; border-radius: 9px;
+}
+.rp-date-range { display: none; gap: 6px; align-items: center; width: 100%; }
+.rp-filter-row.is-custom .rp-date-range { display: flex; }
 .rp-date-range input { width: 138px; padding: 6px 9px !important; font-size: .78rem !important; }
+.rp-range-summary {
+  display: inline-flex; align-items: center; min-height: 34px;
+  padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border);
+  background: rgba(var(--green-rgb), .055); color: var(--text2);
+  font-size: .78rem; font-weight: 800; white-space: nowrap;
+}
 #sec-reports .rp-stat-cards {
   grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px !important;
 }
@@ -1097,10 +1107,9 @@ tr:hover td { background: var(--bg2); }
   #sec-reports .toolbar > div { width: auto; flex: 1; }
   #sec-reports .toolbar h2 { font-size: 1.5rem; }
   .rp-export { padding: 8px 10px; }
-  .rp-period { width: 100%; flex-wrap: nowrap; overflow-x: auto; }
-  .rp-period .view-btn { flex: 0 0 auto; }
-  .rp-period.is-custom { flex-wrap: wrap; }
-  .rp-date-range { width: 100%; margin-left: 0; }
+  .rp-filter-row { gap: 8px; margin-bottom: 10px; }
+  .rp-period { width: 100%; }
+  .rp-range-summary { width: 100%; justify-content: center; }
   .rp-date-range input { flex: 1; min-width: 0; width: auto; }
   #sec-reports .rp-stat-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   #sec-reports .rp-stat-cards .sc { min-height: 78px; padding: 12px; }
@@ -1633,12 +1642,15 @@ tr:hover td { background: var(--bg2); }
       </div>
 
       <!-- Period filter -->
-      <div class="rp-period" id="rpPeriodControl">
-        <button class="view-btn active" id="rp-week" onclick="setReportPeriod('week')">Week</button>
-        <button class="view-btn" id="rp-month" onclick="setReportPeriod('month')">Month</button>
-        <button class="view-btn" id="rp-last" onclick="setReportPeriod('last')">Last Month</button>
-        <button class="view-btn" id="rp-all" onclick="setReportPeriod('all')">All</button>
-        <button class="view-btn" id="rp-custom" onclick="setReportPeriod('custom')">Custom</button>
+      <div class="rp-filter-row" id="rpFilterRow">
+        <div class="rp-period" id="rpPeriodControl">
+          <button class="view-btn active" id="rp-week" onclick="setReportPeriod('week')">Week</button>
+          <button class="view-btn" id="rp-month" onclick="setReportPeriod('month')">Month</button>
+          <button class="view-btn" id="rp-last" onclick="setReportPeriod('last')">Last Month</button>
+          <button class="view-btn" id="rp-all" onclick="setReportPeriod('all')">All</button>
+          <button class="view-btn" id="rp-custom" onclick="setReportPeriod('custom')">Custom</button>
+        </div>
+        <div class="rp-range-summary" id="rpRangeSummary">This week</div>
         <span class="rp-date-range">
           <input type="date" id="rpFrom" class="fi" onchange="setReportPeriod('custom')">
           <span style="color:var(--muted);font-size:.8rem">–</span>
@@ -4922,13 +4934,39 @@ function reportPeriodLabel(p = _rpPeriod) {
   return labels[p] || 'Reports';
 }
 
+function formatReportDateLabel(value) {
+  if (!value) return '';
+  return new Date(value + 'T00:00:00').toLocaleDateString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function reportRangeLabel(range, p = _rpPeriod) {
+  if (p === 'all') return 'All booking dates';
+  if (!range?.from && !range?.to) return 'Choose a custom date range';
+  if (range?.from && range?.to) return `${formatReportDateLabel(range.from)} - ${formatReportDateLabel(range.to)}`;
+  if (range?.from) return `From ${formatReportDateLabel(range.from)}`;
+  return `Until ${formatReportDateLabel(range.to)}`;
+}
+
+function syncReportPeriodUi(range) {
+  $('rpPeriodControl')?.classList.toggle('is-custom', _rpPeriod === 'custom');
+  $('rpFilterRow')?.classList.toggle('is-custom', _rpPeriod === 'custom');
+  if ($('rpPeriodLabel')) $('rpPeriodLabel').textContent = reportPeriodLabel();
+  if ($('rpRangeSummary')) $('rpRangeSummary').textContent = reportRangeLabel(range);
+  if (_rpPeriod !== 'custom') {
+    if ($('rpFrom')) $('rpFrom').value = range?.from || '';
+    if ($('rpTo')) $('rpTo').value = range?.to || '';
+  }
+}
+
 function setReportPeriod(p){
   _rpPeriod=p;
   ['week','month','last','all','custom'].forEach(k=>{
     const el=$('rp-'+k); if(el) el.classList.toggle('active',k===p);
   });
-  $('rpPeriodControl')?.classList.toggle('is-custom', p === 'custom');
-  if ($('rpPeriodLabel')) $('rpPeriodLabel').textContent = reportPeriodLabel(p);
   renderReport();
 }
 
@@ -4988,6 +5026,7 @@ function renderReportBars(targetId, entries, emptyCopy = 'No bookings in this pe
 async function renderReport(){
   const allBks=await DB.getBookings();
   const{from,to}=_rpDateRange();
+  syncReportPeriodUi({ from, to });
   // Reports start from online system usage only. Manual spreadsheet imports
   // remain schedule/history records but do not appear in analytics.
   let bks=allBks.filter(isPlatformBillableBooking);
@@ -5004,8 +5043,6 @@ async function renderReport(){
   $('rpCollected').textContent=fmtReportMoney(collected);
   $('rpPending').textContent=fmtReportMoney(pending);
   $('rpCount').textContent=txns.length;
-  if ($('rpPeriodLabel')) $('rpPeriodLabel').textContent = reportPeriodLabel();
-  $('rpPeriodControl')?.classList.toggle('is-custom', _rpPeriod === 'custom');
 
   // Revenue by court
   const courtMap={};
