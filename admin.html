@@ -537,7 +537,29 @@ tr:hover td { background: var(--bg2); }
 .amount-down { font-size: .73rem; color: var(--text); font-weight: 700; }
 .amount-ref { font-size: .7rem; font-weight: 700; overflow-wrap: anywhere; }
 .booking-mobile-card { display: none; }
+.booking-section-toolbar { margin-bottom: 12px; }
 .booking-toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.booking-toolbar-actions .view-toggle {
+  display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface);
+}
+.booking-toolbar-actions .view-btn {
+  min-height: 34px; padding: 7px 12px; border-radius: 9px; font-size: .84rem !important;
+}
+.booking-filter-panel {
+  padding: 12px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.booking-filter-panel .filters {
+  display: grid; grid-template-columns: minmax(220px, 1fr) 150px 150px auto;
+  gap: 8px; align-items: center; width: 100%;
+}
+.booking-filter-panel .filters input,
+.booking-filter-panel .filters select {
+  min-width: 0; width: 100%; min-height: 38px;
+  border-radius: 10px; font-size: .84rem;
+}
+.booking-filter-panel .filters .btn { min-height: 38px; justify-content: center; }
+#bookingFilterMeta { text-align: right; }
 .mb-book-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .mb-book-ref { font-size: .75rem; color: var(--green); font-family: 'DM Mono', monospace; overflow-wrap: anywhere; }
 .mb-book-meta { margin-top: 8px; font-size: .86rem; line-height: 1.45; }
@@ -547,6 +569,17 @@ tr:hover td { background: var(--bg2); }
 .mb-book-schedule { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; margin-top: 7px; }
 .mb-book-court { min-width: 0; color: var(--text2); font-size: .8rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mb-book-time { color: var(--text); font-weight: 900; white-space: nowrap; }
+.mb-book-summary {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border);
+}
+.mb-book-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 24px;
+  padding: 4px 8px; border-radius: 999px; background: var(--input);
+  color: var(--text2); font-size: .7rem; font-weight: 900; white-space: nowrap;
+}
+.mb-book-chip.amount { color: var(--green); background: rgba(var(--green-rgb), .1); }
+.mb-book-chip.warn { color: var(--yellow); background: rgba(var(--yellow-rgb), .12); }
 .mb-book-pay { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 9px; }
 .mb-book-pay summary {
   cursor: pointer; font-size: .78rem; font-weight: 800; color: var(--yellow);
@@ -766,7 +799,7 @@ tr:hover td { background: var(--bg2); }
     padding: 10px; background: var(--surface); border-bottom: 1px solid var(--border);
   }
   #tableView .filters {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    display: grid; grid-template-columns: minmax(88px, .85fr) minmax(132px, 1fr) auto;
     gap: 8px; align-items: center; width: 100%;
   }
   #tableView .filters input, #tableView .filters select {
@@ -774,7 +807,7 @@ tr:hover td { background: var(--bg2); }
     border-radius: 10px; font-size: .86rem !important;
   }
   #tableView .filters input[type="search"] { grid-column: 1 / -1; }
-  #tableView .filters input[type="date"] { grid-column: 1 / -1; }
+  #tableView .filters input[type="date"] { grid-column: auto; }
   #tableView .filters .btn {
     min-height: 40px; padding: 8px 11px; border-radius: 10px;
     font-size: .82rem !important; justify-content: center;
@@ -862,7 +895,7 @@ tr:hover td { background: var(--bg2); }
   #sec-bookings .booking-toolbar-actions { grid-template-columns: 1fr 1fr; }
   #sec-bookings .booking-toolbar-actions .view-toggle { grid-column: 1 / -1; }
   #tableView .tbl-hd { padding: 8px; }
-  #tableView .filters { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+  #tableView .filters { grid-template-columns: minmax(84px, .85fr) minmax(120px, 1fr) auto; gap: 7px; }
   #tableView .filters input, #tableView .filters select { height: 40px; padding: 7px 9px; font-size: .84rem !important; }
   #tableView .filters .btn { min-height: 40px; padding: 7px 10px; font-size: .78rem !important; }
   #bookBody .booking-mobile-card { padding: 12px; }
@@ -1618,12 +1651,11 @@ tr:hover td { background: var(--bg2); }
 
     <!-- BOOKINGS -->
     <div id="sec-bookings" class="adm-sec">
-      <div class="toolbar">
-        <h2>📋 ALL BOOKINGS</h2>
+      <div class="toolbar booking-section-toolbar">
         <div class="booking-toolbar-actions">
           <div class="view-toggle">
-            <button id="viewBtnList" class="view-btn active" onclick="switchBookingView('list')">📋 List</button>
-            <button id="viewBtnCal" class="view-btn" onclick="switchBookingView('cal')">📅 Calendar</button>
+            <button id="viewBtnList" class="view-btn active" onclick="switchBookingView('list')">List</button>
+            <button id="viewBtnCal" class="view-btn" onclick="switchBookingView('cal')">Calendar</button>
           </div>
           <button class="btn btn-g btn-sm booking-export-btn" data-perm="export" onclick="exportCSV()">Export</button>
           <button class="btn btn-p btn-sm" onclick="openNewBookingModal()">+ New</button>
@@ -1650,7 +1682,7 @@ tr:hover td { background: var(--bg2); }
       <!-- LIST VIEW -->
       <div id="tableView">
         <div class="tbl-wrap">
-          <div class="tbl-hd booking-filter-shell">
+          <div class="tbl-hd booking-filter-shell booking-filter-panel">
             <div class="filters">
               <input type="search" id="srch" placeholder="Search name, ref, email" aria-label="Search bookings" autocomplete="off" oninput="renderBookings()"/>
               <input type="date" id="fDate" aria-label="Filter bookings by court date" onchange="renderBookings()"/>
@@ -3161,6 +3193,17 @@ function payStatusBdg(s){
   const cls = v === 'paid' ? 'bdg-c' : v === 'downpayment_paid' ? 'bdg-p' : v === 'for_verification' ? 'bdg-p' : (v === 'failed' || v === 'rejected') ? 'bdg-x' : 'bdg-d';
   return `<span class="bdg ${cls}">${label}</span>`;
 }
+function payStatusText(s){
+  const v = (s || 'unpaid').toLowerCase();
+  return v === 'paid' ? 'Paid'
+    : v === 'downpayment_paid' ? 'Downpayment'
+    : v === 'for_verification' ? 'Verifying'
+    : v === 'pending' ? 'Pending'
+    : v === 'rejected' ? 'Rejected'
+    : v === 'failed' ? 'Failed'
+    : v === 'mixed' ? 'Mixed'
+    : 'Unpaid';
+}
 function esc(v){
   return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
@@ -3353,6 +3396,7 @@ function bookingPayStateSelect(b){
 function mobileBookingCard(b, canDelete){
   const dp = b.downpayment || b.total / 2;
   const payMethod = paymentMethodLabel(b.paymentMethod);
+  const payState = payStatusText(b.paymentStatus);
   const refLabel = b.displayRef || b.ref;
   const dateLabel = b.dateLabel || fmtD(b.date);
   const timeLabel = b.timeLabel || `${b.startTime || ''}-${b.endTime || ''}`;
@@ -3372,12 +3416,18 @@ function mobileBookingCard(b, canDelete){
       </div>
       ${b.email ? `<span class="mb-book-sub">${esc(b.email)}</span>` : ''}
       <div class="mb-book-schedule">
-        <span class="mb-book-court">${esc(courtLabel)} | ${esc(dateLabel)}</span>
+        <span class="mb-book-court">${esc(courtLabel)}</span>
         <span class="mb-book-time">${esc(timeLabel)}</span>
+      </div>
+      <div class="mb-book-sub">${esc(dateLabel)}</div>
+      <div class="mb-book-summary">
+        <span class="mb-book-chip amount">${fmt(b.total)}</span>
+        <span class="mb-book-chip">${esc(payMethod)}</span>
+        <span class="mb-book-chip ${['unpaid','rejected','failed'].includes(String(b.paymentStatus || '').toLowerCase()) ? 'warn' : ''}">${esc(payState)}</span>
       </div>
     </div>
     <details class="mb-book-pay">
-      <summary>Payment & actions</summary>
+      <summary>Actions</summary>
       <div class="mb-book-detail-grid">
         <div class="mb-book-detail-row"><span>Total</span><span>${fmt(b.total)}</span></div>
         <div class="mb-book-detail-row"><span>Down</span><span>${dp >= b.total ? 'Full payment' : `${fmt(dp)} down`}</span></div>
