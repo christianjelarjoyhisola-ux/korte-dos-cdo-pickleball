@@ -340,7 +340,6 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 
 /* ── REVENUE GRID ──────────────────────────────────────── */
 .rev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 26px; }
-#sec-reports .rp-ledger-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .panel {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r); padding: 18px;
@@ -1027,26 +1026,93 @@ tr:hover td { background: var(--bg2); }
 }
 
 /* ── REPORTS ───────────────────────────────────────────── */
-.rp-period { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
-.rp-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.rp-bar-label { min-width: 110px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rp-bar-track { flex: 1; height: 10px; background: var(--bg2); border-radius: 5px; overflow: hidden; }
-.rp-bar-fill { height: 100%; border-radius: 5px; transition: width .5s ease; background: var(--green); }
-.rp-bar-val { min-width: 80px; text-align: right; font-size: 13px; font-weight: 700; font-family: 'DM Mono', monospace; }
-.rp-panel-note {
-  margin-top: 12px; padding: 10px 11px; border-radius: 8px;
-  background: var(--input); border: 1px solid var(--border);
-  color: var(--text3); font-size: 12px; line-height: 1.45;
+#sec-reports .toolbar { align-items: flex-start; margin-bottom: 10px; }
+.rp-heading { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rp-heading h2 { margin: 0; line-height: 1; }
+.rp-subtitle { color: var(--text3); font-size: .78rem; font-weight: 700; }
+.rp-export { min-height: 36px; }
+.rp-period {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 12px; padding: 6px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; width: fit-content;
 }
-.rp-panel-note strong { color: var(--text); font-weight: 800; }
-.rp-trend-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.rp-trend-month { min-width: 64px; font-size: 13px; color: var(--text3); }
-.rp-trend-track { flex: 1; height: 22px; background: var(--bg2); border-radius: 5px; overflow: hidden; }
-.rp-trend-fill { height: 100%; border-radius: 5px; transition: width .5s ease; background: var(--green); display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 700; color: #0d2a00; white-space: nowrap; min-width: 0; }
-.rp-trend-val { min-width: 82px; text-align: right; font-size: 13px; font-weight: 700; font-family: 'DM Mono', monospace; }
+.rp-period .view-btn { min-height: 34px; padding: 6px 12px; font-size: .82rem !important; }
+.rp-date-range { display: none; gap: 6px; align-items: center; margin-left: 2px; }
+.rp-period.is-custom .rp-date-range { display: flex; }
+.rp-date-range input { width: 138px; padding: 6px 9px !important; font-size: .78rem !important; }
+#sec-reports .rp-stat-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px !important;
+}
+#sec-reports .rp-stat-cards .sc { min-height: 88px; padding: 14px 14px 12px; border-radius: 12px; }
+#sec-reports .rp-stat-cards .sc-lbl { font-size: .66rem; margin-bottom: 6px; }
+#sec-reports .rp-stat-cards .sc-val { font-size: 1.75rem; letter-spacing: .5px; }
+#sec-reports .rp-stat-cards .sc-ic { top: 12px; right: 12px; font-size: 1.15rem; opacity: .28; }
+.rp-breakdown-panel { padding: 14px; }
+.rp-breakdown-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.rp-breakdown-head h4 { margin: 0; }
+.rp-breakdown-tabs {
+  display: flex; gap: 5px; padding: 4px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 999px; overflow-x: auto;
+}
+.rp-tab {
+  border: 0; background: transparent; color: var(--text2); border-radius: 999px;
+  padding: 6px 10px; font-size: .74rem; font-weight: 900; cursor: pointer;
+  white-space: nowrap; transition: all var(--transition);
+}
+.rp-tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.rp-tab:hover:not(.active) { color: var(--text); }
+.rp-breakdown-view { display: none; }
+.rp-breakdown-view.active { display: block; }
+.rp-bar-row, .rp-trend-row {
+  display: grid; grid-template-columns: minmax(80px, .8fr) minmax(90px, 1fr) minmax(78px, auto);
+  align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.rp-bar-row:last-child, .rp-trend-row:last-child { border-bottom: 0; }
+.rp-bar-label, .rp-trend-month {
+  min-width: 0; font-size: .86rem; color: var(--text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.rp-bar-track, .rp-trend-track { height: 9px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
+.rp-bar-fill, .rp-trend-fill { height: 100%; border-radius: 999px; transition: width .5s ease; background: var(--green); }
+.rp-bar-val, .rp-trend-val {
+  text-align: right; font-size: .82rem; font-weight: 900; color: var(--text);
+  font-family: 'DM Mono', monospace; white-space: nowrap;
+}
+.rp-panel-note {
+  margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+  background: var(--input); border: 1px solid var(--border);
+  color: var(--text3); font-size: .74rem; line-height: 1.45;
+}
+.rp-panel-note summary { cursor: pointer; color: var(--text); font-weight: 900; }
+.rp-panel-note div { margin-top: 6px; }
 .rp-empty { font-size: 13px; color: var(--text3); font-style: italic; padding: 8px 0; }
 @media (max-width: 1100px) {
-  #sec-reports .rp-ledger-grid { grid-template-columns: 1fr; }
+  #sec-reports .rp-stat-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  #sec-reports .toolbar { flex-direction: row; align-items: center; }
+  #sec-reports .toolbar > div { width: auto; flex: 1; }
+  #sec-reports .toolbar h2 { font-size: 1.5rem; }
+  .rp-export { padding: 8px 10px; }
+  .rp-period { width: 100%; flex-wrap: nowrap; overflow-x: auto; }
+  .rp-period .view-btn { flex: 0 0 auto; }
+  .rp-period.is-custom { flex-wrap: wrap; }
+  .rp-date-range { width: 100%; margin-left: 0; }
+  .rp-date-range input { flex: 1; min-width: 0; width: auto; }
+  #sec-reports .rp-stat-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #sec-reports .rp-stat-cards .sc { min-height: 78px; padding: 12px; }
+  #sec-reports .rp-stat-cards .sc-val { font-size: 1.45rem; }
+  .rp-breakdown-panel { padding: 12px; }
+  .rp-breakdown-tabs { width: 100%; border-radius: 12px; }
+  .rp-tab { flex: 1 0 auto; }
+  .rp-bar-row, .rp-trend-row {
+    grid-template-columns: minmax(70px, .75fr) minmax(72px, 1fr) auto;
+    gap: 8px; padding: 9px 0;
+  }
+  .rp-bar-val, .rp-trend-val { font-size: .76rem; }
 }
 
 /* ── OPEN PLAY DAY CHIPS ──────────────────────────────── */
@@ -1559,52 +1625,62 @@ tr:hover td { background: var(--bg2); }
     <!-- REPORTS -->
     <div id="sec-reports" class="adm-sec">
       <div class="toolbar">
-        <h2>📈 REVENUE REPORTS</h2>
-        <button class="btn btn-p btn-sm" onclick="exportReportCSV()">📥 Export CSV</button>
+        <div class="rp-heading">
+          <h2>📈 REVENUE REPORTS</h2>
+          <div class="rp-subtitle" id="rpPeriodLabel">This Week</div>
+        </div>
+        <button class="btn btn-p btn-sm rp-export" onclick="exportReportCSV()">📥 Export CSV</button>
       </div>
 
       <!-- Period filter -->
-      <div class="rp-period">
-        <button class="view-btn active" id="rp-week" onclick="setReportPeriod('week')">This Week</button>
-        <button class="view-btn" id="rp-month" onclick="setReportPeriod('month')">This Month</button>
+      <div class="rp-period" id="rpPeriodControl">
+        <button class="view-btn active" id="rp-week" onclick="setReportPeriod('week')">Week</button>
+        <button class="view-btn" id="rp-month" onclick="setReportPeriod('month')">Month</button>
         <button class="view-btn" id="rp-last" onclick="setReportPeriod('last')">Last Month</button>
-        <button class="view-btn" id="rp-all" onclick="setReportPeriod('all')">All Time</button>
-        <span style="display:flex;gap:6px;align-items:center;margin-left:4px">
-          <input type="date" id="rpFrom" class="fi" style="padding:5px 10px;font-size:.8rem" onchange="setReportPeriod('custom')">
+        <button class="view-btn" id="rp-all" onclick="setReportPeriod('all')">All</button>
+        <button class="view-btn" id="rp-custom" onclick="setReportPeriod('custom')">Custom</button>
+        <span class="rp-date-range">
+          <input type="date" id="rpFrom" class="fi" onchange="setReportPeriod('custom')">
           <span style="color:var(--muted);font-size:.8rem">–</span>
-          <input type="date" id="rpTo" class="fi" style="padding:5px 10px;font-size:.8rem" onchange="setReportPeriod('custom')">
+          <input type="date" id="rpTo" class="fi" onchange="setReportPeriod('custom')">
         </span>
       </div>
 
       <!-- Summary cards -->
-      <div class="stat-cards" style="margin-bottom:20px">
+      <div class="stat-cards rp-stat-cards">
         <div class="sc"><div class="sc-lbl">Gross Revenue</div><div class="sc-val" id="rpGross">₱0</div><div class="sc-ic">💰</div></div>
         <div class="sc"><div class="sc-lbl">Collected</div><div class="sc-val" id="rpCollected">₱0</div><div class="sc-ic">✅</div></div>
         <div class="sc"><div class="sc-lbl">Pending</div><div class="sc-val" id="rpPending">₱0</div><div class="sc-ic">⏳</div></div>
         <div class="sc"><div class="sc-lbl">Active Bookings</div><div class="sc-val" id="rpCount">0</div><div class="sc-ic">📋</div></div>
       </div>
 
-      <!-- Charts row -->
-      <div class="rev-grid rp-ledger-grid">
-        <div class="panel">
-          <h4>Revenue by Court</h4>
+      <!-- Compact breakdown -->
+      <div class="panel rp-breakdown-panel">
+        <div class="rp-breakdown-head">
+          <h4>Breakdown</h4>
+          <div class="rp-breakdown-tabs" role="tablist" aria-label="Report breakdown">
+            <button class="rp-tab active" data-rp-tab="court" onclick="setReportBreakdown('court')">Court</button>
+            <button class="rp-tab" data-rp-tab="payment" onclick="setReportBreakdown('payment')">Payment</button>
+            <button class="rp-tab" data-rp-tab="received" onclick="setReportBreakdown('received')">Received</button>
+            <button class="rp-tab" data-rp-tab="trend" onclick="setReportBreakdown('trend')">Trend</button>
+          </div>
+        </div>
+        <div class="rp-breakdown-view active" data-rp-panel="court">
           <div id="rpCourtChart"><p class="rp-empty">No data.</p></div>
         </div>
-        <div class="panel">
-          <h4>Revenue by Paid Using</h4>
+        <div class="rp-breakdown-view" data-rp-panel="payment">
           <div id="rpPayChart"><p class="rp-empty">No data.</p></div>
         </div>
-        <div class="panel">
-          <h4>Money Received To</h4>
+        <div class="rp-breakdown-view" data-rp-panel="received">
           <div id="rpReceivedChart"><p class="rp-empty">No data.</p></div>
-          <div class="rp-panel-note"><strong>Accounting view:</strong> digital rails such as BDO Pay, Maya, GoTyme, and PNB are recorded as received to GCash unless a booking has an explicit receiving account.</div>
+          <details class="rp-panel-note">
+            <summary>Accounting view</summary>
+            <div>Digital rails such as BDO Pay, Maya, GoTyme, and PNB are recorded as received to GCash unless a booking has an explicit receiving account.</div>
+          </details>
         </div>
-      </div>
-
-      <!-- Monthly trend -->
-      <div class="panel" style="margin-top:16px">
-        <h4>Monthly Trend</h4>
-        <div id="rpTrend"><p class="rp-empty">No data.</p></div>
+        <div class="rp-breakdown-view" data-rp-panel="trend">
+          <div id="rpTrend"><p class="rp-empty">No data.</p></div>
+        </div>
       </div>
     </div>
 
@@ -4829,14 +4905,43 @@ async function exportCSV(){
 /* ==============================================
    REPORTS
    ============================================== */
-let _rpPeriod='week', _rpBks=[];
+let _rpPeriod='week', _rpBks=[], _rpBreakdown='court';
+
+function fmtReportMoney(n) {
+  return '₱' + Number(n || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 });
+}
+
+function reportPeriodLabel(p = _rpPeriod) {
+  const labels = {
+    week: 'This Week',
+    month: 'This Month',
+    last: 'Last Month',
+    all: 'All Time',
+    custom: 'Custom Range',
+  };
+  return labels[p] || 'Reports';
+}
 
 function setReportPeriod(p){
   _rpPeriod=p;
   ['week','month','last','all','custom'].forEach(k=>{
     const el=$('rp-'+k); if(el) el.classList.toggle('active',k===p);
   });
+  $('rpPeriodControl')?.classList.toggle('is-custom', p === 'custom');
+  if ($('rpPeriodLabel')) $('rpPeriodLabel').textContent = reportPeriodLabel(p);
   renderReport();
+}
+
+function setReportBreakdown(key) {
+  const valid = ['court', 'payment', 'received', 'trend'];
+  _rpBreakdown = valid.includes(key) ? key : 'court';
+  document.querySelectorAll('#sec-reports [data-rp-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.rpTab === _rpBreakdown);
+    btn.setAttribute('aria-selected', btn.dataset.rpTab === _rpBreakdown ? 'true' : 'false');
+  });
+  document.querySelectorAll('#sec-reports [data-rp-panel]').forEach(panel => {
+    panel.classList.toggle('active', panel.dataset.rpPanel === _rpBreakdown);
+  });
 }
 
 function _rpDateRange(){
@@ -4875,7 +4980,7 @@ function renderReportBars(targetId, entries, emptyCopy = 'No bookings in this pe
     return `<div class="rp-bar-row">
       <div class="rp-bar-label" title="${esc(name)}">${esc(name)}</div>
       <div class="rp-bar-track"><div class="rp-bar-fill" style="width:${Math.round(value / max * 100)}%"></div></div>
-      <div class="rp-bar-val">${fmt(value)}</div>
+      <div class="rp-bar-val">${fmtReportMoney(value)}</div>
     </div>`;
   }).join('');
 }
@@ -4895,10 +5000,12 @@ async function renderReport(){
   const gross=txns.reduce((s,b)=>s+(b.total||0),0);
   const collected=txns.filter(b=>b.paymentStatus==='paid').reduce((s,b)=>s+(b.total||0),0);
   const pending=txns.filter(b=>!b.paymentStatus||b.paymentStatus==='unpaid'||b.paymentStatus==='downpayment_paid').reduce((s,b)=>s+(b.total||0),0);
-  $('rpGross').textContent=fmt(gross);
-  $('rpCollected').textContent=fmt(collected);
-  $('rpPending').textContent=fmt(pending);
+  $('rpGross').textContent=fmtReportMoney(gross);
+  $('rpCollected').textContent=fmtReportMoney(collected);
+  $('rpPending').textContent=fmtReportMoney(pending);
   $('rpCount').textContent=txns.length;
+  if ($('rpPeriodLabel')) $('rpPeriodLabel').textContent = reportPeriodLabel();
+  $('rpPeriodControl')?.classList.toggle('is-custom', _rpPeriod === 'custom');
 
   // Revenue by court
   const courtMap={};
@@ -4932,18 +5039,19 @@ async function renderReport(){
   });
   if(!months.length){
     $('rpTrend').innerHTML='<p class="rp-empty">No bookings in this period.</p>';
-    return;
+  } else {
+    const maxMon=Math.max(...months.map(m=>monthMap[m.key]||0),1);
+    $('rpTrend').innerHTML=months.map(m=>{
+      const rev=monthMap[m.key]||0;
+      const w=Math.round(rev/maxMon*100);
+      return`<div class="rp-trend-row">
+        <div class="rp-trend-month">${m.label}</div>
+        <div class="rp-trend-track"><div class="rp-trend-fill" style="width:${w}%"></div></div>
+        <div class="rp-trend-val">${rev>0?fmtReportMoney(rev):'—'}</div>
+      </div>`;
+    }).join('');
   }
-  const maxMon=Math.max(...months.map(m=>monthMap[m.key]||0),1);
-  $('rpTrend').innerHTML=months.map(m=>{
-    const rev=monthMap[m.key]||0;
-    const w=Math.round(rev/maxMon*100);
-    return`<div class="rp-trend-row">
-      <div class="rp-trend-month">${m.label}</div>
-      <div class="rp-trend-track"><div class="rp-trend-fill" style="width:${w}%">${w>15?fmt(rev):''}</div></div>
-      <div class="rp-trend-val">${rev>0?fmt(rev):'—'}</div>
-    </div>`;
-  }).join('');
+  setReportBreakdown(_rpBreakdown);
 }
 
 async function exportReportCSV(){
