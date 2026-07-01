@@ -6,6 +6,19 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-01] - Shared Court Owner Remittance Statements
+
+### Changed
+- **Venue-level remittance visibility** - court-owner remittance statements are now treated as shared venue obligations so every court-owner account can see the same generated statement.
+- **System owner remittance label** - generated statements now display as assigned to all court owners instead of implying they belong to only one court-owner login.
+
+### DB
+- **Shared weekly fee RLS policy** - added a Supabase migration so all `court_owner` accounts can read remittance statements and submit proof while owner-only fields remain protected by the existing trigger.
+
+**Files affected:** `admin.html`, `supabase/migrations/20260626_role_based_security.sql`, `supabase/migrations/20260701020500_shared_court_owner_remittance_access.sql`
+
+---
+
 ## [2026-06-30] - Guest Resume, Manual Booking & Admin Mobile Polish
 
 ### Added
