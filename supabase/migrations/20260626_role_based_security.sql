@@ -365,14 +365,7 @@ create policy weekly_fees_select_role_scoped
   for select
   to authenticated
   using (
-    public.has_account_role(array['owner'])
-    or (
-      public.has_account_role(array['court_owner'])
-      and (
-        court_owner_user_id = auth.uid()::text
-        or court_owner_email = auth.jwt() ->> 'email'
-      )
-    )
+    public.has_account_role(array['owner','court_owner'])
   );
 
 drop policy if exists weekly_fees_insert_auth on public.weekly_fees;
@@ -390,24 +383,13 @@ create policy weekly_fees_update_role_scoped
   for update
   to authenticated
   using (
-    public.has_account_role(array['owner'])
-    or (
-      public.has_account_role(array['court_owner'])
-      and (
-        court_owner_user_id = auth.uid()::text
-        or court_owner_email = auth.jwt() ->> 'email'
-      )
-    )
+    public.has_account_role(array['owner','court_owner'])
   )
   with check (
     public.has_account_role(array['owner'])
     or (
       public.has_account_role(array['court_owner'])
       and status = 'submitted'
-      and (
-        court_owner_user_id = auth.uid()::text
-        or court_owner_email = auth.jwt() ->> 'email'
-      )
     )
   );
 
