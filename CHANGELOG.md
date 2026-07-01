@@ -6,6 +6,16 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-01] - Deleted Booking Recovery Archive
+
+### DB
+- **Deleted booking archive** - added a Supabase archive table and delete trigger so future booking deletions are automatically captured before the live row is removed.
+- **Screenshot recovery history** - recorded recovered cancelled/rejected screenshot references as history-only archive entries so they do not block court availability.
+
+**Files affected:** `supabase/migrations/20260701033000_deleted_booking_archive.sql`
+
+---
+
 ## [2026-07-01] - Shared Court Owner Remittance Statements
 
 ### Changed
