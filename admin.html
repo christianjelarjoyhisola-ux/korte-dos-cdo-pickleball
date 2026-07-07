@@ -1689,6 +1689,7 @@ tr:hover td { background: var(--bg2); }
     <div class="sb-section" data-perm="accounts">
       <div class="nav-grp">Admin Only</div>
       <div class="nav-item" data-s="accounts" data-perm="accounts" onclick="goto('accounts')"><span>&#128101;</span> Accounts</div>
+      <div class="nav-item" data-s="deleted" data-perm="owner_only" onclick="goto('deleted')"><span>&#128465;</span> Deleted Bookings</div>
     </div>
     <div class="sb-foot">
       <a href="index.html" class="btn btn-g btn-sm" style="flex:1">&#127968; Public Site</a>
@@ -1855,6 +1856,36 @@ tr:hover td { background: var(--bg2); }
               <tbody id="bookBody"><tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">No bookings.</td></tr></tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELETED BOOKINGS (owner only) -->
+    <div id="sec-deleted" class="adm-sec">
+      <div class="toolbar">
+        <h2>Deleted Bookings</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="search" id="deletedSrch" class="fi" placeholder="Search ref, name, email" style="width:240px" oninput="renderDeletedBookings()"/>
+          <select id="deletedStatus" class="fi" style="width:auto" onchange="renderDeletedBookings()">
+            <option value="">All archive rows</option>
+            <option value="deleted">Deleted only</option>
+            <option value="restored">Restored</option>
+          </select>
+          <button class="btn btn-g btn-sm" onclick="renderDeletedBookings()">Refresh</button>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:12px">
+        <div style="font-size:.84rem;color:var(--text2);line-height:1.5">
+          Restores use the original archived booking row. If the slot has already been booked again, restore will fail so you can resolve the conflict manually.
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <div class="tbl-hd"><h3>Archive</h3><div id="deletedMeta" style="font-size:.78rem;color:var(--muted)">Loading...</div></div>
+        <div class="tbl-scroll">
+          <table>
+            <thead><tr><th>Ref</th><th>Customer</th><th>Court</th><th>Schedule</th><th>Status</th><th>Deleted At</th><th>Actions</th></tr></thead>
+            <tbody id="deletedBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No deleted bookings loaded.</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -2520,6 +2551,9 @@ tr:hover td { background: var(--bg2); }
               <input type="checkbox" id="payMethodMayaOn" /> Maya
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
+              <input type="checkbox" id="payMethodBpiOn" /> BPI
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
               <input type="checkbox" id="payMethodGotymeOn" /> GoTyme
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
@@ -3181,7 +3215,7 @@ function bookingGroupKey(b) {
 }
 function normalizedPaymentRefKey(b) {
   const method = String(b?.paymentMethod || '').toLowerCase();
-  if (!['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'].includes(method)) return '';
+  if (!['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'].includes(method)) return '';
   const ref = String(b?.gcashRef || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   return ref ? `${method}:${ref}` : '';
 }
@@ -3433,7 +3467,7 @@ function renderBillingCourtBreakdown(statement, bookings = [], courts = [], feeC
     </div>
   </div>`;
 }
-function statusBdg(s){const m={pending:'bdg-p',confirmed:'bdg-c',completed:'bdg-d',verifying:'bdg-v',cancelled:'bdg-x'};return`<span class="bdg ${m[s]||''}">${esc(s)}</span>`;}
+function statusBdg(s){const m={pending:'bdg-p',confirmed:'bdg-c',completed:'bdg-d',verifying:'bdg-v',cancelled:'bdg-x',deleted:'bdg-x',restored:'bdg-c'};return`<span class="bdg ${m[s]||''}">${esc(s)}</span>`;}
 function payStatusBdg(s){
   const v = (s || 'unpaid').toLowerCase();
   const label = v === 'paid' ? 'Fully Paid' : v === 'downpayment_paid' ? 'Downpayment Paid' : v === 'for_verification' ? 'For Verification' : v === 'pending' ? 'Pending' : v === 'rejected' ? 'Rejected' : v === 'failed' ? 'Failed' : 'Unpaid';
@@ -3464,14 +3498,14 @@ function shortDateTime(v){
   return `${d.toLocaleDateString('en-PH',{month:'short',day:'numeric'})}<div style="font-size:.72rem;color:var(--muted);font-weight:600">${d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
 }
 const RECEIPT_FLAG_LABELS = {
-  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', WRONG_GCASH_NUMBER:'Wrong receiver number',
+  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', WRONG_GCASH_NUMBER:'Wrong receiver number',
   AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:'Paid after 10 min',
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
   EDITED_METADATA:'Edited image metadata', SUSPECTED_FAKE:'Not a receipt', REF_FORMAT_INVALID:'Bad reference format',
   REF_UNREADABLE:'Reference unreadable', INVOICE_UNREADABLE:'Invoice unreadable', LOW_OCR_CONFIDENCE:'Blurry / low OCR', OCR_UNAVAILABLE:'OCR unavailable', AMOUNT_UNREADABLE:'Amount unreadable',
   DATE_UNREADABLE:'Date unreadable', TIME_UNREADABLE:'Time unreadable', NUMBER_UNREADABLE:'Receiver number unreadable',
-  BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable',
+  BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', BPI_UNREADABLE:'BPI unreadable', BPI_CONFIRMATION_UNREADABLE:'BPI confirmation unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable',
 };
 function receiptReasonText(flags){
   if (!flags || !flags.length) return 'No specific reason saved';
@@ -3587,7 +3621,7 @@ function receiptDetailsHtml(b){
 }
 function bookingDetailsButton(b){
   if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
-  if (!['gcash','bdopay','maya','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
+  if (!['gcash','bdopay','maya','bpi','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`;
 }
 function bookingActionsHtml(b, canDelete){
@@ -3614,7 +3648,7 @@ function bookingPayStateSelect(b){
 }
 function bookingDetailsButton(b){
   if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
-  if (!['gcash','bdopay','maya','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
+  if (!['gcash','bdopay','maya','bpi','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
   const actionRef = b.primaryRef || b.ref;
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(actionRef)}')">Details</button>`;
 }
@@ -3703,9 +3737,9 @@ let sess;
 /* ==============================================
    NAVIGATION
    ============================================== */
-const titles={dash:'Dashboard',bookings:'Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',blocked:'Open Play',hosts:'Host Center',gamemgr:'Game Manager',maintenance:'Maintenance',payments:'Payments'};
-const SECTION_PERM={dash:'dashboard',bookings:'bookings',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'accounts',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
-const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:renderGameManager,maintenance:renderMaintenance,payments:renderPaymentSettings};
+const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',blocked:'Open Play',hosts:'Host Center',gamemgr:'Game Manager',maintenance:'Maintenance',payments:'Payments'};
+const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'accounts',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
+const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:renderGameManager,maintenance:renderMaintenance,payments:renderPaymentSettings};
 let _curSection=null;
 async function goto(s){
   // Block navigation to sections the current role can't access
@@ -3743,6 +3777,7 @@ function startAdminRealtime(){
   };
   _supabase.channel('admin-rt')
     .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'deleted_booking_archive'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'courts'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'settings'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'blocked_dates'},rerender)
@@ -4163,13 +4198,93 @@ function clearFilters(){
   resetBookingFilters();
 }
 
+function deletedArchiveBooking(entry) {
+  return entry?.originalBooking || entry?.originalBookingRow || {};
+}
+
+function fmtDeletedAt(value) {
+  if (!value) return '<span style="color:var(--muted)">--</span>';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return esc(value);
+  return d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) +
+    '<div style="font-size:.75rem;color:var(--muted);font-weight:600">' +
+    d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true}) +
+    '</div>';
+}
+
+async function renderDeletedBookings() {
+  if (!Auth.can('owner_only', sess.role)) { toast('Only the system owner can view deleted bookings.', 'err'); return; }
+  const body = $('deletedBody');
+  const meta = $('deletedMeta');
+  if (body) body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Loading deleted bookings...</td></tr>';
+  let rows = [];
+  try {
+    const status = $('deletedStatus')?.value || '';
+    rows = await DB.getDeletedBookingArchive({ status, limit: 500 });
+  } catch (e) {
+    console.error('renderDeletedBookings failed:', e);
+    if (meta) meta.textContent = 'Archive unavailable';
+    if (body) body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Deleted booking archive is not available. Apply the archive migration first.</td></tr>';
+    return;
+  }
+
+  const q = ($('deletedSrch')?.value || '').trim().toLowerCase();
+  if (q) {
+    rows = rows.filter(entry => {
+      const b = deletedArchiveBooking(entry);
+      return [entry.bookingRef, b.ref, b.fullName, b.email, b.courtName, b.gcashRef]
+        .some(v => String(v || '').toLowerCase().includes(q));
+    });
+  }
+
+  if (meta) meta.textContent = `${rows.length} archive row${rows.length === 1 ? '' : 's'}`;
+  if (!rows.length) {
+    if (body) body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No deleted bookings match this view.</td></tr>';
+    return;
+  }
+
+  if (body) body.innerHTML = rows.map(entry => {
+    const b = deletedArchiveBooking(entry);
+    const ref = b.ref || entry.bookingRef || '';
+    const restored = entry.recoveryStatus === 'restored';
+    const status = restored ? 'restored' : (entry.recoveryStatus || 'deleted');
+    const schedule = b.date
+      ? `${fmtD(b.date)}<div style="font-size:.75rem;color:var(--text);font-weight:600">${esc(b.startTime || '')}${b.endTime ? '&ndash;' + esc(b.endTime) : ''}</div>`
+      : '<span style="color:var(--muted)">--</span>';
+    return `<tr>
+      <td data-label="Ref"><code style="color:var(--green);font-size:.76rem">${esc(ref)}</code></td>
+      <td data-label="Customer"><div style="font-weight:600">${esc(b.fullName || '--')}</div><div style="font-size:.75rem;color:var(--text)">${esc(b.email || '')}</div></td>
+      <td data-label="Court">${esc(b.courtName || '--')}</td>
+      <td data-label="Schedule">${schedule}</td>
+      <td data-label="Status">${statusBdg(status)}</td>
+      <td data-label="Deleted At">${fmtDeletedAt(entry.deletedAt)}</td>
+      <td data-label="Actions"><div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${restored ? `<span style="font-size:.76rem;color:var(--muted);font-weight:700">Restored</span>` : `<button class="btn btn-p btn-sm" onclick="restoreDeletedBooking('${jsArg(entry.id)}','${jsArg(ref)}')">Restore</button>`}
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function restoreDeletedBooking(id, ref) {
+  if (!Auth.can('owner_only', sess.role)) { toast('Only the system owner can restore bookings.', 'err'); return; }
+  if (!confirm(`Restore deleted booking ${ref || id}?`)) return;
+  try {
+    await DB.restoreDeletedBookingArchive(id);
+    toast('Booking restored.');
+    await renderDeletedBookings();
+    renderDash();
+  } catch (e) {
+    toast(`Restore failed: ${e.message || e}`, 'err');
+  }
+}
+
 /* ── CALENDAR VIEW ── */
 function paymentMethodLabel(m) {
-  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(m || '').toLowerCase()] || (m || 'Cash'));
+  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(m || '').toLowerCase()] || (m || 'Cash'));
 }
 
 function isDigitalPayment(m) {
-  return ['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'].includes(String(m || '').toLowerCase());
+  return ['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'].includes(String(m || '').toLowerCase());
 }
 
 function receivedAccountKey(b) {
@@ -4669,7 +4784,18 @@ async function updatePaymentStatus(ref, status) {
 async function sendBookingConfirmationNotice(bk, successText = 'Confirmation email sent to customer!') {
   if (!bk?.email) return;
   const res = await DB.sendConfirmationEmail(bk, { allowFailure: true });
-  if (res?.ok) toast(successText);
+  if (res?.ok) {
+    toast(successText);
+    if (res.id) {
+      const refs = Array.isArray(bk.refs) && bk.refs.length ? bk.refs : [bk.ref].filter(Boolean);
+      const sentAt = new Date().toISOString();
+      await Promise.all(refs.map(ref => DB.updateBooking(ref, {
+        confirmationEmailId: res.id,
+        confirmationEmailSentAt: sentAt,
+        confirmationEmailLastEvent: 'sent',
+      }).catch(() => {})));
+    }
+  }
   else if (!res?.skipped) toast(`Booking saved, but email failed: ${res?.error || 'unknown error'}`, 'err');
 }
 
@@ -4821,11 +4947,15 @@ async function rejectPayment() {
 }
 
 async function delBooking(ref){
-  if(!confirm(`Delete booking ${ref}?`)) return;
-  await deleteBookingGroupByRef(ref);
-  toast('Booking deleted.','inf');
-  renderBookings();
-  renderDash();
+  if(!confirm(`Delete booking ${ref}? It will be kept in Deleted Bookings so the system owner can restore it if needed.`)) return;
+  try {
+    await deleteBookingGroupByRef(ref);
+    toast('Booking deleted and archived.','inf');
+    renderBookings();
+    renderDash();
+  } catch (e) {
+    toast(`Delete failed: ${e.message || e}`, 'err');
+  }
 }
 
 /* ==============================================
@@ -4839,6 +4969,7 @@ let _nbOpenHour = 6, _nbCloseHour = 22;
 let _nbOpenPlayCfg = null;
 let _nbMaintenanceCfg = null;
 let _nbPricingTiers = [];
+let _nbPlatformFeeCfg = { amount: 0, type: 'per_hour' };
 let _nbBookedSlots = new Set();
 let _nbSelectedCourtIds = new Set();
 let _nbSelectedCells = new Set();
@@ -4858,6 +4989,7 @@ async function openNewBookingModal() {
   try { _nbOpenPlayCfg = settings.open_play_config ? JSON.parse(settings.open_play_config) : null; } catch(e) { _nbOpenPlayCfg = null; }
   try { _nbMaintenanceCfg = settings.maintenance_config ? JSON.parse(settings.maintenance_config) : null; } catch(e) { _nbMaintenanceCfg = null; }
   _nbPricingTiers = parsePricingTiers(settings.pricing_tiers);
+  _nbPlatformFeeCfg = getPlatformFeeConfig(settings);
 
   // Set min date to today
   const today = new Date();
@@ -4946,6 +5078,20 @@ function _nbGetRateForHour(court, h) {
     if (inRange) return t.rate;
   }
   return tiers.length ? Math.min(...tiers.map(t => t.rate)) : (Number(court?.rate) || 0);
+}
+
+function _nbBookingFeeForHours(hours) {
+  const amount = Number(_nbPlatformFeeCfg?.amount || 0);
+  if (amount <= 0) return 0;
+  return _nbPlatformFeeCfg.type === 'flat' ? amount : amount * Number(hours || 0);
+}
+
+function _nbBookingFeeDisplay(fee, hours) {
+  const amount = Number(fee || 0);
+  if (amount <= 0) return fmt(0);
+  if (_nbPlatformFeeCfg.type === 'flat') return `${fmt(amount)} / transaction`;
+  const hrs = Number(hours || 0);
+  return `${fmt(amount)} (${fmt(Number(_nbPlatformFeeCfg.amount || 0))}/hr x ${hrs} hr${hrs === 1 ? '' : 's'})`;
 }
 
 async function nbRenderSlots() {
@@ -5109,7 +5255,9 @@ function nbUpdateTotal() {
   const courtId = $('nbCourt')?.value;
   const court = _nbCourts.find(c => String(c.id) === String(courtId));
   const hrs = _nbSelSlots.length;
-  const total = court ? _nbSelSlots.reduce((s, h) => s + _nbGetRateForHour(court, h), 0) : 0;
+  const courtTotal = court ? _nbSelSlots.reduce((s, h) => s + _nbGetRateForHour(court, h), 0) : 0;
+  const bookingFee = court && hrs ? _nbBookingFeeForHours(hrs) : 0;
+  const total = courtTotal + bookingFee;
   const half = Math.round(total / 2);
 
   $('nbDp50Amt').textContent = fmt(half);
@@ -5124,6 +5272,8 @@ function nbUpdateTotal() {
   sum.innerHTML = `<div class="nb-slots-summary">
     <div class="nb-sum-row"><span>Time</span><strong>${fmtHour(startH)} – ${fmtHour(endH)}</strong></div>
     <div class="nb-sum-row"><span>Duration</span><strong>${hrs} hr${hrs!==1?'s':''}</strong></div>
+    <div class="nb-sum-row"><span>Court Fee</span><strong>${fmt(courtTotal)}</strong></div>
+    ${bookingFee > 0 ? `<div class="nb-sum-row"><span>Booking Fee</span><strong>${_nbBookingFeeDisplay(bookingFee, hrs)}</strong></div>` : ''}
     <div class="nb-sum-row nb-sum-total"><span>Total</span><span>${fmt(total)}</span></div>
   </div>`;
 }
@@ -5144,7 +5294,9 @@ async function saveNewBooking() {
   const status = $('nbStatus').value;
 
   const court_ = _nbCourts.find(c => String(c.id) === String(courtId));
-  const total = court_ ? _nbSelSlots.reduce((s, h) => s + _nbGetRateForHour(court_, h), 0) : 0;
+  const courtTotal = court_ ? _nbSelSlots.reduce((s, h) => s + _nbGetRateForHour(court_, h), 0) : 0;
+  const bookingFee = court_ && _nbSelSlots.length ? _nbBookingFeeForHours(_nbSelSlots.length) : 0;
+  const total = courtTotal + bookingFee;
   const dpAmount = _nbDpFull ? total : Math.round(total / 2);
   const payStatus = _nbDpFull ? 'paid' : 'downpayment_paid';
 
@@ -5322,7 +5474,8 @@ function nbSelectionGroups() {
         slots,
         startH: Math.min(...slots),
         endH: Math.max(...slots) + 1,
-        total: slots.reduce((sum, h) => sum + _nbGetRateForHour(court, h), 0),
+        duration: slots.length,
+        courtFee: slots.reduce((sum, h) => sum + _nbGetRateForHour(court, h), 0),
       });
       block = [];
     };
@@ -5336,6 +5489,23 @@ function nbSelectionGroups() {
     String(a.court.name || '').localeCompare(String(b.court.name || '')) ||
     a.startH - b.startH
   );
+}
+
+function nbGroupsWithFees(groups = nbSelectionGroups()) {
+  return groups.map((group, index) => {
+    const duration = Number(group.duration || group.slots?.length || 0);
+    const courtFee = Number(group.courtFee ?? group.total ?? 0);
+    const bookingFee = _nbPlatformFeeCfg.type === 'flat'
+      ? (index === 0 ? _nbBookingFeeForHours(duration) : 0)
+      : _nbBookingFeeForHours(duration);
+    return {
+      ...group,
+      duration,
+      courtFee,
+      bookingFee,
+      total: courtFee + bookingFee,
+    };
+  });
 }
 
 async function openNewBookingModal() {
@@ -5357,6 +5527,7 @@ async function openNewBookingModal() {
   try { _nbOpenPlayCfg = settings.open_play_config ? JSON.parse(settings.open_play_config) : null; } catch (e) { _nbOpenPlayCfg = null; }
   try { _nbMaintenanceCfg = settings.maintenance_config ? JSON.parse(settings.maintenance_config) : null; } catch (e) { _nbMaintenanceCfg = null; }
   _nbPricingTiers = parsePricingTiers(settings.pricing_tiers);
+  _nbPlatformFeeCfg = getPlatformFeeConfig(settings);
 
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -5472,7 +5643,7 @@ function nbToggleSlot(courtId, hour) {
 }
 
 function nbUpdateTotal() {
-  const groups = nbSelectionGroups();
+  const groups = nbGroupsWithFees();
   const total = groups.reduce((sum, group) => sum + group.total, 0);
   const half = Math.round(total / 2);
 
@@ -5485,11 +5656,17 @@ function nbUpdateTotal() {
     sum.innerHTML = '';
     return;
   }
-  const rows = groups.map(group => `
+  const rows = groups.map(group => {
+    const duration = group.duration || group.slots.length;
+    const feeLine = group.bookingFee > 0
+      ? `<br><span class="nb-sum-muted">Booking Fee: ${_nbBookingFeeDisplay(group.bookingFee, duration)}</span>`
+      : '';
+    return `
     <div class="nb-sum-row">
-      <span><strong>${esc(group.court.name)}</strong><br><span class="nb-sum-muted">${fmtHour(group.startH)} - ${fmtHour(group.endH)} (${group.slots.length} hr${group.slots.length === 1 ? '' : 's'})</span></span>
+      <span><strong>${esc(group.court.name)}</strong><br><span class="nb-sum-muted">${fmtHour(group.startH)} - ${fmtHour(group.endH)} (${duration} hr${duration === 1 ? '' : 's'})</span><br><span class="nb-sum-muted">Court Fee: ${fmt(group.courtFee)}</span>${feeLine}</span>
       <strong>${fmt(group.total)}</strong>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   sum.innerHTML = `<div class="nb-slots-summary">
     <div class="nb-sum-list">${rows}</div>
     <div class="nb-sum-row nb-sum-total"><span>Total</span><span>${fmt(total)}</span></div>
@@ -5523,7 +5700,7 @@ async function saveNewBooking() {
   const method = $('nbMethod').value;
   const gcashRef = $('nbGcashRef').value.trim() || null;
   const status = $('nbStatus').value;
-  const groups = nbSelectionGroups();
+  const groups = nbGroupsWithFees();
   const total = groups.reduce((sum, group) => sum + group.total, 0);
   const downpayment = _nbDpFull ? total : Math.round(total / 2);
   const payStatus = _nbDpFull ? 'paid' : 'downpayment_paid';
@@ -5551,7 +5728,7 @@ async function saveNewBooking() {
       slots: group.slots,
       startTime: fmtHour(group.startH),
       endTime: fmtHour(group.endH),
-      duration: group.slots.length,
+      duration: group.duration || group.slots.length,
       rate: group.court.rate,
       total: group.total,
       paymentMethod: method,
@@ -6277,6 +6454,7 @@ async function renderPaymentSettings() {
   const gcashOn = settings.payment_method_gcash !== '0';
   const bdopayOn = settings.payment_method_bdopay !== '0';
   const mayaOn = settings.payment_method_maya !== '0';
+  const bpiOn = settings.payment_method_bpi !== '0';
   const gotymeOn = settings.payment_method_gotyme !== '0';
   const pnbOn = settings.payment_method_pnb !== '0';
   const paymentAcceptanceMode = settings.payment_acceptance_mode || 'both';
@@ -6286,6 +6464,7 @@ async function renderPaymentSettings() {
   $('payMethodGcashOn').checked = gcashOn;
   if ($('payMethodBdopayOn')) $('payMethodBdopayOn').checked = bdopayOn;
   if ($('payMethodMayaOn')) $('payMethodMayaOn').checked = mayaOn;
+  if ($('payMethodBpiOn')) $('payMethodBpiOn').checked = bpiOn;
   $('payMethodGotymeOn').checked = gotymeOn;
   $('payMethodPnbOn').checked = pnbOn;
 
@@ -6319,7 +6498,7 @@ async function renderPaymentSettings() {
     $('pnbQrPreviewWrap').style.display = '';
   }
 
-  const summaryParts = [`Methods: ${(cashOn?'Cash ':'')}${(gcashOn?'GCash ':'')}${(bdopayOn?'BDO Pay ':'')}${(mayaOn?'Maya ':'')}${(gotymeOn?'GoTyme ':'')}${(pnbOn?'PNB':'')}`.trim() || 'none'];
+  const summaryParts = [`Methods: ${(cashOn?'Cash ':'')}${(gcashOn?'GCash ':'')}${(bdopayOn?'BDO Pay ':'')}${(mayaOn?'Maya ':'')}${(bpiOn?'BPI ':'')}${(gotymeOn?'GoTyme ':'')}${(pnbOn?'PNB':'')}`.trim() || 'none'];
   $('paySettingsSummary').textContent = summaryParts.join(' • ');
 
   // Platform remittance summary
@@ -6886,10 +7065,11 @@ async function savePaymentSettings() {
   const gcashOn = $('payMethodGcashOn').checked;
   const bdopayOn = $('payMethodBdopayOn')?.checked || false;
   const mayaOn = $('payMethodMayaOn')?.checked || false;
+  const bpiOn = $('payMethodBpiOn')?.checked || false;
   const gotymeOn = $('payMethodGotymeOn').checked;
   const pnbOn = $('payMethodPnbOn').checked;
 
-  if (!cashOn && !gcashOn && !bdopayOn && !mayaOn && !gotymeOn && !pnbOn) {
+  if (!cashOn && !gcashOn && !bdopayOn && !mayaOn && !bpiOn && !gotymeOn && !pnbOn) {
     toast('Enable at least one payment method.', 'err');
     return;
   }
@@ -6901,6 +7081,7 @@ async function savePaymentSettings() {
     await DB.saveSetting('payment_method_gcash', gcashOn ? '1' : '0');
     await DB.saveSetting('payment_method_bdopay', bdopayOn ? '1' : '0');
     await DB.saveSetting('payment_method_maya', mayaOn ? '1' : '0');
+    await DB.saveSetting('payment_method_bpi', bpiOn ? '1' : '0');
     await DB.saveSetting('payment_method_gotyme', gotymeOn ? '1' : '0');
     await DB.saveSetting('payment_method_pnb', pnbOn ? '1' : '0');
     await DB.saveSetting('payment_acceptance_mode', paymentAcceptanceMode);
@@ -7523,7 +7704,7 @@ async function openOpVerifyModal(id) {
   const regs = await DB.getOpenPlayRegistrations();
   const r = regs.find(x => String(x.id) === String(id));
   if (!r) { toast('Registration not found.', 'err'); return; }
-  const methodLabel = { gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' };
+  const methodLabel = { gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' };
   $('ovMethod').textContent  = methodLabel[r.payment_method] || r.payment_method || 'GCash';
   $('ovGcashRef').textContent = r.gcash_ref || '—';
   $('ovName').textContent    = r.full_name;
@@ -8937,6 +9118,6 @@ async function checkAgreementGate(session) {
 </script>
 
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260627-rolefix"></script>
+<script src="supabase-config.js?v=20260701-delete-archive"></script>
 </body>
 </html>

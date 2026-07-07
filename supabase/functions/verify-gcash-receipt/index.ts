@@ -45,6 +45,7 @@ const HARD_FLAGS = new Set([
   "DUPLICATE_REF",
   "DUPLICATE_INVOICE",
   "DUPLICATE_INSTAPAY_REF",
+  "DUPLICATE_BPI_TRANSACTION_REF",
   "METHOD_MISMATCH",
   "REF_MISMATCH",
   "DATE_NOT_TODAY",
@@ -54,13 +55,13 @@ const HARD_FLAGS = new Set([
   "AMOUNT_MISMATCH",    // Only hard if significantly underpaid (>₱5)
 ]);
 
-type PaymentProvider = "gcash" | "bdopay" | "maya" | "gotyme" | "pnb";
-type OcrProvider = "google_vision" | "ocr_space" | "none";
+type PaymentProvider = "gcash" | "bdopay" | "maya" | "bpi" | "gotyme" | "pnb";
+type OcrProvider = "google_vision" | "none";
 
 type OcrResult = {
   text: string;
   confidence: number;
-  provider: OcrProvider | "google_vision+ocr_space";
+  provider: OcrProvider;
   primaryProvider?: OcrProvider;
   fallbackProvider?: OcrProvider;
   fallbackReason?: string;
@@ -88,6 +89,7 @@ function publicReceiptMessage(
     || flagSet.has("GCASH_RECEIPT_UNREADABLE")
     || flagSet.has("BDO_PAY_UNREADABLE")
     || flagSet.has("MAYA_UNREADABLE")
+    || flagSet.has("BPI_UNREADABLE")
   ) {
     return "Payment could not be verified. Please upload a valid receipt or contact admin.";
   }
@@ -208,7 +210,7 @@ function parseReceiptDateTime(text: string): { date: string | null; shifted: Dat
 
   const afterDate = normalized.slice((dateOnly.index || 0) + dateOnly[0].length, (dateOnly.index || 0) + dateOnly[0].length + 80);
   const beforeDate = normalized.slice(Math.max(0, (dateOnly.index || 0) - 40), dateOnly.index || 0);
-  const timePattern = /\b(\d{1,2})\s*[:;.]\s*(\d{2})\s*([ap](?:\s*\.?\s*m\.?)?|[ap])\b/i;
+  const timePattern = /\b(\d{1,2})\s*[:;.]\s*(\d{2})(?:\s*[:;.]\s*\d{2})?\s*([ap](?:\s*\.?\s*m\.?)?|[ap])\b/i;
   const time = afterDate.match(timePattern) || beforeDate.match(timePattern);
   if (time) {
     let hour = parseInt(time[1], 10);
@@ -239,6 +241,10 @@ function isBdoPayReference(value: string): boolean {
 
 function isMayaReference(value: string): boolean {
   return /^[A-Z0-9]{12}$/.test(normalizeReferenceForProvider(value, "maya"));
+}
+
+function isBpiConfirmationNo(value: string): boolean {
+  return /^\d{10,20}$/.test(digitsOnly(value));
 }
 
 function flexibleDigitPattern(digits: string): RegExp {
@@ -286,12 +292,31 @@ function extractGcashRef(text: string, typedRef = ""): string | null {
   return null;
 }
 
+function extractBpiConfirmationNo(text: string, typedRef = ""): string | null {
+  const normalizedTyped = digitsOnly(typedRef);
+  if (isBpiConfirmationNo(normalizedTyped) && flexibleDigitPattern(normalizedTyped).test(text)) {
+    return normalizedTyped;
+  }
+
+  const patterns = [
+    /\bconfirmation\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{8,24}[0-9])\b/i,
+    /\bconfirm(?:ation)?\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{8,24}[0-9])\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const ref = match ? digitsOnly(match[1]) : "";
+    if (isBpiConfirmationNo(ref)) return ref;
+  }
+  return null;
+}
+
 function extractReference(
   text: string,
   provider: PaymentProvider,
   typedRef: string,
 ): string | null {
   if (provider === "gcash") return extractGcashRef(text, typedRef);
+  if (provider === "bpi") return extractBpiConfirmationNo(text, typedRef);
 
   // BDO Pay/GoTyme/PNB references are not guaranteed to be 13-digit GCash-style refs.
   // For those providers, trust the customer-entered reference only if OCR sees
@@ -312,15 +337,26 @@ function hasMayaIndicator(text: string): boolean {
   return isMayaReceipt(text);
 }
 
+function hasBpiIndicator(text: string): boolean {
+  return isBpiReceipt(text);
+}
+
 function hasInstapayQrphIndicator(text: string): boolean {
-  return /\binstapay\b|\bqrph\b|\bqr\s*ph\b/i.test(text);
+  return /\binsta\s*pay\b|\bqrph\b|\bqr\s*ph\b/i.test(text);
+}
+
+function hasBdoBnReference(text: string): boolean {
+  return /\bbn[\s-]*\d{8}[\s-]*\d{8}\b/i.test(text);
 }
 
 function isBdoPayReceipt(text: string): boolean {
   const t = text || "";
+  const hasBnRef = hasBdoBnReference(t);
   return /\bbdo\s*pay\b/i.test(t)
     || /\bthank\s+you\s+for\s+using\s+bdo\b/i.test(t)
-    || (/\bbn[\s-]*\d{8}[\s-]*\d{8}\b/i.test(t) && /\binstapay\b/i.test(t));
+    || (hasBnRef && /\binsta\s*pay\b/i.test(t))
+    || (hasBnRef && /\bbdo\b/i.test(t))
+    || (hasBnRef && extractBdoInvoiceNumber(t) !== null);
 }
 
 function isMayaReceipt(text: string): boolean {
@@ -332,9 +368,24 @@ function isMayaReceipt(text: string): boolean {
       || /\bqrph\b|\bqr\s*ph\b/i.test(t));
 }
 
+function isBpiReceipt(text: string): boolean {
+  const t = text || "";
+  return /\bsent\s+via\s+bpi\b/i.test(t)
+    || /\bbpi\b/i.test(t)
+    || (/\btransfer\s+successful\b/i.test(t)
+      && /\bconfirmation\s*(?:no|number|#)?\.?\b/i.test(t)
+      && /\binsta\s*pay\b/i.test(t));
+}
+
+function hasGcashGxiDestination(text: string): boolean {
+  return /\bgcash\s*\/\s*g-?xchange\b/i.test(text)
+    || /\bg-?xchange\b/i.test(text)
+    || /\bgcash\b/i.test(text);
+}
+
 function isGcashToGcashReceipt(text: string): boolean {
   const t = text || "";
-  if (isBdoPayReceipt(t) || isMayaReceipt(t)) return false;
+  if (isBdoPayReceipt(t) || isMayaReceipt(t) || isBpiReceipt(t)) return false;
   return /\bsent\s+via\s+gcash\b/i.test(t)
     || /\bsent\s+through\s+gcash\b/i.test(t)
     || /\bgcash\s+receipt\b/i.test(t)
@@ -344,10 +395,12 @@ function isGcashToGcashReceipt(text: string): boolean {
 function selectedMethodMismatch(provider: PaymentProvider, text: string): boolean {
   const bdoReceipt = isBdoPayReceipt(text);
   const mayaReceipt = isMayaReceipt(text);
+  const bpiReceipt = isBpiReceipt(text);
   const gcashReceipt = isGcashToGcashReceipt(text);
-  if (provider === "gcash") return bdoReceipt || mayaReceipt;
-  if (provider === "bdopay") return gcashReceipt || mayaReceipt;
-  if (provider === "maya") return gcashReceipt || bdoReceipt;
+  if (provider === "gcash") return bdoReceipt || mayaReceipt || bpiReceipt;
+  if (provider === "bdopay") return gcashReceipt || mayaReceipt || bpiReceipt;
+  if (provider === "maya") return gcashReceipt || bdoReceipt || bpiReceipt;
+  if (provider === "bpi") return gcashReceipt || bdoReceipt || mayaReceipt;
   return false;
 }
 
@@ -384,6 +437,19 @@ function extractMayaInstapayRefNo(text: string): string | null {
   return null;
 }
 
+function extractBpiTransactionRefNo(text: string): string | null {
+  const patterns = [
+    /\btransaction\s*ref\.?\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{3,20}[0-9])\b/i,
+    /\btransaction\s*(?:reference|ref)\s*[:#]?\s*([0-9][0-9\s-]{3,20}[0-9])\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const ref = match ? digitsOnly(match[1]) : "";
+    if (ref.length >= 4 && ref.length <= 20) return ref;
+  }
+  return null;
+}
+
 function extractAmount(text: string): number | null {
   // Prefer values near an amount keyword / peso sign.
   const near = text.match(/(?:amount|total|php|₱|p\s)\s*[:\-]?\s*([\d,]+\.\d{2})/i);
@@ -404,13 +470,13 @@ type NumberCheck = "match" | "wrong" | "unreadable";
 
 function normalizedProvider(raw: string): PaymentProvider {
   const provider = raw.toLowerCase();
-  if (provider === "bdopay" || provider === "maya" || provider === "gotyme" || provider === "pnb") return provider;
+  if (provider === "bdopay" || provider === "maya" || provider === "bpi" || provider === "gotyme" || provider === "pnb") return provider;
   return "gcash";
 }
 
 function paymentMethodProvider(raw: unknown): PaymentProvider | null {
   const method = String(raw || "").toLowerCase();
-  if (method === "gcash" || method === "bdopay" || method === "maya" || method === "gotyme" || method === "pnb") {
+  if (method === "gcash" || method === "bdopay" || method === "maya" || method === "bpi" || method === "gotyme" || method === "pnb") {
     return method as PaymentProvider;
   }
   return null;
@@ -430,6 +496,12 @@ function expectedMerchantForProvider(
     return {
       number: settings.maya_merchant_number || "",
       name: settings.maya_merchant_name || settings.payment_merchant_name || "Korte DOS",
+    };
+  }
+  if (provider === "bpi") {
+    return {
+      number: settings.bpi_merchant_number || "",
+      name: settings.bpi_merchant_name || settings.payment_merchant_name || "Korte DOS",
     };
   }
   if (provider === "gotyme") {
@@ -652,8 +724,8 @@ function looksLikeGcashReceipt(text: string): boolean {
   const t = text.toLowerCase();
   let score = 0;
   if (/ref(?:erence)?\s*(no|number|#)/.test(t)) score++;
-  if (/gcash|bdo\s*pay|gotyme|maya|paymongo|qrph|instapay|pesonet|g-?xchange|gxi/.test(t)) score++;
-  if (/sent|received|paid|transfer|amount/.test(t)) score++;
+  if (/gcash|bdo\s*pay|gotyme|maya|bpi|paymongo|qrph|insta\s*pay|pesonet|g-?xchange|gxi/.test(t)) score++;
+  if (/sent|received|paid|transfer|amount|confirmation\s*(no|number|#)/.test(t)) score++;
   if (/\d{4}/.test(t)) score++;
   return score >= 2;
 }
@@ -714,32 +786,7 @@ async function googleVisionOCR(apiKey: string, base64: string): Promise<{ text: 
   return { text, confidence: googleVisionConfidence(r?.fullTextAnnotation || null, text) };
 }
 
-// OCR.space — free OCR API that does NOT require a credit card / billing.
-// Get a free key at https://ocr.space/ocrapi/freekey (25k scans/mo). The
-// 'helloworld' demo key works but is heavily rate-limited — set OCRSPACE_API_KEY.
-async function ocrSpaceOCR(apiKey: string, base64: string, contentType: string): Promise<{ text: string; confidence: number }> {
-  const raw = base64.startsWith("data:") ? base64 : `data:${contentType};base64,${base64}`;
-  const form = new FormData();
-  form.append("base64Image", raw);
-  form.append("language", "eng");
-  form.append("OCREngine", "2");      // engine 2 = better on receipts/numbers
-  form.append("scale", "true");
-  form.append("isTable", "true");
-  const res = await fetch("https://api.ocr.space/parse/image", {
-    method: "POST",
-    headers: { apikey: apiKey },
-    body: form,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`OCR.space error ${res.status}: ${errMsg(data)}`);
-  if (data?.IsErroredOnProcessing) throw new Error(`OCR.space: ${errMsg(data?.ErrorMessage || data)}`);
-  const text: string = (data?.ParsedResults || []).map((p: { ParsedText?: string }) => p?.ParsedText || "").join("\n").trim();
-  const confidence = text.length > 40 ? 0.85 : text.length > 0 ? 0.5 : 0;
-  return { text, confidence };
-}
-
-// Try Google Vision first (best quality). If it is unconfigured, billing-disabled,
-// returns nothing, or misses ref/amount/date, use OCR.space as a fallback.
+// Google Vision is the only OCR engine used for receipt verification.
 function ocrCriticalGaps(text: string, provider: PaymentProvider, typedRef: string): string[] {
   if (!text) return ["text"];
   const gaps: string[] = [];
@@ -749,21 +796,9 @@ function ocrCriticalGaps(text: string, provider: PaymentProvider, typedRef: stri
   return gaps;
 }
 
-function combineOcrText(primary: string, fallback: string): string {
-  const a = primary.trim();
-  const b = fallback.trim();
-  if (!a) return b;
-  if (!b) return a;
-  if (a.includes(b)) return a;
-  if (b.includes(a)) return b;
-  return `${a}\n\n${b}`;
-}
-
 async function runOCR(
   visionKey: string,
-  ocrSpaceKey: string,
   base64: string,
-  contentType: string,
   provider: PaymentProvider,
   typedRef: string,
 ): Promise<OcrResult> {
@@ -774,24 +809,6 @@ async function runOCR(
       if (v.text && gaps.length === 0) {
         return { ...v, provider: "google_vision", primaryProvider: "google_vision" };
       }
-      if (ocrSpaceKey) {
-        try {
-          const o = await ocrSpaceOCR(ocrSpaceKey, base64, contentType);
-          const merged = combineOcrText(v.text, o.text);
-          const mergedGaps = ocrCriticalGaps(merged, provider, typedRef);
-          const useMerged = v.text && o.text && mergedGaps.length <= gaps.length;
-          return {
-            text: useMerged ? merged : o.text || v.text,
-            confidence: Math.max(v.confidence, o.confidence),
-            provider: useMerged ? "google_vision+ocr_space" : o.text ? "ocr_space" : v.text ? "google_vision" : "none",
-            primaryProvider: "google_vision",
-            fallbackProvider: "ocr_space",
-            fallbackReason: gaps.includes("text") ? "google_empty_text" : `google_missing_${gaps.join("_")}`,
-          };
-        } catch (e) {
-          console.error("OCR.space fallback failed:", errMsg(e));
-        }
-      }
       if (v.text) {
         return {
           ...v,
@@ -800,14 +817,10 @@ async function runOCR(
           fallbackReason: gaps.length ? `google_missing_${gaps.join("_")}` : undefined,
         };
       }
-      console.error("Vision OCR missing critical fields and no OCR.space fallback was available:", gaps.join(","));
+      console.error("Vision OCR returned no text:", gaps.join(","));
     } catch (e) {
-      console.error("Vision OCR failed, falling back to OCR.space:", errMsg(e));
+      console.error("Vision OCR failed:", errMsg(e));
     }
-  }
-  if (ocrSpaceKey) {
-    const o = await ocrSpaceOCR(ocrSpaceKey, base64, contentType);
-    return { ...o, provider: "ocr_space", primaryProvider: "ocr_space" };
   }
   return { text: "", confidence: 0, provider: "none" };
 }
@@ -964,8 +977,6 @@ Deno.serve(async (req) => {
 
     // ── OCR ─────────────────────────────────────────────────────────────────
     const visionKey = Deno.env.get("GOOGLE_VISION_API_KEY") || "";
-    // OCR.space free key (no billing required). Defaults to the public demo key.
-    const ocrSpaceKey = Deno.env.get("OCRSPACE_API_KEY") || "helloworld";
     const typedRef = normalizeReferenceForProvider(String(booking.gcash_ref || ""), provider);
     let ocrText = "";
     let ocrConfidence = 0;
@@ -974,21 +985,21 @@ Deno.serve(async (req) => {
     let ocrFallbackProvider: OcrResult["fallbackProvider"] | null = null;
     let ocrFallbackReason: string | null = null;
     try {
-      const ocr = await runOCR(visionKey, ocrSpaceKey, imageBase64, contentType, provider, typedRef);
+      const ocr = await runOCR(visionKey, imageBase64, provider, typedRef);
       ocrText = ocr.text;
       ocrConfidence = ocr.confidence;
       ocrProvider = ocr.provider;
-      ocrPrimaryProvider = ocr.primaryProvider || (ocr.provider === "google_vision+ocr_space" ? "google_vision" : ocr.provider);
+      ocrPrimaryProvider = ocr.primaryProvider || ocr.provider;
       ocrFallbackProvider = ocr.fallbackProvider || null;
       ocrFallbackReason = ocr.fallbackReason || null;
     } catch (e) {
-      console.error("OCR failed (all providers):", errMsg(e));
+      console.error("Google Vision OCR failed:", errMsg(e));
     }
-    if (!visionKey && !ocrSpaceKey) {
+    if (!visionKey) {
       // No OCR provider configured at all — cannot verify content, manual review.
       flags.push("OCR_UNAVAILABLE");
     } else if (!ocrText) {
-      // OCR ran (OCR.space reliably reads genuine receipts) but found NO text.
+      // Google Vision ran but found NO text.
       // That means a random photo, a blank image, or a non-receipt upload —
       // auto-reject. A real customer with a poor photo can simply re-upload.
       flags.push("IMAGE_UNREADABLE"); // HARD — random/blank/non-receipt image
@@ -998,6 +1009,7 @@ Deno.serve(async (req) => {
     const extractedRef = extractReference(ocrText, provider, typedRef);
     const extractedInvoice = provider === "bdopay" ? extractBdoInvoiceNumber(ocrText) : null;
     const extractedInstapayRefNo = provider === "maya" ? extractMayaInstapayRefNo(ocrText) : null;
+    const extractedBpiTransactionRefNo = provider === "bpi" ? extractBpiTransactionRefNo(ocrText) : null;
     const extractedAmount = extractAmount(ocrText);
     const { date: receiptDate, shifted: receiptDateTime } = parseReceiptDateTime(ocrText);
     const bookingStartedAt = toPhWallClockDate(booking.created_at || booking.createdAt);
@@ -1012,6 +1024,9 @@ Deno.serve(async (req) => {
       flags.push("REF_FORMAT_INVALID");
     }
     if (provider === "maya" && !isMayaReference(typedRef)) {
+      flags.push("REF_FORMAT_INVALID");
+    }
+    if (provider === "bpi" && !isBpiConfirmationNo(typedRef)) {
       flags.push("REF_FORMAT_INVALID");
     }
 
@@ -1084,6 +1099,27 @@ Deno.serve(async (req) => {
         if (!hasMayaIndicator(ocrText)) flags.push("MAYA_UNREADABLE");
         if (!hasInstapayQrphIndicator(ocrText)) flags.push("INSTAPAY_QRPH_UNREADABLE");
         if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
+      } else if (provider === "bpi") {
+        // BPI focused path: require BPI + InstaPay + GCash/G-Xchange destination,
+        // but do not run the GCash-to-GCash verifier.
+        if (!extractedRef) flags.push("BPI_CONFIRMATION_UNREADABLE");
+        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+
+        if (pricingError) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+
+        if (!receiptDate) flags.push("DATE_UNREADABLE");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+        else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+
+        if (!hasBpiIndicator(ocrText)) flags.push("BPI_UNREADABLE");
+        if (!hasInstapayQrphIndicator(ocrText)) flags.push("INSTAPAY_QRPH_UNREADABLE");
+        if (!hasGcashGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
+        if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
       } else {
         if (!extractedRef) flags.push("REF_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
@@ -1125,6 +1161,13 @@ Deno.serve(async (req) => {
         key: `maya_instapay:${extractedInstapayRefNo}`,
         providerKey: "maya_instapay",
         duplicateFlag: "DUPLICATE_INSTAPAY_REF",
+      });
+    }
+    if (provider === "bpi" && extractedBpiTransactionRefNo) {
+      dedupeKeys.push({
+        key: `bpi_transaction:${extractedBpiTransactionRefNo}`,
+        providerKey: "bpi_transaction",
+        duplicateFlag: "DUPLICATE_BPI_TRANSACTION_REF",
       });
     }
 
@@ -1174,6 +1217,8 @@ Deno.serve(async (req) => {
       ref: extractedRef,
       invoice: extractedInvoice,
       instapayRefNo: extractedInstapayRefNo,
+      bpiConfirmationNo: provider === "bpi" ? extractedRef : null,
+      bpiTransactionRefNo: extractedBpiTransactionRefNo,
       amount: extractedAmount,
       date: receiptDate,
       time: receiptDateTime ? receiptDateTime.toISOString() : null,
@@ -1192,7 +1237,7 @@ Deno.serve(async (req) => {
       ocrFallbackReason,
       ocrConfidence,
       ocrTextLength: ocrText.length,
-      expectedReceiverNumber: provider === "bdopay" || provider === "maya" ? null : expectedNumber || null,
+      expectedReceiverNumber: provider === "bdopay" || provider === "maya" || provider === "bpi" ? null : expectedNumber || null,
       expectedReceiverName: expectedName || null,
     };
 

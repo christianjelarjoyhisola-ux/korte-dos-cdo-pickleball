@@ -26,7 +26,7 @@ npx supabase link --project-ref $envMap["SUPABASE_PROJECT_REF"]
 npx supabase secrets set `
   SERVICE_ROLE_KEY="$($envMap["SUPABASE_SERVICE_ROLE_KEY"])" `
   PAYMENT_PROVIDER="$env:PAYMENT_PROVIDER" `
-  OCRSPACE_API_KEY="$($envMap["OCRSPACE_API_KEY"])"
+  GOOGLE_VISION_API_KEY="$($envMap["GOOGLE_VISION_API_KEY"])"
 
 npx supabase functions deploy create-payment-session --no-verify-jwt
 npx supabase functions deploy payment-webhook --no-verify-jwt

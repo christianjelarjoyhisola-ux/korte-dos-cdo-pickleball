@@ -227,7 +227,7 @@ function _telegramBookingPayload(b, extras = {}) {
 // ROW ↔ JS OBJECT MAPPING
 // SQL uses snake_case; JS objects use camelCase
 // =============================================
-const PB_DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'gotyme', 'pnb'];
+const PB_DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'];
 
 function normalizePaymentKey(value, fallback = '') {
   return String(value || fallback || '').toLowerCase().trim();
@@ -299,8 +299,38 @@ function rowToBooking(r) {
     receiptVerifiedAt: r.receipt_verified_at || null,
     billedAt:      r.billed_at || null,
     weeklyFeeId:   r.weekly_fee_id || null,
+    confirmationEmailId: r.confirmation_email_id || null,
+    confirmationEmailSentAt: r.confirmation_email_sent_at || null,
+    confirmationEmailLastEvent: r.confirmation_email_last_event || null,
     status:        r.status,
     createdAt:     r.created_at,
+  };
+}
+
+function archivePayloadToBooking(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  return Object.prototype.hasOwnProperty.call(payload, 'full_name') || Object.prototype.hasOwnProperty.call(payload, 'court_id')
+    ? rowToBooking(payload)
+    : payload;
+}
+
+function rowToDeletedBookingArchive(r) {
+  return {
+    id: r.id,
+    bookingRef: r.booking_ref,
+    source: r.source,
+    originalBooking: archivePayloadToBooking(r.original_booking),
+    originalBookingRow: r.original_booking || null,
+    recoveredBooking: archivePayloadToBooking(r.recovered_booking),
+    recoveredBookingRow: r.recovered_booking || null,
+    recoveryStatus: r.recovery_status,
+    recoveredFrom: r.recovered_from,
+    notes: r.notes,
+    deletedAt: r.deleted_at,
+    archivedAt: r.archived_at,
+    restoredAt: r.restored_at,
+    restoredBy: r.restored_by,
+    createdAt: r.created_at,
   };
 }
 
@@ -592,6 +622,9 @@ window.DB = {
     if (updates.slots !== undefined) row.slots = updates.slots;
     if (updates.billedAt !== undefined) row.billed_at = updates.billedAt;
     if (updates.weeklyFeeId !== undefined) row.weekly_fee_id = updates.weeklyFeeId;
+    if (updates.confirmationEmailId !== undefined) row.confirmation_email_id = updates.confirmationEmailId;
+    if (updates.confirmationEmailSentAt !== undefined) row.confirmation_email_sent_at = updates.confirmationEmailSentAt;
+    if (updates.confirmationEmailLastEvent !== undefined) row.confirmation_email_last_event = updates.confirmationEmailLastEvent;
     const { error } = await _sb.from('bookings').update(row).eq('ref', ref);
     if (error) { console.error('updateBooking:', error); throw error; }
     _pbClearFastCache(['bookings']);
@@ -610,8 +643,29 @@ window.DB = {
 
   async deleteBooking(ref) {
     const { error } = await _sb.from('bookings').delete().eq('ref', ref);
-    if (error) console.error('deleteBooking:', error);
+    if (error) { console.error('deleteBooking:', error); throw error; }
     _pbClearFastCache(['bookings']);
+  },
+
+  async getDeletedBookingArchive(filters = {}) {
+    const opts = filters || {};
+    let query = _sb
+      .from('deleted_booking_archive')
+      .select('*')
+      .order('deleted_at', { ascending: false })
+      .limit(Number(opts.limit || 250));
+    if (opts.status) query = query.eq('recovery_status', opts.status);
+    if (opts.bookingRef) query = query.eq('booking_ref', opts.bookingRef);
+    const { data, error } = await query;
+    if (error) { console.error('getDeletedBookingArchive:', error); throw error; }
+    return (data || []).map(rowToDeletedBookingArchive);
+  },
+
+  async restoreDeletedBookingArchive(id) {
+    const { data, error } = await _sb.rpc('restore_deleted_booking_archive', { p_archive_id: id });
+    if (error) { console.error('restoreDeletedBookingArchive:', error); throw error; }
+    _pbClearFastCache(['bookings']);
+    return data ? rowToBooking(data) : null;
   },
 
   // ---- OPEN PLAY REGISTRATIONS ----
@@ -1278,6 +1332,7 @@ window.DB = {
     payment_method_gcash: '1',
     payment_method_bdopay: '1',
     payment_method_maya: '1',
+    payment_method_bpi: '1',
     payment_method_gotyme: '0',
     payment_method_pnb: '0',
     gcash_merchant_number: '09XXXXXXXXX',
@@ -1309,6 +1364,7 @@ window.DB = {
       openPlayGamePlayers: [],
       openPlayGameRounds: [],
       blockedDates: [],
+      deletedBookingArchive: [],
       accounts: defaultAccounts(),
       settings: defaultSettings(),
       agreements: [],
@@ -1337,6 +1393,7 @@ window.DB = {
       openPlayGamePlayers: Array.isArray(parsed.openPlayGamePlayers) ? parsed.openPlayGamePlayers : [],
       openPlayGameRounds: Array.isArray(parsed.openPlayGameRounds) ? parsed.openPlayGameRounds : [],
       blockedDates: Array.isArray(parsed.blockedDates) ? parsed.blockedDates : [],
+      deletedBookingArchive: Array.isArray(parsed.deletedBookingArchive) ? parsed.deletedBookingArchive : [],
       accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : defaultAccounts(),
       agreements: Array.isArray(parsed.agreements) ? parsed.agreements : [],
       weeklyFees: Array.isArray(parsed.weeklyFees) ? parsed.weeklyFees : [],
@@ -1409,8 +1466,67 @@ window.DB = {
     },
     async deleteBooking(ref) {
       const db = readDb();
+      const existing = db.bookings.find(b => String(b.ref) === String(ref));
+      if (existing) {
+        db.deletedBookingArchive.unshift({
+          id: localRef('del'),
+          bookingRef: existing.ref,
+          source: 'local_delete',
+          originalBooking: { ...existing },
+          originalBookingRow: { ...existing },
+          recoveredBooking: null,
+          recoveredBookingRow: null,
+          recoveryStatus: 'deleted',
+          recoveredFrom: null,
+          notes: 'Automatically archived before local delete.',
+          deletedAt: nowIso(),
+          archivedAt: nowIso(),
+          restoredAt: null,
+          restoredBy: null,
+          createdAt: nowIso(),
+        });
+      }
       db.bookings = db.bookings.filter(b => String(b.ref) !== String(ref));
       writeDb(db);
+    },
+
+    async getDeletedBookingArchive(filters = {}) {
+      const opts = filters || {};
+      return readDb().deletedBookingArchive
+        .filter(r => !opts.status || r.recoveryStatus === opts.status)
+        .filter(r => !opts.bookingRef || String(r.bookingRef) === String(opts.bookingRef))
+        .sort((a, b) => String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')))
+        .slice(0, Number(opts.limit || 250));
+    },
+
+    async restoreDeletedBookingArchive(id) {
+      const db = readDb();
+      const idx = db.deletedBookingArchive.findIndex(r => String(r.id) === String(id));
+      if (idx < 0) throw new Error('Deleted booking archive row not found.');
+      const entry = db.deletedBookingArchive[idx];
+      const booking = { ...(entry.originalBooking || entry.originalBookingRow || {}) };
+      if (!booking.ref) throw new Error('Archive row has no booking reference.');
+      if (db.bookings.some(b => String(b.ref) === String(booking.ref))) {
+        throw new Error(`Booking ${booking.ref} already exists in active bookings.`);
+      }
+      const existing = db.bookings
+        .filter(b => String(b.courtId) === String(booking.courtId) && b.date === booking.date && b.status !== 'cancelled');
+      if (hasSlotConflict(existing, booking)) {
+        throw new Error('Cannot restore because one or more slots are already booked.');
+      }
+      db.bookings.push(booking);
+      db.deletedBookingArchive[idx] = {
+        ...entry,
+        recoveryStatus: 'restored',
+        recoveredBooking: { ...booking },
+        recoveredBookingRow: { ...booking },
+        recoveredFrom: entry.recoveredFrom || 'archive_restore',
+        restoredAt: nowIso(),
+        restoredBy: Auth.getSession()?.id || null,
+        notes: [entry.notes, 'Restored from deleted booking archive.'].filter(Boolean).join('\n'),
+      };
+      writeDb(db);
+      return booking;
     },
 
     async getOpenPlayRegistrations() {
@@ -1785,7 +1901,7 @@ window.DB = {
           { id: 'email', label: 'Email confirmations', configured: false, required: ['RESEND_API_KEY'], missing: ['RESEND_API_KEY'], note: 'Local data mode' },
           { id: 'telegram', label: 'Telegram admin alerts', configured: false, required: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'], missing: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'], note: 'Local data mode' },
           { id: 'payments', label: 'PayMongo checkout', configured: false, required: ['PAYMONGO_SECRET_KEY', 'PAYMENT_SUCCESS_URL', 'PAYMENT_CANCEL_URL'], missing: ['PAYMONGO_SECRET_KEY', 'PAYMENT_SUCCESS_URL', 'PAYMENT_CANCEL_URL'], note: 'Local data mode' },
-          { id: 'ocr', label: 'Receipt OCR', configured: false, required: ['GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY'], missing: ['GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY'], note: 'Local data mode' },
+          { id: 'ocr', label: 'Receipt OCR', configured: false, required: ['GOOGLE_VISION_API_KEY'], missing: ['GOOGLE_VISION_API_KEY'], note: 'Local data mode' },
           { id: 'service_role', label: 'Server database access', configured: false, required: ['SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY'], missing: ['SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY'], note: 'Local data mode' },
         ],
       };

@@ -42,17 +42,17 @@ function service(
 }
 
 function receiptOcrService(): ServiceStatus {
-  const configured = hasEnv("GOOGLE_VISION_API_KEY") || hasEnv("OCRSPACE_API_KEY");
+  const configured = hasEnv("GOOGLE_VISION_API_KEY");
   return {
     id: "ocr",
     label: "Receipt OCR",
     configured,
-    required: ["GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY"],
-    recommended: ["GOOGLE_VISION_API_KEY", "OCRSPACE_API_KEY fallback"],
-    missing: configured ? [] : ["GOOGLE_VISION_API_KEY or OCRSPACE_API_KEY"],
+    required: ["GOOGLE_VISION_API_KEY"],
+    recommended: [],
+    missing: configured ? [] : ["GOOGLE_VISION_API_KEY"],
     note: configured
-      ? "Receipt verification uses Google Vision first when configured, with OCR.space as fallback."
-      : "Add Google Vision for primary receipt OCR. OCR.space can be kept as fallback.",
+      ? "Receipt verification uses Google Vision."
+      : "Add Google Vision for receipt OCR.",
   };
 }
 
