@@ -51,6 +51,15 @@ create table if not exists public.bookings (
   paid_at timestamptz,
   gcash_ref text,
   downpayment numeric,
+  host_booking boolean not null default false,
+  host_user_id uuid,
+  host_name text,
+  host_email text,
+  created_via text not null default 'customer',
+  created_by_user_id uuid,
+  created_by_role text,
+  created_by_name text,
+  created_by_email text,
   receipt_image_url text,
   receipt_image_hash text,
   receipt_phash text,
@@ -78,6 +87,8 @@ create table if not exists public.bookings (
     )),
   constraint bookings_status_check
     check (status in ('pending','verifying','confirmed','cancelled','completed')),
+  constraint bookings_created_via_check
+    check (created_via in ('customer','admin','host','import','system')),
   constraint bookings_receipt_status_check
     check (receipt_status in ('none','auto_approved','manual_review','rejected'))
 );
@@ -449,6 +460,10 @@ create index if not exists idx_bookings_booking_group_ref on public.bookings (bo
 create index if not exists idx_bookings_billed_at on public.bookings (billed_at);
 create index if not exists idx_bookings_weekly_fee_id on public.bookings (weekly_fee_id);
 create index if not exists idx_bookings_received_account on public.bookings (received_account);
+create index if not exists idx_bookings_host_booking
+  on public.bookings (host_booking, host_user_id, date);
+create index if not exists idx_bookings_created_via on public.bookings (created_via);
+create index if not exists idx_bookings_created_by_user_id on public.bookings (created_by_user_id);
 create index if not exists idx_bookings_receipt_phash
   on public.bookings (receipt_phash)
   where receipt_phash is not null and receipt_phash <> '';

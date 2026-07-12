@@ -133,9 +133,17 @@ async function _invokePaymentSessionFallback(payload) {
   return json;
 }
 
-async function _invokeEdgeFunction(name, payload = {}, { allowFailure = false } = {}) {
-  const { data, error } = await _sb.functions.invoke(name, { body: payload });
-  if (!error && data) return data;
+async function _invokeEdgeFunction(name, payload = {}, { allowFailure = false, preferDirect = false } = {}) {
+  let data = null;
+  let error = null;
+  if (!preferDirect) {
+    try {
+      ({ data, error } = await _sb.functions.invoke(name, { body: payload }));
+    } catch (invokeErr) {
+      error = invokeErr;
+    }
+    if (!error && data) return data;
+  }
 
   const fnUrl = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/${name}`;
   const sess = await _sb.auth.getSession();
@@ -157,7 +165,8 @@ async function _invokeEdgeFunction(name, payload = {}, { allowFailure = false } 
     if (!res.ok) throw new Error(json.error || txt || `HTTP ${res.status}`);
     return json;
   } catch (fallbackErr) {
-    const reason = `${_extractFnError(error, 'Function invoke failed')}. ${_extractFnError(fallbackErr, 'Fallback call failed')}`;
+    const fallbackReason = _extractFnError(fallbackErr, 'Fallback call failed');
+    const reason = error ? `${_extractFnError(error, 'Function invoke failed')}. ${fallbackReason}` : fallbackReason;
     if (allowFailure) return { ok: false, error: reason };
     throw new Error(reason);
   }
@@ -291,6 +300,15 @@ function rowToBooking(r) {
     paidAt:        r.paid_at || null,
     gcashRef:      r.gcash_ref || null,
     downpayment:   r.downpayment || null,
+    hostBooking:   !!r.host_booking,
+    hostUserId:    r.host_user_id || null,
+    hostName:      r.host_name || null,
+    hostEmail:     r.host_email || null,
+    createdVia:    r.created_via || 'customer',
+    createdByUserId: r.created_by_user_id || null,
+    createdByRole:   r.created_by_role || null,
+    createdByName:   r.created_by_name || null,
+    createdByEmail:  r.created_by_email || null,
     receiptStatus:     r.receipt_status || 'none',
     receiptFlags:      r.receipt_flags || [],
     receiptExtracted:  r.receipt_extracted || null,
@@ -385,9 +403,36 @@ function bookingToRow(b) {
     paid_at:        b.paidAt || null,
     gcash_ref:      b.gcashRef || null,
     downpayment:    b.downpayment || null,
+    host_booking:   !!b.hostBooking,
+    host_user_id:   b.hostUserId || null,
+    host_name:      b.hostName || null,
+    host_email:     b.hostEmail || null,
+    created_via:    b.createdVia || 'customer',
+    created_by_user_id: b.createdByUserId || null,
+    created_by_role:    b.createdByRole || null,
+    created_by_name:    b.createdByName || null,
+    created_by_email:   b.createdByEmail || null,
     status:         b.status,
     created_at:     b.createdAt,
   };
+}
+
+function withoutOptionalBookingColumns(row) {
+  const copy = { ...row };
+  delete copy.host_booking;
+  delete copy.host_user_id;
+  delete copy.host_name;
+  delete copy.host_email;
+  delete copy.created_via;
+  delete copy.created_by_user_id;
+  delete copy.created_by_role;
+  delete copy.created_by_name;
+  delete copy.created_by_email;
+  return copy;
+}
+
+function isMissingOptionalBookingColumnError(error) {
+  return /host_booking|host_user_id|host_name|host_email|created_via|created_by_user_id|created_by_role|created_by_name|created_by_email/i.test(error?.message || '');
 }
 
 function rowToCourt(r) {
@@ -421,6 +466,7 @@ function rowToAccount(r) {
     id:        r.id,
     username:  r.username,
     role:      r.role,
+    status:    r.status || 'active',
     fullName:  r.full_name,
     email:     r.email,
     createdAt: r.created_at,
@@ -432,6 +478,7 @@ function accountToRow(a) {
     id:         a.id,
     username:   a.username,
     role:       a.role,
+    status:     a.status || 'active',
     full_name:  a.fullName,
     email:      a.email,
     created_at: a.createdAt,
@@ -444,6 +491,11 @@ function rowToOpenPlayHostApplication(r) {
     fullName: r.full_name,
     contactNumber: r.contact_number,
     email: r.email,
+    gcashNumber: r.gcash_number || '',
+    validIdFileName: r.valid_id_file_name || '',
+    validIdFileType: r.valid_id_file_type || '',
+    validIdFileSize: r.valid_id_file_size || null,
+    validIdPath: r.valid_id_path || '',
     preferredSchedule: r.preferred_schedule || '',
     notes: r.notes || '',
     status: r.status || 'pending',
@@ -460,6 +512,11 @@ function hostApplicationToRow(app) {
     full_name: app.fullName,
     contact_number: app.contactNumber,
     email: app.email,
+    gcash_number: app.gcashNumber || null,
+    valid_id_file_name: app.validIdFileName || null,
+    valid_id_file_type: app.validIdFileType || null,
+    valid_id_file_size: app.validIdFileSize || null,
+    valid_id_path: app.validIdPath || null,
     preferred_schedule: app.preferredSchedule || null,
     notes: app.notes || null,
     status: app.status || 'pending',
@@ -584,7 +641,11 @@ window.DB = {
       throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
     }
 
-    const { error } = await _sb.from('bookings').insert(bookingToRow(booking));
+    const row = bookingToRow(booking);
+    let { error } = await _sb.from('bookings').insert(row);
+    if (error && isMissingOptionalBookingColumnError(error)) {
+      ({ error } = await _sb.from('bookings').insert(withoutOptionalBookingColumns(row)));
+    }
     if (error) { console.error('addBooking:', error); throw error; }
     _pbClearFastCache(['bookings']);
   },
@@ -615,6 +676,15 @@ window.DB = {
     if (updates.paidAt !== undefined) row.paid_at = updates.paidAt;
     if (updates.gcashRef !== undefined) row.gcash_ref = updates.gcashRef;
     if (updates.downpayment !== undefined) row.downpayment = updates.downpayment;
+    if (updates.hostBooking !== undefined) row.host_booking = !!updates.hostBooking;
+    if (updates.hostUserId !== undefined) row.host_user_id = updates.hostUserId;
+    if (updates.hostName !== undefined) row.host_name = updates.hostName;
+    if (updates.hostEmail !== undefined) row.host_email = updates.hostEmail;
+    if (updates.createdVia !== undefined) row.created_via = updates.createdVia;
+    if (updates.createdByUserId !== undefined) row.created_by_user_id = updates.createdByUserId;
+    if (updates.createdByRole !== undefined) row.created_by_role = updates.createdByRole;
+    if (updates.createdByName !== undefined) row.created_by_name = updates.createdByName;
+    if (updates.createdByEmail !== undefined) row.created_by_email = updates.createdByEmail;
     if (updates.date !== undefined) row.date = updates.date;
     if (updates.startTime !== undefined) row.start_time = updates.startTime;
     if (updates.endTime !== undefined) row.end_time = updates.endTime;
@@ -625,7 +695,10 @@ window.DB = {
     if (updates.confirmationEmailId !== undefined) row.confirmation_email_id = updates.confirmationEmailId;
     if (updates.confirmationEmailSentAt !== undefined) row.confirmation_email_sent_at = updates.confirmationEmailSentAt;
     if (updates.confirmationEmailLastEvent !== undefined) row.confirmation_email_last_event = updates.confirmationEmailLastEvent;
-    const { error } = await _sb.from('bookings').update(row).eq('ref', ref);
+    let { error } = await _sb.from('bookings').update(row).eq('ref', ref);
+    if (error && isMissingOptionalBookingColumnError(error)) {
+      ({ error } = await _sb.from('bookings').update(withoutOptionalBookingColumns(row)).eq('ref', ref));
+    }
     if (error) { console.error('updateBooking:', error); throw error; }
     _pbClearFastCache(['bookings']);
   },
@@ -763,12 +836,52 @@ window.DB = {
   },
 
   async addOpenPlayHostApplication(app) {
-    const { error } = await _sb.from('open_play_host_applications').insert({
+    if (app.password || app.validIdBase64) {
+      return this.submitOpenPlayHostSignup(app);
+    }
+    const row = {
       ...hostApplicationToRow(app),
       status: 'pending',
       created_at: new Date().toISOString(),
-    });
+    };
+    let { error } = await _sb.from('open_play_host_applications').insert(row);
+    if (error && /gcash_number|valid_id_|host_user_id/i.test(error.message || '')) {
+      const fallback = {
+        full_name: row.full_name,
+        contact_number: row.contact_number,
+        email: row.email,
+        preferred_schedule: row.preferred_schedule,
+        notes: row.notes,
+        status: row.status,
+        created_at: row.created_at,
+      };
+      ({ error } = await _sb.from('open_play_host_applications').insert(fallback));
+    }
     if (error) { console.error('addOpenPlayHostApplication:', error); throw error; }
+  },
+
+  async submitOpenPlayHostSignup(app) {
+    const data = await _invokeEdgeFunction('host-application', {
+      action: 'signup',
+      fullName: app.fullName,
+      contactNumber: app.contactNumber,
+      email: app.email,
+      password: app.password,
+      gcashNumber: app.gcashNumber,
+      validIdBase64: app.validIdBase64,
+      validIdFileName: app.validIdFileName,
+      validIdFileType: app.validIdFileType,
+      validIdFileSize: app.validIdFileSize,
+      notes: app.notes || '',
+    }, { preferDirect: true });
+    if (data?.error) throw new Error(data.error);
+    return data;
+  },
+
+  async getOpenPlayHostIdSignedUrl(applicationId) {
+    const data = await _invokeEdgeFunction('host-application', { action: 'sign-valid-id', applicationId }, { preferDirect: true });
+    if (!data?.url) throw new Error(data?.error || 'No valid ID available.');
+    return data.url;
   },
 
   async updateOpenPlayHostApplication(id, updates) {
@@ -780,6 +893,12 @@ window.DB = {
     const { data, error } = await _sb.from('open_play_host_applications').update(row).eq('id', id).select('*').single();
     if (error) { console.error('updateOpenPlayHostApplication:', error); throw error; }
     return data ? rowToOpenPlayHostApplication(data) : null;
+  },
+
+  async reviewOpenPlayHostApplication(id, status, reviewNote = '') {
+    const data = await _invokeEdgeFunction('host-application', { action: 'review', applicationId: id, status, reviewNote }, { preferDirect: true });
+    if (data?.error) throw new Error(data.error);
+    return data;
   },
 
   async getOpenPlayHostSessions() {
@@ -1342,20 +1461,84 @@ window.DB = {
     fee_type: 'per_hour',
   });
 
-  const defaultAccounts = () => ([{
-    id: 'owner_001',
-    username: 'developer',
-    password: 'dev123',
-    role: 'owner',
-    fullName: 'System Owner',
-    email: 'owner@kortedos.local',
-    createdAt: nowIso(),
-  }]);
+  const defaultAccounts = () => ([
+    {
+      id: 'owner_001',
+      username: 'developer',
+      password: 'dev123',
+      role: 'owner',
+      status: 'active',
+      fullName: 'System Owner',
+      email: 'owner@kortedos.local',
+      createdAt: nowIso(),
+    },
+    {
+      id: 'host_test_001',
+      username: 'host.test',
+      password: 'HostTest123!',
+      role: 'host',
+      status: 'active',
+      fullName: 'Open Play Test Host',
+      email: 'host.test@kortedos.local',
+      createdAt: nowIso(),
+    },
+  ]);
+
+  const defaultHostDemoBookings = () => {
+    const makeHostBooking = ({ ref, groupRef = null, courtId, courtName, date, slots, rate, method = 'gcash', gcashRef = '', paymentStatus = 'downpayment_paid', status = 'confirmed', createdDaysAgo = 0 }) => {
+      const duration = slots.length;
+      const courtFee = duration * rate;
+      const serviceFee = duration * 5;
+      const total = courtFee + serviceFee;
+      const downpayment = Math.round((courtFee * 0.25) + serviceFee);
+      const start = Math.min(...slots);
+      const end = Math.max(...slots) + 1;
+      return {
+        ref,
+        groupRef,
+        fullName: 'Open Play Test Host',
+        contactNumber: '09171234567',
+        email: 'host.test@kortedos.local',
+        courtId,
+        courtName,
+        date,
+        slots,
+        startTime: _fmtBookingHour(start),
+        endTime: _fmtBookingHour(end),
+        timeLabel: `${_fmtBookingHour(start)} - ${_fmtBookingHour(end)}`,
+        duration,
+        rate,
+        total,
+        paymentMethod: method,
+        paymentFlow: method,
+        gcashRef,
+        downpayment: paymentStatus === 'paid' ? total : downpayment,
+        hostBooking: true,
+        hostUserId: 'host_test_001',
+        hostName: 'Open Play Test Host',
+        hostEmail: 'host.test@kortedos.local',
+        paymentStatus,
+        status,
+        createdAt: new Date(Date.now() - createdDaysAgo * 86400000).toISOString(),
+      };
+    };
+    return [
+      makeHostBooking({ ref: 'HOST-DEMO-001', courtId: 'c1', courtName: 'Korte DOS', date: '2026-07-12', slots: [14, 15], rate: 60, gcashRef: '1234567890123', createdDaysAgo: 1 }),
+      makeHostBooking({ ref: 'HOST-DEMO-002', courtId: 'c2', courtName: 'Court 2', date: '2026-07-14', slots: [18, 19, 20], rate: 90, gcashRef: '9876543210123', createdDaysAgo: 2 }),
+      makeHostBooking({ ref: 'HOST-DEMO-003', courtId: 'c3', courtName: 'Court 3', date: '2026-07-18', slots: [8, 9], rate: 60, method: 'cash', paymentStatus: 'unpaid', status: 'pending', createdDaysAgo: 0 }),
+      makeHostBooking({ ref: 'HOST-DEMO-004', courtId: 'c4', courtName: 'Court 4', date: '2026-07-04', slots: [16, 17], rate: 60, gcashRef: '2223334445556', paymentStatus: 'paid', createdDaysAgo: 6 }),
+      makeHostBooking({ ref: 'HOST-DEMO-005', courtId: 'c5', courtName: 'Court 5', date: '2026-06-29', slots: [19, 20, 21], rate: 90, gcashRef: '3334445556667', paymentStatus: 'downpayment_paid', createdDaysAgo: 12 }),
+      makeHostBooking({ ref: 'HOST-DEMO-006', courtId: 'c6', courtName: 'Court 6', date: '2026-07-20', slots: [10, 11, 12], rate: 90, gcashRef: '4445556667778', paymentStatus: 'for_verification', status: 'verifying', createdDaysAgo: 0 }),
+      makeHostBooking({ ref: 'HOST-DEMO-MULTI-001-A', groupRef: 'HOST-DEMO-MULTI-001', courtId: 'c7', courtName: 'Court 7', date: '2026-07-25', slots: [17, 18, 19, 20], rate: 90, gcashRef: '5556667778889', createdDaysAgo: 0 }),
+      makeHostBooking({ ref: 'HOST-DEMO-MULTI-001-B', groupRef: 'HOST-DEMO-MULTI-001', courtId: 'c8', courtName: 'Court 8', date: '2026-07-25', slots: [17, 18, 19, 20], rate: 90, gcashRef: '5556667778889', createdDaysAgo: 0 }),
+      makeHostBooking({ ref: 'HOST-DEMO-MULTI-001-C', groupRef: 'HOST-DEMO-MULTI-001', courtId: 'c9', courtName: 'Court 9', date: '2026-07-25', slots: [17, 18, 19, 20], rate: 90, gcashRef: '5556667778889', createdDaysAgo: 0 }),
+    ];
+  };
 
   function freshDb() {
     return {
       courts: defaultCourts(),
-      bookings: [],
+      bookings: defaultHostDemoBookings(),
       openPlayRegistrations: [],
       openPlayHostApplications: [],
       openPlayHostSessions: [],
@@ -1379,12 +1562,27 @@ window.DB = {
       localStorage.setItem(STORE_KEY, JSON.stringify(db));
       return db;
     }
-    return {
+    const accounts = Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : defaultAccounts();
+    const bookings = Array.isArray(parsed.bookings) ? parsed.bookings : [];
+    let localSeedChanged = false;
+    for (const defaultAccount of defaultAccounts()) {
+      if (!accounts.some(a => String(a.id) === String(defaultAccount.id))) {
+        accounts.push(defaultAccount);
+        localSeedChanged = true;
+      }
+    }
+    for (const demoBooking of defaultHostDemoBookings()) {
+      if (!bookings.some(b => String(b.ref) === String(demoBooking.ref))) {
+        bookings.push(demoBooking);
+        localSeedChanged = true;
+      }
+    }
+    const db = {
       ...freshDb(),
       ...parsed,
       settings: { ...defaultSettings(), ...(parsed.settings || {}) },
       courts: Array.isArray(parsed.courts) && parsed.courts.length ? parsed.courts : defaultCourts(),
-      bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
+      bookings,
       openPlayRegistrations: Array.isArray(parsed.openPlayRegistrations) ? parsed.openPlayRegistrations : [],
       openPlayHostApplications: Array.isArray(parsed.openPlayHostApplications) ? parsed.openPlayHostApplications : [],
       openPlayHostSessions: Array.isArray(parsed.openPlayHostSessions) ? parsed.openPlayHostSessions : [],
@@ -1394,10 +1592,12 @@ window.DB = {
       openPlayGameRounds: Array.isArray(parsed.openPlayGameRounds) ? parsed.openPlayGameRounds : [],
       blockedDates: Array.isArray(parsed.blockedDates) ? parsed.blockedDates : [],
       deletedBookingArchive: Array.isArray(parsed.deletedBookingArchive) ? parsed.deletedBookingArchive : [],
-      accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : defaultAccounts(),
+      accounts,
       agreements: Array.isArray(parsed.agreements) ? parsed.agreements : [],
       weeklyFees: Array.isArray(parsed.weeklyFees) ? parsed.weeklyFees : [],
     };
+    if (localSeedChanged) writeDb(db);
+    return db;
   }
 
   function writeDb(db) {
@@ -1611,6 +1811,11 @@ window.DB = {
         fullName: app.fullName,
         contactNumber: app.contactNumber,
         email: app.email,
+        gcashNumber: app.gcashNumber || '',
+        validIdFileName: app.validIdFileName || '',
+        validIdFileType: app.validIdFileType || '',
+        validIdFileSize: app.validIdFileSize || null,
+        validIdPath: app.validIdPath || '',
         preferredSchedule: app.preferredSchedule || '',
         notes: app.notes || '',
         status: 'pending',
@@ -1632,6 +1837,31 @@ window.DB = {
       });
       writeDb(db);
       return saved;
+    },
+    async reviewOpenPlayHostApplication(id, status, reviewNote = '') {
+      const db = readDb();
+      let saved = null;
+      db.openPlayHostApplications = db.openPlayHostApplications.map(app => {
+        if (String(app.id) !== String(id)) return app;
+        saved = {
+          ...app,
+          status,
+          reviewNote,
+          reviewedBy: Auth.getSession()?.id || null,
+          reviewedAt: nowIso(),
+          updatedAt: nowIso(),
+        };
+        return saved;
+      });
+      if (saved?.hostUserId) {
+        db.accounts = db.accounts.map(acc =>
+          String(acc.id) === String(saved.hostUserId)
+            ? { ...acc, status: status === 'approved' ? 'active' : 'suspended' }
+            : acc
+        );
+      }
+      writeDb(db);
+      return { ok: true };
     },
     async getOpenPlayHostSessions() {
       return readDb().openPlayHostSessions.sort((a, b) =>
@@ -1992,15 +2222,32 @@ window.Auth = {
       .eq('id', authData.user.id)
       .maybeSingle();
 
-    const session = acc
-      ? { ...rowToAccount(acc), loginAt: new Date().toISOString() }
-      : {
-          id: authData.user.id,
-          email: authData.user.email,
-          role: 'staff',
-          fullName: authData.user.user_metadata?.full_name || 'Court Staff',
-          loginAt: new Date().toISOString(),
-        };
+    if (!acc) {
+      const meta = authData.user.user_metadata || {};
+      if (meta.role === 'host' && meta.account_status === 'pending') {
+        this._lastLoginMessage = 'Your host application is pending review.';
+      } else if (meta.role === 'host' && meta.account_status === 'suspended') {
+        this._lastLoginMessage = 'Your host application was not approved. Please contact the court owner.';
+      } else {
+        this._lastLoginMessage = 'This login is not linked to a dashboard account.';
+      }
+      await _sb.auth.signOut();
+      sessionStorage.removeItem('pb_session');
+      localStorage.removeItem('pb_session');
+      return null;
+    }
+
+    const session = { ...rowToAccount(acc), loginAt: new Date().toISOString() };
+
+    if (session.status && session.status !== 'active') {
+      this._lastLoginMessage = session.status === 'pending'
+        ? 'Your host application is pending review.'
+        : 'This account is not active. Please contact the court owner.';
+      await _sb.auth.signOut();
+      sessionStorage.removeItem('pb_session');
+      localStorage.removeItem('pb_session');
+      return null;
+    }
 
     const shouldRemember = remember === null ? localStorage.getItem('pb_remember') === '1' : !!remember;
     sessionStorage.removeItem('pb_session');
@@ -2015,9 +2262,10 @@ window.Auth = {
   async login(email, password, remember = false) {
     // Sign in via Supabase Auth — establishes a verified JWT session.
     const { data, error } = await _sb.auth.signInWithPassword({ email, password });
-    if (error || !data.user) return { ok: false };
+    if (error || !data.user) return { ok: false, msg: error?.message || 'Invalid email or password.' };
+    this._lastLoginMessage = '';
     const session = await this.refreshSessionFromAuth({ remember });
-    return session ? { ok: true } : { ok: false };
+    return session ? { ok: true } : { ok: false, msg: this._lastLoginMessage || 'Account is not active.' };
   },
 
   getSession() {
@@ -2060,6 +2308,7 @@ window.Auth = {
         email: d.email,
         password: d.password,
         role: this.ROLES.includes(d.role) ? d.role : 'staff',
+        status: d.status || 'active',
       });
       return { ok: true };
     } catch (e) {
@@ -2077,6 +2326,7 @@ window.Auth = {
         email: d.email,
         password: d.password || '',
         role: this.ROLES.includes(d.role) ? d.role : 'staff',
+        status: d.status || 'active',
       });
       return { ok: true };
     } catch (e) {
@@ -2121,7 +2371,15 @@ if (window.PB_USE_LOCAL_DATA) {
         (a.username === usernameOrEmail || a.email === usernameOrEmail) &&
         (!a.password || a.password === password)
       );
-      if (!user) return { ok: false };
+      if (!user) return { ok: false, msg: 'Invalid email or password.' };
+      if (user.status && user.status !== 'active') {
+        return {
+          ok: false,
+          msg: user.status === 'pending'
+            ? 'Your host application is pending review.'
+            : 'This account is not active. Please contact the court owner.',
+        };
+      }
       const session = { ...user, loginAt: new Date().toISOString(), isLocalData: true };
       const store = remember ? localStorage : sessionStorage;
       store.setItem('pb_session', JSON.stringify(session));
@@ -2146,6 +2404,7 @@ if (window.PB_USE_LOCAL_DATA) {
         password: d.password,
         email: d.email,
         role: this.ROLES.includes(d.role) ? d.role : 'staff',
+        status: d.status || 'active',
         createdAt: new Date().toISOString(),
       };
       await DB.saveAccount(acc);

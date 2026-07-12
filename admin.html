@@ -2262,7 +2262,7 @@ tr:hover td { background: var(--bg2); }
             <div id="hostSessionList" class="host-list"><div class="gm-empty">Loading sessions...</div></div>
           </div>
 
-          <div class="host-panel" id="hostApplicationsPanel" data-perm="accounts">
+          <div class="host-panel" id="hostApplicationsPanel" data-perm="host_open_play">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
               <h3 style="margin:0">Host Applications</h3>
               <span class="gm-mini" id="hostAppCount">0 pending</span>
@@ -3340,6 +3340,15 @@ function groupBookings(bookings = []) {
       paymentStatus: bookingGroupStatus(items, 'paymentStatus'),
       status: bookingGroupStatus(items, 'status'),
       gcashRef: commonValue(items, 'gcashRef', primary.gcashRef || ''),
+      hostBooking: items.some(b => !!b.hostBooking),
+      hostUserId: commonValue(items, 'hostUserId', primary.hostUserId || null),
+      hostName: commonValue(items, 'hostName', primary.hostName || null),
+      hostEmail: commonValue(items, 'hostEmail', primary.hostEmail || null),
+      createdVia: commonValue(items, 'createdVia', primary.createdVia || 'customer'),
+      createdByUserId: commonValue(items, 'createdByUserId', primary.createdByUserId || null),
+      createdByRole: commonValue(items, 'createdByRole', primary.createdByRole || null),
+      createdByName: commonValue(items, 'createdByName', primary.createdByName || null),
+      createdByEmail: commonValue(items, 'createdByEmail', primary.createdByEmail || null),
       receiptStatus: bookingGroupReceiptStatus(items),
       receiptFlags,
       receiptExtracted: items.find(b => b.receiptExtracted)?.receiptExtracted || primary.receiptExtracted,
@@ -3619,6 +3628,48 @@ function receiptDetailsHtml(b){
     <div class="receipt-detail-value">${value}</div>
   </div>`).join('');
 }
+function bookingSourceLabel(b){
+  const via = String(b?.createdVia || '').toLowerCase();
+  const role = String(b?.createdByRole || '').toLowerCase();
+  if (via === 'admin') {
+    if (role === 'court_owner') return 'Booked by Court Owner';
+    if (role === 'staff') return 'Booked by Staff';
+    if (role === 'owner') return 'Booked by Owner';
+    return 'Booked by Admin';
+  }
+  if (via === 'host' || b?.hostBooking) return 'Host Booking';
+  if (via === 'import') return 'Imported';
+  if (via === 'system') return 'System';
+  return 'Customer Website';
+}
+function bookingSourceMeta(b){
+  const label = bookingSourceLabel(b);
+  const actor = b?.createdByName || b?.createdByEmail || b?.hostName || b?.hostEmail || '';
+  return actor && label !== 'Customer Website' ? `${label}: ${actor}` : label;
+}
+function bookingSourceBadge(b){
+  const via = String(b?.createdVia || '').toLowerCase();
+  const isAdmin = via === 'admin';
+  const isHost = via === 'host' || b?.hostBooking;
+  const color = isAdmin ? 'var(--yellow)' : isHost ? 'var(--green)' : 'var(--text2)';
+  const bg = isAdmin ? 'rgba(200,160,96,.14)' : isHost ? 'rgba(var(--green-rgb),.12)' : 'var(--input)';
+  const border = isAdmin ? 'rgba(200,160,96,.28)' : isHost ? 'rgba(var(--green-rgb),.28)' : 'var(--border)';
+  return `<span class="receipt-chip" style="color:${color};background:${bg};border-color:${border}">${esc(bookingSourceLabel(b))}</span>`;
+}
+function uuidOrNull(value){
+  const text = String(value || '');
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text) ? text : null;
+}
+function currentBookingActorFields(){
+  const actor = sess || Auth.getSession?.() || {};
+  return {
+    createdVia: 'admin',
+    createdByUserId: uuidOrNull(actor.id),
+    createdByRole: actor.role || null,
+    createdByName: actor.fullName || actor.name || actor.username || null,
+    createdByEmail: actor.email || null,
+  };
+}
 function bookingDetailsButton(b){
   if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
   if (!['gcash','bdopay','maya','bpi','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
@@ -3710,6 +3761,7 @@ function mobileBookingCard(b, canDelete){
         <span class="mb-book-chip amount">${fmt(b.total)}</span>
         <span class="mb-book-chip">${esc(payMethod)}</span>
         <span class="mb-book-chip ${['unpaid','rejected','failed'].includes(String(b.paymentStatus || '').toLowerCase()) ? 'warn' : ''}">${esc(payState)}</span>
+        ${bookingSourceBadge(b)}
       </div>
       ${duplicatePaymentRefBadge(b)}
     </div>
@@ -3721,6 +3773,7 @@ function mobileBookingCard(b, canDelete){
         ${b.gcashRef ? `<div class="mb-book-detail-row"><span>Ref</span><span><code>${esc(b.gcashRef)}</code></span></div>` : ''}
         <div class="mb-book-detail-row"><span>Payment</span><span>${esc(payMethod)}</span></div>
         <div class="mb-book-detail-row"><span>Booked</span><span>${esc(bookedOn)}</span></div>
+        <div class="mb-book-detail-row"><span>Source</span><span>${esc(bookingSourceMeta(b))}</span></div>
         <div class="mb-book-detail-row"><span>Pay State</span><span>${bookingPayStateSelect(b)}</span></div>
         ${b.duplicatePaymentRef ? `<div class="mb-book-detail-row"><span>Warning</span><span>${duplicatePaymentRefBadge(b)}</span></div>` : ''}
         ${b.receiptStatus && b.receiptStatus !== 'none' ? `<div class="mb-book-detail-row"><span>Receipt</span><span>${receiptBadge(b)}</span></div>` : ''}
@@ -4152,13 +4205,14 @@ async function renderBookings(){
   const bkRowsHtml = groupedBookings.map(b=>`<tr class="booking-row">
       <td class="booking-mobile-card">${mobileBookingCard(b, canDelete)}</td>
       <td data-label="Ref"><code style="color:var(--green);font-size:.76rem">${esc(b.displayRef || b.ref)}</code>${b.isGroup?`<div style="font-size:.68rem;color:var(--muted);margin-top:3px">${b.items.length} courts</div>`:''}</td>
-      <td data-label="Customer"><div style="font-weight:600">${esc(b.fullName)}</div><div style="font-size:.75rem;color:var(--text)">${esc(b.email)}</div></td>
+      <td data-label="Customer"><div style="font-weight:600">${esc(b.fullName)}</div><div style="font-size:.75rem;color:var(--text)">${esc(b.email)}</div><div style="margin-top:4px">${bookingSourceBadge(b)}</div></td>
       <td data-label="Court">${esc(b.courtName)}</td>
       <td data-label="Schedule">${fmtD(b.date)}<div style="font-size:.75rem;color:var(--text);font-weight:600">${esc(b.startTime)}–${esc(b.endTime)}</div></td>
       <td data-label="Booked On">${b.createdAt ? (() => { const d=new Date(b.createdAt); return d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) + '<div style="font-size:.75rem;color:var(--muted);font-weight:600">' + d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true}) + '</div>'; })() : '<span style="color:var(--muted)">—</span>'}</td>
       <td data-label="Amount"><div class="amount-stack">
         <div class="amount-main">${fmt(b.total)}</div>
-        ${(()=>{ const dp=b.downpayment||b.total/2; return dp>=b.total ? `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">✅ Full payment</div>` : `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">⚡ ${fmt(dp)} down</div>`; })()}
+        ${(()=>{ const dp=b.downpayment||b.total/2; const bal=Math.max(0,(Number(b.total)||0)-Number(dp||0)); return dp>=b.total ? `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">✅ Full payment</div>` : `<div style="font-size:.73rem;color:var(--text);margin-top:2px;font-weight:700">⚡ ${fmt(dp)} down${b.hostBooking ? ` · ${fmt(bal)} balance` : ''}</div>`; })()}
+        ${b.hostBooking ? `<div style="font-size:.7rem;margin-top:1px;color:var(--muted);font-weight:700">Host: ${esc(b.hostName || b.hostEmail || 'Open Play Host')}</div>` : ''}
         ${b.gcashRef?`<div style="font-size:.7rem;margin-top:1px;font-weight:700">Ref: <code style="color:var(--text)">${esc(b.gcashRef)}</code></div>`:''}
         ${duplicatePaymentRefBadge(b)}
       </div></td>
@@ -4895,6 +4949,10 @@ async function verifyAndConfirm() {
   if (!ref) return;
   try {
     const bkForPay = await getBookingGroupByRef(ref);
+    if (isDigitalPayment(bkForPay?.paymentMethod) && !bkForPay?.receiptImageUrl) {
+      toast('Cannot confirm: no receipt image is attached to this digital payment.', 'err');
+      return;
+    }
     const isFullyPaid = bkForPay && bkForPay.downpayment >= bkForPay.total;
     const verifiedPayStatus = isFullyPaid ? 'paid' : 'downpayment_paid';
     await updateBookingGroupByRef(ref, { status: 'confirmed', paymentStatus: verifiedPayStatus });
@@ -5336,6 +5394,7 @@ async function saveNewBooking() {
     paymentStatus: payStatus,
     paymentFlow: method,
     status,
+    ...currentBookingActorFields(),
     createdAt: new Date().toISOString(),
   };
 
@@ -5737,6 +5796,7 @@ async function saveNewBooking() {
       paymentStatus: payStatus,
       paymentFlow: method,
       status,
+      ...currentBookingActorFields(),
       createdAt: nowIso,
     };
   });
@@ -7248,7 +7308,7 @@ async function hostCopy(text, ok = 'Copied.') {
 }
 
 function hostCanManageApplications() {
-  return !!(sess && Auth.can('accounts', sess.role));
+  return !!(sess && ['owner', 'court_owner'].includes(sess.role));
 }
 
 function hostVisibleSessions(sessions) {
@@ -7441,20 +7501,37 @@ function renderHostApplications() {
         ${badge(a.status)}
       </div>
       ${a.preferredSchedule ? `<div class="host-mini-row"><span>Schedule</span><strong>${esc(a.preferredSchedule)}</strong></div>` : ''}
+      ${a.gcashNumber ? `<div class="host-mini-row"><span>GCash</span><strong>${esc(a.gcashNumber)}</strong></div>` : ''}
+      ${a.validIdFileName ? `<div class="host-mini-row"><span>Valid ID</span><strong>${esc(a.validIdFileName)}</strong></div>` : ''}
       ${a.notes ? `<div class="host-meta">${esc(a.notes)}</div>` : ''}
       <div class="host-session-actions">
         ${a.status === 'pending' ? `<button class="btn btn-p btn-sm" onclick="reviewHostApplication('${jsArg(a.id)}','approved')">Approve</button><button class="btn btn-d btn-sm" onclick="reviewHostApplication('${jsArg(a.id)}','rejected')">Reject</button>` : ''}
-        <button class="btn btn-g btn-sm" onclick="prefillHostAccount('${jsArg(a.id)}')">Create Login</button>
+        ${a.validIdPath ? `<button class="btn btn-g btn-sm" onclick="openHostValidId('${jsArg(a.id)}')">View ID</button>` : ''}
+        ${a.hostUserId ? '' : `<button class="btn btn-g btn-sm" onclick="prefillHostAccount('${jsArg(a.id)}')">Create Login</button>`}
       </div>
     </div>
   `).join('');
 }
 
 async function reviewHostApplication(id, status) {
-  const note = status === 'approved' ? 'Approved for host dashboard access.' : 'Application rejected.';
-  await DB.updateOpenPlayHostApplication(id, { status, reviewNote: note, reviewedBy: sess?.id || null, reviewedAt: new Date().toISOString() });
-  toast(status === 'approved' ? 'Application approved. Create a host login from Accounts.' : 'Application rejected.', status === 'approved' ? 'ok' : 'inf');
+  const app = (_hostCenter.applications || []).find(a => String(a.id) === String(id));
+  const note = status === 'approved' ? 'Approved for 25% host booking access.' : 'Application rejected.';
+  if (DB.reviewOpenPlayHostApplication) await DB.reviewOpenPlayHostApplication(id, status, note);
+  else await DB.updateOpenPlayHostApplication(id, { status, reviewNote: note, reviewedBy: sess?.id || null, reviewedAt: new Date().toISOString() });
+  toast(status === 'approved'
+    ? (app?.hostUserId ? 'Application approved. Host can now book with 25% downpayment.' : 'Application approved. Create a host login from Accounts.')
+    : 'Application rejected.',
+    status === 'approved' ? 'ok' : 'inf');
   await renderHostCenter();
+}
+
+async function openHostValidId(id) {
+  try {
+    const url = await DB.getOpenPlayHostIdSignedUrl(id);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (e) {
+    toast(e?.message || 'Could not load valid ID.', 'err');
+  }
 }
 
 function prefillHostAccount(id) {
@@ -8786,6 +8863,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     sess = Auth.requireAuth();
   }
   if (!sess) return;
+  if (sess.role === 'host') {
+    window.location.href = 'index.html?hostBooking=1';
+    return;
+  }
 
   // Dark mode — data-theme approach
   const savedTheme = localStorage.getItem('pb_template_theme');

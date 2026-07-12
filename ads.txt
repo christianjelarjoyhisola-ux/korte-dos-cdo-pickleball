@@ -1,1 +1,1 @@
-google.com, pub-YOUR_ADSENSE_ID, DIRECT, f08c47fec0942fa0
+google.com, pub-1871576789265012, DIRECT, f08c47fec0942fa0

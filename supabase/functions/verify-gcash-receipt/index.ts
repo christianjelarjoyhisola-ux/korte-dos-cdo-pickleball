@@ -967,7 +967,10 @@ Deno.serve(async (req) => {
       contentType,
       upsert: false,
     });
-    if (upErr) console.error("receipt upload failed:", errMsg(upErr));
+    if (upErr) {
+      console.error("receipt upload failed:", errMsg(upErr));
+      return json({ error: "Receipt image could not be stored. Please upload the receipt again." }, 500);
+    }
 
     const flags: string[] = [];
 

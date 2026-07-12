@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Korte DOS - Open Play Host Portal</title>
+<link rel="icon" type="image/png" href="korte-dos-logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#143d63;--navy-dark:#0b2744;--red:#c83d26;--red-dark:#9f2f1f;--lime:#c9cf43;--bg:#f4f7f8;--card:#fff;--border:#d7e0e6;--text:#0f2438;--muted:#657486;--input:#eef3f6;--ac:20,61,99}
+body.dark{--bg:#091521;--card:#12283b;--border:#29475f;--text:#f8faf6;--muted:#aec0cf;--input:#0f2234;--ac:127,169,204}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:18px;display:flex;align-items:center;justify-content:center}
+button,input,textarea,label,a{touch-action:manipulation}
+@media (pointer:coarse){input,textarea,button{font-size:16px!important}}
+.shell{position:relative;width:100%;max-width:460px;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:0 24px 64px rgba(20,61,99,.12);overflow:hidden}
+.head{padding:28px 26px 20px;text-align:center;border-bottom:1px solid var(--border)}
+.logo{width:72px;height:72px;border-radius:50%;object-fit:contain;padding:5px;border:2px solid rgba(var(--ac),.25);background:#fff;box-shadow:0 8px 24px rgba(var(--ac),.16);margin-bottom:12px}
+.title{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:1.5px;line-height:1}
+.sub{font-size:.86rem;color:var(--muted);margin-top:7px;line-height:1.45}
+.tabs{display:grid;grid-template-columns:1fr 1fr;padding:12px;gap:8px;background:rgba(var(--ac),.04)}
+.tab{border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:8px;padding:10px 12px;font-weight:800;cursor:pointer}
+.tab.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.panel{display:none;padding:22px 24px 24px}
+.panel.on{display:block}
+.note{background:var(--input);border:1px solid var(--border);border-radius:8px;padding:11px 12px;color:var(--muted);font-size:.82rem;line-height:1.5;margin-bottom:16px}
+.fl{display:block;font-size:.73rem;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:6px}
+.fi{width:100%;padding:11px 13px;background:var(--input);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Outfit',sans-serif;font-size:.92rem;margin-bottom:14px}
+.fi:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(var(--ac),.14)}
+textarea.fi{min-height:82px;resize:vertical}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;border:0;border-radius:9px;padding:13px 18px;font-family:'Outfit',sans-serif;font-weight:800;cursor:pointer;transition:transform .18s,box-shadow .18s}
+.btn:disabled{opacity:.65;cursor:wait;transform:none}
+.btn-p{background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;box-shadow:0 4px 14px rgba(200,61,38,.2)}
+.btn-p:hover{transform:translateY(-1px)}
+.btn-g{background:var(--input);border:1px solid var(--border);color:var(--text)}
+.file{display:block;border:1px dashed var(--border);border-radius:9px;padding:13px;background:var(--input);cursor:pointer;margin-bottom:14px}
+.file span{display:block;color:var(--muted);font-size:.82rem;line-height:1.45}
+.file strong{display:block;color:var(--text);font-size:.9rem;margin-bottom:2px}
+.msg{display:none;border-radius:8px;padding:11px 13px;font-size:.84rem;line-height:1.45;margin-bottom:14px}
+.msg.show{display:block}
+.msg.err{background:rgba(200,61,38,.10);border:1px solid rgba(200,61,38,.28);color:var(--red)}
+.msg.ok{background:rgba(var(--ac),.09);border:1px solid rgba(var(--ac),.22);color:var(--navy)}
+.links{padding:0 24px 24px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.links a{color:var(--muted);font-size:.84rem;text-decoration:none}
+.links a:hover{color:var(--navy);text-decoration:underline;text-underline-offset:3px}
+</style>
+</head>
+<body class="light">
+<main class="shell">
+  <header class="head">
+    <img class="logo" src="korte-dos-logo.png" alt="Korte DOS logo">
+    <div class="title">Open Play Host Portal</div>
+    <div class="sub">Approved hosts can book courts with a 25% downpayment. New hosts can apply for review.</div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab on" type="button" id="loginTab" onclick="showPanel('login')">Host Login</button>
+    <button class="tab" type="button" id="applyTab" onclick="showPanel('apply')">Apply as Host</button>
+  </div>
+
+  <section class="panel on" id="loginPanel">
+    <div class="msg err" id="loginMsg"></div>
+    <form onsubmit="hostLogin(event)" autocomplete="on">
+      <label class="fl" for="hostEmail">Email</label>
+      <input class="fi" type="email" id="hostEmail" placeholder="you@email.com" autocomplete="username" required>
+      <label class="fl" for="hostPassword">Password</label>
+      <input class="fi" type="password" id="hostPassword" placeholder="Enter password" autocomplete="current-password" required>
+      <button class="btn btn-p" type="submit" id="hostLoginBtn">Continue to Booking</button>
+    </form>
+  </section>
+
+  <section class="panel" id="applyPanel">
+    <div class="note">Applications are reviewed by the court owner. Once approved, your login unlocks 25% downpayment court booking.</div>
+    <div class="msg" id="applyMsg"></div>
+    <form onsubmit="hostApply(event)" autocomplete="on">
+      <label class="fl" for="haName">Full Name</label>
+      <input class="fi" type="text" id="haName" placeholder="Your full name" required>
+      <label class="fl" for="haPhone">Phone Number</label>
+      <input class="fi" type="tel" id="haPhone" placeholder="09XX XXX XXXX" required>
+      <label class="fl" for="haEmail">Email</label>
+      <input class="fi" type="email" id="haEmail" placeholder="you@email.com" autocomplete="username" required>
+      <label class="fl" for="haPassword">Password</label>
+      <input class="fi" type="password" id="haPassword" placeholder="Minimum 8 characters" autocomplete="new-password" minlength="8" required>
+      <label class="fl" for="haGcash">GCash Number</label>
+      <input class="fi" type="tel" id="haGcash" placeholder="09XX XXX XXXX" required>
+      <label class="fl" for="haNotes">Notes</label>
+      <textarea class="fi" id="haNotes" placeholder="Optional: usual schedule, group size, or hosting experience"></textarea>
+      <button class="btn btn-p" type="submit" id="hostApplyBtn">Submit Application</button>
+    </form>
+  </section>
+
+  <div class="links">
+    <a href="index.html">Back to Booking Page</a>
+    <a href="login.html">Staff Login</a>
+  </div>
+</main>
+
+<script src="supabase.min.js"></script>
+  <script src="supabase-config.js?v=20260709-hostportal6"></script>
+<script>
+const dark = localStorage.getItem('pb_template_theme') === 'dark';
+document.body.classList.toggle('dark', dark);
+document.body.classList.toggle('light', !dark);
+
+function $(id){ return document.getElementById(id); }
+
+function showPanel(name) {
+  $('loginPanel').classList.toggle('on', name === 'login');
+  $('applyPanel').classList.toggle('on', name === 'apply');
+  $('loginTab').classList.toggle('on', name === 'login');
+  $('applyTab').classList.toggle('on', name === 'apply');
+}
+
+function setMsg(id, text, type) {
+  const el = $(id);
+  el.textContent = text || '';
+  el.className = `msg ${type || ''} ${text ? 'show' : ''}`;
+}
+
+function cleanPhone(value) {
+  return String(value || '').replace(/[\s-]/g, '');
+}
+
+function validPhone(value) {
+  return /^(09|\+639)\d{9}$/.test(cleanPhone(value));
+}
+
+async function hostLogin(e) {
+  e.preventDefault();
+  setMsg('loginMsg', '', '');
+  const btn = $('hostLoginBtn');
+  btn.disabled = true;
+  btn.textContent = 'Logging in...';
+  try {
+    const r = await Auth.login($('hostEmail').value.trim(), $('hostPassword').value, true);
+    if (!r.ok) {
+      setMsg('loginMsg', r.msg || 'Invalid email or password.', 'err');
+      return;
+    }
+    const sess = Auth.getSession();
+    if (!sess || sess.role !== 'host') {
+      await _sb.auth.signOut().catch(() => {});
+      localStorage.removeItem('pb_session');
+      sessionStorage.removeItem('pb_session');
+      setMsg('loginMsg', 'This portal is only for approved Open Play Host accounts.', 'err');
+      return;
+    }
+    window.location.href = 'index.html?hostBooking=1';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Continue to Booking';
+  }
+}
+
+async function hostApply(e) {
+  e.preventDefault();
+  setMsg('applyMsg', '', '');
+  const fullName = $('haName').value.trim();
+  const contactNumber = cleanPhone($('haPhone').value);
+  const email = $('haEmail').value.trim();
+  const password = $('haPassword').value;
+  const gcashNumber = cleanPhone($('haGcash').value);
+  if (fullName.length < 3) return setMsg('applyMsg', 'Enter your full name.', 'err');
+  if (!validPhone(contactNumber)) return setMsg('applyMsg', 'Enter a valid PH phone number.', 'err');
+  if (!validPhone(gcashNumber)) return setMsg('applyMsg', 'Enter a valid GCash number.', 'err');
+
+  const btn = $('hostApplyBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  try {
+    await DB.addOpenPlayHostApplication({
+      fullName,
+      contactNumber,
+      email,
+      password,
+      gcashNumber,
+      notes: $('haNotes').value.trim(),
+    });
+    e.target.reset();
+    setMsg('applyMsg', 'Application submitted. Your host login is pending court owner approval.', 'ok');
+  } catch (err) {
+    const msg = err?.message || 'Could not submit application.';
+    setMsg('applyMsg', msg === 'Load failed' ? 'Could not reach the host application service. Please try again.' : msg, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit Application';
+  }
+}
+</script>
+</body>
+</html>

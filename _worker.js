@@ -7,6 +7,11 @@ export default {
       return Response.redirect(url.toString(), 301);
     }
 
+    if (url.pathname === '/host') {
+      url.pathname = '/host.html';
+      return Response.redirect(url.toString(), 302);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };

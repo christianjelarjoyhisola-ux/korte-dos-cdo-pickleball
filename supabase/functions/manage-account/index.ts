@@ -10,6 +10,7 @@ type Payload = {
   email?: string;
   password?: string;
   role?: Role;
+  status?: "active" | "pending" | "suspended";
 };
 
 const corsHeaders = {
@@ -18,6 +19,7 @@ const corsHeaders = {
 };
 
 const roles = new Set<Role>(["owner", "court_owner", "staff", "host"]);
+const statuses = new Set(["active", "pending", "suspended"]);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -92,6 +94,7 @@ Deno.serve(async (req) => {
   const email = cleanText(body.email).toLowerCase();
   const password = String(body.password || "");
   const role = roles.has(body.role as Role) ? body.role as Role : "staff";
+  const status = statuses.has(String(body.status)) ? String(body.status) : "active";
 
   try {
     if (action === "create") {
@@ -119,6 +122,7 @@ Deno.serve(async (req) => {
         full_name: fullName,
         email,
         role,
+        status,
         created_at: new Date().toISOString(),
       };
 
@@ -156,7 +160,7 @@ Deno.serve(async (req) => {
 
       const { data: account, error: profileErr } = await db
         .from("accounts")
-        .update({ username, full_name: fullName, email, role })
+        .update({ username, full_name: fullName, email, role, status })
         .eq("id", id)
         .select("*")
         .single();

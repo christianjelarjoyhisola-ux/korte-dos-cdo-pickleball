@@ -102,6 +102,7 @@ button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulat
   </div>
 
   <a class="back" href="index.html">← Back to Booking Page</a>
+  <a class="back" href="host.html">Open Play Host Portal</a>
 </div>
 
 <script>
@@ -123,6 +124,7 @@ async function doLogin(e) {
     const params = new URLSearchParams(window.location.search);
     window.location.href = params.get('next') || 'admin.html';
   } else {
+    document.getElementById('errBox').textContent = r.msg || 'Invalid email or password.';
     document.getElementById('errBox').classList.add('show');
     btn.disabled = false;
     btn.textContent = 'Login to Dashboard →';
