@@ -7,11 +7,9 @@ export default {
       return Response.redirect(url.toString(), 301);
     }
 
-    if (url.pathname === '/host') {
-      url.pathname = '/host.html';
-      return Response.redirect(url.toString(), 302);
-    }
-
+    // Cloudflare Pages resolves extensionless HTML routes through the asset
+    // binding. Redirecting /host to /host.html here conflicts with Pages'
+    // canonical /host.html -> /host redirect and creates a redirect loop.
     return env.ASSETS.fetch(request);
   },
 };
