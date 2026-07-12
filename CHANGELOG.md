@@ -6,6 +6,32 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-12] - Open Play Host Portal Completion
+
+### Fixed
+- **Host booking finalization** - approved hosts can now complete their own authenticated 15-minute booking holds instead of leaving placeholder reservations behind.
+- **Host payment verification** - receipt and checkout pricing now accepts the intended 25% court charge plus the full booking fee, while preserving regular 50% and full-payment flows.
+- **Host account lifecycle** - approvals activate host access, rejections suspend it, and re-approval restores it consistently in Auth and the accounts table.
+- **Approved host login repair** - approved legacy applications can securely reconnect to one exact existing Auth identity and repair the active host account without creating duplicate logins.
+- **Truthful host review status** - the staff dashboard now separates application review from login activation and offers an explicit verify/repair action when access is not confirmed.
+- **Host route loop** - removed the Cloudflare worker redirect that looped between `/host` and `/host.html`.
+- **Host booking balances** - unpaid or unverified requested amounts are no longer displayed as already paid.
+
+### Security
+- **Server-owned host holds** - host identity, source, court pricing, and total are stamped by the database and cannot be rewritten by the booking client.
+- **Host-scoped updates** - active hosts may only finalize their own recent holds; anonymous bookings cannot claim host pricing or identity.
+- **Authoritative payment pricing** - persisted bookings and server-side court/settings data now determine expected receipt and checkout amounts.
+- **Webhook fail-closed behavior** - payment callbacks require a configured HMAC secret and use stored session amounts before changing booking payment status.
+
+### DB
+- **Host portal compatibility migration** - repairs missing July host/account/source columns, adds host-aware booking policies, and mirrors the finished schema into the fresh-install baseline.
+- **Legacy host reconciliation** - uniquely matched legacy applications are linked to their host Auth/account identity, while pending, rejected, ambiguous, and unknown host access fails closed.
+- **Migration-first deployment** - Supabase deployment now dry-runs and applies database migrations before publishing dependent Edge Functions.
+
+**Files affected:** `index.html`, `admin.html`, `supabase-config.js`, `_worker.js`, `deploy-edge-functions.ps1`, `SETUP_NEW_SUPABASE.sql`, `supabase/migrations/20260712130000_host_booking_hold_security.sql`, `supabase/functions/host-application/index.ts`, `supabase/functions/create-payment-session/index.ts`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/functions/payment-webhook/index.ts`, `supabase/functions/_shared/booking-payment.ts`
+
+---
+
 ## [2026-07-01] - Deleted Booking Recovery Archive
 
 ### DB

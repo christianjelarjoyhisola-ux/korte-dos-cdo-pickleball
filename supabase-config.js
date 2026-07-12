@@ -491,6 +491,7 @@ function rowToOpenPlayHostApplication(r) {
     fullName: r.full_name,
     contactNumber: r.contact_number,
     email: r.email,
+    hostUserId: r.host_user_id || null,
     gcashNumber: r.gcash_number || '',
     validIdFileName: r.valid_id_file_name || '',
     validIdFileType: r.valid_id_file_type || '',
@@ -621,9 +622,16 @@ window.DB = {
       let query = _sb.from('bookings').select('*').order('created_at', { ascending: false });
       if (opts.date) query = query.eq('date', opts.date);
       if (opts.courtId) query = query.eq('court_id', String(opts.courtId));
+      if (opts.hostUserId) query = query.eq('host_user_id', String(opts.hostUserId));
       if (opts.activeOnly) query = query.neq('status', 'cancelled');
       const { data, error } = await query;
-      if (error) { console.error('getBookings:', error); return []; }
+      if (error) {
+        console.error('getBookings:', error);
+        // Host history is an authenticated, identity-scoped view. Surface an
+        // RLS/schema failure instead of presenting it as an empty history.
+        if (opts.hostUserId) throw error;
+        return [];
+      }
       return data.map(rowToBooking);
     });
   },
@@ -643,7 +651,7 @@ window.DB = {
 
     const row = bookingToRow(booking);
     let { error } = await _sb.from('bookings').insert(row);
-    if (error && isMissingOptionalBookingColumnError(error)) {
+    if (error && isMissingOptionalBookingColumnError(error) && !booking.hostBooking) {
       ({ error } = await _sb.from('bookings').insert(withoutOptionalBookingColumns(row)));
     }
     if (error) { console.error('addBooking:', error); throw error; }
@@ -695,11 +703,17 @@ window.DB = {
     if (updates.confirmationEmailId !== undefined) row.confirmation_email_id = updates.confirmationEmailId;
     if (updates.confirmationEmailSentAt !== undefined) row.confirmation_email_sent_at = updates.confirmationEmailSentAt;
     if (updates.confirmationEmailLastEvent !== undefined) row.confirmation_email_last_event = updates.confirmationEmailLastEvent;
-    let { error } = await _sb.from('bookings').update(row).eq('ref', ref);
-    if (error && isMissingOptionalBookingColumnError(error)) {
-      ({ error } = await _sb.from('bookings').update(withoutOptionalBookingColumns(row)).eq('ref', ref));
+    let { data, error } = await _sb.from('bookings').update(row).eq('ref', ref).select('ref');
+    if (error && isMissingOptionalBookingColumnError(error) && !updates.hostBooking && updates.createdVia !== 'host') {
+      ({ data, error } = await _sb.from('bookings').update(withoutOptionalBookingColumns(row)).eq('ref', ref).select('ref'));
     }
     if (error) { console.error('updateBooking:', error); throw error; }
+    if (!Array.isArray(data) || data.length === 0) {
+      const denied = new Error(`Booking ${ref} was not updated. It may have expired or this account does not have permission to change it.`);
+      denied.code = 'BOOKING_UPDATE_NOT_ALLOWED';
+      console.error('updateBooking:', denied);
+      throw denied;
+    }
     _pbClearFastCache(['bookings']);
   },
 
@@ -898,6 +912,17 @@ window.DB = {
   async reviewOpenPlayHostApplication(id, status, reviewNote = '') {
     const data = await _invokeEdgeFunction('host-application', { action: 'review', applicationId: id, status, reviewNote }, { preferDirect: true });
     if (data?.error) throw new Error(data.error);
+    if (!data?.ok) throw new Error('Host review did not return a successful activation result.');
+    return data;
+  },
+
+  async repairOpenPlayHostActivation(id) {
+    const data = await _invokeEdgeFunction('host-application', {
+      action: 'repair-activation',
+      applicationId: id,
+    }, { preferDirect: true });
+    if (data?.error) throw new Error(data.error);
+    if (!data?.ok) throw new Error('Host login repair did not complete successfully.');
     return data;
   },
 
@@ -1625,6 +1650,7 @@ window.DB = {
       return readDb().bookings
         .filter(b => !opts.date || b.date === opts.date)
         .filter(b => !opts.courtId || String(b.courtId) === String(opts.courtId))
+        .filter(b => !opts.hostUserId || String(b.hostUserId) === String(opts.hostUserId))
         .filter(b => !opts.activeOnly || b.status !== 'cancelled')
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     },
@@ -1647,8 +1673,10 @@ window.DB = {
     async getBookingByRef(ref) { return readDb().bookings.find(b => String(b.ref) === String(ref)) || null; },
     async updateBooking(ref, updates) {
       const db = readDb();
+      let updated = false;
       db.bookings = db.bookings.map(b => {
         if (String(b.ref) !== String(ref)) return b;
+        updated = true;
         const next = { ...b, ...updates };
         if (updates.receivedAccount === undefined && updates.paymentMethod !== undefined) {
           next.receivedAccount = receivedAccountForBooking(next);
@@ -1656,6 +1684,11 @@ window.DB = {
         if (!next.receivedAccount) next.receivedAccount = receivedAccountForBooking(next);
         return next;
       });
+      if (!updated) {
+        const missing = new Error(`Booking ${ref} was not updated because it no longer exists.`);
+        missing.code = 'BOOKING_UPDATE_NOT_ALLOWED';
+        throw missing;
+      }
       writeDb(db);
     },
     async markBookingsBilled(refs, weeklyFeeId) {
@@ -1840,28 +1873,62 @@ window.DB = {
     },
     async reviewOpenPlayHostApplication(id, status, reviewNote = '') {
       const db = readDb();
-      let saved = null;
-      db.openPlayHostApplications = db.openPlayHostApplications.map(app => {
-        if (String(app.id) !== String(id)) return app;
-        saved = {
-          ...app,
-          status,
-          reviewNote,
-          reviewedBy: Auth.getSession()?.id || null,
-          reviewedAt: nowIso(),
-          updatedAt: nowIso(),
-        };
-        return saved;
-      });
-      if (saved?.hostUserId) {
-        db.accounts = db.accounts.map(acc =>
-          String(acc.id) === String(saved.hostUserId)
-            ? { ...acc, status: status === 'approved' ? 'active' : 'suspended' }
-            : acc
-        );
+      const appIndex = db.openPlayHostApplications.findIndex(app => String(app.id) === String(id));
+      if (appIndex < 0) throw new Error('Host application not found.');
+      const existing = db.openPlayHostApplications[appIndex];
+      const account = db.accounts.find(acc =>
+        acc.role === 'host' && (
+          (existing.hostUserId && String(acc.id) === String(existing.hostUserId)) ||
+          String(acc.email || '').toLowerCase() === String(existing.email || '').toLowerCase()
+        )
+      );
+      if (status === 'approved' && !account) {
+        throw new Error('No matching host login exists for this application.');
       }
+      if (account) account.status = status === 'approved' ? 'active' : 'suspended';
+      const saved = {
+        ...existing,
+        hostUserId: account?.id || existing.hostUserId || null,
+        status,
+        reviewNote,
+        reviewedBy: Auth.getSession()?.id || null,
+        reviewedAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      db.openPlayHostApplications[appIndex] = saved;
       writeDb(db);
-      return { ok: true };
+      return {
+        ok: true,
+        status,
+        hostUserId: saved?.hostUserId || null,
+        loginLinked: !!account,
+        accountStatus: account?.status || null,
+      };
+    },
+    async repairOpenPlayHostActivation(id) {
+      const db = readDb();
+      const appIndex = db.openPlayHostApplications.findIndex(app => String(app.id) === String(id));
+      if (appIndex < 0) throw new Error('Host application not found.');
+      const app = db.openPlayHostApplications[appIndex];
+      const account = db.accounts.find(acc =>
+        acc.role === 'host' && (
+          (app.hostUserId && String(acc.id) === String(app.hostUserId)) ||
+          String(acc.email || '').toLowerCase() === String(app.email || '').toLowerCase()
+        )
+      );
+      if (!account) throw new Error('No matching host login exists for this application.');
+      account.status = 'active';
+      app.hostUserId = account.id;
+      app.status = 'approved';
+      app.updatedAt = nowIso();
+      writeDb(db);
+      return {
+        ok: true,
+        status: app.status,
+        hostUserId: account.id,
+        loginLinked: true,
+        accountStatus: 'active',
+      };
     },
     async getOpenPlayHostSessions() {
       return readDb().openPlayHostSessions.sort((a, b) =>
@@ -2214,13 +2281,26 @@ window.Auth = {
 
   async refreshSessionFromAuth({ remember = null } = {}) {
     const { data: authData, error } = await _sb.auth.getUser();
-    if (error || !authData?.user) return null;
+    if (error || !authData?.user) {
+      this._lastLoginMessage = error
+        ? 'Could not verify your sign-in right now. Please check your connection and try again.'
+        : 'Your sign-in session is no longer available. Please log in again.';
+      return null;
+    }
 
-    const { data: acc } = await _sb
+    const { data: acc, error: accountErr } = await _sb
       .from('accounts')
       .select('*')
       .eq('id', authData.user.id)
       .maybeSingle();
+
+    if (accountErr) {
+      console.error('refreshSessionFromAuth account lookup:', accountErr);
+      this._lastLoginMessage = 'Could not verify your account status right now. Please try again in a moment.';
+      sessionStorage.removeItem('pb_session');
+      localStorage.removeItem('pb_session');
+      return null;
+    }
 
     if (!acc) {
       const meta = authData.user.user_metadata || {};

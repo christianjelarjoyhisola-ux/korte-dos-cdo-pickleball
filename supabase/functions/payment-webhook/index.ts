@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { classifyStoredSessionPayment } from "../_shared/booking-payment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,7 +32,24 @@ type WebhookBody = {
   };
 };
 
-function normalizeStatus(input?: string) {
+type PaymentSessionRow = {
+  id: string;
+  booking_ref: string;
+  provider_reference: string | null;
+  amount_php: number | string;
+  status: string;
+};
+
+type BookingPaymentRow = {
+  ref: string;
+  total: number | string | null;
+  downpayment: number | string | null;
+  status: string;
+};
+
+type ProviderPaymentStatus = "paid" | "failed" | "pending";
+
+function normalizeStatus(input?: string): ProviderPaymentStatus {
   const v = (input || "").toLowerCase();
   if (["paid", "succeeded", "success", "completed"].includes(v)) return "paid";
   if (["failed", "canceled", "cancelled", "expired"].includes(v)) return "failed";
@@ -40,7 +58,9 @@ function normalizeStatus(input?: string) {
 
 async function verifySignature(req: Request, bodyText: string) {
   const secret = Deno.env.get("PAYMENT_WEBHOOK_SECRET");
-  if (!secret) return true;
+  // Fail closed: a missing verifier secret must never make a public webhook
+  // endpoint accept an unsigned payment-status update.
+  if (!secret) return false;
   const given = req.headers.get("x-payment-signature") || "";
   if (!given) return false;
   const key = await crypto.subtle.importKey(
@@ -83,6 +103,63 @@ function parseWebhook(body: WebhookBody) {
   return { sessionId, bookingRef, providerRef, normalized, paidAtIso };
 }
 
+async function findPaymentSession(
+  db: any,
+  identifiers: { sessionId: string | null; providerRef: string | null; bookingRef: string | null },
+): Promise<PaymentSessionRow | null> {
+  const select = "id,booking_ref,provider_reference,amount_php,status";
+  const checked = new Set<string>();
+
+  for (const value of [identifiers.sessionId, identifiers.providerRef]) {
+    if (!value || checked.has(value)) continue;
+    checked.add(value);
+
+    const { data: local, error: localErr } = await db
+      .from("payment_sessions")
+      .select(select)
+      .eq("id", value)
+      .maybeSingle();
+    if (localErr) throw localErr;
+    if (local) return local as PaymentSessionRow;
+
+    const { data: provider, error: providerErr } = await db
+      .from("payment_sessions")
+      .select(select)
+      .eq("provider_reference", value)
+      .maybeSingle();
+    if (providerErr) throw providerErr;
+    if (provider) return provider as PaymentSessionRow;
+  }
+
+  // PayMongo's payment.paid event identifies the Payment resource rather than
+  // the Checkout Session. Use its booking reference only when it points to one
+  // unambiguous pending local session; the provider id is persisted below so
+  // retries can match it directly.
+  if (identifiers.bookingRef) {
+    const { data, error } = await db
+      .from("payment_sessions")
+      .select(select)
+      .eq("booking_ref", identifiers.bookingRef)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(2);
+    if (error) throw error;
+    if ((data || []).length > 1) throw new Error("Webhook does not identify a unique payment session");
+    return data?.[0] as PaymentSessionRow || null;
+  }
+
+  return null;
+}
+
+async function loadSessionBookings(db: any, sessionId: string): Promise<BookingPaymentRow[]> {
+  const { data, error } = await db
+    .from("bookings")
+    .select("ref,total,downpayment,status")
+    .eq("payment_session_id", sessionId);
+  if (error) throw error;
+  return (data || []) as BookingPaymentRow[];
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
@@ -95,8 +172,8 @@ Deno.serve(async (req) => {
     const body = JSON.parse(rawText) as WebhookBody;
     const { sessionId, bookingRef, providerRef, normalized, paidAtIso } = parseWebhook(body);
 
-    if (!sessionId && !bookingRef) {
-      return new Response(JSON.stringify({ error: "Missing session_id or booking_ref" }), {
+    if (!sessionId && !providerRef && !bookingRef) {
+      return new Response(JSON.stringify({ error: "Missing payment session identifier" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -110,69 +187,68 @@ Deno.serve(async (req) => {
     if (!serviceRoleKey) throw new Error("Missing SERVICE_ROLE_KEY");
     const db = createClient(supabaseUrl, serviceRoleKey);
 
+    const storedSession = await findPaymentSession(db, { sessionId, providerRef, bookingRef });
+    if (!storedSession) {
+      return new Response(JSON.stringify({ error: "Payment session not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (bookingRef && bookingRef !== storedSession.booking_ref) {
+      return new Response(JSON.stringify({ error: "Payment session does not match booking" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Never use an amount supplied by the webhook. The locally-created session
+    // and the booking rows linked to that session are the payment authority.
+    const sessionBookings = await loadSessionBookings(db, storedSession.id);
+    let bookingPaymentStatus: "paid" | "downpayment_paid" | "failed" | "pending" = normalized;
+    if (normalized === "paid") {
+      if (!sessionBookings.some((row) => row.ref === storedSession.booking_ref)) {
+        throw new Error("Payment session is not linked to its booking");
+      }
+      bookingPaymentStatus = classifyStoredSessionPayment(
+        storedSession.amount_php,
+        sessionBookings,
+      );
+    }
+
     const paymentUpdate: Record<string, unknown> = {
       status: normalized,
-      provider_reference: providerRef,
       raw_webhook: body.raw ?? body,
       updated_at: new Date().toISOString(),
     };
+    if (providerRef) {
+      paymentUpdate.provider_reference = providerRef;
+    }
     if (normalized === "paid") paymentUpdate.paid_at = paidAtIso;
 
-    let bookingRefToUpdate = bookingRef;
-    let localSessionId: string | null = null;
+    const { error: paymentUpdateErr } = await db
+      .from("payment_sessions")
+      .update(paymentUpdate)
+      .eq("id", storedSession.id);
+    if (paymentUpdateErr) throw paymentUpdateErr;
 
-    if (sessionId) {
-      // 1) Try local session id
-      const { data: localRow } = await db.from("payment_sessions").select("id,booking_ref").eq("id", sessionId).single();
-      if (localRow?.id) {
-        localSessionId = localRow.id;
-        if (!bookingRefToUpdate) bookingRefToUpdate = localRow.booking_ref || null;
-      }
-      // 2) Try provider reference
-      if (!localSessionId) {
-        const { data: providerRow } = await db.from("payment_sessions").select("id,booking_ref").eq("provider_reference", sessionId).single();
-        if (providerRow?.id) {
-          localSessionId = providerRow.id;
-          if (!bookingRefToUpdate) bookingRefToUpdate = providerRow.booking_ref || null;
-        }
-      }
-    }
-
-    if (!localSessionId && providerRef) {
-      const { data: providerRow2 } = await db.from("payment_sessions").select("id,booking_ref").eq("provider_reference", providerRef).single();
-      if (providerRow2?.id) {
-        localSessionId = providerRow2.id;
-        if (!bookingRefToUpdate) bookingRefToUpdate = providerRow2.booking_ref || null;
-      }
-    }
-
-    if (localSessionId) {
-      await db.from("payment_sessions").update(paymentUpdate).eq("id", localSessionId);
-    } else if (bookingRefToUpdate) {
-      await db.from("payment_sessions").update(paymentUpdate).eq("booking_ref", bookingRefToUpdate);
-    }
-
-    if (bookingRefToUpdate) {
+    if (sessionBookings.length > 0) {
       const bookingUpdate: Record<string, unknown> = {
-        payment_status: normalized,
+        payment_status: bookingPaymentStatus,
       };
-      if (normalized === "paid") {
-        bookingUpdate.paid_at = paidAtIso;
-      }
+      if (normalized === "paid") bookingUpdate.paid_at = paidAtIso;
       if (normalized === "failed") bookingUpdate.status = "cancelled";
-      const { data: bookingRow } = await db
+      const { error: bookingUpdateErr } = await db
         .from("bookings")
-        .select("ref,booking_group_ref")
-        .eq("ref", bookingRefToUpdate)
-        .single();
-      if (bookingRow?.booking_group_ref) {
-        await db.from("bookings").update(bookingUpdate).eq("booking_group_ref", bookingRow.booking_group_ref);
-      } else {
-        await db.from("bookings").update(bookingUpdate).eq("ref", bookingRefToUpdate);
-      }
+        .update(bookingUpdate)
+        .eq("payment_session_id", storedSession.id);
+      if (bookingUpdateErr) throw bookingUpdateErr;
     }
 
-    return new Response(JSON.stringify({ ok: true, status: normalized }), {
+    return new Response(JSON.stringify({
+      ok: true,
+      status: normalized,
+      bookingPaymentStatus,
+    }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

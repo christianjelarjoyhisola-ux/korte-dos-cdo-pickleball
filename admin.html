@@ -7243,6 +7243,58 @@ async function delAcc(id){
    OPEN PLAY HOST CENTER
    ============================================== */
 let _hostCenter = { courts: [], applications: [], sessions: [] };
+const _hostActivationState = new Map();
+
+function rememberHostActivationState(applicationId, result = {}, fallbackStatus = '') {
+  const id = String(applicationId || '');
+  if (!id) return null;
+  const hostUserId = result.hostUserId || result.host_user_id || result.account?.id || null;
+  const loginLinked = result.loginLinked !== undefined
+    ? !!result.loginLinked
+    : result.login_linked !== undefined
+      ? !!result.login_linked
+      : !!hostUserId;
+  let accountStatus = result.accountStatus || result.account_status || result.account?.status || null;
+  if (!accountStatus && loginLinked && fallbackStatus === 'approved') accountStatus = 'active';
+  if (!accountStatus && loginLinked && fallbackStatus === 'rejected') accountStatus = 'suspended';
+  if (accountStatus) accountStatus = String(accountStatus).toLowerCase();
+  const state = { hostUserId, loginLinked, accountStatus, checkedAt: new Date().toISOString() };
+  _hostActivationState.set(id, state);
+  return state;
+}
+
+function hostApplicationLoginState(app) {
+  const checked = _hostActivationState.get(String(app?.id || '')) || null;
+  const hostUserId = checked?.hostUserId || app?.hostUserId || null;
+  const linked = checked?.loginLinked !== undefined ? checked.loginLinked : !!hostUserId;
+  const accountStatus = String(checked?.accountStatus || '').toLowerCase();
+
+  if (linked && accountStatus === 'active') {
+    return { linked: true, active: true, needsActivation: false, label: 'Login active', badgeClass: 'bdg-c' };
+  }
+  if (linked && accountStatus === 'suspended') {
+    return { linked: true, active: false, needsActivation: app?.status === 'approved', label: 'Login suspended', badgeClass: 'bdg-x' };
+  }
+  if (linked && accountStatus === 'pending') {
+    return { linked: true, active: false, needsActivation: true, label: 'Login pending', badgeClass: 'bdg-p' };
+  }
+  if (!linked && app?.status === 'approved') {
+    return { linked: false, active: false, needsActivation: true, label: 'Activation required', badgeClass: 'bdg-x' };
+  }
+  if (!linked) {
+    return { linked: false, active: false, needsActivation: false, label: 'No linked login', badgeClass: 'bdg-d' };
+  }
+  if (app?.status === 'approved') {
+    return { linked: true, active: false, needsActivation: true, label: 'Login linked · not verified', badgeClass: 'bdg-p' };
+  }
+  return { linked: true, active: false, needsActivation: false, label: 'Login linked', badgeClass: 'bdg-d' };
+}
+
+function setHostApplicationBusy(applicationId, busy) {
+  document.querySelectorAll('.host-app-action').forEach(button => {
+    if (String(button.dataset.hostApplicationId || '') === String(applicationId || '')) button.disabled = !!busy;
+  });
+}
 
 function hostFmtTime(h) {
   const n = Number(h);
@@ -7485,44 +7537,88 @@ function renderHostApplications() {
   const count = $('hostAppCount');
   const apps = _hostCenter.applications || [];
   const pending = apps.filter(a => a.status === 'pending').length;
-  if (count) count.textContent = `${pending} pending`;
+  const activationNeeded = apps.filter(a => hostApplicationLoginState(a).needsActivation).length;
+  if (count) count.textContent = activationNeeded
+    ? `${pending} pending · ${activationNeeded} need activation`
+    : `${pending} pending`;
   if (!apps.length) {
     list.innerHTML = '<div class="gm-empty">No host applications yet.</div>';
     return;
   }
   const badge = s => s === 'approved' ? '<span class="bdg bdg-c">Approved</span>' : s === 'rejected' ? '<span class="bdg bdg-x">Rejected</span>' : '<span class="bdg bdg-p">Pending</span>';
-  list.innerHTML = apps.map(a => `
+  list.innerHTML = apps.map(a => {
+    const loginState = hostApplicationLoginState(a);
+    const repairLabel = loginState.linked ? 'Verify / Repair Login' : 'Activate / Repair Login';
+    return `
     <div class="host-app-card">
       <div class="host-session-head">
         <div>
           <div class="host-session-title">${esc(a.fullName)}</div>
           <div class="host-meta">${esc(a.contactNumber)} · ${esc(a.email)} · Applied ${fmtD(String(a.createdAt || '').slice(0,10))}</div>
         </div>
-        ${badge(a.status)}
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+          ${badge(a.status)}
+          <span class="bdg ${loginState.badgeClass}">${esc(loginState.label)}</span>
+        </div>
       </div>
       ${a.preferredSchedule ? `<div class="host-mini-row"><span>Schedule</span><strong>${esc(a.preferredSchedule)}</strong></div>` : ''}
       ${a.gcashNumber ? `<div class="host-mini-row"><span>GCash</span><strong>${esc(a.gcashNumber)}</strong></div>` : ''}
       ${a.validIdFileName ? `<div class="host-mini-row"><span>Valid ID</span><strong>${esc(a.validIdFileName)}</strong></div>` : ''}
       ${a.notes ? `<div class="host-meta">${esc(a.notes)}</div>` : ''}
       <div class="host-session-actions">
-        ${a.status === 'pending' ? `<button class="btn btn-p btn-sm" onclick="reviewHostApplication('${jsArg(a.id)}','approved')">Approve</button><button class="btn btn-d btn-sm" onclick="reviewHostApplication('${jsArg(a.id)}','rejected')">Reject</button>` : ''}
-        ${a.validIdPath ? `<button class="btn btn-g btn-sm" onclick="openHostValidId('${jsArg(a.id)}')">View ID</button>` : ''}
-        ${a.hostUserId ? '' : `<button class="btn btn-g btn-sm" onclick="prefillHostAccount('${jsArg(a.id)}')">Create Login</button>`}
+        ${a.status === 'pending' ? `<button class="btn btn-p btn-sm host-app-action" data-host-application-id="${esc(a.id)}" onclick="reviewHostApplication('${jsArg(a.id)}','approved')">Approve</button><button class="btn btn-d btn-sm host-app-action" data-host-application-id="${esc(a.id)}" onclick="reviewHostApplication('${jsArg(a.id)}','rejected')">Reject</button>` : ''}
+        ${a.status === 'approved' ? `<button class="btn btn-p btn-sm host-app-action" data-host-application-id="${esc(a.id)}" onclick="repairHostApplicationActivation('${jsArg(a.id)}')">${repairLabel}</button>` : ''}
+        ${a.validIdPath ? `<button class="btn btn-g btn-sm host-app-action" data-host-application-id="${esc(a.id)}" onclick="openHostValidId('${jsArg(a.id)}')">View ID</button>` : ''}
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function reviewHostApplication(id, status) {
-  const app = (_hostCenter.applications || []).find(a => String(a.id) === String(id));
   const note = status === 'approved' ? 'Approved for 25% host booking access.' : 'Application rejected.';
-  if (DB.reviewOpenPlayHostApplication) await DB.reviewOpenPlayHostApplication(id, status, note);
-  else await DB.updateOpenPlayHostApplication(id, { status, reviewNote: note, reviewedBy: sess?.id || null, reviewedAt: new Date().toISOString() });
-  toast(status === 'approved'
-    ? (app?.hostUserId ? 'Application approved. Host can now book with 25% downpayment.' : 'Application approved. Create a host login from Accounts.')
-    : 'Application rejected.',
-    status === 'approved' ? 'ok' : 'inf');
-  await renderHostCenter();
+  setHostApplicationBusy(id, true);
+  try {
+    if (!DB.reviewOpenPlayHostApplication) throw new Error('Secure host review is unavailable. Refresh the dashboard and try again.');
+    const result = await DB.reviewOpenPlayHostApplication(id, status, note);
+    const activation = rememberHostActivationState(id, result, status);
+    await renderHostCenter();
+    if (status === 'approved' && activation?.loginLinked && activation?.accountStatus === 'active') {
+      toast('Application approved and host login activated.', 'ok');
+    } else if (status === 'approved') {
+      toast('Application approved, but the host login still needs activation. Use Activate / Repair Login.', 'inf');
+    } else if (activation?.loginLinked) {
+      toast('Application rejected and linked host login suspended.', 'inf');
+    } else {
+      toast('Application rejected. No linked host login was found.', 'inf');
+    }
+  } catch (e) {
+    console.error('reviewHostApplication:', e);
+    await renderHostCenter().catch(() => {});
+    toast(e?.message || 'Could not review this host application.', 'err');
+  } finally {
+    setHostApplicationBusy(id, false);
+  }
+}
+
+async function repairHostApplicationActivation(id) {
+  setHostApplicationBusy(id, true);
+  try {
+    if (!DB.repairOpenPlayHostActivation) throw new Error('Host login repair is unavailable. Refresh the dashboard and try again.');
+    const result = await DB.repairOpenPlayHostActivation(id);
+    const activation = rememberHostActivationState(id, result, 'approved');
+    if (!activation?.loginLinked || activation?.accountStatus !== 'active') {
+      throw new Error('The repair completed without confirming an active linked host login.');
+    }
+    await renderHostCenter();
+    toast('Host login is linked and active.', 'ok');
+  } catch (e) {
+    console.error('repairHostApplicationActivation:', e);
+    await renderHostCenter().catch(() => {});
+    toast(e?.message || 'Could not activate this host login.', 'err');
+  } finally {
+    setHostApplicationBusy(id, false);
+  }
 }
 
 async function openHostValidId(id) {
@@ -7532,17 +7628,6 @@ async function openHostValidId(id) {
   } catch (e) {
     toast(e?.message || 'Could not load valid ID.', 'err');
   }
-}
-
-function prefillHostAccount(id) {
-  const app = (_hostCenter.applications || []).find(a => String(a.id) === String(id));
-  if (!app) return;
-  openAccModal();
-  $('amFull').value = app.fullName || '';
-  $('amEmail').value = app.email || '';
-  $('amUser').value = String(app.email || '').split('@')[0].replace(/[^a-z0-9._-]/gi, '').toLowerCase();
-  $('amRole').value = 'host';
-  $('amPass').focus();
 }
 
 /* ── SELF-SERVICE CHANGE PASSWORD (any signed-in user) ── */

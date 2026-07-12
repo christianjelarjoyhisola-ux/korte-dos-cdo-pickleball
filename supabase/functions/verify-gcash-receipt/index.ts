@@ -21,6 +21,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
+import { calculateCourtPayment, chooseExpectedDue, closeMoney, roundMoney, toNumber } from "../_shared/booking-payment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,8 +41,8 @@ const PESO_TOLERANCE = 5; // allow ±₱5 rounding; underpay beyond this is a ha
 // Hard flags force a rejection; soft flags force manual review.
 const HARD_FLAGS = new Set([
   "REF_FORMAT_INVALID",
-  "SUSPECTED_FAKE",     // OCR ran and image has zero receipt-like content
-  "IMAGE_UNREADABLE",   // OCR found NO text at all -> random/blank/non-receipt image
+  "SUSPECTED_FAKE", // OCR ran and image has zero receipt-like content
+  "IMAGE_UNREADABLE", // OCR found NO text at all -> random/blank/non-receipt image
   "DUPLICATE_REF",
   "DUPLICATE_INVOICE",
   "DUPLICATE_INSTAPAY_REF",
@@ -52,7 +53,7 @@ const HARD_FLAGS = new Set([
   "TIME_EXPIRED",
   "TIME_FUTURE",
   "WRONG_GCASH_NUMBER",
-  "AMOUNT_MISMATCH",    // Only hard if significantly underpaid (>₱5)
+  "AMOUNT_MISMATCH", // Only hard if significantly underpaid (>₱5)
 ]);
 
 type PaymentProvider = "gcash" | "bdopay" | "maya" | "bpi" | "gotyme" | "pnb";
@@ -72,24 +73,29 @@ function publicReceiptMessage(
   flags: string[],
 ): string {
   if (result === "auto_approved") return "Payment verified.";
-  if (result === "manual_review") return "Received - the owner will verify your payment shortly.";
+  if (result === "manual_review") {
+    return "Received - the owner will verify your payment shortly.";
+  }
 
   const flagSet = new Set(flags);
   if (flagSet.has("AMOUNT_MISMATCH")) {
     return "Payment amount is lower than required. Please upload the correct payment receipt.";
   }
-  if (flagSet.has("TIME_EXPIRED") || flagSet.has("TIME_FUTURE") || flagSet.has("DATE_NOT_TODAY")) {
+  if (
+    flagSet.has("TIME_EXPIRED") || flagSet.has("TIME_FUTURE") ||
+    flagSet.has("DATE_NOT_TODAY")
+  ) {
     return "Payment was sent outside the allowed 10-minute window. Please create a new booking.";
   }
   if (flagSet.has("IMAGE_UNREADABLE") || flagSet.has("OCR_UNAVAILABLE")) {
     return "Receipt image is unreadable. Please upload a clearer screenshot.";
   }
   if (
-    flagSet.has("SUSPECTED_FAKE")
-    || flagSet.has("GCASH_RECEIPT_UNREADABLE")
-    || flagSet.has("BDO_PAY_UNREADABLE")
-    || flagSet.has("MAYA_UNREADABLE")
-    || flagSet.has("BPI_UNREADABLE")
+    flagSet.has("SUSPECTED_FAKE") ||
+    flagSet.has("GCASH_RECEIPT_UNREADABLE") ||
+    flagSet.has("BDO_PAY_UNREADABLE") ||
+    flagSet.has("MAYA_UNREADABLE") ||
+    flagSet.has("BPI_UNREADABLE")
   ) {
     return "Payment could not be verified. Please upload a valid receipt or contact admin.";
   }
@@ -110,7 +116,11 @@ function errMsg(err: unknown): string {
     if (typeof m.message === "string") return m.message;
     if (typeof m.error === "string") return m.error;
   }
-  try { return JSON.stringify(err); } catch { return "Unknown error"; }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -128,8 +138,12 @@ function base64ToBytes(b64: string): Uint8Array {
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", copy.buffer as ArrayBuffer);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    copy.buffer as ArrayBuffer,
+  );
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 // Difference-hash (dHash): 64-bit perceptual hash robust to recompression and
@@ -143,13 +157,17 @@ async function dHash(bytes: Uint8Array): Promise<string | null> {
       for (let x = 1; x <= 8; x++) {
         const lPix = small.getPixelAt(x, y);
         const rPix = small.getPixelAt(x + 1, y);
-        const lGray = ((lPix >>> 24) & 0xff) + ((lPix >>> 16) & 0xff) + ((lPix >>> 8) & 0xff);
-        const rGray = ((rPix >>> 24) & 0xff) + ((rPix >>> 16) & 0xff) + ((rPix >>> 8) & 0xff);
+        const lGray = ((lPix >>> 24) & 0xff) + ((lPix >>> 16) & 0xff) +
+          ((lPix >>> 8) & 0xff);
+        const rGray = ((rPix >>> 24) & 0xff) + ((rPix >>> 16) & 0xff) +
+          ((rPix >>> 8) & 0xff);
         bits += lGray < rGray ? "1" : "0";
       }
     }
     let hex = "";
-    for (let i = 0; i < 64; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+    for (let i = 0; i < 64; i += 4) {
+      hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+    }
     return hex;
   } catch {
     return null; // HEIC/unknown formats — skip perceptual dedupe, not fatal
@@ -186,15 +204,27 @@ function formatPhDateTime12(d: Date | null): string | null {
 }
 
 const MONTHS: Record<string, number> = {
-  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11,
 };
 
 // Parse a GCash-style timestamp e.g. "Jun 13, 2026 10:30 AM" into a Date
 // interpreted as PH wall-clock (returned as a UTC+8-shifted Date for comparison
 // against phManilaNow()). If OCR only finds the date, return the date but no
 // shifted time so it routes to manual review instead of assuming midnight.
-function parseReceiptDateTime(text: string): { date: string | null; shifted: Date | null } {
+function parseReceiptDateTime(
+  text: string,
+): { date: string | null; shifted: Date | null } {
   const normalized = String(text || "")
     .replace(/[|]/g, " ")
     .replace(/\s+/g, " ")
@@ -208,8 +238,14 @@ function parseReceiptDateTime(text: string): { date: string | null; shifted: Dat
   const year = parseInt(dateOnly[3], 10);
   const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-  const afterDate = normalized.slice((dateOnly.index || 0) + dateOnly[0].length, (dateOnly.index || 0) + dateOnly[0].length + 80);
-  const beforeDate = normalized.slice(Math.max(0, (dateOnly.index || 0) - 40), dateOnly.index || 0);
+  const afterDate = normalized.slice(
+    (dateOnly.index || 0) + dateOnly[0].length,
+    (dateOnly.index || 0) + dateOnly[0].length + 80,
+  );
+  const beforeDate = normalized.slice(
+    Math.max(0, (dateOnly.index || 0) - 40),
+    dateOnly.index || 0,
+  );
   const timePattern = /\b(\d{1,2})\s*[:;.]\s*(\d{2})(?:\s*[:;.]\s*\d{2})?\s*([ap](?:\s*\.?\s*m\.?)?|[ap])\b/i;
   const time = afterDate.match(timePattern) || beforeDate.match(timePattern);
   if (time) {
@@ -229,7 +265,10 @@ function digitsOnly(s: string): string {
   return (s || "").replace(/\D/g, "");
 }
 
-function normalizeReferenceForProvider(value: string, provider: PaymentProvider): string {
+function normalizeReferenceForProvider(
+  value: string,
+  provider: PaymentProvider,
+): string {
   const raw = value || "";
   if (provider === "gcash") return digitsOnly(raw);
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -263,7 +302,10 @@ function extractGcashRef(text: string, typedRef = ""): string | null {
   // If the customer-entered ref is visible in the OCR text, trust it. This
   // avoids false mismatches when OCR sees the receiver mobile number before the
   // "Ref No." line and a broad numeric scan accidentally joins nearby digits.
-  if (normalizedTyped.length === 13 && flexibleDigitPattern(normalizedTyped).test(text)) {
+  if (
+    normalizedTyped.length === 13 &&
+    flexibleDigitPattern(normalizedTyped).test(text)
+  ) {
     return normalizedTyped;
   }
 
@@ -273,7 +315,9 @@ function extractGcashRef(text: string, typedRef = ""): string | null {
   while ((labelMatch = labelPattern.exec(text)) !== null) {
     const d = digitsOnly(labelMatch[1]);
     if (d.length === 13) return d;
-    if (normalizedTyped.length === 13 && d.includes(normalizedTyped)) return normalizedTyped;
+    if (normalizedTyped.length === 13 && d.includes(normalizedTyped)) {
+      return normalizedTyped;
+    }
   }
 
   // Fallback: any standalone 13-digit run.
@@ -294,7 +338,10 @@ function extractGcashRef(text: string, typedRef = ""): string | null {
 
 function extractBpiConfirmationNo(text: string, typedRef = ""): string | null {
   const normalizedTyped = digitsOnly(typedRef);
-  if (isBpiConfirmationNo(normalizedTyped) && flexibleDigitPattern(normalizedTyped).test(text)) {
+  if (
+    isBpiConfirmationNo(normalizedTyped) &&
+    flexibleDigitPattern(normalizedTyped).test(text)
+  ) {
     return normalizedTyped;
   }
 
@@ -352,47 +399,50 @@ function hasBdoBnReference(text: string): boolean {
 function isBdoPayReceipt(text: string): boolean {
   const t = text || "";
   const hasBnRef = hasBdoBnReference(t);
-  return /\bbdo\s*pay\b/i.test(t)
-    || /\bthank\s+you\s+for\s+using\s+bdo\b/i.test(t)
-    || (hasBnRef && /\binsta\s*pay\b/i.test(t))
-    || (hasBnRef && /\bbdo\b/i.test(t))
-    || (hasBnRef && extractBdoInvoiceNumber(t) !== null);
+  return /\bbdo\s*pay\b/i.test(t) ||
+    /\bthank\s+you\s+for\s+using\s+bdo\b/i.test(t) ||
+    (hasBnRef && /\binsta\s*pay\b/i.test(t)) ||
+    (hasBnRef && /\bbdo\b/i.test(t)) ||
+    (hasBnRef && extractBdoInvoiceNumber(t) !== null);
 }
 
 function isMayaReceipt(text: string): boolean {
   const t = text || "";
-  return /\bmaya\b/i.test(t)
-    && (/\bsent\s+money\s+via\b/i.test(t)
-      || /\breference\s+id\b/i.test(t)
-      || /\binstapay\s+ref\b/i.test(t)
-      || /\bqrph\b|\bqr\s*ph\b/i.test(t));
+  return /\bmaya\b/i.test(t) &&
+    (/\bsent\s+money\s+via\b/i.test(t) ||
+      /\breference\s+id\b/i.test(t) ||
+      /\binstapay\s+ref\b/i.test(t) ||
+      /\bqrph\b|\bqr\s*ph\b/i.test(t));
 }
 
 function isBpiReceipt(text: string): boolean {
   const t = text || "";
-  return /\bsent\s+via\s+bpi\b/i.test(t)
-    || /\bbpi\b/i.test(t)
-    || (/\btransfer\s+successful\b/i.test(t)
-      && /\bconfirmation\s*(?:no|number|#)?\.?\b/i.test(t)
-      && /\binsta\s*pay\b/i.test(t));
+  return /\bsent\s+via\s+bpi\b/i.test(t) ||
+    /\bbpi\b/i.test(t) ||
+    (/\btransfer\s+successful\b/i.test(t) &&
+      /\bconfirmation\s*(?:no|number|#)?\.?\b/i.test(t) &&
+      /\binsta\s*pay\b/i.test(t));
 }
 
 function hasGcashGxiDestination(text: string): boolean {
-  return /\bgcash\s*\/\s*g-?xchange\b/i.test(text)
-    || /\bg-?xchange\b/i.test(text)
-    || /\bgcash\b/i.test(text);
+  return /\bgcash\s*\/\s*g-?xchange\b/i.test(text) ||
+    /\bg-?xchange\b/i.test(text) ||
+    /\bgcash\b/i.test(text);
 }
 
 function isGcashToGcashReceipt(text: string): boolean {
   const t = text || "";
   if (isBdoPayReceipt(t) || isMayaReceipt(t) || isBpiReceipt(t)) return false;
-  return /\bsent\s+via\s+gcash\b/i.test(t)
-    || /\bsent\s+through\s+gcash\b/i.test(t)
-    || /\bgcash\s+receipt\b/i.test(t)
-    || /\btotal\s+amount\s+sent\b/i.test(t);
+  return /\bsent\s+via\s+gcash\b/i.test(t) ||
+    /\bsent\s+through\s+gcash\b/i.test(t) ||
+    /\bgcash\s+receipt\b/i.test(t) ||
+    /\btotal\s+amount\s+sent\b/i.test(t);
 }
 
-function selectedMethodMismatch(provider: PaymentProvider, text: string): boolean {
+function selectedMethodMismatch(
+  provider: PaymentProvider,
+  text: string,
+): boolean {
   const bdoReceipt = isBdoPayReceipt(text);
   const mayaReceipt = isMayaReceipt(text);
   const bpiReceipt = isBpiReceipt(text);
@@ -406,7 +456,10 @@ function selectedMethodMismatch(provider: PaymentProvider, text: string): boolea
 
 function hasExpectedReceiverName(text: string, expectedName: string): boolean {
   const upper = text.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const expected = (expectedName || "Korte Dos").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const expected = (expectedName || "Korte Dos").toUpperCase().replace(
+    /[^A-Z0-9]/g,
+    "",
+  );
   if (expected.length >= 3 && upper.includes(expected)) return true;
   return upper.includes("KORTEDOS");
 }
@@ -452,7 +505,9 @@ function extractBpiTransactionRefNo(text: string): string | null {
 
 function extractAmount(text: string): number | null {
   // Prefer values near an amount keyword / peso sign.
-  const near = text.match(/(?:amount|total|php|₱|p\s)\s*[:\-]?\s*([\d,]+\.\d{2})/i);
+  const near = text.match(
+    /(?:amount|total|php|₱|p\s)\s*[:\-]?\s*([\d,]+\.\d{2})/i,
+  );
   if (near) return parseFloat(near[1].replace(/,/g, ""));
   const any = text.match(/\b([\d,]{1,9}\.\d{2})\b/);
   return any ? parseFloat(any[1].replace(/,/g, "")) : null;
@@ -470,13 +525,19 @@ type NumberCheck = "match" | "wrong" | "unreadable";
 
 function normalizedProvider(raw: string): PaymentProvider {
   const provider = raw.toLowerCase();
-  if (provider === "bdopay" || provider === "maya" || provider === "bpi" || provider === "gotyme" || provider === "pnb") return provider;
+  if (
+    provider === "bdopay" || provider === "maya" || provider === "bpi" ||
+    provider === "gotyme" || provider === "pnb"
+  ) return provider;
   return "gcash";
 }
 
 function paymentMethodProvider(raw: unknown): PaymentProvider | null {
   const method = String(raw || "").toLowerCase();
-  if (method === "gcash" || method === "bdopay" || method === "maya" || method === "bpi" || method === "gotyme" || method === "pnb") {
+  if (
+    method === "gcash" || method === "bdopay" || method === "maya" ||
+    method === "bpi" || method === "gotyme" || method === "pnb"
+  ) {
     return method as PaymentProvider;
   }
   return null;
@@ -489,19 +550,22 @@ function expectedMerchantForProvider(
   if (provider === "bdopay") {
     return {
       number: settings.bdopay_merchant_number || "",
-      name: settings.bdopay_merchant_name || settings.payment_merchant_name || "Korte DOS",
+      name: settings.bdopay_merchant_name || settings.payment_merchant_name ||
+        "Korte DOS",
     };
   }
   if (provider === "maya") {
     return {
       number: settings.maya_merchant_number || "",
-      name: settings.maya_merchant_name || settings.payment_merchant_name || "Korte DOS",
+      name: settings.maya_merchant_name || settings.payment_merchant_name ||
+        "Korte DOS",
     };
   }
   if (provider === "bpi") {
     return {
       number: settings.bpi_merchant_number || "",
-      name: settings.bpi_merchant_name || settings.payment_merchant_name || "Korte DOS",
+      name: settings.bpi_merchant_name || settings.payment_merchant_name ||
+        "Korte DOS",
     };
   }
   if (provider === "gotyme") {
@@ -522,76 +586,60 @@ function expectedMerchantForProvider(
   };
 }
 
-function toNumber(value: unknown, fallback = 0): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function closeMoney(a: number, b: number): boolean {
-  return Math.abs(roundMoney(a) - roundMoney(b)) <= 0.01;
-}
-
-function parseJsonArray(raw: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(raw)) return raw as Array<Record<string, unknown>>;
-  if (typeof raw !== "string" || !raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed as Array<Record<string, unknown>> : [];
-  } catch {
-    return [];
-  }
-}
-
-function rateForHour(hour: number, tiers: Array<Record<string, unknown>>, fallbackRate: number): number {
-  for (const tier of tiers || []) {
-    const from = toNumber(tier.from);
-    const to = toNumber(tier.to);
-    const rate = toNumber(tier.rate, fallbackRate);
-    const inRange = from < to ? hour >= from && hour < to : hour >= from || hour < to;
-    if (inRange) return rate;
-  }
-  return tiers && tiers.length > 0
-    ? Math.min(...tiers.map((tier) => toNumber(tier.rate, fallbackRate)))
-    : fallbackRate;
-}
-
-function chooseExpectedDue(total: number, storedDownpayment: number, settings: Record<string, string>): number {
-  const half = roundMoney(total / 2);
-  const mode = settings.payment_acceptance_mode || "both";
-  if (mode === "full_payment_only") return total;
-  if (mode === "downpayment_only") return half;
-  if (closeMoney(storedDownpayment, total)) return total;
-  if (closeMoney(storedDownpayment, half)) return half;
-  throw new Error("Stored payment amount does not match current pricing");
-}
-
-function expectedOpenPlayAmount(booking: Record<string, unknown>, settings: Record<string, string>): number {
+function expectedOpenPlayAmounts(
+  booking: Record<string, unknown>,
+  settings: Record<string, string>,
+): { total: number; due: number } {
   const cfg = (() => {
-    try { return settings.open_play_config ? JSON.parse(settings.open_play_config) : {}; }
-    catch { return {}; }
+    try {
+      return settings.open_play_config ? JSON.parse(settings.open_play_config) : {};
+    } catch {
+      return {};
+    }
   })() as Record<string, unknown>;
   const openPlayFee = toNumber(cfg.fee ?? settings.open_play_fee, 100);
-  const platformFee = toNumber(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee);
+  const platformFee = toNumber(
+    settings.maintenance_fee ?? settings.service_fee_rate ??
+      settings.booking_fee,
+  );
   const total = roundMoney(openPlayFee + platformFee);
-  return chooseExpectedDue(total, toNumber(booking.downpayment, -1), settings);
+  const due = chooseExpectedDue(
+    total,
+    toNumber(booking.downpayment, -1),
+    settings.payment_acceptance_mode,
+  );
+  return { total, due };
 }
 
-async function expectedBookingAmount(
+async function expectedHostSessionAmounts(
+  db: any,
+  booking: Record<string, unknown>,
+): Promise<{ total: number; due: number }> {
+  const sessionId = String(booking.host_session_id || "");
+  if (!sessionId) throw new Error("Host session id is required");
+  const { data: session, error } = await db
+    .from("open_play_host_sessions")
+    .select("fee_per_player")
+    .eq("id", sessionId)
+    .single();
+  if (error || !session) throw error || new Error("Host session not found");
+
+  const total = roundMoney(toNumber(session.fee_per_player));
+  if (!closeMoney(toNumber(booking.downpayment, -1), total)) {
+    throw new Error(
+      "Host session payment amount does not match the configured fee",
+    );
+  }
+  return { total, due: total };
+}
+
+async function expectedBookingAmounts(
   db: any,
   booking: Record<string, unknown>,
   settings: Record<string, string>,
-): Promise<number> {
+): Promise<{ total: number; due: number }> {
   const courtId = String(booking.court_id || "");
-  if (!courtId) return expectedOpenPlayAmount(booking, settings);
-
-  const slots = Array.isArray(booking.slots)
-    ? booking.slots.map(Number).filter(Number.isFinite)
-    : [];
-  if (slots.length === 0) throw new Error("Booking has no billable slots");
+  if (!courtId) return expectedOpenPlayAmounts(booking, settings);
 
   const { data: court, error: courtErr } = await db
     .from("courts")
@@ -601,16 +649,18 @@ async function expectedBookingAmount(
   if (courtErr || !court) throw courtErr || new Error("Court not found");
 
   const courtRow = court as Record<string, unknown>;
-  const courtRate = toNumber(courtRow.rate);
-  const courtTiers = parseJsonArray(courtRow.rate_schedule);
-  const settingTiers = parseJsonArray(settings.pricing_tiers);
-  const tiers = courtTiers.length ? courtTiers : settingTiers.length ? settingTiers : [{ from: 0, to: 24, rate: courtRate }];
-  const courtTotal = slots.reduce((sum, hour) => sum + rateForHour(hour, tiers, courtRate), 0);
-  const feeRate = toNumber(settings.maintenance_fee ?? settings.service_fee_rate ?? settings.booking_fee);
-  const feeType = settings.fee_type === "flat" ? "flat" : "per_hour";
-  const serviceFee = feeType === "flat" ? feeRate : feeRate * slots.length;
-  const total = roundMoney(courtTotal + serviceFee);
-  return chooseExpectedDue(total, toNumber(booking.downpayment, -1), settings);
+  return calculateCourtPayment({
+    slots: booking.slots,
+    courtRate: courtRow.rate,
+    courtRateSchedule: courtRow.rate_schedule,
+    fallbackRateSchedule: settings.pricing_tiers,
+    feeRate: settings.maintenance_fee ?? settings.service_fee_rate ??
+      settings.booking_fee,
+    feeType: settings.fee_type,
+    storedDownpayment: booking.downpayment,
+    hostBooking: booking.host_booking === true,
+    paymentAcceptanceMode: settings.payment_acceptance_mode,
+  });
 }
 
 async function loadBookingGroup(
@@ -621,7 +671,9 @@ async function loadBookingGroup(
   if (!groupRef) return [booking];
   const { data, error } = await db
     .from("bookings")
-    .select("ref, booking_group_ref, court_id, slots, total, downpayment, gcash_ref, date, payment_status, status, full_name, created_at")
+    .select(
+      "ref, booking_group_ref, court_id, slots, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at",
+    )
     .eq("booking_group_ref", groupRef)
     .neq("status", "cancelled");
   if (error) throw error;
@@ -629,9 +681,7 @@ async function loadBookingGroup(
 }
 
 function bookingLogicalKey(row: Record<string, unknown>): string {
-  const slots = Array.isArray(row.slots)
-    ? row.slots.map(Number).filter(Number.isFinite).sort((a, b) => a - b)
-    : [];
+  const slots = Array.isArray(row.slots) ? row.slots.map(Number).filter(Number.isFinite).sort((a, b) => a - b) : [];
   return [
     String(row.court_id || row.courtId || ""),
     String(row.date || ""),
@@ -639,7 +689,9 @@ function bookingLogicalKey(row: Record<string, unknown>): string {
   ].join("|");
 }
 
-function uniqueBookingRows(rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+function uniqueBookingRows(
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
   const seen = new Set<string>();
   return rows.filter((row) => {
     const key = bookingLogicalKey(row);
@@ -649,18 +701,19 @@ function uniqueBookingRows(rows: Array<Record<string, unknown>>): Array<Record<s
   });
 }
 
-async function expectedBookingGroupAmount(
+async function expectedBookingGroupAmounts(
   db: any,
   bookings: Array<Record<string, unknown>>,
   settings: Record<string, string>,
-): Promise<number> {
+): Promise<{ total: number; due: number }> {
+  let total = 0;
   let due = 0;
-  for (const row of uniqueBookingRows(bookings)) due += await expectedBookingAmount(db, row, settings);
-  return roundMoney(due);
-}
-
-function bookingGroupStoredTotal(bookings: Array<Record<string, unknown>>): number {
-  return roundMoney(uniqueBookingRows(bookings).reduce((sum, row) => sum + toNumber(row.total), 0));
+  for (const row of uniqueBookingRows(bookings)) {
+    const amounts = await expectedBookingAmounts(db, row, settings);
+    total += amounts.total;
+    due += amounts.due;
+  }
+  return { total: roundMoney(total), due: roundMoney(due) };
 }
 
 function bookingUpdateQuery(
@@ -679,7 +732,8 @@ function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
   const last4 = expected.slice(-4);
 
   // Full mobile numbers in the receipt (handles +63 / 0 / 9 forms).
-  const fullMatches = text.match(/(?:\+?63|0)?9\d{2}[\s\-•*x.]*\d{2,3}[\s\-•*x.]*\d{2,4}/gi) || [];
+  const fullMatches = text.match(/(?:\+?63|0)?9\d{2}[\s\-•*x.]*\d{2,3}[\s\-•*x.]*\d{2,4}/gi) ||
+    [];
   let sawFull = false;
   for (const fm of fullMatches) {
     const norm = normalizeMobile(fm);
@@ -690,7 +744,9 @@ function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
   }
   // Masked receipts often reveal only the last 4 digits.
   if (maskedDigitPattern(last4).test(text)) return "match";
-  if (new RegExp(`(?:[•*xX#\\s\\-]{2,}|\\d)${last4}\\b`).test(text)) return "match";
+  if (new RegExp(`(?:[•*xX#\\s\\-]{2,}|\\d)${last4}\\b`).test(text)) {
+    return "match";
+  }
   if (text.includes(last4)) return "match";
 
   // We positively saw a complete, different mobile number → confidently wrong.
@@ -699,7 +755,10 @@ function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
 }
 
 // Loose masked-name match (e.g. "CO**TY**D P*CKL*B*LL" vs "KORTE DOS").
-function checkReceiverName(text: string, expectedName: string): "match" | "mismatch" | "unreadable" {
+function checkReceiverName(
+  text: string,
+  expectedName: string,
+): "match" | "mismatch" | "unreadable" {
   const expected = (expectedName || "").toUpperCase().replace(/[^A-Z]/g, "");
   if (expected.length < 3) return "unreadable";
   const upper = text.toUpperCase();
@@ -713,7 +772,9 @@ function checkReceiverName(text: string, expectedName: string): "match" | "misma
   }
   if (hits === 0) {
     // try first 3 visible letters
-    if (upper.replace(/[^A-Z]/g, "").includes(expected.slice(0, 3))) return "match";
+    if (upper.replace(/[^A-Z]/g, "").includes(expected.slice(0, 3))) {
+      return "match";
+    }
     return "unreadable";
   }
   return hits >= Math.ceil(tokens.length / 2) ? "match" : "unreadable";
@@ -724,8 +785,13 @@ function looksLikeGcashReceipt(text: string): boolean {
   const t = text.toLowerCase();
   let score = 0;
   if (/ref(?:erence)?\s*(no|number|#)/.test(t)) score++;
-  if (/gcash|bdo\s*pay|gotyme|maya|bpi|paymongo|qrph|insta\s*pay|pesonet|g-?xchange|gxi/.test(t)) score++;
-  if (/sent|received|paid|transfer|amount|confirmation\s*(no|number|#)/.test(t)) score++;
+  if (
+    /gcash|bdo\s*pay|gotyme|maya|bpi|paymongo|qrph|insta\s*pay|pesonet|g-?xchange|gxi/
+      .test(t)
+  ) score++;
+  if (
+    /sent|received|paid|transfer|amount|confirmation\s*(no|number|#)/.test(t)
+  ) score++;
   if (/\d{4}/.test(t)) score++;
   return score >= 2;
 }
@@ -736,13 +802,20 @@ function editedBySoftware(bytes: Uint8Array): boolean {
   const slice = bytes.subarray(0, Math.min(bytes.length, 65536));
   let s = "";
   for (let i = 0; i < slice.length; i++) s += String.fromCharCode(slice[i]);
-  return /(adobe\s*photoshop|gimp|pixlr|snapseed|picsart|lightroom|inkscape)/i.test(s);
+  return /(adobe\s*photoshop|gimp|pixlr|snapseed|picsart|lightroom|inkscape)/i
+    .test(s);
 }
 
-function googleVisionConfidence(annotation: Record<string, unknown> | null, text: string): number {
+function googleVisionConfidence(
+  annotation: Record<string, unknown> | null,
+  text: string,
+): number {
   if (!annotation) return text.length > 40 ? 0.9 : text.length > 0 ? 0.5 : 0;
   const pages = Array.isArray(annotation.pages) ? annotation.pages as Array<Record<string, unknown>> : [];
-  if (pages.length && typeof pages[0].confidence === "number" && pages[0].confidence > 0) {
+  if (
+    pages.length && typeof pages[0].confidence === "number" &&
+    pages[0].confidence > 0
+  ) {
     return pages[0].confidence;
   }
 
@@ -765,29 +838,43 @@ function googleVisionConfidence(annotation: Record<string, unknown> | null, text
   return text.length > 40 ? 0.9 : text.length > 0 ? 0.5 : 0;
 }
 
-async function googleVisionOCR(apiKey: string, base64: string): Promise<{ text: string; confidence: number }> {
+async function googleVisionOCR(
+  apiKey: string,
+  base64: string,
+): Promise<{ text: string; confidence: number }> {
   const content = base64.startsWith("data:") ? base64.slice(base64.indexOf(",") + 1) : base64;
-  const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      requests: [{
-        image: { content },
-        features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
-        imageContext: { languageHints: ["en"] },
-      }],
-    }),
-  });
+  const res = await fetch(
+    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: [{
+          image: { content },
+          features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
+          imageContext: { languageHints: ["en"] },
+        }],
+      }),
+    },
+  );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Vision error ${res.status}: ${errMsg(data)}`);
   const r = data?.responses?.[0];
   if (r?.error) throw new Error(`Vision: ${errMsg(r.error)}`);
-  const text: string = r?.fullTextAnnotation?.text || r?.textAnnotations?.[0]?.description || "";
-  return { text, confidence: googleVisionConfidence(r?.fullTextAnnotation || null, text) };
+  const text: string = r?.fullTextAnnotation?.text ||
+    r?.textAnnotations?.[0]?.description || "";
+  return {
+    text,
+    confidence: googleVisionConfidence(r?.fullTextAnnotation || null, text),
+  };
 }
 
 // Google Vision is the only OCR engine used for receipt verification.
-function ocrCriticalGaps(text: string, provider: PaymentProvider, typedRef: string): string[] {
+function ocrCriticalGaps(
+  text: string,
+  provider: PaymentProvider,
+  typedRef: string,
+): string[] {
   if (!text) return ["text"];
   const gaps: string[] = [];
   if (!extractReference(text, provider, typedRef)) gaps.push("reference");
@@ -807,7 +894,11 @@ async function runOCR(
       const v = await googleVisionOCR(visionKey, base64);
       const gaps = ocrCriticalGaps(v.text, provider, typedRef);
       if (v.text && gaps.length === 0) {
-        return { ...v, provider: "google_vision", primaryProvider: "google_vision" };
+        return {
+          ...v,
+          provider: "google_vision",
+          primaryProvider: "google_vision",
+        };
       }
       if (v.text) {
         return {
@@ -830,38 +921,54 @@ async function sendTelegram(message: string) {
   const chatIdRaw = Deno.env.get("TELEGRAM_CHAT_ID") || "";
   if (!botToken || !chatIdRaw) return;
   const chatIds = chatIdRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  await Promise.allSettled(chatIds.map((chatId) =>
-    fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "HTML" }),
-    })
-  ));
+  await Promise.allSettled(
+    chatIds.map((chatId) =>
+      fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+          parse_mode: "HTML",
+        }),
+      })
+    ),
+  );
 }
 
 // ── handler ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceRoleKey =
-    Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ||
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!serviceRoleKey) return json({ error: "Missing SERVICE_ROLE_KEY" }, 500);
   const db = createClient(supabaseUrl, serviceRoleKey);
 
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return json({ error: "Invalid JSON body" }, 400); }
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
   const action = (body.action as string) || "verify";
 
   // ── admin-only: mint a signed URL to view a stored receipt ────────────────
   if (action === "sign") {
     const bookingRef = String(body.bookingRef || "");
     const openPlayRegistrationId = String(body.openPlayRegistrationId || "");
-    const hostSessionRegistrationId = String(body.hostSessionRegistrationId || "");
+    const hostSessionRegistrationId = String(
+      body.hostSessionRegistrationId || "",
+    );
     if (!bookingRef && !openPlayRegistrationId && !hostSessionRegistrationId) {
-      return json({ error: "bookingRef, openPlayRegistrationId, or hostSessionRegistrationId required" }, 400);
+      return json({
+        error: "bookingRef, openPlayRegistrationId, or hostSessionRegistrationId required",
+      }, 400);
     }
 
     // Require a real signed-in user (anon key alone is rejected).
@@ -890,12 +997,16 @@ Deno.serve(async (req) => {
         .single();
       path = reg?.receipt_image_url || null;
     } else {
-      const { data: bk } = await db.from("bookings").select("receipt_image_url").eq("ref", bookingRef).single();
+      const { data: bk } = await db.from("bookings").select("receipt_image_url")
+        .eq("ref", bookingRef).single();
       path = bk?.receipt_image_url || null;
     }
     if (!path) return json({ error: "No receipt on file" }, 404);
-    const { data: signed, error: signErr } = await db.storage.from("receipts").createSignedUrl(path, 300);
-    if (signErr || !signed) return json({ error: errMsg(signErr || "sign failed") }, 500);
+    const { data: signed, error: signErr } = await db.storage.from("receipts")
+      .createSignedUrl(path, 300);
+    if (signErr || !signed) {
+      return json({ error: errMsg(signErr || "sign failed") }, 500);
+    }
     return json({ ok: true, url: signed.signedUrl });
   }
 
@@ -905,56 +1016,103 @@ Deno.serve(async (req) => {
     let provider = normalizedProvider(String(body.provider || "gcash"));
     const imageBase64 = String(body.imageBase64 || "");
     const contentType = String(body.contentType || "image/jpeg");
-    // Optional: caller passes booking data so we can verify before saving to DB.
-    // When present the DB lookup and the DB update at the end are both skipped.
-    const inlineBookingData = (body.bookingData && typeof body.bookingData === "object")
-      ? body.bookingData as Record<string, unknown>
-      : null;
+    // Optional inline data supports pre-save Open Play registration receipts.
+    // A matching saved booking still takes precedence over every inline field.
+    const inlineBookingData = (body.bookingData && typeof body.bookingData === "object") ? body.bookingData as Record<string, unknown> : null;
     if (!bookingRef) return json({ error: "bookingRef required" }, 400);
     if (!imageBase64) return json({ error: "imageBase64 required" }, 400);
 
     const bytes = base64ToBytes(imageBase64);
     if (bytes.length === 0) return json({ error: "Empty image" }, 400);
-    if (bytes.length > MAX_BYTES) return json({ error: "Image too large (max 5 MB)" }, 400);
-
-    // Load the booking we are verifying against (skip if inline data provided).
-    let booking: Record<string, unknown>;
-    if (inlineBookingData) {
-      booking = inlineBookingData;
-    } else {
-      const { data: bk, error: bErr } = await db
-        .from("bookings")
-        .select("ref, booking_group_ref, court_id, slots, total, downpayment, gcash_ref, payment_method, date, payment_status, status, full_name, created_at")
-        .eq("ref", bookingRef)
-        .single();
-      if (bErr || !bk) return json({ error: "Booking not found" }, 404);
-      booking = bk as Record<string, unknown>;
+    if (bytes.length > MAX_BYTES) {
+      return json({ error: "Image too large (max 5 MB)" }, 400);
     }
-    provider = paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) || provider;
+
+    // A saved court booking is always authoritative. Inline data exists for
+    // pre-save Open Play registrations; it must never override a persisted
+    // booking's price, host flag, payment method, or customer identity.
+    const { data: persistedRow, error: bookingErr } = await db
+      .from("bookings")
+      .select(
+        "ref, booking_group_ref, court_id, slots, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at",
+      )
+      .eq("ref", bookingRef)
+      .maybeSingle();
+    if (bookingErr) return json({ error: "Booking could not be loaded" }, 500);
+
+    let booking: Record<string, unknown>;
+    let inlinePricingKind: "open_play" | "host_session" | null = null;
+    const hasPersistedBooking = !!persistedRow;
+    if (persistedRow) {
+      booking = { ...(persistedRow as Record<string, unknown>) };
+      // Timing is the only field an inline payload may supplement for a saved
+      // booking, and only when the persisted value is absent.
+      if (!booking.created_at && inlineBookingData?.created_at) {
+        booking.created_at = inlineBookingData.created_at;
+      }
+      if (!booking.date && inlineBookingData?.date) {
+        booking.date = inlineBookingData.date;
+      }
+    } else {
+      if (!inlineBookingData) return json({ error: "Booking not found" }, 404);
+      const hasCourtShape = !!(
+        inlineBookingData.court_id ||
+        inlineBookingData.courtId ||
+        inlineBookingData.booking_group_ref ||
+        inlineBookingData.groupRef ||
+        (Array.isArray(inlineBookingData.slots) &&
+          inlineBookingData.slots.length > 0) ||
+        inlineBookingData.host_booking === true ||
+        inlineBookingData.hostBooking === true
+      );
+      if (hasCourtShape) {
+        return json({
+          error: "Court booking must be saved before receipt verification",
+        }, 400);
+      }
+      booking = inlineBookingData;
+      inlinePricingKind = booking.host_session_id ? "host_session" : "open_play";
+    }
+    provider = paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) ||
+      provider;
 
     const settingsRows = await db.from("settings").select("key,value");
     const settings: Record<string, string> = {};
-    (settingsRows.data || []).forEach((r: { key: string; value: string }) => { settings[r.key] = r.value; });
+    (settingsRows.data || []).forEach((r: { key: string; value: string }) => {
+      settings[r.key] = r.value;
+    });
     const expectedMerchant = expectedMerchantForProvider(settings, provider);
     const expectedNumber = expectedMerchant.number;
     const expectedName = expectedMerchant.name;
     let pricingError = "";
-    let expectedAmount = Number(booking.downpayment ?? (Number(booking.total) || 0) / 2);
-    let expectedTotal = Number(booking.total || 0);
+    let expectedAmount = 0;
+    let expectedTotal = 0;
     let bookingGroup: Array<Record<string, unknown>> = [booking];
     try {
-      if (inlineBookingData && Number(booking.total || 0) > 0) {
-        expectedTotal = roundMoney(Number(booking.total || 0));
-        expectedAmount = chooseExpectedDue(expectedTotal, toNumber(booking.downpayment, expectedTotal), settings);
+      if (inlinePricingKind === "host_session") {
+        const amounts = await expectedHostSessionAmounts(db, booking);
+        expectedTotal = amounts.total;
+        expectedAmount = amounts.due;
+      } else if (inlinePricingKind === "open_play") {
+        const amounts = expectedOpenPlayAmounts(booking, settings);
+        expectedTotal = amounts.total;
+        expectedAmount = amounts.due;
       } else {
         bookingGroup = await loadBookingGroup(db, booking);
-        expectedAmount = await expectedBookingGroupAmount(db, bookingGroup, settings);
-        expectedTotal = bookingGroupStoredTotal(bookingGroup);
+        const amounts = await expectedBookingGroupAmounts(
+          db,
+          bookingGroup,
+          settings,
+        );
+        expectedTotal = amounts.total;
+        expectedAmount = amounts.due;
       }
     } catch (err) {
       pricingError = errMsg(err);
     }
-    const bookingGroupRefs = new Set(bookingGroup.map(row => String(row.ref || "")).filter(Boolean));
+    const bookingGroupRefs = new Set(
+      bookingGroup.map((row) => String(row.ref || "")).filter(Boolean),
+    );
 
     // Hashes are stored for audit only. GCash validity is based on receipt details.
     const imageHash = await sha256Hex(bytes);
@@ -963,13 +1121,19 @@ Deno.serve(async (req) => {
     // Store the image immediately (evidence kept even if rejected).
     const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
     const objectPath = `${bookingRef}/${Date.now()}.${ext}`;
-    const { error: upErr } = await db.storage.from("receipts").upload(objectPath, bytes, {
-      contentType,
-      upsert: false,
-    });
+    const { error: upErr } = await db.storage.from("receipts").upload(
+      objectPath,
+      bytes,
+      {
+        contentType,
+        upsert: false,
+      },
+    );
     if (upErr) {
       console.error("receipt upload failed:", errMsg(upErr));
-      return json({ error: "Receipt image could not be stored. Please upload the receipt again." }, 500);
+      return json({
+        error: "Receipt image could not be stored. Please upload the receipt again.",
+      }, 500);
     }
 
     const flags: string[] = [];
@@ -980,7 +1144,10 @@ Deno.serve(async (req) => {
 
     // ── OCR ─────────────────────────────────────────────────────────────────
     const visionKey = Deno.env.get("GOOGLE_VISION_API_KEY") || "";
-    const typedRef = normalizeReferenceForProvider(String(booking.gcash_ref || ""), provider);
+    const typedRef = normalizeReferenceForProvider(
+      String(booking.gcash_ref || ""),
+      provider,
+    );
     let ocrText = "";
     let ocrConfidence = 0;
     let ocrProvider: OcrResult["provider"] = "none";
@@ -1015,11 +1182,11 @@ Deno.serve(async (req) => {
     const extractedBpiTransactionRefNo = provider === "bpi" ? extractBpiTransactionRefNo(ocrText) : null;
     const extractedAmount = extractAmount(ocrText);
     const { date: receiptDate, shifted: receiptDateTime } = parseReceiptDateTime(ocrText);
-    const bookingStartedAt = toPhWallClockDate(booking.created_at || booking.createdAt);
+    const bookingStartedAt = toPhWallClockDate(
+      booking.created_at || booking.createdAt,
+    );
     const bookingStartedDate = bookingStartedAt ? bookingStartedAt.toISOString().slice(0, 10) : null;
-    const receiptAgeMinutes = bookingStartedAt && receiptDateTime
-      ? (receiptDateTime.getTime() - bookingStartedAt.getTime()) / 60000
-      : null;
+    const receiptAgeMinutes = bookingStartedAt && receiptDateTime ? (receiptDateTime.getTime() - bookingStartedAt.getTime()) / 60000 : null;
     if (provider === "gcash" && typedRef.length !== 13) {
       flags.push("REF_FORMAT_INVALID");
     }
@@ -1043,93 +1210,155 @@ Deno.serve(async (req) => {
         // GCash-to-GCash focused path. The receipt layout is consistent but OCR
         // can miss the small right-aligned timestamp, so unreadable date/time is
         // not a failure for GCash. Parsed dates/times are still enforced.
-        if (!extractedRef && !flags.includes("REF_FORMAT_INVALID")) flags.push("REF_FORMAT_INVALID");
-        else if (typedRef && extractedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+        if (!extractedRef && !flags.includes("REF_FORMAT_INVALID")) {
+          flags.push("REF_FORMAT_INVALID");
+        } else if (typedRef && extractedRef && extractedRef !== typedRef) {
+          flags.push("REF_MISMATCH");
+        }
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
-
-        if (receiptDate && bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
-        if (receiptDateTime && bookingStartedAt) {
-          if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
-          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) {
+          flags.push("AMOUNT_MISMATCH");
         }
 
-        if (!isGcashToGcashReceipt(ocrText)) flags.push("GCASH_RECEIPT_UNREADABLE");
+        if (
+          receiptDate && bookingStartedDate &&
+          receiptDate !== bookingStartedDate
+        ) flags.push("DATE_NOT_TODAY");
+        if (receiptDateTime && bookingStartedAt) {
+          if (
+            (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+          ) flags.push("TIME_FUTURE");
+          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+            flags.push("TIME_EXPIRED");
+          }
+        }
+
+        if (!isGcashToGcashReceipt(ocrText)) {
+          flags.push("GCASH_RECEIPT_UNREADABLE");
+        }
 
         const numCheck = checkReceiverNumber(ocrText, expectedNumber);
         if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
-        else if (numCheck === "unreadable" && expectedNumber) flags.push("NUMBER_UNREADABLE");
+        else if (numCheck === "unreadable" && expectedNumber) {
+          flags.push("NUMBER_UNREADABLE");
+        }
 
         const nameCheck = checkReceiverName(ocrText, expectedName);
         if (nameCheck === "mismatch") flags.push("RECEIVER_NAME_MISMATCH");
       } else if (provider === "bdopay") {
         // BDO Pay focused path: do not require GCash/GXI/Maya evidence here.
         if (!extractedRef) flags.push("REF_UNREADABLE");
-        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+        else if (typedRef && extractedRef !== typedRef) {
+          flags.push("REF_MISMATCH");
+        }
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) {
+          flags.push("AMOUNT_MISMATCH");
+        }
 
         if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+          flags.push("DATE_NOT_TODAY");
+        }
         if (!receiptDateTime) flags.push("TIME_UNREADABLE");
         else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+        else if (
+          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+        ) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+          flags.push("TIME_EXPIRED");
+        }
 
         if (!hasBdoPayIndicator(ocrText)) flags.push("BDO_PAY_UNREADABLE");
-        if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
+        if (!hasExpectedReceiverName(ocrText, expectedName)) {
+          flags.push("RECEIVER_NAME_UNREADABLE");
+        }
         if (!extractedInvoice) flags.push("INVOICE_UNREADABLE");
       } else if (provider === "maya") {
         // Maya focused path: do not require GCash/GXI/BDO Pay evidence here.
         if (!extractedRef) flags.push("REF_UNREADABLE");
-        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+        else if (typedRef && extractedRef !== typedRef) {
+          flags.push("REF_MISMATCH");
+        }
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) {
+          flags.push("AMOUNT_MISMATCH");
+        }
 
         if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+          flags.push("DATE_NOT_TODAY");
+        }
         if (!receiptDateTime) flags.push("TIME_UNREADABLE");
         else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+        else if (
+          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+        ) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+          flags.push("TIME_EXPIRED");
+        }
 
         if (!hasMayaIndicator(ocrText)) flags.push("MAYA_UNREADABLE");
-        if (!hasInstapayQrphIndicator(ocrText)) flags.push("INSTAPAY_QRPH_UNREADABLE");
-        if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
+        if (!hasInstapayQrphIndicator(ocrText)) {
+          flags.push("INSTAPAY_QRPH_UNREADABLE");
+        }
+        if (!hasExpectedReceiverName(ocrText, expectedName)) {
+          flags.push("RECEIVER_NAME_UNREADABLE");
+        }
       } else if (provider === "bpi") {
         // BPI focused path: require BPI + InstaPay + GCash/G-Xchange destination,
         // but do not run the GCash-to-GCash verifier.
         if (!extractedRef) flags.push("BPI_CONFIRMATION_UNREADABLE");
-        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+        else if (typedRef && extractedRef !== typedRef) {
+          flags.push("REF_MISMATCH");
+        }
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) {
+          flags.push("AMOUNT_MISMATCH");
+        }
 
         if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) flags.push("DATE_NOT_TODAY");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+          flags.push("DATE_NOT_TODAY");
+        }
         if (!receiptDateTime) flags.push("TIME_UNREADABLE");
         else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if ((receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) flags.push("TIME_EXPIRED");
+        else if (
+          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+        ) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+          flags.push("TIME_EXPIRED");
+        }
 
         if (!hasBpiIndicator(ocrText)) flags.push("BPI_UNREADABLE");
-        if (!hasInstapayQrphIndicator(ocrText)) flags.push("INSTAPAY_QRPH_UNREADABLE");
-        if (!hasGcashGxiDestination(ocrText)) flags.push("GXI_DESTINATION_UNREADABLE");
-        if (!hasExpectedReceiverName(ocrText, expectedName)) flags.push("RECEIVER_NAME_UNREADABLE");
+        if (!hasInstapayQrphIndicator(ocrText)) {
+          flags.push("INSTAPAY_QRPH_UNREADABLE");
+        }
+        if (!hasGcashGxiDestination(ocrText)) {
+          flags.push("GXI_DESTINATION_UNREADABLE");
+        }
+        if (!hasExpectedReceiverName(ocrText, expectedName)) {
+          flags.push("RECEIVER_NAME_UNREADABLE");
+        }
       } else {
         if (!extractedRef) flags.push("REF_UNREADABLE");
-        else if (typedRef && extractedRef !== typedRef) flags.push("REF_MISMATCH");
+        else if (typedRef && extractedRef !== typedRef) {
+          flags.push("REF_MISMATCH");
+        }
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) {
+          flags.push("AMOUNT_MISMATCH");
+        }
       }
 
       // Authenticity heuristics — HARD: a non-receipt image should be rejected outright.
@@ -1145,12 +1374,16 @@ Deno.serve(async (req) => {
     // GCash refs are stored as digits only; other providers are namespaced so
     // same-looking references from different banks do not collide.
     const rawRefForDedupe = extractedRef || typedRef || null;
-    const refForDedupe = rawRefForDedupe
-      ? provider === "gcash" ? rawRefForDedupe : `${provider}:${rawRefForDedupe}`
-      : null;
-    const dedupeKeys: Array<{ key: string; providerKey: string; duplicateFlag: string }> = [];
+    const refForDedupe = rawRefForDedupe ? provider === "gcash" ? rawRefForDedupe : `${provider}:${rawRefForDedupe}` : null;
+    const dedupeKeys: Array<
+      { key: string; providerKey: string; duplicateFlag: string }
+    > = [];
     if (refForDedupe) {
-      dedupeKeys.push({ key: refForDedupe, providerKey: provider, duplicateFlag: "DUPLICATE_REF" });
+      dedupeKeys.push({
+        key: refForDedupe,
+        providerKey: provider,
+        duplicateFlag: "DUPLICATE_REF",
+      });
     }
     if (provider === "bdopay" && extractedInvoice) {
       dedupeKeys.push({
@@ -1181,9 +1414,15 @@ Deno.serve(async (req) => {
         .select("booking_ref")
         .eq("gcash_ref", item.key)
         .maybeSingle();
-      if (existingRef && !bookingGroupRefs.has(String(existingRef.booking_ref || ""))) {
+      if (
+        existingRef &&
+        !bookingGroupRefs.has(String(existingRef.booking_ref || ""))
+      ) {
         flags.push(item.duplicateFlag);
-      } else if (existingRef && bookingGroupRefs.has(String(existingRef.booking_ref || ""))) {
+      } else if (
+        existingRef &&
+        bookingGroupRefs.has(String(existingRef.booking_ref || ""))
+      ) {
         alreadyClaimedByThisBooking.add(item.key);
       }
     }
@@ -1203,18 +1442,23 @@ Deno.serve(async (req) => {
         if (alreadyClaimedByThisBooking.has(item.key)) continue;
         const { error: claimErr } = await db
           .from("used_gcash_refs")
-          .insert({ gcash_ref: item.key, booking_ref: bookingRef, provider: item.providerKey });
+          .insert({
+            gcash_ref: item.key,
+            booking_ref: bookingRef,
+            provider: item.providerKey,
+          });
         if (claimErr) {
           console.error("payment ledger claim failed:", errMsg(claimErr));
-          if (!flags.includes(item.duplicateFlag)) flags.push(item.duplicateFlag);
+          if (!flags.includes(item.duplicateFlag)) {
+            flags.push(item.duplicateFlag);
+          }
           result = "rejected";
           break;
         }
       }
     }
 
-    const confidence = result === "auto_approved" ? Math.max(0.9, ocrConfidence)
-      : result === "manual_review" ? 0.5 : 0.1;
+    const confidence = result === "auto_approved" ? Math.max(0.9, ocrConfidence) : result === "manual_review" ? 0.5 : 0.1;
 
     const extracted = {
       ref: extractedRef,
@@ -1282,21 +1526,34 @@ Deno.serve(async (req) => {
     let metadataUpdateError: string | null = null;
 
     // Skip DB update when booking hasn't been saved yet (pre-save verification flow).
-    if (!inlineBookingData) {
+    if (hasPersistedBooking) {
       // Pass 1 — status invariants (CRITICAL for slot release on rejection).
       if (Object.keys(statusUpdate).length > 0) {
-        const { data: statusRows, error: sErr } = await bookingUpdateQuery(db, booking, statusUpdate)
+        const { data: statusRows, error: sErr } = await bookingUpdateQuery(
+          db,
+          booking,
+          statusUpdate,
+        )
           .select("ref, status, payment_status");
         if (sErr) {
           statusUpdateError = errMsg(sErr);
-          console.error("booking STATUS update failed:", statusUpdateError, "payload=", JSON.stringify(statusUpdate));
+          console.error(
+            "booking STATUS update failed:",
+            statusUpdateError,
+            "payload=",
+            JSON.stringify(statusUpdate),
+          );
         } else if (!statusRows || statusRows.length === 0) {
           statusUpdateError = `No row matched ref=${bookingRef}`;
           console.error(statusUpdateError);
         }
       }
       // Pass 2 — receipt_* metadata. A failure here MUST NOT block slot release.
-      const { error: mErr } = await bookingUpdateQuery(db, booking, metadataUpdate);
+      const { error: mErr } = await bookingUpdateQuery(
+        db,
+        booking,
+        metadataUpdate,
+      );
       if (mErr) {
         metadataUpdateError = errMsg(mErr);
         console.error("booking METADATA update failed:", metadataUpdateError);
@@ -1306,11 +1563,15 @@ Deno.serve(async (req) => {
       // more with just the cancel field. The slot MUST be freed on a rejected
       // receipt — no exceptions.
       if (statusUpdateError && result === "rejected") {
-        const { error: fallbackErr } = await bookingUpdateQuery(db, booking, { status: "cancelled" });
+        const { error: fallbackErr } = await bookingUpdateQuery(db, booking, {
+          status: "cancelled",
+        });
         if (fallbackErr) {
           console.error("FALLBACK cancel also failed:", errMsg(fallbackErr));
         } else {
-          console.error("FALLBACK cancel succeeded after status update failure");
+          console.error(
+            "FALLBACK cancel succeeded after status update failure",
+          );
           statusUpdateError = null;
         }
       }
@@ -1334,13 +1595,14 @@ Deno.serve(async (req) => {
       const head = result === "rejected" ? "RECEIPT REJECTED — BOOKING CANCELLED" : "RECEIPT NEEDS REVIEW";
       await sendTelegram(
         `${icon} <b>${head}</b>\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `📋 Ref: <code>${bookingRef}</code>\n` +
-        `👤 ${booking.full_name || "—"}\n` +
-        `💰 Expected: ₱${expectedAmount.toFixed(2)}` +
-        (extractedAmount != null ? ` · Seen: ₱${extractedAmount.toFixed(2)}` : "") + `\n` +
-        `🚩 Flags: <code>${flags.join(", ") || "none"}</code>\n` +
-        (result === "rejected" ? `🗑 Booking auto-cancelled. Slot is now free.` : `👉 Open admin panel to review the receipt.`),
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `📋 Ref: <code>${bookingRef}</code>\n` +
+          `👤 ${booking.full_name || "—"}\n` +
+          `💰 Expected: ₱${expectedAmount.toFixed(2)}` +
+          (extractedAmount != null ? ` · Seen: ₱${extractedAmount.toFixed(2)}` : "") +
+          `\n` +
+          `🚩 Flags: <code>${flags.join(", ") || "none"}</code>\n` +
+          (result === "rejected" ? `🗑 Booking auto-cancelled. Slot is now free.` : `👉 Open admin panel to review the receipt.`),
       );
     }
 
@@ -1357,10 +1619,7 @@ Deno.serve(async (req) => {
       receiptVerifiedAt: metadataUpdate.receipt_verified_at,
       ...(statusUpdateError ? { warning: `status update failed: ${statusUpdateError}` } : {}),
       ...(metadataUpdateError ? { metadataWarning: metadataUpdateError } : {}),
-      message:
-        result === "auto_approved" ? "Payment verified."
-        : result === "manual_review" ? "Received — the owner will verify your payment shortly."
-        : "Your receipt could not be verified. Your booking has been cancelled — please try again with a valid receipt.",
+      message: result === "auto_approved" ? "Payment verified." : result === "manual_review" ? "Received — the owner will verify your payment shortly." : "Your receipt could not be verified. Your booking has been cancelled — please try again with a valid receipt.",
     });
   } catch (err) {
     console.error("verify-gcash-receipt error:", errMsg(err));
