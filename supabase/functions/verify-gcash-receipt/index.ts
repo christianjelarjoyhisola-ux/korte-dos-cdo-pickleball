@@ -3,7 +3,8 @@
 // Server-side GCash / BDO Pay / GoTyme / PNB receipt verification + fraud detection.
 //
 // Actions (POST JSON):
-//   { action: "verify", bookingRef, provider, imageBase64, contentType }
+//   multipart { action: "verify", bookingRef, provider, receipt, contentType }
+//   JSON { action: "verify", bookingRef, provider, imageBase64, contentType }
 //     -> OCR (Google Vision) + fraud checks + confidence routing.
 //        Stores the image (private bucket), writes an audit row, advances
 //        payment_status on auto-approve, and alerts admin on review/reject.
@@ -36,6 +37,7 @@ const PAYMENT_WINDOW_MINUTES = 10;
 const PAYMENT_EARLY_TOLERANCE_MINUTES = 2;
 
 const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const PESO_TOLERANCE = 5; // allow ±₱5 rounding; underpay beyond this is a hard flag
 
 // Hard flags force a rejection; soft flags force manual review.
@@ -66,6 +68,7 @@ type OcrResult = {
   primaryProvider?: OcrProvider;
   fallbackProvider?: OcrProvider;
   fallbackReason?: string;
+  error?: string;
 };
 
 function publicReceiptMessage(
@@ -133,6 +136,17 @@ function base64ToBytes(b64: string): Uint8Array {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  // Build the binary string in chunks so a mobile-upload-sized image does not
+  // exceed the JavaScript argument/call-stack limit.
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -843,20 +857,31 @@ async function googleVisionOCR(
   base64: string,
 ): Promise<{ text: string; confidence: number }> {
   const content = base64.startsWith("data:") ? base64.slice(base64.indexOf(",") + 1) : base64;
-  const res = await fetch(
-    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requests: [{
-          image: { content },
-          features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
-          imageContext: { languageHints: ["en"] },
-        }],
-      }),
-    },
-  );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests: [{
+            image: { content },
+            features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
+            imageContext: { languageHints: ["en"] },
+          }],
+        }),
+        signal: controller.signal,
+      },
+    );
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error("Google Vision request timed out");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Vision error ${res.status}: ${errMsg(data)}`);
   const r = data?.responses?.[0];
@@ -909,8 +934,20 @@ async function runOCR(
         };
       }
       console.error("Vision OCR returned no text:", gaps.join(","));
+      return {
+        ...v,
+        provider: "google_vision",
+        primaryProvider: "google_vision",
+      };
     } catch (e) {
       console.error("Vision OCR failed:", errMsg(e));
+      return {
+        text: "",
+        confidence: 0,
+        provider: "none",
+        primaryProvider: "google_vision",
+        error: errMsg(e),
+      };
     }
   }
   return { text: "", confidence: 0, provider: "none" };
@@ -950,11 +987,41 @@ Deno.serve(async (req) => {
   if (!serviceRoleKey) return json({ error: "Missing SERVICE_ROLE_KEY" }, 500);
   const db = createClient(supabaseUrl, serviceRoleKey);
 
+  const requestLength = Number(req.headers.get("content-length") || 0);
+  if (Number.isFinite(requestLength) && requestLength > MAX_REQUEST_BYTES) {
+    return json({ error: "Request too large" }, 413);
+  }
+
   let body: Record<string, unknown>;
+  let uploadedImage: File | null = null;
+  const requestContentType = req.headers.get("content-type") || "";
   try {
-    body = await req.json();
+    if (requestContentType.toLowerCase().includes("multipart/form-data")) {
+      const form = await req.formData();
+      const bookingDataRaw = String(form.get("bookingData") || "");
+      let bookingData: Record<string, unknown> | null = null;
+      if (bookingDataRaw) {
+        try {
+          const parsed = JSON.parse(bookingDataRaw);
+          if (parsed && typeof parsed === "object") bookingData = parsed;
+        } catch {
+          return json({ error: "Invalid bookingData JSON" }, 400);
+        }
+      }
+      const receipt = form.get("receipt");
+      if (receipt instanceof File) uploadedImage = receipt;
+      body = {
+        action: String(form.get("action") || "verify"),
+        bookingRef: String(form.get("bookingRef") || ""),
+        provider: String(form.get("provider") || "gcash"),
+        contentType: uploadedImage?.type || String(form.get("contentType") || "image/jpeg"),
+        ...(bookingData ? { bookingData } : {}),
+      };
+    } else {
+      body = await req.json();
+    }
   } catch {
-    return json({ error: "Invalid JSON body" }, 400);
+    return json({ error: requestContentType.toLowerCase().includes("multipart/form-data") ? "Invalid multipart body" : "Invalid JSON body" }, 400);
   }
   const action = (body.action as string) || "verify";
 
@@ -1014,19 +1081,24 @@ Deno.serve(async (req) => {
   try {
     const bookingRef = String(body.bookingRef || "");
     let provider = normalizedProvider(String(body.provider || "gcash"));
-    const imageBase64 = String(body.imageBase64 || "");
-    const contentType = String(body.contentType || "image/jpeg");
+    let imageBase64 = String(body.imageBase64 || "");
+    const contentType = String(uploadedImage?.type || body.contentType || "image/jpeg");
     // Optional inline data supports pre-save Open Play registration receipts.
     // A matching saved booking still takes precedence over every inline field.
     const inlineBookingData = (body.bookingData && typeof body.bookingData === "object") ? body.bookingData as Record<string, unknown> : null;
     if (!bookingRef) return json({ error: "bookingRef required" }, 400);
-    if (!imageBase64) return json({ error: "imageBase64 required" }, 400);
+    if (!imageBase64 && !uploadedImage) return json({ error: "receipt file or imageBase64 required" }, 400);
 
-    const bytes = base64ToBytes(imageBase64);
+    const bytes = uploadedImage
+      ? new Uint8Array(await uploadedImage.arrayBuffer())
+      : base64ToBytes(imageBase64);
     if (bytes.length === 0) return json({ error: "Empty image" }, 400);
     if (bytes.length > MAX_BYTES) {
       return json({ error: "Image too large (max 5 MB)" }, 400);
     }
+    // Google Vision still expects base64, but converting on the server avoids
+    // the large FileReader + JSON allocation inside embedded mobile WebViews.
+    if (!imageBase64) imageBase64 = bytesToBase64(bytes);
 
     // A saved court booking is always authoritative. Inline data exists for
     // pre-save Open Play registrations; it must never override a persisted
@@ -1034,7 +1106,7 @@ Deno.serve(async (req) => {
     const { data: persistedRow, error: bookingErr } = await db
       .from("bookings")
       .select(
-        "ref, booking_group_ref, court_id, slots, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at",
+        "ref, booking_group_ref, court_id, slots, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at, receipt_image_url, receipt_image_hash, receipt_phash, receipt_status, receipt_flags, receipt_extracted, receipt_confidence, receipt_verified_at",
       )
       .eq("ref", bookingRef)
       .maybeSingle();
@@ -1045,6 +1117,31 @@ Deno.serve(async (req) => {
     const hasPersistedBooking = !!persistedRow;
     if (persistedRow) {
       booking = { ...(persistedRow as Record<string, unknown>) };
+      const persistedStatus = String(booking.status || "");
+      const persistedPaymentStatus = String(booking.payment_status || "");
+      const terminal = ["confirmed", "cancelled", "completed"].includes(persistedStatus) ||
+        ["paid", "downpayment_paid", "rejected"].includes(persistedPaymentStatus);
+      if (terminal) {
+        const storedReceiptStatus = String(booking.receipt_status || "");
+        const finalStatus = storedReceiptStatus === "rejected" || persistedStatus === "cancelled" || persistedPaymentStatus === "rejected"
+          ? "rejected"
+          : storedReceiptStatus === "manual_review"
+          ? "manual_review"
+          : "auto_approved";
+        return json({
+          ok: true,
+          status: finalStatus,
+          flags: [],
+          publicReason: finalStatus === "rejected" ? "This booking was already rejected." : finalStatus === "manual_review" ? "This booking is already awaiting owner review." : "Payment was already verified.",
+          extracted: booking.receipt_extracted || null,
+          confidence: booking.receipt_confidence ?? null,
+          receiptImageUrl: booking.receipt_image_url || null,
+          receiptImageHash: booking.receipt_image_hash || null,
+          receiptPhash: booking.receipt_phash || null,
+          receiptVerifiedAt: booking.receipt_verified_at || null,
+          message: "This booking has already been processed.",
+        });
+      }
       // Timing is the only field an inline payload may supplement for a saved
       // booking, and only when the persisted value is absent.
       if (!booking.created_at && inlineBookingData?.created_at) {
@@ -1136,6 +1233,28 @@ Deno.serve(async (req) => {
       }, 500);
     }
 
+    // Persist a safe manual-review state before OCR. If the client disconnects
+    // or the OCR provider is slow, the paid booking and stored evidence remain
+    // available to the owner instead of being treated as an abandoned hold.
+    if (hasPersistedBooking) {
+      const { error: safeStateErr } = await bookingUpdateQuery(
+        db,
+        booking,
+        {
+          status: "pending",
+          payment_status: "for_verification",
+          receipt_image_url: objectPath,
+          receipt_image_hash: imageHash,
+          receipt_phash: phash,
+          receipt_status: "manual_review",
+          receipt_flags: [],
+        },
+      ).in("status", ["verifying", "pending"]);
+      if (safeStateErr) {
+        console.error("receipt safe-state update failed:", errMsg(safeStateErr));
+      }
+    }
+
     const flags: string[] = [];
 
     // Do not flag duplicate-looking images. GCash/BDO Pay/Maya receipt screens
@@ -1154,6 +1273,7 @@ Deno.serve(async (req) => {
     let ocrPrimaryProvider: OcrResult["primaryProvider"] = "none";
     let ocrFallbackProvider: OcrResult["fallbackProvider"] | null = null;
     let ocrFallbackReason: string | null = null;
+    let ocrError: string | null = null;
     try {
       const ocr = await runOCR(visionKey, imageBase64, provider, typedRef);
       ocrText = ocr.text;
@@ -1162,11 +1282,16 @@ Deno.serve(async (req) => {
       ocrPrimaryProvider = ocr.primaryProvider || ocr.provider;
       ocrFallbackProvider = ocr.fallbackProvider || null;
       ocrFallbackReason = ocr.fallbackReason || null;
+      ocrError = ocr.error || null;
     } catch (e) {
       console.error("Google Vision OCR failed:", errMsg(e));
     }
     if (!visionKey) {
       // No OCR provider configured at all — cannot verify content, manual review.
+      flags.push("OCR_UNAVAILABLE");
+    } else if (ocrError) {
+      // Provider/network failures are uncertain and must go to manual review;
+      // they are not evidence that the customer uploaded a fake receipt.
       flags.push("OCR_UNAVAILABLE");
     } else if (!ocrText) {
       // Google Vision ran but found NO text.
@@ -1449,9 +1574,18 @@ Deno.serve(async (req) => {
           });
         if (claimErr) {
           console.error("payment ledger claim failed:", errMsg(claimErr));
-          if (!flags.includes(item.duplicateFlag)) {
-            flags.push(item.duplicateFlag);
+          // A concurrent retry for the same booking can lose the primary-key
+          // insert race. Re-read ownership before treating it as payment reuse.
+          const { data: claimedRef } = await db
+            .from("used_gcash_refs")
+            .select("booking_ref")
+            .eq("gcash_ref", item.key)
+            .maybeSingle();
+          if (claimedRef && bookingGroupRefs.has(String(claimedRef.booking_ref || ""))) {
+            alreadyClaimedByThisBooking.add(item.key);
+            continue;
           }
+          if (!flags.includes(item.duplicateFlag)) flags.push(item.duplicateFlag);
           result = "rejected";
           break;
         }
@@ -1489,10 +1623,6 @@ Deno.serve(async (req) => {
     };
 
     // ── persist outcome on the booking ──────────────────────────────────────
-    // Split into TWO updates so a transient failure on a single metadata field
-    // (e.g. JSONB shape, missing column) cannot prevent the slot from being
-    // released. Pass 1 = status invariants (the only fields that gate slot
-    // availability). Pass 2 = receipt_* metadata for admin/audit display.
     const statusUpdate: Record<string, unknown> = {};
     if (result === "auto_approved") {
       const fullyPaid = expectedAmount >= expectedTotal - PESO_TOLERANCE;
@@ -1522,57 +1652,56 @@ Deno.serve(async (req) => {
       receipt_verified_at: new Date().toISOString(),
     };
 
-    let statusUpdateError: string | null = null;
-    let metadataUpdateError: string | null = null;
+    let finalUpdateError: string | null = null;
 
     // Skip DB update when booking hasn't been saved yet (pre-save verification flow).
     if (hasPersistedBooking) {
-      // Pass 1 — status invariants (CRITICAL for slot release on rejection).
-      if (Object.keys(statusUpdate).length > 0) {
-        const { data: statusRows, error: sErr } = await bookingUpdateQuery(
-          db,
-          booking,
-          statusUpdate,
-        )
-          .select("ref, status, payment_status");
-        if (sErr) {
-          statusUpdateError = errMsg(sErr);
-          console.error(
-            "booking STATUS update failed:",
-            statusUpdateError,
-            "payload=",
-            JSON.stringify(statusUpdate),
-          );
-        } else if (!statusRows || statusRows.length === 0) {
-          statusUpdateError = `No row matched ref=${bookingRef}`;
-          console.error(statusUpdateError);
-        }
-      }
-      // Pass 2 — receipt_* metadata. A failure here MUST NOT block slot release.
-      const { error: mErr } = await bookingUpdateQuery(
+      // Metadata and final status must be one conditional update. This acts as
+      // a compare-and-set: one concurrent verifier can finalize a row, while a
+      // later verifier cannot overwrite that terminal outcome or its evidence.
+      const finalUpdate = { ...metadataUpdate, ...statusUpdate };
+      const { data: updatedRows, error: updateErr } = await bookingUpdateQuery(
         db,
         booking,
-        metadataUpdate,
-      );
-      if (mErr) {
-        metadataUpdateError = errMsg(mErr);
-        console.error("booking METADATA update failed:", metadataUpdateError);
+        finalUpdate,
+      )
+        .in("status", ["verifying", "pending"])
+        .select("ref, status, payment_status");
+      if (updateErr) {
+        finalUpdateError = errMsg(updateErr);
+        console.error("booking FINAL update failed:", finalUpdateError);
+      } else if (!updatedRows || updatedRows.length === 0) {
+        // A zero-row CAS commonly means a concurrent request already finalized
+        // the booking. Confirm that before reporting a persistence failure.
+        const { data: currentRow } = await db.from("bookings")
+          .select("status, payment_status")
+          .eq("ref", bookingRef)
+          .maybeSingle();
+        const currentStatus = String(currentRow?.status || "");
+        const currentPayment = String(currentRow?.payment_status || "");
+        const concurrentlyFinalized = ["confirmed", "cancelled", "completed"].includes(currentStatus) ||
+          ["paid", "downpayment_paid", "rejected"].includes(currentPayment);
+        if (!concurrentlyFinalized) {
+          finalUpdateError = `No non-terminal row matched ref=${bookingRef}`;
+          console.error(finalUpdateError);
+        }
       }
 
-      // Last-resort fallback: if rejection's status update failed, try once
+      // Last-resort fallback: if a rejected receipt's atomic update failed, try
       // more with just the cancel field. The slot MUST be freed on a rejected
       // receipt — no exceptions.
-      if (statusUpdateError && result === "rejected") {
-        const { error: fallbackErr } = await bookingUpdateQuery(db, booking, {
+      if (finalUpdateError && result === "rejected") {
+        const { data: fallbackRows, error: fallbackErr } = await bookingUpdateQuery(db, booking, {
           status: "cancelled",
-        });
-        if (fallbackErr) {
+          payment_status: "rejected",
+        }).in("status", ["verifying", "pending"]).select("ref");
+        if (fallbackErr || !fallbackRows || fallbackRows.length === 0) {
           console.error("FALLBACK cancel also failed:", errMsg(fallbackErr));
         } else {
           console.error(
             "FALLBACK cancel succeeded after status update failure",
           );
-          statusUpdateError = null;
+          finalUpdateError = null;
         }
       }
     }
@@ -1617,8 +1746,7 @@ Deno.serve(async (req) => {
       receiptImageHash: imageHash,
       receiptPhash: phash,
       receiptVerifiedAt: metadataUpdate.receipt_verified_at,
-      ...(statusUpdateError ? { warning: `status update failed: ${statusUpdateError}` } : {}),
-      ...(metadataUpdateError ? { metadataWarning: metadataUpdateError } : {}),
+      ...(finalUpdateError ? { warning: `booking update failed: ${finalUpdateError}` } : {}),
       message: result === "auto_approved" ? "Payment verified." : result === "manual_review" ? "Received — the owner will verify your payment shortly." : "Your receipt could not be verified. Your booking has been cancelled — please try again with a valid receipt.",
     });
   } catch (err) {

@@ -1430,7 +1430,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .ft-bot { max-width:1080px; margin:0 auto; padding-top:20px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:.81rem; color:var(--muted); flex-wrap:wrap; gap:8px; }
 
 /* TOASTS */
-.toasts { position:fixed; top:74px; right:20px; z-index:999; display:flex; flex-direction:column; gap:8px; }
+.toasts { position:fixed; top:74px; right:20px; z-index:15000; display:flex; flex-direction:column; gap:8px; }
 .toast { background:var(--card); border:1px solid var(--border); border-radius:var(--r); padding:12px 16px; display:flex; align-items:center; gap:10px; min-width:260px; box-shadow:0 6px 24px rgba(0,0,0,.4); animation:tin .3s ease; }
 @keyframes tin { from{transform:translateX(110%);opacity:0} to{transform:translateX(0);opacity:1} }
 .toast.ok { border-left:3px solid var(--accent); }
@@ -3885,11 +3885,10 @@ function clearHostSessionReceipt() {
 async function verifyHostSessionReceipt(ref, method, inlineData) {
   const st = $('hsReceiptStatus');
   if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = 'Verifying your receipt...'; }
-  const dataUrl = await _fileToBase64(_hostSessionReceiptFile);
   const res = await DB.verifyGcashReceipt({
     bookingRef: ref,
     provider: method,
-    imageBase64: dataUrl,
+    imageFile: _hostSessionReceiptFile,
     contentType: _hostSessionReceiptFile.type || 'image/jpeg',
     bookingData: inlineData,
   });
@@ -5971,7 +5970,7 @@ function wizGoTo(n) {
   saveGuestBookingResume();
 }
 
-function wizNext() {
+async function wizNext() {
   if (wizStep === 1) {
     if (!court) { bookingValidationError('Please select a court.', 'courtDisp', 1); return; }
     wizGoTo(2);
@@ -5996,7 +5995,17 @@ function wizNext() {
     if (!paymentMethods[payMethod]) { bookingValidationError('Selected payment method is no longer available.', 'payMethodBlock', 4); return; }
     wizGoTo(5);
   } else if (wizStep === 5) {
-    submitBooking();
+    try {
+      await submitBooking();
+    } catch (err) {
+      console.error('Unexpected booking submission error:', err);
+      const submitBtn = $('wizNextBtn');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Confirm Booking';
+      }
+      toast(`Could not submit booking: ${extractErrMsg(err)}`, 'err');
+    }
   }
 }
 
@@ -6921,7 +6930,7 @@ async function submitBookingLegacy(e) {
   }
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Processing...';
+    submitBtn.textContent = 'Saving booking...';
   }
   const payMethod = $('bPay').value;
   const gcashRef  = $('bGcashRef')?.value?.trim() || '';
@@ -7047,22 +7056,31 @@ async function submitBookingLegacy(e) {
     // ── Run OCR against the saved booking ────────────────────────────────
     if (_receiptFile && digitalPay) {
       try {
+        if (submitBtn) submitBtn.textContent = 'Uploading receipt...';
         booking._receiptResult = await verifyUploadedReceipt(booking.ref, payMethod);
       } catch(err) {
-        booking.status = 'cancelled';
-        booking.paymentStatus = 'rejected';
-        await DB.updateBooking(booking.ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {});
-        toast(`Receipt upload failed: ${extractErrMsg(err)} Please try booking again with a receipt screenshot.`, 'err');
+        // A client timeout does not prove the server failed; it may still be
+        // storing or verifying the receipt. Never cancel a paid booking on an
+        // uncertain network result. Keep the server row as verifying and give
+        // the customer their reference for manual follow-up.
+        booking.status = 'pending';
+        booking.paymentStatus = 'for_verification';
+        DB.notifyBookingUpdate(booking, 'payment_review_needed', `Receipt request uncertain: ${extractErrMsg(err)}`).catch(() => {});
+        showInvoice(booking);
+        resetForm();
+        toast(`Booking saved as ${booking.ref}. Receipt verification is still pending; please do not pay again.`, 'inf');
         await renderCourts();
         onCardDate(booking.courtId, booking.date).catch(() => {});
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '🎾 Confirm Booking'; }
         return;
       }
       if (!booking._receiptResult?.receiptImageUrl) {
-        booking.status = 'cancelled';
-        booking.paymentStatus = 'rejected';
-        await DB.updateBooking(booking.ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {});
-        toast('Receipt image was not saved. Please try booking again and upload the receipt screenshot.', 'err');
+        booking.status = 'pending';
+        booking.paymentStatus = 'for_verification';
+        DB.notifyBookingUpdate(booking, 'payment_review_needed', 'Receipt verification returned without a stored image path.').catch(() => {});
+        showInvoice(booking);
+        resetForm();
+        toast(`Booking saved as ${booking.ref}. The receipt needs manual review; please do not pay again.`, 'inf');
         await renderCourts();
         onCardDate(booking.courtId, booking.date).catch(() => {});
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '🎾 Confirm Booking'; }
@@ -7165,7 +7183,7 @@ async function submitBooking(e) {
 
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Processing...';
+    submitBtn.textContent = 'Saving booking...';
   }
 
   const items = uniqueBookingSelections(activeBookingItems());
@@ -7299,26 +7317,29 @@ async function submitBooking(e) {
 
     if (_receiptFile && digitalPay) {
       try {
+        if (submitBtn) submitBtn.textContent = 'Uploading receipt...';
         booking._receiptResult = await verifyUploadedReceipt(booking.ref, payMethod);
       } catch(err) {
-        booking.status = 'cancelled';
-        booking.paymentStatus = 'rejected';
-        itemBookings.forEach(row => { row.status = 'cancelled'; row.paymentStatus = 'rejected'; });
-        await Promise.allSettled(itemBookings.map(row =>
-          DB.updateBooking(row.ref, { status: 'cancelled', paymentStatus: 'rejected' })
-        ));
-        toast(`Receipt upload failed: ${extractErrMsg(err)} Please try booking again with a receipt screenshot.`, 'err');
+        // Do not overwrite server state after a timeout/network error: the
+        // Edge Function may finish successfully after the WebView disconnects.
+        booking.status = 'pending';
+        booking.paymentStatus = 'for_verification';
+        itemBookings.forEach(row => { row.status = 'pending'; row.paymentStatus = 'for_verification'; });
+        DB.notifyBookingUpdate(booking, 'payment_review_needed', `Receipt request uncertain: ${extractErrMsg(err)}`).catch(() => {});
+        showInvoice(booking);
+        resetForm();
+        toast(`Booking saved as ${booking.ref}. Receipt verification is still pending; please do not pay again.`, 'inf');
         await refreshBookingItemViews(itemBookings);
         return;
       }
       if (!booking._receiptResult?.receiptImageUrl) {
-        booking.status = 'cancelled';
-        booking.paymentStatus = 'rejected';
-        itemBookings.forEach(row => { row.status = 'cancelled'; row.paymentStatus = 'rejected'; });
-        await Promise.allSettled(itemBookings.map(row =>
-          DB.updateBooking(row.ref, { status: 'cancelled', paymentStatus: 'rejected' })
-        ));
-        toast('Receipt image was not saved. Please try booking again and upload the receipt screenshot.', 'err');
+        booking.status = 'pending';
+        booking.paymentStatus = 'for_verification';
+        itemBookings.forEach(row => { row.status = 'pending'; row.paymentStatus = 'for_verification'; });
+        DB.notifyBookingUpdate(booking, 'payment_review_needed', 'Receipt verification returned without a stored image path.').catch(() => {});
+        showInvoice(booking);
+        resetForm();
+        toast(`Booking saved as ${booking.ref}. The receipt needs manual review; please do not pay again.`, 'inf');
         await refreshBookingItemViews(itemBookings);
         return;
       }
@@ -7397,25 +7418,15 @@ function clearReceipt() {
   const st = $('bReceiptStatus'); if (st) st.style.display = 'none';
 }
 
-function _fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error('Could not read file'));
-    r.readAsDataURL(file);
-  });
-}
-
 async function verifyUploadedReceipt(bookingRef, method, inlineData = null) {
   const st = $('bReceiptStatus');
   if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = '🔎 Verifying your receipt…'; }
   try {
     if (!_receiptFile) throw new Error('Receipt screenshot is required.');
-    const dataUrl = await _fileToBase64(_receiptFile);
     const payload = {
       bookingRef,
       provider: method,
-      imageBase64: dataUrl,
+      imageFile: _receiptFile,
       contentType: _receiptFile.type || 'image/jpeg',
     };
     if (inlineData) payload.bookingData = inlineData;
@@ -8002,9 +8013,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initScrollReveal();
 });
 
-// Cancel any booking stuck in 'verifying' beyond the reservation window.
-// These are slots where the user paid but closed the tab / lost connection
-// before OCR finished — slot must be freed so others can book it.
+// Release abandoned placeholder holds, but preserve completed customer
+// submissions for manual review. A WebView can disconnect while the receipt
+// Edge Function continues processing, so stale verifying must not discard a
+// booking that already contains payment details.
 async function expireStaleVerifyingBookings() {
   try {
     const all = await DB.getBookings();
@@ -8013,8 +8025,15 @@ async function expireStaleVerifyingBookings() {
       b.status === 'verifying' &&
       b.createdAt && new Date(b.createdAt).getTime() < cutoff
     );
-    await Promise.all(stale.map(b =>
+    const abandoned = stale.filter(b =>
+      !b.gcashRef || b.email === 'reserve@hold.internal' || /^Reserving/i.test(String(b.fullName || ''))
+    );
+    const submitted = stale.filter(b => !abandoned.includes(b));
+    await Promise.all(abandoned.map(b =>
       DB.updateBooking(b.ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {})
+    ));
+    await Promise.all(submitted.map(b =>
+      DB.updateBooking(b.ref, { status: 'pending', paymentStatus: 'for_verification' }).catch(() => {})
     ));
   } catch(_) {}
 }
@@ -8466,11 +8485,10 @@ async function verifyOpReceipt(ref, method, inlineData) {
   const st = $('opReceiptStatus');
   if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = '🔎 Verifying your receipt…'; }
   try {
-    const dataUrl = await _fileToBase64(_opReceiptFile);
     const res = await DB.verifyGcashReceipt({
       bookingRef: ref,
       provider: method,
-      imageBase64: dataUrl,
+      imageFile: _opReceiptFile,
       contentType: _opReceiptFile.type || 'image/jpeg',
       bookingData: inlineData,
     });

@@ -6,6 +6,20 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-13] - Facebook and Messenger In-App Booking Compatibility
+
+### Fixed
+- **WebView receipt submission** - receipt screenshots now use multipart file uploads instead of memory-heavy Base64 JSON requests, improving reliability in Facebook and Messenger embedded browsers.
+- **Visible booking errors** - validation and network messages now render above the booking modal instead of being hidden behind it.
+- **Bounded requests** - browser database and receipt calls, plus server-side OCR, now time out with clear recovery behavior instead of leaving Confirm Booking stuck indefinitely.
+- **Payment-safe disconnect handling** - uncertain client/network results keep the booking reference for verification and never cancel a paid booking unless the server explicitly rejects the receipt.
+- **OCR outage routing** - provider timeouts and errors go to manual review rather than being misclassified as fake or unreadable receipts.
+- **Idempotent verification** - terminal bookings and same-booking payment-reference retries cannot be downgraded, resurrected, or rejected by concurrent verification requests.
+
+**Files affected:** `index.html`, `supabase-config.js`, `supabase/functions/verify-gcash-receipt/index.ts`
+
+---
+
 ## [2026-07-12] - Open Play Host Portal Completion
 
 ### Fixed

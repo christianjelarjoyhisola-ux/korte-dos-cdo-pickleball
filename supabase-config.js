@@ -6,8 +6,34 @@
 const SUPABASE_URL = 'https://zcuufcpkgidmaanxjufo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjdXVmY3BrZ2lkbWFhbnhqdWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNjYyODMsImV4cCI6MjA5Nzk0MjI4M30.c_H2mUkyoc8xlA3BONq11t6HwvfaSZbXcs_smTKp2_o';
 
-// Initialize Supabase client (uses UMD global loaded from CDN)
-const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const PB_REQUEST_TIMEOUT_MS = 45000;
+const PB_RECEIPT_TIMEOUT_MS = 90000;
+
+async function _pbFetchWithTimeout(input, init = {}, timeoutMs = PB_REQUEST_TIMEOUT_MS) {
+  const supportsAbort = typeof AbortController === 'function';
+  const controller = supportsAbort && !init.signal ? new AbortController() : null;
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller?.abort();
+      reject(new Error('The request timed out. Please check your connection and try again.'));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      fetch(input, controller ? { ...init, signal: controller.signal } : init),
+      timeout,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// Initialize Supabase client (uses UMD global loaded from CDN). A bounded
+// fetch prevents embedded browsers from leaving the booking button hanging.
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: (input, init) => _pbFetchWithTimeout(input, init) },
+});
 
 // Expose globally so HTML pages can use real-time subscriptions
 window._supabase = _sb;
@@ -1214,9 +1240,35 @@ window.DB = {
   },
 
   // Verify an uploaded GCash/GoTyme/PNB receipt image via the Edge Function.
-  // payload: { bookingRef, provider, imageBase64, contentType }
+  // payload: { bookingRef, provider, imageFile, contentType }.
+  // imageBase64 remains supported for older deployed clients.
   // Returns: { ok, status, flags, extracted, confidence, message }
   async verifyGcashReceipt(payload) {
+    if (payload?.imageFile instanceof Blob) {
+      const fnUrl = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-gcash-receipt`;
+      const form = new FormData();
+      form.append('action', 'verify');
+      form.append('bookingRef', String(payload.bookingRef || ''));
+      form.append('provider', String(payload.provider || 'gcash'));
+      form.append('contentType', payload.imageFile.type || payload.contentType || 'image/jpeg');
+      if (payload.bookingData) form.append('bookingData', JSON.stringify(payload.bookingData));
+      form.append('receipt', payload.imageFile, payload.imageFile.name || 'receipt.jpg');
+
+      const res = await _pbFetchWithTimeout(fnUrl, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: form,
+      }, PB_RECEIPT_TIMEOUT_MS);
+      const txt = await res.text();
+      const json = _safeJsonParse(txt);
+      if (!res.ok) throw new Error(json?.error || txt || `HTTP ${res.status}`);
+      if (!json) throw new Error('Receipt verification returned an invalid response.');
+      return json;
+    }
+
     const { data, error } = await _sb.functions.invoke('verify-gcash-receipt', { body: payload });
     if (!error && data) return data;
 
@@ -1225,11 +1277,11 @@ window.DB = {
     const sess = await _sb.auth.getSession();
     const accessToken = sess?.data?.session?.access_token || '';
     const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_ANON_KEY}`;
-    const res = await fetch(fnUrl, {
+    const res = await _pbFetchWithTimeout(fnUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': authHeader },
       body: JSON.stringify(payload),
-    });
+    }, PB_RECEIPT_TIMEOUT_MS);
     const txt = await res.text();
     const json = _safeJsonParse(txt);
     if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
