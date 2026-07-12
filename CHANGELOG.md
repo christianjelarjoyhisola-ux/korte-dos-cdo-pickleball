@@ -15,8 +15,9 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 - **Payment-safe disconnect handling** - uncertain client/network results keep the booking reference for verification and never cancel a paid booking unless the server explicitly rejects the receipt.
 - **OCR outage routing** - provider timeouts and errors go to manual review rather than being misclassified as fake or unreadable receipts.
 - **Idempotent verification** - terminal bookings and same-booking payment-reference retries cannot be downgraded, resurrected, or rejected by concurrent verification requests.
+- **Production booking schema** - repaired missing confirmation-email tracking columns that caused the booking hold trigger to reject Confirm Booking with `record "new" has no field`.
 
-**Files affected:** `index.html`, `supabase-config.js`, `supabase/functions/verify-gcash-receipt/index.ts`
+**Files affected:** `index.html`, `supabase-config.js`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/migrations/20260713072000_repair_booking_confirmation_email_tracking.sql`
 
 ---
 
