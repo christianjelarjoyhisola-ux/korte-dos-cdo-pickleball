@@ -6,6 +6,30 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-13] - Accumulated Booking Fee Remittances
+
+### Added
+- **Dedicated Remittances workspace** - owners and court owners can view the live accumulated platform-fee balance, prepare an exact-cutoff remittance, upload private payment proof, review partial payments, and inspect permanent settlement history from a responsive mobile-friendly dashboard.
+- **Permanent remittance ledger** - each prepared batch freezes its eligible bookings at the database server timestamp and records immutable line items, payment attempts, review decisions, balances, and audit events.
+
+### Changed
+- **Monthly settlement cycle** - platform booking fees now accumulate continuously until the court owner prepares the amount due on the 14th; fees earned after that exact cutoff automatically remain for the next 14th.
+- **Late-cycle protection** - if an owner catches up after a missed remittance cycle, fees earned after that real cutoff wait for the next upcoming 14th instead of becoming immediately overdue.
+- **Legacy statement transition** - unpaid weekly statements are superseded and their bookings return to the live accumulated balance, while previously paid legacy history remains retained.
+- **Downpayment fee allocation** - regular customer downpayments include the full platform booking fee plus 50% of the court fee, while approved Host bookings include the full platform booking fee plus 25% of the court fee.
+
+### Security
+- **Server-owned financial records** - database RPCs, role checks, immutable fee snapshots, advisory locking, idempotency, and append-only settlement records prevent client-side amount changes, duplicate cutoffs, and post-settlement tampering.
+- **Private remittance proof storage** - payment screenshots use a restricted private bucket with signed owner/court-owner access and file type and size limits.
+
+### DB
+- **Exact-cutoff remittance migration** - added accumulated booking-fee snapshots, remittance batches and items, payment proof/review records, audit events, legacy weekly-statement reconciliation, and dashboard/history/detail RPCs.
+- **Fresh-install requirement** - documented the exact-cutoff remittance migration as the required second SQL step after the consolidated Supabase baseline.
+
+**Files affected:** `admin.html`, `index.html`, `supabase-config.js`, `SETUP_NEW_SUPABASE.sql`, `CHANGELOG.md`, `supabase/migrations/20260713213000_accumulated_booking_fee_remittances.sql`
+
+---
+
 ## [2026-07-13] - Facebook and Messenger In-App Booking Compatibility
 
 ### Fixed

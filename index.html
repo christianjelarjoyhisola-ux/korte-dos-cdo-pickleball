@@ -3073,7 +3073,7 @@ body.host-mode .courts { padding-bottom:140px; }
               </div>
               <div class="pay-amount-toggle" id="gcPayAmtToggle">
                 <div class="pat-btn on" id="gcPat50" onclick="setPayAmount('half')" style="display:none">
-                  <div>50%</div>
+                  <div>Fee + 50% Court</div>
                   <div class="pat-amt" id="gcPat50Amt"></div>
                 </div>
                 <div class="pat-btn" id="gcPat100" onclick="setPayAmount('full')" style="display:none">
@@ -3121,7 +3121,7 @@ body.host-mode .courts { padding-bottom:140px; }
               </div>
               <div class="pay-amount-toggle" id="gtPayAmtToggle">
                 <div class="pat-btn on" id="gtPat50" onclick="setPayAmount('half')" style="display:none">
-                  <div>50%</div>
+                  <div>Fee + 50% Court</div>
                   <div class="pat-amt" id="gtPat50Amt"></div>
                 </div>
                 <div class="pat-btn" id="gtPat100" onclick="setPayAmount('full')" style="display:none">
@@ -3169,7 +3169,7 @@ body.host-mode .courts { padding-bottom:140px; }
               </div>
               <div class="pay-amount-toggle" id="pnPayAmtToggle">
                 <div class="pat-btn on" id="pnPat50" onclick="setPayAmount('half')" style="display:none">
-                  <div>50%</div>
+                  <div>Fee + 50% Court</div>
                   <div class="pat-amt" id="pnPat50Amt"></div>
                 </div>
                 <div class="pat-btn" id="pnPat100" onclick="setPayAmount('full')" style="display:none">
@@ -3260,7 +3260,7 @@ body.host-mode .courts { padding-bottom:140px; }
           </div>
 
           <div class="down-note" id="downNote" style="margin-top:10px">
-            ⚠️ A <strong>50% downpayment</strong> is required to confirm your booking. Follow the payment instructions above.
+            ⚠️ The <strong>full booking fee plus 50% of the court fee</strong> is required to confirm your booking. Follow the payment instructions above.
           </div>
         </div>
 
@@ -3378,7 +3378,7 @@ body.host-mode .courts { padding-bottom:140px; }
       <div class="inv-amt-total">Total Amount</div>
       <div class="inv-amt-val" id="iTot">₱0.00</div>
       <div class="inv-amt-down-wrap">
-        <div class="inv-amt-down-label" id="iDownLabel">50% Downpayment Due</div>
+        <div class="inv-amt-down-label" id="iDownLabel">Booking Fee + 50% Court Fee Due</div>
         <div class="inv-amt-down-val" id="iDown">₱0.00</div>
         <div class="inv-amt-down-note" id="iDownNote">—</div>
       </div>
@@ -3577,16 +3577,14 @@ function downpaymentRate() {
   return isVerifiedHostBooking() ? HOST_DOWNPAYMENT_RATE : 0.5;
 }
 function downpaymentLabel() {
-  return isVerifiedHostBooking() ? 'Due today' : '50% Downpayment';
+  return isVerifiedHostBooking() ? 'Due today' : 'Booking Fee + 50% Court Fee';
 }
 function downpaymentAmount(total, courtFee = null, serviceFee = null) {
   if (payFull) return total;
-  if (isVerifiedHostBooking()) {
-    const court = Number(courtFee ?? total ?? 0);
-    const fee = Number(serviceFee ?? 0);
-    return Math.round(((court * HOST_DOWNPAYMENT_RATE) + fee) * 100) / 100;
-  }
-  return Math.round(Number(total || 0) * downpaymentRate());
+  const fee = Number(serviceFee ?? 0);
+  const court = Number(courtFee ?? (Number(total || 0) - fee));
+  const courtRate = isVerifiedHostBooking() ? HOST_DOWNPAYMENT_RATE : 0.5;
+  return Math.round(((court * courtRate) + fee) * 100) / 100;
 }
 function hostBookingNoteText() {
   const host = activeHostSession();
@@ -3595,7 +3593,7 @@ function hostBookingNoteText() {
 function downpaymentNoteHtml(prefix = '') {
   if (payFull) return '';
   if (isVerifiedHostBooking()) return `${hostBookingNoteText()} ${paymentInstructionText()}`;
-  return `${prefix}<strong>50% downpayment</strong> is required to confirm your booking. ${paymentInstructionText()}`;
+  return `${prefix}<strong>full booking fee plus 50% of the court fee</strong> is required to confirm your booking. ${paymentInstructionText()}`;
 }
 function bookingFeeDisplay(totalFee, hrs) {
   const fee = Number(totalFee || 0);
@@ -4043,7 +4041,7 @@ function getCourtRepair(courtName, date) {
   ) || null;
 }
 let cachedBookedSlots = new Set(); // cached after renderSlots() — avoids re-fetching on every click
-let payFull = false; // false = 50% downpayment, true = 100% full payment
+let payFull = false; // false = full booking fee + court downpayment, true = 100% full payment
 let cardSel   = { courtId: null, courtName: '', date: null, slots: [], rate: 0, tiers: [] };
 let cardSelections = {};
 let bookingItems = [];
@@ -6590,7 +6588,7 @@ function updatePriceLegacy() {
     $('downNote').style.display = payFull ? 'none' : '';
     $('downNote').innerHTML = payFull
       ? ''
-      : `⚠️ A <strong>50% downpayment</strong> is required to confirm your booking. ${paymentInstructionText()}`;
+      : `⚠️ The <strong>full booking fee plus 50% of the court fee</strong> is required to confirm your booking. ${paymentInstructionText()}`;
   }
 }
 
@@ -6874,7 +6872,7 @@ function updatePaymentAmountUI() {
     const btn50 = $(p + 'Pat50');
     const btn100 = $(p + 'Pat100');
     const dpLabel = btn50?.querySelector('div:first-child');
-    if (dpLabel) dpLabel.textContent = hostBooking ? '25%' : '50%';
+    if (dpLabel) dpLabel.textContent = hostBooking ? 'Fee + 25% Court' : 'Fee + 50% Court';
 
     if (hostBooking || dpOnly) {
       // Only downpayment — hide toggle and label, auto-select 50%
@@ -7551,7 +7549,7 @@ function showInvoice(b) {
   // Amount
   set('iTot', fmt(b.total));
   set('iDown', fmt(b.downpayment));
-  const invoiceDownLabel = (!isFullPay && b.hostBooking) ? '25% Host Downpayment Due' : '50% Downpayment Due';
+  const invoiceDownLabel = (!isFullPay && b.hostBooking) ? 'Full Booking Fee + 25% Court Fee Due' : 'Full Booking Fee + 50% Court Fee Due';
   set('iDownLabel', isFullPay ? 'Full Payment' : invoiceDownLabel);
   set('iDownNote', isRejected ? 'Receipt verification failed. The slot has been released.' :
     isFullPay ? 'Fully paid. No balance due on arrival.' :
@@ -7636,7 +7634,7 @@ function showInvoice(b) {
       ['You\'ll receive a confirmation once the owner verifies payment.', '3'],
     ] : b.paymentMethod === 'cash' ? [
       ['Show this booking ref to the front desk.', '1'],
-      [`Pay the ${isFullPay ? 'full amount' : (b.hostBooking ? '25% host downpayment' : '50% downpayment')} of <strong>${fmt(b.downpayment)}</strong> in cash on arrival.`, '2'],
+      [`Pay the ${isFullPay ? 'full amount' : (b.hostBooking ? 'full booking fee plus 25% court fee' : 'full booking fee plus 50% court fee')} of <strong>${fmt(b.downpayment)}</strong> in cash on arrival.`, '2'],
       ['Your slot will be confirmed after payment.', '3'],
     ] : [
       ['Show this booking ref to the front desk.', '1'],
