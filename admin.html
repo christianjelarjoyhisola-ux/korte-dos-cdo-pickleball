@@ -7876,7 +7876,7 @@ async function loadHostAccountBookings({ announce = false } = {}) {
     $('hostAccountBody').innerHTML = '<div class="hf-loading"><div class="hf-loading-inner"><span class="hf-spinner" aria-hidden="true"></span><span>Refreshing host bookings...</span></div></div>';
   }
   try {
-    const allBookings = await DB.getBookings();
+    const allBookings = await DB.getHostFinanceBookings(accountId);
     if (requestId !== _hostFinanceLoadSeq || String(_hostFinanceState.account?.id || '') !== accountId || !$('hostAccountModal')?.classList.contains('show')) return;
     const raw = allBookings.filter(booking => hostAccountBookingMatches(booking, account));
     _hostFinanceState.bookings = groupBookings(raw);
@@ -10040,6 +10040,6 @@ async function checkAgreementGate(session) {
 </script>
 
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260713-host-finance"></script>
+<script src="supabase-config.js?v=20260713-host-finance-v2"></script>
 </body>
 </html>

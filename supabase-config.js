@@ -1260,6 +1260,17 @@ window.DB = {
     return (data || []).map(rowToHostFinanceAccount).filter(account => account.id);
   },
 
+  async getHostFinanceBookings(hostUserId) {
+    const id = String(hostUserId || '').trim();
+    if (!id) throw new Error('A host account is required to load finance bookings.');
+    const { data, error } = await _sb.rpc('get_host_finance_bookings', { p_host_user_id: id });
+    if (error) {
+      console.error('getHostFinanceBookings:', error);
+      throw error;
+    }
+    return (data || []).map(rowToBooking);
+  },
+
   async saveAccount(account) {
     const { error } = await _sb.from('accounts').upsert(accountToRow(account));
     if (error) { console.error('saveAccount:', error); throw error; }
@@ -2354,6 +2365,22 @@ window.DB = {
           String(a.fullName || '').localeCompare(String(b.fullName || '')) ||
           String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
         );
+    },
+    async getHostFinanceBookings(hostUserId) {
+      const role = window.Auth?.getSession?.()?.role || '';
+      if (!['owner', 'court_owner'].includes(role)) {
+        const error = new Error('Only system owners and court owners can view host finance bookings.');
+        error.code = 'HOST_FINANCE_VIEW_NOT_ALLOWED';
+        throw error;
+      }
+      const id = String(hostUserId || '').trim();
+      if (!id || !readDb().accounts.some(account => account.role === 'host' && String(account.id) === id)) {
+        throw new Error('Host account not found.');
+      }
+      return readDb().bookings
+        .filter(booking => booking.hostBooking && booking.email !== 'reserve@hold.internal')
+        .filter(booking => String(booking.hostUserId || booking.createdByUserId || '') === id)
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     },
     async saveAccount(account) {
       const db = readDb();
