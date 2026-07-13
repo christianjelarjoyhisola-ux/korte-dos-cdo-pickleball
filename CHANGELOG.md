@@ -11,12 +11,15 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 ### Added
 - **Dedicated Remittances workspace** - owners and court owners can view the live accumulated platform-fee balance, prepare an exact-cutoff remittance, upload private payment proof, review partial payments, and inspect permanent settlement history from a responsive mobile-friendly dashboard.
 - **Permanent remittance ledger** - each prepared batch freezes its eligible bookings at the database server timestamp and records immutable line items, payment attempts, review decisions, balances, and audit events.
+- **Reconciled fee metrics** - live balances and frozen permanent records now show unique reservations, individual court-booking rows, billable court-hours, and the exact immutable rate/type calculation behind the remittance amount.
 
 ### Changed
 - **Monthly settlement cycle** - platform booking fees now accumulate continuously until the court owner prepares the amount due on the 14th; fees earned after that exact cutoff automatically remain for the next 14th.
 - **Late-cycle protection** - if an owner catches up after a missed remittance cycle, fees earned after that real cutoff wait for the next upcoming 14th instead of becoming immediately overdue.
 - **Legacy statement transition** - unpaid weekly statements are superseded and their bookings return to the live accumulated balance, while previously paid legacy history remains retained.
 - **Downpayment fee allocation** - regular customer downpayments include the full platform booking fee plus 50% of the court fee, while approved Host bookings include the full platform booking fee plus 25% of the court fee.
+- **Mixed fee presentation** - remittances containing both per-hour and flat fee snapshots display separate calculation lines instead of assuming one current rate; flat fees are reconciled by court-booking row and per-hour fees by billable court-hours.
+- **Truthful legacy display** - older paid statements keep their known amount and booking-row history, while unavailable reservation, hours, and rate-breakdown fields are shown as legacy data not recorded instead of misleading zero values.
 
 ### Security
 - **Server-owned financial records** - database RPCs, role checks, immutable fee snapshots, advisory locking, idempotency, and append-only settlement records prevent client-side amount changes, duplicate cutoffs, and post-settlement tampering.

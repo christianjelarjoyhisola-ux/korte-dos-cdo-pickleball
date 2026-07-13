@@ -175,7 +175,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .rm-cycle-title { color:var(--text); font-size:.84rem; font-weight:900; }
 .rm-cycle-copy { margin-top:2px; color:var(--text2); font-size:.74rem; line-height:1.4; }
 .rm-pill { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:5px 10px; border:1px solid var(--border); border-radius:999px; background:var(--surface); color:var(--text2); font-size:.68rem; font-weight:900; white-space:nowrap; }
-.rm-stat-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+.rm-stat-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
 .rm-stat {
   position:relative; min-width:0; min-height:104px; padding:14px; overflow:hidden;
   border:1px solid var(--border); border-radius:14px; background:var(--surface); box-shadow:var(--shadow);
@@ -196,6 +196,16 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .rm-live-amount { margin-top:5px; color:var(--text); font:900 clamp(2rem,5vw,3.2rem)/1 'Bebas Neue',sans-serif; letter-spacing:.8px; }
 .rm-live-meta { display:flex; flex-wrap:wrap; gap:7px 12px; margin-top:8px; color:var(--text2); font-size:.74rem; font-weight:700; }
 .rm-live-note { max-width:700px; margin-top:9px; color:var(--text3); font-size:.72rem; line-height:1.45; }
+.rm-calc-strip { display:grid; grid-template-columns:minmax(105px,.7fr) minmax(105px,.7fr) minmax(120px,.8fr) minmax(240px,1.8fr); gap:7px; margin-top:13px; }
+.rm-calc-metric { min-width:0; padding:10px 11px; border:1px solid var(--border); border-radius:11px; background:var(--bg2); }
+.rm-calc-label { color:var(--text3); font-size:.58rem; font-weight:900; text-transform:uppercase; letter-spacing:.55px; }
+.rm-calc-value { margin-top:4px; color:var(--text); font-size:.79rem; font-weight:900; line-height:1.35; overflow-wrap:anywhere; }
+.rm-calc-value.hours { color:var(--green); font:900 1rem 'DM Mono',monospace; }
+.rm-calc-value.formula { color:var(--yellow); font-family:'DM Mono',monospace; font-size:.72rem; }
+.rm-fee-breakdown { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+.rm-fee-line { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:6px 9px; border:1px solid var(--border); border-radius:9px; background:var(--bg2); color:var(--text2); font:800 .67rem 'DM Mono',monospace; }
+.rm-fee-line strong { color:var(--green); font-weight:900; }
+.rm-fee-line.legacy { color:var(--text3); font-family:'DM Sans',sans-serif; }
 .rm-live-action { min-width:210px; text-align:right; }
 .rm-live-action .btn { width:100%; justify-content:center; min-height:46px; }
 .rm-live-hint { margin-top:6px; color:var(--text3); font-size:.65rem; line-height:1.35; }
@@ -230,11 +240,12 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .rm-status.settled { color:var(--green); background:var(--green-bg); border-color:rgba(var(--green-rgb),.25); }
 .rm-status.overdue, .rm-status.rejected, .rm-status.cancelled { color:var(--red); background:var(--red-bg); border-color:rgba(200,61,38,.25); }
 .rm-status.accumulating { color:var(--text2); background:var(--bg2); }
-.rm-record-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.rm-record-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
 .rm-field { min-width:0; padding:9px 10px; border:1px solid var(--border); border-radius:10px; background:var(--bg2); }
 .rm-field-label { color:var(--text3); font-size:.58rem; font-weight:900; text-transform:uppercase; letter-spacing:.55px; }
 .rm-field-value { margin-top:4px; color:var(--text); font-size:.78rem; font-weight:850; overflow-wrap:anywhere; }
 .rm-field-value.money { color:var(--yellow); font:900 .9rem 'DM Mono',monospace; }
+.rm-field-value.formula { color:var(--green); font-family:'DM Mono',monospace; font-size:.7rem; line-height:1.45; }
 .rm-record-foot { display:flex; align-items:center; justify-content:space-between; gap:9px; flex-wrap:wrap; }
 .rm-record-note { color:var(--text3); font-size:.68rem; line-height:1.4; }
 .rm-actions { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
@@ -289,7 +300,10 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .rm-modal :is(button,input,select,textarea,a):focus-visible, #sec-remittances :is(button,input,select,a):focus-visible { outline:3px solid rgba(var(--green-rgb),.3); outline-offset:2px; }
 @media(max-width:900px) {
   .rm-stat-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .rm-stat-grid .rm-stat:last-child { grid-column:1 / -1; }
   .rm-record-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .rm-calc-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .rm-calc-strip .wide { grid-column:1 / -1; }
   .rm-review-grid { grid-template-columns:1fr; }
 }
 @media(max-width:760px) {
@@ -319,6 +333,9 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
   .rm-live-amount { font-size:2.15rem; }
   .rm-record-head, .rm-hero { grid-template-columns:1fr; }
   .rm-record-grid, .rm-detail-grid, .rm-form-grid { grid-template-columns:1fr; }
+  .rm-calc-strip { grid-template-columns:1fr; }
+  .rm-calc-strip .wide { grid-column:auto; }
+  .rm-fee-line { width:100%; justify-content:space-between; align-items:flex-start; }
   .rm-form-grid .full { grid-column:auto; }
   .rm-record-foot { align-items:stretch; flex-direction:column; }
   .rm-actions { display:grid; grid-template-columns:1fr; width:100%; }
@@ -2425,9 +2442,14 @@ tr:hover td { background: var(--bg2); }
           <div class="rm-stat-note" id="rmLiveStatNote">Unsettled booking fees</div>
         </div>
         <div class="rm-stat">
-          <div class="rm-stat-label">Eligible Bookings</div>
-          <div class="rm-stat-value" id="rmBookingStat">0</div>
-          <div class="rm-stat-note">Confirmed and not yet remitted</div>
+          <div class="rm-stat-label">Reservations</div>
+          <div class="rm-stat-value" id="rmReservationStat">0</div>
+          <div class="rm-stat-note" id="rmReservationStatNote">Unique confirmed reservations</div>
+        </div>
+        <div class="rm-stat">
+          <div class="rm-stat-label">Billable Court-Hours</div>
+          <div class="rm-stat-value" id="rmHoursStat">0</div>
+          <div class="rm-stat-note" id="rmHoursStatNote">Per-hour fee units</div>
         </div>
         <div class="rm-stat warn">
           <div class="rm-stat-label">Under Review</div>
@@ -2446,11 +2468,17 @@ tr:hover td { background: var(--bg2); }
           <div class="rm-live-kicker" id="rmLiveTitle">Live accumulated balance</div>
           <div class="rm-live-amount" id="rmLiveAmount" aria-live="polite">&#8369;0.00</div>
           <div class="rm-live-meta">
-            <span id="rmLiveBookings">0 eligible bookings</span>
             <span id="rmLivePeriod">Accumulation start: &mdash;</span>
             <span id="rmLiveAsOf">Updated: &mdash;</span>
           </div>
-          <div class="rm-live-note" id="rmLiveNote">Only the separate player-paid booking fee is included. Court rental revenue and the customer's 50% court downpayment remain separate.</div>
+          <div class="rm-calc-strip" aria-label="Live booking-fee calculation">
+            <div class="rm-calc-metric"><div class="rm-calc-label">Reservations</div><div class="rm-calc-value" id="rmLiveReservations">0</div></div>
+            <div class="rm-calc-metric"><div class="rm-calc-label">Court Bookings</div><div class="rm-calc-value" id="rmLiveBookings">0</div></div>
+            <div class="rm-calc-metric"><div class="rm-calc-label">Billable Court-Hours</div><div class="rm-calc-value hours" id="rmLiveHours">0</div></div>
+            <div class="rm-calc-metric wide"><div class="rm-calc-label">Fee Calculation</div><div class="rm-calc-value formula" id="rmLiveFormula">No eligible fee yet</div></div>
+          </div>
+          <div class="rm-fee-breakdown" id="rmLiveFeeBreakdown" aria-label="Fee rate breakdown"></div>
+          <div class="rm-live-note" id="rmLiveNote">One reservation may contain several court bookings. Billable court-hours come from the immutable fee snapshot; court rental revenue and the customer's 50% court downpayment remain separate.</div>
         </div>
         <div class="rm-live-action" id="rmLiveAction">
           <button class="btn btn-p rm-action" id="rmPrepareBtn" type="button" onclick="openRemittancePrepare()" hidden>Prepare Remittance</button>
@@ -3385,10 +3413,14 @@ tr:hover td { background: var(--bg2); }
       </div>
       <div class="rm-info-note"><span aria-hidden="true">&#9432;</span><span><strong>The database will set the exact cutoff.</strong> Included bookings are frozen so they cannot be counted twice. Any eligible booking at or after that cutoff automatically starts the next remittance cycle.</span></div>
       <div class="rm-detail-grid">
-        <div class="rm-field"><div class="rm-field-label">Bookings included</div><div class="rm-field-value" id="rmPrepareBookings">0</div></div>
+        <div class="rm-field"><div class="rm-field-label">Reservations</div><div class="rm-field-value" id="rmPrepareReservations">0</div></div>
+        <div class="rm-field"><div class="rm-field-label">Court Bookings</div><div class="rm-field-value" id="rmPrepareBookings">0</div></div>
+        <div class="rm-field"><div class="rm-field-label">Billable Court-Hours</div><div class="rm-field-value" id="rmPrepareHours">0</div></div>
         <div class="rm-field"><div class="rm-field-label">Next payment date</div><div class="rm-field-value" id="rmPrepareNextDue">&mdash;</div></div>
         <div class="rm-field"><div class="rm-field-label">Timezone</div><div class="rm-field-value">Asia/Manila (PHT)</div></div>
       </div>
+      <div class="rm-detail-title" style="margin-top:4px">Fee calculation</div>
+      <div class="rm-fee-breakdown" id="rmPrepareFeeBreakdown"></div>
     </div>
     <div class="m-foot">
       <button class="btn btn-g" type="button" onclick="closeRemittanceModal('rmPrepareModal')">Not Yet</button>
@@ -3410,6 +3442,7 @@ tr:hover td { background: var(--bg2); }
         <div><div class="rm-hero-label">Frozen coverage</div><div class="rm-hero-title" id="rmPayCoverage">&mdash;</div></div>
         <div class="rm-hero-amount" id="rmPayHeroAmount">&#8369;0.00</div>
       </div>
+      <div class="rm-fee-breakdown" id="rmPayFeeBreakdown" aria-label="Frozen fee calculation"></div>
       <section class="rm-step">
         <div class="rm-step-title"><span class="rm-step-num">1</span> Send payment to the system owner</div>
         <div class="rm-account-row"><div class="rm-account-label">GCash number</div><code class="rm-account-value" id="rmPayAccountNumber">&mdash;</code><button class="btn btn-g btn-sm rm-copy" type="button" onclick="copyRemittanceValue('rmPayAccountNumber')">Copy</button></div>
@@ -7118,9 +7151,107 @@ function rmAcceptedAmount(record) {
 }
 
 function rmBookingCount(record) {
-  const explicit = rmPick(record, 'bookings_count', 'bookingsCount', 'booking_count', 'bookingCount', 'eligible_bookings', 'eligibleBookings');
+  const explicit = rmPick(record, 'booking_rows_count', 'bookingRowsCount', 'bookings_count', 'bookingsCount', 'booking_count', 'bookingCount', 'eligible_bookings', 'eligibleBookings');
   if (explicit !== undefined) return Math.max(0, Math.trunc(rmNumber(explicit)));
   return rmBookingItems(record).length;
+}
+
+function rmReservationCount(record) {
+  const explicit = rmPick(record, 'reservations_count', 'reservationsCount', 'reservation_count', 'reservationCount', 'booking_groups_count', 'bookingGroupsCount');
+  if (explicit !== undefined && explicit !== null) return Math.max(0, Math.trunc(rmNumber(explicit)));
+  if (record?.is_legacy || record?.legacy_weekly_fee_id) return null;
+  const items = rmBookingItems(record);
+  if (items.length) {
+    const refs = new Set(items.map(item => {
+      const groupRef = String(rmPick(item, 'booking_group_ref', 'bookingGroupRef') || '').trim();
+      const bookingRef = String(rmPick(item, 'booking_ref', 'bookingRef', 'ref') || '').trim();
+      return groupRef ? `g:${groupRef}` : bookingRef ? `b:${bookingRef}` : '';
+    }).filter(Boolean));
+    if (refs.size) return refs.size;
+  }
+  return null;
+}
+
+function rmBillableHours(record) {
+  const explicit = rmPick(record, 'total_billable_hours', 'totalBillableHours', 'billable_court_hours', 'billableCourtHours', 'billable_hours', 'billableHours', 'court_hours', 'courtHours');
+  if (explicit !== undefined && explicit !== null && explicit !== '') return Math.max(0, rmNumber(explicit));
+  if (record?.is_legacy || record?.legacy_weekly_fee_id) return null;
+  const items = rmBookingItems(record);
+  if (items.length) {
+    return items.reduce((sum, item) => {
+      const type = String(rmPick(item, 'fee_type', 'feeType') || '').toLowerCase();
+      return type === 'per_hour' ? sum + Math.max(0, rmNumber(rmPick(item, 'fee_units', 'feeUnits', 'billable_hours', 'billableHours'))) : sum;
+    }, 0);
+  }
+  return null;
+}
+
+function rmFlatBookingCount(record) {
+  const explicit = rmPick(record, 'flat_booking_rows_count', 'flatBookingRowsCount', 'flat_fee_booking_count', 'flatFeeBookingCount');
+  if (explicit !== undefined && explicit !== null && explicit !== '') return Math.max(0, Math.trunc(rmNumber(explicit)));
+  if (record?.is_legacy || record?.legacy_weekly_fee_id) return null;
+  const items = rmBookingItems(record);
+  if (!items.length) return null;
+  return items.filter(item => String(rmPick(item, 'fee_type', 'feeType') || '').toLowerCase() === 'flat').length;
+}
+
+function rmMetricNumber(value, maximumFractionDigits = 2) {
+  if (value === null || value === undefined || value === '') return 'Not recorded';
+  return new Intl.NumberFormat('en-PH', { maximumFractionDigits, minimumFractionDigits:0 }).format(Math.max(0, rmNumber(value)));
+}
+
+function rmFeeBreakdown(record) {
+  let raw = rmPick(record, 'fee_breakdown', 'feeBreakdown', 'rate_type_breakdown', 'rateTypeBreakdown', 'rate_breakdown', 'rateBreakdown');
+  if (typeof raw === 'string' && raw.trim()) {
+    try { raw = JSON.parse(raw); } catch (_) { raw = []; }
+  }
+  if (Array.isArray(raw) && raw.length) return raw;
+  const items = rmBookingItems(record);
+  if (!items.length) return [];
+  const grouped = new Map();
+  items.forEach(item => {
+    const type = String(rmPick(item, 'fee_type', 'feeType') || '').toLowerCase();
+    if (!['per_hour','flat'].includes(type)) return;
+    const rate = Math.max(0, rmNumber(rmPick(item, 'fee_rate', 'feeRate')));
+    const key = `${type}|${rate.toFixed(2)}`;
+    const row = grouped.get(key) || { fee_type:type, fee_rate:rate, fee_units:0, booking_rows_count:0, amount:0 };
+    row.fee_units += Math.max(0, rmNumber(rmPick(item, 'fee_units', 'feeUnits')));
+    row.booking_rows_count += 1;
+    row.amount += Math.max(0, rmNumber(rmPick(item, 'fee_amount', 'feeAmount', 'booking_fee', 'bookingFee', 'amount')));
+    grouped.set(key, row);
+  });
+  return [...grouped.values()];
+}
+
+function rmFeeBreakdownText(record) {
+  const rows = rmFeeBreakdown(record);
+  if (!rows.length) return (record?.is_legacy || record?.legacy_weekly_fee_id) ? 'Not recorded in the legacy ledger' : 'Fee breakdown unavailable';
+  return rows.map(row => {
+    const type = String(rmPick(row, 'fee_type', 'feeType') || '').toLowerCase();
+    const rate = Math.max(0, rmNumber(rmPick(row, 'fee_rate', 'feeRate')));
+    const amount = Math.max(0, rmNumber(rmPick(row, 'amount', 'fee_amount', 'feeAmount', 'total_amount', 'totalAmount')));
+    const units = Math.max(0, rmNumber(rmPick(row, 'fee_units', 'feeUnits', 'total_billable_hours', 'totalBillableHours')));
+    const courtBookings = Math.max(0, Math.trunc(rmNumber(rmPick(row, 'booking_rows_count', 'bookingRowsCount', 'bookings_count', 'bookingsCount', 'booking_count', 'bookingCount', 'item_count', 'itemCount'))));
+    return type === 'flat'
+      ? `${fmt(rate)} flat × ${rmMetricNumber(courtBookings, 0)} court booking${courtBookings === 1 ? '' : 's'} = ${fmt(amount)}`
+      : `${fmt(rate)}/hr × ${rmMetricNumber(units)} court-hr${units === 1 ? '' : 's'} = ${fmt(amount)}`;
+  }).join(' + ');
+}
+
+function rmFeeBreakdownHtml(record) {
+  const rows = rmFeeBreakdown(record);
+  if (!rows.length) return `<span class="rm-fee-line legacy">${esc((record?.is_legacy || record?.legacy_weekly_fee_id) ? 'Calculation not recorded in the legacy ledger' : 'Fee calculation unavailable')}</span>`;
+  return rows.map(row => {
+    const type = String(rmPick(row, 'fee_type', 'feeType') || '').toLowerCase();
+    const rate = Math.max(0, rmNumber(rmPick(row, 'fee_rate', 'feeRate')));
+    const amount = Math.max(0, rmNumber(rmPick(row, 'amount', 'fee_amount', 'feeAmount', 'total_amount', 'totalAmount')));
+    const units = Math.max(0, rmNumber(rmPick(row, 'fee_units', 'feeUnits', 'total_billable_hours', 'totalBillableHours')));
+    const courtBookings = Math.max(0, Math.trunc(rmNumber(rmPick(row, 'booking_rows_count', 'bookingRowsCount', 'bookings_count', 'bookingsCount', 'booking_count', 'bookingCount', 'item_count', 'itemCount'))));
+    const equation = type === 'flat'
+      ? `${fmt(rate)} flat × ${rmMetricNumber(courtBookings, 0)} court booking${courtBookings === 1 ? '' : 's'}`
+      : `${fmt(rate)}/hr × ${rmMetricNumber(units)} court-hr${units === 1 ? '' : 's'}`;
+    return `<span class="rm-fee-line">${esc(equation)} <strong>= ${fmt(amount)}</strong></span>`;
+  }).join('');
 }
 
 function rmStatusKey(record) {
@@ -7303,6 +7434,10 @@ function rmRecordCard(record) {
   const paymentRef = rmPaymentRef(record);
   const amount = rmAmountDue(record);
   const bookingCount = rmBookingCount(record);
+  const reservationCount = rmReservationCount(record);
+  const billableHours = rmBillableHours(record);
+  const flatBookings = rmFlatBookingCount(record);
+  const hoursLabel = billableHours === null ? 'Not recorded' : (billableHours === 0 && flatBookings > 0) ? 'N/A - flat fee' : `${rmMetricNumber(billableHours)} hr${billableHours === 1 ? '' : 's'}`;
   const cutoff = rmCutoff(record);
   const submitted = rmSubmittedAt(record);
   const ownerMeta = String(rmPick(record, 'court_owner_name', 'courtOwnerName', 'court_owner_email', 'courtOwnerEmail', 'venue_name', 'venueName') || 'Korte Dos CDO venue ledger');
@@ -7311,7 +7446,7 @@ function rmRecordCard(record) {
   ];
   if (role === 'court_owner' && ['awaiting-payment','overdue','rejected'].includes(status)) {
     actions.push(`<button class="btn btn-p btn-sm" type="button" onclick="openRemittancePayment('${jsArg(id)}')">Remit Now</button>`);
-    if (['awaiting-payment','rejected'].includes(status)) actions.push(`<button class="btn btn-d btn-sm" type="button" onclick="openRemittanceCancellation('${jsArg(id)}')">Cancel</button>`);
+    if (['awaiting-payment','rejected'].includes(status) && rmAmountSettled(record) === 0) actions.push(`<button class="btn btn-d btn-sm" type="button" onclick="openRemittanceCancellation('${jsArg(id)}')">Cancel</button>`);
   }
   if (role === 'owner' && status === 'under-review') {
     actions.push(`<button class="btn btn-p btn-sm" type="button" onclick="openRemittanceReview('${jsArg(id)}')">Review Proof</button>`);
@@ -7323,10 +7458,13 @@ function rmRecordCard(record) {
     </div>
     <div class="rm-record-grid">
       <div class="rm-field"><div class="rm-field-label">Amount</div><div class="rm-field-value money">${fmt(amount)}</div></div>
-      <div class="rm-field"><div class="rm-field-label">Bookings</div><div class="rm-field-value">${bookingCount}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Reservations</div><div class="rm-field-value">${reservationCount === null ? 'Not recorded' : rmMetricNumber(reservationCount, 0)}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Court Bookings</div><div class="rm-field-value">${rmMetricNumber(bookingCount, 0)}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Billable Court-Hours</div><div class="rm-field-value">${esc(hoursLabel)}</div></div>
       <div class="rm-field"><div class="rm-field-label">Exact Cutoff</div><div class="rm-field-value">${esc(rmDateTime(cutoff))}</div></div>
       <div class="rm-field"><div class="rm-field-label">Payment Ref</div><div class="rm-field-value">${esc(paymentRef || '—')}</div></div>
     </div>
+    <div class="rm-fee-breakdown" aria-label="Frozen fee calculation">${rmFeeBreakdownHtml(record)}</div>
     <div class="rm-record-foot"><div class="rm-record-note">${submitted ? `Proof submitted ${esc(rmDateTime(submitted))}` : 'Permanent booking references are retained for audit and duplicate protection.'}</div><div class="rm-actions">${actions.join('')}</div></div>
   </article>`;
 }
@@ -7392,6 +7530,11 @@ async function renderRemittances({ announce = false } = {}) {
     const live = rmPick(dashboard, 'live', 'current', 'accumulated', 'live_balance', 'liveBalance') || {};
     const liveAmount = rmAmountDue(live);
     const liveBookings = rmBookingCount(live);
+    const liveReservations = rmReservationCount(live);
+    const liveHours = rmBillableHours(live);
+    const liveFlatBookings = rmFlatBookingCount(live);
+    const liveBreakdown = rmFeeBreakdown(live);
+    const flatOnly = liveHours === 0 && liveFlatBookings > 0 && liveBreakdown.every(row => String(rmPick(row, 'fee_type', 'feeType') || '').toLowerCase() === 'flat');
     const serverNow = rmPick(dashboard, 'server_now', 'serverNow') || new Date().toISOString();
     const nextDue = rmPick(dashboard, 'next_due_on', 'nextDueOn', 'next_due_at', 'nextDueAt');
     const reviewRows = active.filter(record => rmStatusKey(record) === 'under-review');
@@ -7409,13 +7552,21 @@ async function renderRemittances({ announce = false } = {}) {
     $('rmRolePill').textContent = role === 'owner' ? 'System Owner · Verification' : 'Court Owner · Remittance';
     $('rmLiveStat').textContent = fmt(liveAmount);
     $('rmLiveStatNote').textContent = liveAmount > 0 ? 'Available for the next cutoff' : 'No unsettled booking fees';
-    $('rmBookingStat').textContent = String(liveBookings);
+    $('rmReservationStat').textContent = liveReservations === null ? '\u2014' : rmMetricNumber(liveReservations, 0);
+    $('rmReservationStatNote').textContent = `${rmMetricNumber(liveBookings, 0)} court booking${liveBookings === 1 ? '' : 's'} in the fee ledger`;
+    $('rmHoursStat').textContent = liveHours === null ? '\u2014' : flatOnly ? 'N/A' : rmMetricNumber(liveHours);
+    $('rmHoursStatNote').textContent = liveHours === null ? 'Not recorded for legacy data' : flatOnly ? 'Flat-fee bookings only' : `${liveFlatBookings > 0 ? `${liveFlatBookings} flat court booking${liveFlatBookings === 1 ? '' : 's'} kept separate` : 'Per-hour fee units'}`;
     $('rmReviewStat').textContent = fmt(reviewAmount);
     $('rmReviewStatNote').textContent = reviewRows.length ? `${reviewRows.length} payment proof${reviewRows.length === 1 ? '' : 's'} waiting` : 'No payment proof waiting';
     $('rmSettledStat').textContent = fmt(settledAmount);
     $('rmSettledStatNote').textContent = `${settledRows.length} settled remittance${settledRows.length === 1 ? '' : 's'}`;
     $('rmLiveAmount').textContent = fmt(liveAmount);
-    $('rmLiveBookings').textContent = `${liveBookings} eligible booking${liveBookings === 1 ? '' : 's'}`;
+    $('rmLiveReservations').textContent = liveReservations === null ? 'Not recorded' : `${rmMetricNumber(liveReservations, 0)} unique`;
+    $('rmLiveBookings').textContent = `${rmMetricNumber(liveBookings, 0)} fee line${liveBookings === 1 ? '' : 's'}`;
+    $('rmLiveHours').textContent = liveHours === null ? 'Not recorded' : flatOnly ? 'Not applicable' : `${rmMetricNumber(liveHours)} hr${liveHours === 1 ? '' : 's'}`;
+    $('rmLiveFormula').textContent = rmFeeBreakdownText(live);
+    $('rmLiveFeeBreakdown').innerHTML = liveBreakdown.length > 1 ? rmFeeBreakdownHtml(live) : '';
+    $('rmLiveFeeBreakdown').hidden = liveBreakdown.length <= 1;
     $('rmLivePeriod').textContent = rmPeriodStart(live) ? `Accumulating since ${rmDateTime(rmPeriodStart(live))}` : 'Starts with the first eligible booking';
     $('rmLiveAsOf').textContent = `Updated ${rmDateTime(serverNow)}`;
     $('rmActiveCount').textContent = String(active.length);
@@ -7494,7 +7645,14 @@ function openRemittancePrepare() {
   const amount = rmAmountDue(live);
   if (!canPrepare.allowed || amount <= 0) { toast(canPrepare.reason || 'There is no eligible balance to prepare.', 'err'); return; }
   $('rmPrepareAmount').textContent = fmt(amount);
-  $('rmPrepareBookings').textContent = `${rmBookingCount(live)} confirmed booking${rmBookingCount(live) === 1 ? '' : 's'}`;
+  const reservations = rmReservationCount(live);
+  const courtBookings = rmBookingCount(live);
+  const hours = rmBillableHours(live);
+  const flatBookings = rmFlatBookingCount(live);
+  $('rmPrepareReservations').textContent = reservations === null ? 'Not recorded' : `${rmMetricNumber(reservations, 0)} unique`;
+  $('rmPrepareBookings').textContent = `${rmMetricNumber(courtBookings, 0)} fee line${courtBookings === 1 ? '' : 's'}`;
+  $('rmPrepareHours').textContent = hours === null ? 'Not recorded' : (hours === 0 && flatBookings > 0) ? 'Not applicable - flat fee' : `${rmMetricNumber(hours)} court-hour${hours === 1 ? '' : 's'}`;
+  $('rmPrepareFeeBreakdown').innerHTML = rmFeeBreakdownHtml(live);
   $('rmPrepareCoverage').textContent = rmCoverageLabel(live, { live:true });
   $('rmPrepareNextDue').textContent = rmDateOnly(rmPick(_rmState.dashboard, 'next_due_on', 'nextDueOn', 'next_due_at', 'nextDueAt'));
   openRemittanceModal('rmPrepareModal', '#rmPrepareConfirmBtn');
@@ -7537,6 +7695,7 @@ async function openRemittancePayment(id) {
     $('rmPayRefLabel').textContent = reference;
     $('rmPayCoverage').textContent = rmCoverageLabel(record);
     $('rmPayHeroAmount').textContent = fmt(amount);
+    $('rmPayFeeBreakdown').innerHTML = rmFeeBreakdownHtml(record);
     $('rmPayAccountNumber').textContent = accountNumber;
     $('rmPayAccountName').textContent = accountName || 'System owner';
     $('rmPayReferenceNote').textContent = reference;
@@ -7650,7 +7809,10 @@ async function openRemittanceReview(id) {
     ['Submitted at', rmDateTime(rmSubmittedAt(record))],
     ['Payment reference', rmPaymentRef(record) || '—'],
     ['Exact cutoff', rmDateTime(rmCutoff(record))],
-    ['Bookings included', String(rmBookingCount(record))],
+    ['Reservations', rmReservationCount(record) === null ? 'Not recorded' : rmMetricNumber(rmReservationCount(record), 0)],
+    ['Court bookings', rmMetricNumber(rmBookingCount(record), 0)],
+    ['Billable court-hours', rmBillableHours(record) === null ? 'Not recorded' : (rmBillableHours(record) === 0 && rmFlatBookingCount(record) > 0) ? 'Not applicable - flat fee' : rmMetricNumber(rmBillableHours(record))],
+    ['Fee calculation', rmFeeBreakdownText(record)],
   ].map(([label, value]) => `<div class="rm-audit-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('');
   openRemittanceModal('rmReviewModal', '#rmAmountAccepted');
 }
@@ -7687,13 +7849,22 @@ async function reviewRemittancePayment(approve) {
 
 function rmBookingCard(item) {
   const ref = String(rmPick(item, 'ref', 'booking_ref', 'bookingRef') || 'Booking');
-  const customer = String(rmPick(item, 'full_name', 'fullName', 'customer_name', 'customerName') || 'Customer');
+  const groupRef = String(rmPick(item, 'booking_group_ref', 'bookingGroupRef') || '').trim();
+  const customer = String(rmPick(item, 'full_name', 'fullName', 'customer_name', 'customerName') || '').trim();
   const court = String(rmPick(item, 'court_name', 'courtName') || 'Court not recorded');
   const bookedAt = rmPick(item, 'booking_created_at', 'bookingCreatedAt', 'booked_at', 'bookedAt', 'created_at', 'createdAt', 'confirmed_at', 'confirmedAt');
   const earnedAt = rmPick(item, 'fee_earned_at', 'feeEarnedAt');
-  const hours = rmPick(item, 'duration', 'hours', 'billable_hours', 'billableHours');
+  const type = String(rmPick(item, 'fee_type', 'feeType') || '').toLowerCase();
+  const hasFeeBasis = ['per_hour','flat'].includes(type);
+  const units = Math.max(0, rmNumber(rmPick(item, 'fee_units', 'feeUnits', 'duration', 'hours', 'billable_hours', 'billableHours')));
+  const rate = Math.max(0, rmNumber(rmPick(item, 'fee_rate', 'feeRate')));
   const fee = Math.max(0, rmNumber(rmPick(item, 'booking_fee', 'bookingFee', 'fee_amount', 'feeAmount', 'platform_fee', 'platformFee', 'amount')));
-  return `<div class="rm-booking"><div><strong>${esc(ref)} · ${esc(customer)}</strong><span>${esc(court)}${hours ? ` · ${esc(String(hours))} hr${Number(hours) === 1 ? '' : 's'}` : ''}</span></div><div><strong>${esc(rmDateTime(bookedAt || earnedAt))}</strong><span>${earnedAt ? `Fee earned ${esc(rmDateTime(earnedAt))}` : 'Booking/confirmation time'}</span></div><div class="rm-booking-fee">${fmt(fee)}</div></div>`;
+  const formula = !hasFeeBasis
+    ? 'Legacy calculation not recorded'
+    : type === 'flat'
+      ? `Flat court-booking fee \u00d7 ${fmt(rate)}`
+      : `${rmMetricNumber(units)} court-hr${units === 1 ? '' : 's'} \u00d7 ${fmt(rate)}/hr`;
+  return `<div class="rm-booking"><div><strong>${esc(ref)}${customer ? ` · ${esc(customer)}` : ''}</strong><span>${groupRef ? `Reservation ${esc(groupRef)} · ` : ''}${esc(court)}</span></div><div><strong>${esc(formula)}</strong><span>${earnedAt ? `Fee earned ${esc(rmDateTime(earnedAt))}` : (bookedAt ? esc(rmDateTime(bookedAt)) : 'Reference retained for audit')}</span></div><div class="rm-booking-fee">${hasFeeBasis ? fmt(fee) : '\u2014'}</div></div>`;
 }
 
 async function openRemittanceDetails(id) {
@@ -7710,6 +7881,12 @@ async function openRemittanceDetails(id) {
   const payment = rmRecordPayment(record);
   const proof = await rmResolvedProofUrl(record);
   const bookingItems = rmBookingItems(record);
+  const reservationCount = rmReservationCount(record);
+  const bookingRows = rmBookingCount(record);
+  const billableHours = rmBillableHours(record);
+  const flatBookingCount = rmFlatBookingCount(record);
+  const billableHoursLabel = billableHours === null ? 'Not recorded' : (billableHours === 0 && flatBookingCount > 0) ? 'Not applicable - flat fee' : `${rmMetricNumber(billableHours)} hr${billableHours === 1 ? '' : 's'}`;
+  const remainingLabel = status === 'cancelled' ? 'Released back to live balance' : fmt(rmAmountRemaining(record));
   const eventItems = rmRows(rmPick(record, 'events', 'remittance_events', 'remittanceEvents', 'audit_events', 'auditEvents'));
   const note = String(rmPick(payment, 'note', 'submitted_note', 'submittedNote', 'review_note', 'reviewNote') || rmPick(record, 'note', 'paid_note', 'paidNote', 'review_note', 'reviewNote') || '—');
   const verifiedBy = String(rmPick(record, 'settled_by_name', 'settledByName', 'verified_by_name', 'verifiedByName', 'paid_by_name', 'paidByName', 'paid_by_user_id', 'paidByUserId') || rmPick(payment, 'reviewed_by_name', 'reviewedByName', 'reviewed_by', 'reviewedBy') || '—');
@@ -7728,10 +7905,14 @@ async function openRemittanceDetails(id) {
   $('rmDetailBody').innerHTML = `
     <div class="rm-hero"><div><div class="rm-hero-label">Coverage</div><div class="rm-hero-title">${esc(rmCoverageLabel(record))}</div></div><div><span class="rm-status ${status}">${esc(rmStatusLabel(status))}</span><div class="rm-hero-amount" style="margin-top:8px">${fmt(rmAmountDue(record))}</div></div></div>
     <div class="rm-detail-grid">
-      <div class="rm-field"><div class="rm-field-label">Bookings</div><div class="rm-field-value">${rmBookingCount(record)}</div></div>
-      <div class="rm-field"><div class="rm-field-label">Amount Submitted</div><div class="rm-field-value money">${fmt(rmPaymentAmount(record))}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Reservations</div><div class="rm-field-value">${reservationCount === null ? 'Not recorded' : rmMetricNumber(reservationCount, 0)}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Court Bookings</div><div class="rm-field-value">${rmMetricNumber(bookingRows, 0)}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Billable Court-Hours</div><div class="rm-field-value">${esc(billableHoursLabel)}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Latest Amount Submitted</div><div class="rm-field-value money">${fmt(rmPaymentAmount(record))}</div></div>
       <div class="rm-field"><div class="rm-field-label">Amount Accepted</div><div class="rm-field-value money">${fmt(rmAmountSettled(record) || rmAcceptedAmount(record) || (status === 'settled' ? rmAmountDue(record) : 0))}</div></div>
+      <div class="rm-field"><div class="rm-field-label">Remaining Balance</div><div class="rm-field-value${status === 'cancelled' ? '' : ' money'}">${esc(remainingLabel)}</div></div>
     </div>
+    <section class="rm-detail-section"><div class="rm-detail-title">Fee calculation</div><div class="rm-fee-breakdown">${rmFeeBreakdownHtml(record)}</div></section>
     <section class="rm-detail-section"><div class="rm-detail-title">Audit trail</div><div class="rm-audit-list">${audit.map(([label, value]) => `<div class="rm-audit-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}</div></section>
     ${eventItems.length ? `<section class="rm-detail-section"><div class="rm-detail-title">Recorded activity</div><div class="rm-audit-list">${eventItems.map(event => {
       const eventLabel = String(rmPick(event, 'event_type', 'eventType', 'action', 'status', 'type') || 'Remittance updated').replace(/[_-]+/g, ' ');
@@ -7741,10 +7922,10 @@ async function openRemittanceDetails(id) {
       return `<div class="rm-audit-row"><span>${esc(eventLabel)}</span><span>${esc(rmDateTime(eventAt))} · ${esc(actor)}${eventNote ? `<br><small>${esc(eventNote)}</small>` : ''}</span></div>`;
     }).join('')}</div></section>` : ''}
     ${proof ? `<section class="rm-detail-section"><div class="rm-detail-title">Proof of remittance</div><a href="${esc(proof)}" target="_blank" rel="noopener"><img class="rm-proof-preview" style="display:block;max-height:320px" src="${esc(proof)}" alt="Proof of remittance for ${esc(rmRecordRef(record))}" /></a></section>` : ''}
-    <section class="rm-detail-section"><div class="rm-detail-title">Included bookings</div><div class="rm-booking-list">${bookingItems.length ? bookingItems.map(rmBookingCard).join('') : '<div class="rm-empty" style="min-height:110px"><div>Individual booking details are not available for this legacy record.</div></div>'}</div></section>`;
+    <section class="rm-detail-section"><div class="rm-detail-title">Included court bookings</div><div class="rm-booking-list">${bookingItems.length ? bookingItems.map(rmBookingCard).join('') : '<div class="rm-empty" style="min-height:110px"><div>Individual booking details are not available for this legacy record.</div></div>'}</div></section>`;
   const actions = [`<button class="btn btn-g" type="button" onclick="closeRemittanceModal('rmDetailModal')">Close</button>`];
   if (rmDashboardRole() === 'court_owner' && ['awaiting-payment','overdue','rejected'].includes(status)) actions.push(`<button class="btn btn-p" type="button" onclick="closeRemittanceModal('rmDetailModal',{restoreFocus:false});openRemittancePayment('${jsArg(rmRecordId(record))}')">Remit Now</button>`);
-  if (rmDashboardRole() === 'court_owner' && ['awaiting-payment','rejected'].includes(status)) actions.unshift(`<button class="btn btn-d" type="button" onclick="closeRemittanceModal('rmDetailModal',{restoreFocus:false});openRemittanceCancellation('${jsArg(rmRecordId(record))}')">Cancel Prepared Record</button>`);
+  if (rmDashboardRole() === 'court_owner' && ['awaiting-payment','rejected'].includes(status) && rmAmountSettled(record) === 0) actions.unshift(`<button class="btn btn-d" type="button" onclick="closeRemittanceModal('rmDetailModal',{restoreFocus:false});openRemittanceCancellation('${jsArg(rmRecordId(record))}')">Cancel Prepared Record</button>`);
   if (rmDashboardRole() === 'owner' && status === 'under-review') actions.push(`<button class="btn btn-p" type="button" onclick="closeRemittanceModal('rmDetailModal',{restoreFocus:false});openRemittanceReview('${jsArg(rmRecordId(record))}')">Review Proof</button>`);
   $('rmDetailActions').innerHTML = actions.join('');
   openRemittanceModal('rmDetailModal');
@@ -7753,7 +7934,7 @@ async function openRemittanceDetails(id) {
 function openRemittanceCancellation(id) {
   if (rmDashboardRole() !== 'court_owner') { toast('Only a court owner can cancel a prepared remittance.', 'err'); return; }
   const record = rmRecordById(id);
-  if (!record || !['awaiting-payment','rejected'].includes(rmStatusKey(record))) { toast('Only an unpaid prepared or rejected remittance can be cancelled.', 'err'); return; }
+  if (!record || !['awaiting-payment','rejected'].includes(rmStatusKey(record)) || rmAmountSettled(record) > 0) { toast('Only a fully unpaid prepared or rejected remittance can be cancelled.', 'err'); return; }
   $('rmCancelId').value = rmRecordId(record);
   $('rmCancelReason').value = '';
   $('rmCancelTitle').textContent = `CANCEL ${rmRecordRef(record)}`;
