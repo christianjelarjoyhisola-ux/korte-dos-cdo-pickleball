@@ -1082,7 +1082,9 @@ Deno.serve(async (req) => {
     const bookingRef = String(body.bookingRef || "");
     let provider = normalizedProvider(String(body.provider || "gcash"));
     let imageBase64 = String(body.imageBase64 || "");
-    const contentType = String(uploadedImage?.type || body.contentType || "image/jpeg");
+    const rawContentType = String(uploadedImage?.type || body.contentType || "image/jpeg")
+      .toLowerCase().split(";", 1)[0].trim();
+    const contentType = rawContentType === "image/jpg" ? "image/jpeg" : rawContentType;
     // Optional inline data supports pre-save Open Play registration receipts.
     // A matching saved booking still takes precedence over every inline field.
     const inlineBookingData = (body.bookingData && typeof body.bookingData === "object") ? body.bookingData as Record<string, unknown> : null;
@@ -1096,10 +1098,6 @@ Deno.serve(async (req) => {
     if (bytes.length > MAX_BYTES) {
       return json({ error: "Image too large (max 5 MB)" }, 400);
     }
-    // Google Vision still expects base64, but converting on the server avoids
-    // the large FileReader + JSON allocation inside embedded mobile WebViews.
-    if (!imageBase64) imageBase64 = bytesToBase64(bytes);
-
     // A saved court booking is always authoritative. Inline data exists for
     // pre-save Open Play registrations; it must never override a persisted
     // booking's price, host flag, payment method, or customer identity.
@@ -1173,6 +1171,72 @@ Deno.serve(async (req) => {
     provider = paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) ||
       provider;
 
+    // Save the evidence before pricing, perceptual hashing, or OCR. Large
+    // mobile screenshots can make those later steps slow or memory-heavy; a
+    // disconnect there must never leave the owner without the paid receipt.
+    const imageHash = await sha256Hex(bytes);
+    const ext = contentType.includes("png") ? "png" :
+      contentType.includes("webp") ? "webp" :
+      contentType.includes("heic") || contentType.includes("heif") ? "heic" : "jpg";
+    const objectPath = `${bookingRef}/${imageHash}.${ext}`;
+    console.log("receipt checkpoint: storing", {
+      bookingRef,
+      bytes: bytes.length,
+      contentType,
+    });
+    const { error: upErr } = await db.storage.from("receipts").upload(
+      objectPath,
+      bytes,
+      {
+        contentType,
+        // The hash-derived path makes a customer retry idempotent.
+        upsert: true,
+      },
+    );
+    if (upErr) {
+      console.error("receipt upload failed:", errMsg(upErr));
+      return json({
+        error: "Receipt image could not be stored. Please upload the receipt again.",
+      }, 500);
+    }
+
+    if (hasPersistedBooking) {
+      const { data: safeRows, error: safeStateErr } = await bookingUpdateQuery(
+        db,
+        booking,
+        {
+          status: "pending",
+          payment_status: "for_verification",
+          receipt_image_url: objectPath,
+          receipt_image_hash: imageHash,
+          receipt_status: "manual_review",
+          receipt_flags: [],
+        },
+      ).in("status", ["verifying", "pending"]).select("ref");
+      if (safeStateErr || !safeRows?.length) {
+        console.error(
+          "receipt safe-state update failed:",
+          safeStateErr ? errMsg(safeStateErr) : "no active booking rows updated",
+        );
+        return json({
+          error: "Receipt was stored but could not be attached to the booking. Please contact the owner with your booking reference.",
+        }, 500);
+      }
+      booking = {
+        ...booking,
+        status: "pending",
+        payment_status: "for_verification",
+        receipt_image_url: objectPath,
+        receipt_image_hash: imageHash,
+        receipt_status: "manual_review",
+      };
+      console.log("receipt checkpoint: attached", {
+        bookingRef,
+        rows: safeRows.length,
+        objectPath,
+      });
+    }
+
     const settingsRows = await db.from("settings").select("key,value");
     const settings: Record<string, string> = {};
     (settingsRows.data || []).forEach((r: { key: string; value: string }) => {
@@ -1212,48 +1276,11 @@ Deno.serve(async (req) => {
     );
 
     // Hashes are stored for audit only. GCash validity is based on receipt details.
-    const imageHash = await sha256Hex(bytes);
     const phash = await dHash(bytes);
 
-    // Store the image immediately (evidence kept even if rejected).
-    const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
-    const objectPath = `${bookingRef}/${Date.now()}.${ext}`;
-    const { error: upErr } = await db.storage.from("receipts").upload(
-      objectPath,
-      bytes,
-      {
-        contentType,
-        upsert: false,
-      },
-    );
-    if (upErr) {
-      console.error("receipt upload failed:", errMsg(upErr));
-      return json({
-        error: "Receipt image could not be stored. Please upload the receipt again.",
-      }, 500);
-    }
-
-    // Persist a safe manual-review state before OCR. If the client disconnects
-    // or the OCR provider is slow, the paid booking and stored evidence remain
-    // available to the owner instead of being treated as an abandoned hold.
-    if (hasPersistedBooking) {
-      const { error: safeStateErr } = await bookingUpdateQuery(
-        db,
-        booking,
-        {
-          status: "pending",
-          payment_status: "for_verification",
-          receipt_image_url: objectPath,
-          receipt_image_hash: imageHash,
-          receipt_phash: phash,
-          receipt_status: "manual_review",
-          receipt_flags: [],
-        },
-      ).in("status", ["verifying", "pending"]);
-      if (safeStateErr) {
-        console.error("receipt safe-state update failed:", errMsg(safeStateErr));
-      }
-    }
+    // Google Vision still expects base64. Delay this allocation until after
+    // Storage and the manual-review checkpoint have safely completed.
+    if (!imageBase64) imageBase64 = bytesToBase64(bytes);
 
     const flags: string[] = [];
 

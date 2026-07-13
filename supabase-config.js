@@ -123,6 +123,54 @@ function _pbFileToDataUrl(file) {
   });
 }
 
+async function _pbPrepareReceiptImage(file) {
+  if (!file) throw new Error('Receipt screenshot is required.');
+  const rawType = String(file.type || '').toLowerCase();
+  const type = rawType === 'image/jpg' ? 'image/jpeg' : rawType;
+  const directlySupported = ['image/jpeg', 'image/png', 'image/webp'].includes(type);
+  const targetBytes = 1250 * 1024;
+
+  // Small normal screenshots should stay byte-for-byte unchanged. Normalize
+  // the non-standard image/jpg MIME label because Storage expects image/jpeg.
+  if (file.size <= targetBytes && directlySupported) {
+    if (rawType === type) return file;
+    try { return file.slice(0, file.size, type); } catch (_) { return file; }
+  }
+
+  // Reduce large phone screenshots before crossing a fragile embedded-browser
+  // bridge. If the WebView cannot decode/canvas the image, retain the original
+  // and let the multipart/Base64 transport fallback handle it.
+  if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return file;
+  let objectUrl = '';
+  try {
+    objectUrl = URL.createObjectURL(file);
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('The selected receipt image could not be decoded.'));
+      el.src = objectUrl;
+    });
+    const maxDimension = 1800;
+    const scale = Math.min(1, maxDimension / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+    const width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+    const height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, width, height);
+    const encode = quality => new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    let encoded = await encode(0.84);
+    if (encoded?.size > targetBytes) encoded = await encode(0.72);
+    return encoded?.size ? encoded : file;
+  } catch (_) {
+    return file;
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
 async function _pbVerifyReceiptBase64Fallback(fnUrl, payload, imageFile) {
   const imageBase64 = await _pbFileToDataUrl(imageFile);
   const fallbackPayload = {
@@ -1285,7 +1333,7 @@ window.DB = {
     // us a File from a different JavaScript realm, where that check is false.
     if (payload?.imageFile) {
       const fnUrl = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-gcash-receipt`;
-      const imageFile = payload.imageFile;
+      const imageFile = await _pbPrepareReceiptImage(payload.imageFile);
       const form = new FormData();
       form.append('action', 'verify');
       form.append('bookingRef', String(payload.bookingRef || ''));
