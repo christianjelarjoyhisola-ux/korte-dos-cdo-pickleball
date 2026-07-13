@@ -112,6 +112,43 @@ function _safeJsonParse(v) {
   try { return JSON.parse(v); } catch(_) { return null; }
 }
 
+function _pbFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) { reject(new Error('Receipt screenshot is required.')); return; }
+    if (typeof FileReader !== 'function') { reject(new Error('This browser cannot read the selected receipt.')); return; }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Could not read the selected receipt.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function _pbVerifyReceiptBase64Fallback(fnUrl, payload, imageFile) {
+  const imageBase64 = await _pbFileToDataUrl(imageFile);
+  const fallbackPayload = {
+    action: 'verify',
+    bookingRef: String(payload?.bookingRef || ''),
+    provider: String(payload?.provider || 'gcash'),
+    contentType: imageFile?.type || payload?.contentType || 'image/jpeg',
+    imageBase64,
+    ...(payload?.bookingData ? { bookingData: payload.bookingData } : {}),
+  };
+  const res = await _pbFetchWithTimeout(fnUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify(fallbackPayload),
+  }, PB_RECEIPT_TIMEOUT_MS);
+  const txt = await res.text();
+  const json = _safeJsonParse(txt);
+  if (!res.ok) throw new Error(json?.error || txt || `HTTP ${res.status}`);
+  if (!json) throw new Error('Receipt verification returned an invalid response.');
+  return json;
+}
+
 function _extractFnError(err, fallback = 'Edge Function request failed') {
   if (!err) return fallback;
   if (typeof err === 'string') return err;
@@ -1244,15 +1281,24 @@ window.DB = {
   // imageBase64 remains supported for older deployed clients.
   // Returns: { ok, status, flags, extracted, confidence, message }
   async verifyGcashReceipt(payload) {
-    if (payload?.imageFile instanceof Blob) {
+    // Do not use `instanceof Blob` here. Facebook/Messenger WebViews can hand
+    // us a File from a different JavaScript realm, where that check is false.
+    if (payload?.imageFile) {
       const fnUrl = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-gcash-receipt`;
+      const imageFile = payload.imageFile;
       const form = new FormData();
       form.append('action', 'verify');
       form.append('bookingRef', String(payload.bookingRef || ''));
       form.append('provider', String(payload.provider || 'gcash'));
-      form.append('contentType', payload.imageFile.type || payload.contentType || 'image/jpeg');
+      form.append('contentType', imageFile.type || payload.contentType || 'image/jpeg');
       if (payload.bookingData) form.append('bookingData', JSON.stringify(payload.bookingData));
-      form.append('receipt', payload.imageFile, payload.imageFile.name || 'receipt.jpg');
+      try {
+        form.append('receipt', imageFile, imageFile.name || 'receipt.jpg');
+      } catch (_) {
+        // Older embedded WebViews may expose a file-like object that FormData
+        // refuses. Base64 is a compatibility fallback, not the normal path.
+        return _pbVerifyReceiptBase64Fallback(fnUrl, payload, imageFile);
+      }
 
       const res = await _pbFetchWithTimeout(fnUrl, {
         method: 'POST',
@@ -1264,7 +1310,16 @@ window.DB = {
       }, PB_RECEIPT_TIMEOUT_MS);
       const txt = await res.text();
       const json = _safeJsonParse(txt);
-      if (!res.ok) throw new Error(json?.error || txt || `HTTP ${res.status}`);
+      if (!res.ok) {
+        const reason = String(json?.error || txt || `HTTP ${res.status}`);
+        // A small set of WebViews sends multipart headers but drops the File
+        // part. Retry only when the server explicitly says it got no image;
+        // never retry an uncertain timeout/network request.
+        const missingMultipartImage = [400, 415, 422].includes(res.status) &&
+          /receipt file|multipart body|empty image/i.test(reason);
+        if (missingMultipartImage) return _pbVerifyReceiptBase64Fallback(fnUrl, payload, imageFile);
+        throw new Error(reason);
+      }
       if (!json) throw new Error('Receipt verification returned an invalid response.');
       return json;
     }
