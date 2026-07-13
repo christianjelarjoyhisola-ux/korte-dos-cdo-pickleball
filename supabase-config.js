@@ -584,6 +584,18 @@ function rowToAccount(r) {
   };
 }
 
+function rowToHostFinanceAccount(r = {}) {
+  const id = r.id || r.host_user_id || r.hostUserId || null;
+  return {
+    id,
+    fullName:  r.full_name ?? r.fullName ?? '',
+    email:     r.email ?? '',
+    role:      'host',
+    status:    r.status || 'active',
+    createdAt: r.created_at ?? r.createdAt ?? null,
+  };
+}
+
 function accountToRow(a) {
   return {
     id:         a.id,
@@ -1237,6 +1249,15 @@ window.DB = {
     const { data, error } = await _sb.from('accounts').select('*').order('created_at');
     if (error) { console.error('getAccounts:', error); return []; }
     return data.map(rowToAccount);
+  },
+
+  async getHostFinanceAccounts() {
+    const { data, error } = await _sb.rpc('get_host_finance_accounts');
+    if (error) {
+      console.error('getHostFinanceAccounts:', error);
+      throw error;
+    }
+    return (data || []).map(rowToHostFinanceAccount).filter(account => account.id);
   },
 
   async saveAccount(account) {
@@ -2318,6 +2339,22 @@ window.DB = {
     },
 
     async getAccounts() { return readDb().accounts; },
+    async getHostFinanceAccounts() {
+      const role = window.Auth?.getSession?.()?.role || '';
+      if (!['owner', 'court_owner'].includes(role)) {
+        const error = new Error('Only system owners and court owners can view host finance accounts.');
+        error.code = 'HOST_ACCOUNTS_VIEW_NOT_ALLOWED';
+        throw error;
+      }
+      return readDb().accounts
+        .filter(account => account.role === 'host')
+        .map(rowToHostFinanceAccount)
+        .filter(account => account.id)
+        .sort((a, b) =>
+          String(a.fullName || '').localeCompare(String(b.fullName || '')) ||
+          String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+        );
+    },
     async saveAccount(account) {
       const db = readDb();
       const idx = db.accounts.findIndex(a => String(a.id) === String(account.id));
@@ -2412,8 +2449,8 @@ window.Auth = {
   ROLES: ['owner', 'court_owner', 'staff', 'host'],
   ROLE_LABELS: { owner: 'System Owner', court_owner: 'Court Owner', staff: 'Court Staff', host: 'Open Play Host' },
   ROLE_PERMISSIONS: {
-    owner:       ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
-    court_owner: ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'maintenance', 'payments', 'export', 'settings', 'court_owner_only'],
+    owner:       ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'host_accounts_view', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
+    court_owner: ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'host_accounts_view', 'maintenance', 'payments', 'export', 'settings', 'court_owner_only'],
     staff:       ['bookings', 'open_play', 'payment_review'],
     host:        ['host_open_play'],
   },

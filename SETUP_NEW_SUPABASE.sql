@@ -729,6 +729,38 @@ as $$
   select coalesce(public.current_account_role() = any(allowed_roles), false)
 $$;
 
+create or replace function public.get_host_finance_accounts()
+returns table (
+  id uuid,
+  full_name text,
+  email text,
+  status text,
+  created_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.has_account_role(array['owner','court_owner']) then
+    raise exception 'Only system owners and court owners can view host finance accounts.'
+      using errcode = '42501';
+  end if;
+
+  return query
+  select
+    a.id,
+    a.full_name,
+    a.email,
+    a.status,
+    a.created_at
+  from public.accounts a
+  where a.role = 'host'
+  order by lower(coalesce(a.full_name, a.email, '')), a.created_at, a.id;
+end;
+$$;
+
 create or replace function public.can_write_setting(setting_key text)
 returns boolean
 language sql
@@ -1261,6 +1293,8 @@ $$;
 
 grant execute on function public.current_account_role() to anon, authenticated;
 grant execute on function public.has_account_role(text[]) to anon, authenticated;
+revoke all on function public.get_host_finance_accounts() from public, anon, authenticated;
+grant execute on function public.get_host_finance_accounts() to authenticated;
 grant execute on function public.can_write_setting(text) to authenticated;
 grant execute on function public.restore_deleted_booking_archive(uuid) to authenticated;
 grant execute on function public.count_open_play_host_session_registrations(uuid) to anon, authenticated;

@@ -706,6 +706,7 @@ tr:hover td { background: var(--bg2); }
   transition: opacity .25s;
 }
 .overlay.show { opacity: 1; pointer-events: all; }
+.overlay[hidden] { display: none !important; }
 .modal {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 16px; width: 100%; max-width: 460px;
@@ -1610,6 +1611,226 @@ tr:hover td { background: var(--bg2); }
 }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 
+/* -- HOST ACCOUNT DIRECTORY + FINANCE DETAIL ------------------- */
+.account-page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 18px; margin-bottom: 14px; padding: 18px;
+  border: 1px solid var(--border); border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(var(--yellow-rgb), .13), transparent 38%),
+    linear-gradient(135deg, rgba(var(--green-rgb), .12), var(--surface) 52%);
+  box-shadow: var(--shadow);
+}
+.account-page-copy { min-width: 0; }
+.account-page-kicker {
+  color: var(--green); font-size: .68rem; font-weight: 900;
+  text-transform: uppercase; letter-spacing: 1.25px; margin-bottom: 5px;
+}
+.account-page-head h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: .8px; }
+.account-page-head p { max-width: 680px; margin: 6px 0 0; color: var(--text2); font-size: .84rem; line-height: 1.5; }
+.account-page-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.account-directory-meta {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin: 0 0 12px; color: var(--text3); font-size: .76rem; font-weight: 800;
+}
+.account-meta-pill {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text2);
+}
+.account-meta-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.acc-name-cell { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+.acc-avatar {
+  width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center;
+  border-radius: 11px; color: var(--green); background: var(--green-bg);
+  border: 1px solid rgba(var(--green-rgb), .28); font-size: .75rem; font-weight: 900;
+  letter-spacing: .35px;
+}
+.acc-name-main { min-width: 0; }
+.acc-name-main strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-name-main span { display: block; margin-top: 2px; color: var(--text3); font-size: .7rem; }
+.acc-action-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.acc-view-btn {
+  background: rgba(var(--green-rgb), .11); color: var(--green);
+  border: 1px solid rgba(var(--green-rgb), .3);
+}
+.acc-view-btn:hover { background: var(--green); color: #fff; transform: translateY(-1px); }
+
+.host-finance-modal {
+  width: min(980px, calc(100vw - 32px)); max-width: 980px;
+  max-height: min(94dvh, 920px); overflow: hidden;
+  display: flex; flex-direction: column; border-radius: 20px;
+}
+.host-finance-modal .m-hd { z-index: 5; flex: 0 0 auto; padding: 16px 20px; }
+.host-finance-title { min-width: 0; }
+.host-finance-title h2 { margin: 0; font-size: 1.05rem; letter-spacing: .2px; }
+.host-finance-title p { margin: 3px 0 0; color: var(--text3); font-size: .72rem; font-weight: 700; }
+.host-finance-modal .m-x { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px; }
+.host-finance-body { min-height: 240px; padding: 16px 20px 22px; overflow-y: auto; overscroll-behavior: contain; }
+.hf-loading, .hf-error, .hf-empty {
+  min-height: 220px; display: grid; place-items: center; text-align: center;
+  padding: 28px; border: 1px dashed var(--border); border-radius: 14px;
+  background: var(--bg2); color: var(--text3); line-height: 1.5;
+}
+.hf-loading-inner { display: grid; justify-items: center; gap: 10px; }
+.hf-spinner {
+  width: 32px; height: 32px; border: 3px solid var(--border);
+  border-top-color: var(--green); border-radius: 50%; animation: hfSpin .75s linear infinite;
+}
+@keyframes hfSpin { to { transform: rotate(360deg); } }
+.hf-profile {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px;
+  align-items: center; padding: 16px; margin-bottom: 12px;
+  border: 1px solid rgba(var(--green-rgb), .26); border-radius: 16px;
+  background: linear-gradient(135deg, rgba(var(--green-rgb), .13), rgba(var(--yellow-rgb), .06));
+}
+.hf-avatar {
+  width: 56px; height: 56px; display: grid; place-items: center; border-radius: 17px;
+  background: var(--green); color: #fff; font-size: 1rem; font-weight: 900;
+  letter-spacing: .65px; box-shadow: 0 10px 24px rgba(var(--green-rgb), .22);
+}
+.hf-profile-main { min-width: 0; }
+.hf-profile-main h3 {
+  margin: 0; font-family: 'DM Sans', sans-serif; font-size: 1.08rem;
+  letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hf-profile-main p { margin: 4px 0 0; color: var(--text2); font-size: .78rem; overflow-wrap: anywhere; }
+.hf-profile-badges { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.hf-profile-date { margin-top: 5px; color: var(--text3); font-size: .68rem; font-weight: 700; }
+.hf-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 12px; }
+.hf-stat {
+  position: relative; min-width: 0; min-height: 92px; padding: 13px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+  overflow: hidden;
+}
+.hf-stat::after {
+  content: ''; position: absolute; inset: auto -22px -28px auto; width: 70px; height: 70px;
+  border-radius: 50%; background: rgba(var(--green-rgb), .07);
+}
+.hf-stat-label { color: var(--text3); font-size: .63rem; font-weight: 900; text-transform: uppercase; letter-spacing: .65px; }
+.hf-stat-value {
+  position: relative; z-index: 1; margin-top: 8px; color: var(--text);
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.55rem; line-height: 1; letter-spacing: .4px;
+  overflow-wrap: anywhere;
+}
+.hf-stat-value.money { color: var(--green); font-size: 1.35rem; }
+.hf-stat-note { position: relative; z-index: 1; margin-top: 5px; color: var(--text3); font-size: .64rem; line-height: 1.3; }
+.hf-policy-note {
+  display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 11px 12px;
+  border: 1px solid rgba(var(--yellow-rgb), .28); border-radius: 12px;
+  background: rgba(var(--yellow-rgb), .08); color: var(--text2); font-size: .75rem; line-height: 1.45;
+}
+.hf-policy-note strong { color: var(--text); }
+.hf-toolbar {
+  position: sticky; top: -16px; z-index: 4; display: grid;
+  grid-template-columns: minmax(210px, 1fr) auto; gap: 9px; align-items: center;
+  margin: 0 -2px 12px; padding: 10px 2px; background: var(--surface);
+}
+.hf-search-wrap { position: relative; min-width: 0; }
+.hf-search-wrap::before { content: '\2315'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 1rem; }
+.hf-search {
+  width: 100%; min-height: 42px; padding: 9px 12px 9px 36px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg2); color: var(--text);
+  font: inherit; font-size: .82rem; outline: none;
+}
+.hf-search:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(var(--green-rgb), .11); }
+.hf-refresh { min-height: 42px; justify-content: center; }
+.hf-tabs {
+  display: flex; gap: 5px; margin-bottom: 12px; padding: 4px;
+  overflow-x: auto; scrollbar-width: thin; border: 1px solid var(--border);
+  border-radius: 13px; background: var(--bg2);
+}
+.hf-tab {
+  flex: 1 0 auto; min-height: 36px; padding: 7px 11px; border: 0; border-radius: 9px;
+  background: transparent; color: var(--text2); cursor: pointer; font: inherit;
+  font-size: .73rem; font-weight: 900; white-space: nowrap; transition: all var(--transition);
+}
+.hf-tab:hover { color: var(--text); }
+.hf-tab.active { background: var(--surface); color: var(--green); box-shadow: var(--shadow); }
+.hf-list-meta { margin: 0 2px 8px; color: var(--text3); font-size: .7rem; font-weight: 800; }
+.hf-booking-list { display: grid; gap: 10px; }
+.hf-booking-card {
+  display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border);
+  border-radius: 14px; background: var(--card); box-shadow: 0 7px 20px rgba(0,0,0,.035);
+}
+.hf-booking-card.needs-review { border-color: rgba(var(--yellow-rgb), .38); }
+.hf-booking-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.hf-customer { min-width: 0; }
+.hf-customer strong { display: block; color: var(--text); font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hf-reference { margin-top: 3px; color: var(--green); font: 700 .69rem 'DM Mono', monospace; overflow-wrap: anywhere; }
+.hf-booking-badges { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.hf-schedule {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg2);
+}
+.hf-court { min-width: 0; color: var(--text); font-size: .8rem; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hf-datetime { text-align: right; color: var(--text2); font-size: .74rem; font-weight: 800; }
+.hf-money-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.hf-money-cell { min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.hf-money-cell span { display: block; color: var(--text3); font-size: .6rem; font-weight: 900; text-transform: uppercase; letter-spacing: .55px; }
+.hf-money-cell strong { display: block; margin-top: 4px; color: var(--text); font: 900 .88rem 'DM Mono', monospace; overflow-wrap: anywhere; }
+.hf-money-cell.paid strong { color: var(--green); }
+.hf-money-cell.balance strong { color: var(--yellow); }
+.hf-money-cell.balance.settled strong { color: var(--green); }
+.hf-money-cell.balance.inactive strong { color: var(--text3); font-family: 'DM Sans', sans-serif; }
+.hf-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 9px; flex-wrap: wrap; }
+.hf-card-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: var(--text3); font-size: .7rem; font-weight: 800; }
+.hf-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.hf-card-actions .btn { min-height: 36px; justify-content: center; }
+.hf-booking-detail { border-top: 1px solid var(--border); padding-top: 9px; }
+.hf-booking-detail summary { color: var(--text2); font-size: .72rem; font-weight: 900; cursor: pointer; }
+.hf-booking-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin-top: 9px; }
+.hf-booking-detail-row { display: flex; justify-content: space-between; gap: 8px; min-width: 0; font-size: .72rem; }
+.hf-booking-detail-row span:first-child { color: var(--text3); }
+.hf-booking-detail-row span:last-child { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+.host-finance-modal :is(button, input, summary):focus-visible,
+#sec-accounts :is(button, a):focus-visible { outline: 3px solid rgba(var(--green-rgb), .3); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .account-page-head { align-items: stretch; flex-direction: column; padding: 15px; }
+  .account-page-actions { justify-content: stretch; }
+  .account-page-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .host-finance-modal { width: calc(100vw - 20px); max-width: none; max-height: calc(100dvh - 20px); border-radius: 18px; }
+  .host-finance-modal .m-hd { padding: 12px 14px; }
+  .host-finance-body { padding: 12px 14px 18px; }
+  .hf-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hf-toolbar { top: -12px; margin-left: -1px; margin-right: -1px; }
+}
+@media (max-width: 520px) {
+  #hostAccountModal.overlay { align-items: flex-end; padding: 0; overflow: hidden; }
+  .host-finance-modal {
+    width: 100%; height: min(94dvh, 900px); max-height: 94dvh;
+    border-radius: 20px 20px 0 0; border-bottom: 0;
+  }
+  .hf-profile { grid-template-columns: auto minmax(0, 1fr); gap: 11px; padding: 13px; }
+  .hf-avatar { width: 48px; height: 48px; border-radius: 14px; }
+  .hf-profile-badges { grid-column: 1 / -1; justify-content: flex-start; }
+  .hf-stat { min-height: 84px; padding: 11px; }
+  .hf-stat-value { font-size: 1.35rem; }
+  .hf-stat-value.money { font-size: 1.12rem; }
+  .hf-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .hf-refresh { width: 42px; padding: 0; }
+  .hf-refresh-label { display: none; }
+  .hf-booking-head, .hf-schedule { grid-template-columns: 1fr; }
+  .hf-booking-badges { justify-content: flex-start; }
+  .hf-datetime { text-align: left; }
+  .hf-money-grid { gap: 5px; }
+  .hf-money-cell { padding: 8px 7px; }
+  .hf-money-cell strong { font-size: .72rem; }
+  .hf-card-actions { width: 100%; }
+  .hf-card-actions .btn { flex: 1 1 130px; }
+  .hf-booking-detail-grid { grid-template-columns: 1fr; }
+  .acc-name-cell { min-width: 0; width: 100%; }
+  .acc-name-main { flex: 1; min-width: 0; }
+  #sec-accounts td[data-label="Email"] { overflow-wrap: anywhere; word-break: break-word; }
+  .host-finance-body { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .acc-action-row .btn { flex: 1 1 auto; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hf-spinner { animation: none; }
+  #hostAccountModal, #hostAccountModal .modal, .host-finance-modal, .acc-view-btn { animation: none; transition: none; }
+}
+
 /* ── SWITCH ────────────────────────────────────────────── */
 .sw { position: relative; width: 42px; height: 23px; }
 .sw input { opacity: 0; width: 0; height: 0; }
@@ -1686,9 +1907,12 @@ tr:hover td { background: var(--bg2); }
       <div class="nav-item" data-s="maintenance" data-perm="maintenance" onclick="goto('maintenance')"><span>&#128295;</span> Maintenance</div>
       <div class="nav-item" data-s="payments" data-perm="payments" onclick="goto('payments')"><span>&#128179;</span> Payments</div>
     </div>
-    <div class="sb-section" data-perm="accounts">
-      <div class="nav-grp">Admin Only</div>
-      <div class="nav-item" data-s="accounts" data-perm="accounts" onclick="goto('accounts')"><span>&#128101;</span> Accounts</div>
+    <div class="sb-section" data-perm="host_accounts_view">
+      <div class="nav-grp">People &amp; Finance</div>
+      <div class="nav-item" data-s="accounts" data-perm="host_accounts_view" onclick="goto('accounts')"><span>&#128101;</span> Host Accounts</div>
+    </div>
+    <div class="sb-section" data-perm="owner_only">
+      <div class="nav-grp">System Owner</div>
       <div class="nav-item" data-s="deleted" data-perm="owner_only" onclick="goto('deleted')"><span>&#128465;</span> Deleted Bookings</div>
     </div>
     <div class="sb-foot">
@@ -2063,16 +2287,24 @@ tr:hover td { background: var(--bg2); }
       </div>
     </div>
 
-    <!-- ACCOUNTS (owner only) -->
+    <!-- HOST ACCOUNT DIRECTORY (owner + court owner; mutations remain owner-only) -->
     <div id="sec-accounts" class="adm-sec">
-      <div class="toolbar">
-        <h2>👥 ACCOUNT MANAGEMENT</h2>
-        <button class="btn btn-p" onclick="openAccModal()">+ Add Account</button>
+      <div class="account-page-head">
+        <div class="account-page-copy">
+          <div class="account-page-kicker">People &amp; Finance</div>
+          <h2 id="accSectionTitle">HOST ACCOUNTS</h2>
+          <p id="accSectionCopy">View every Open Play Host, then open a dedicated booking and balance summary.</p>
+        </div>
+        <div class="account-page-actions">
+          <button class="btn btn-g" type="button" onclick="renderAccounts()">&#8635; Refresh</button>
+          <button class="btn btn-p" type="button" data-perm="accounts" onclick="openAccModal()">+ Add Account</button>
+        </div>
       </div>
+      <div class="account-directory-meta" id="accDirectoryMeta" aria-live="polite"></div>
       <div class="tbl-wrap">
         <div class="tbl-scroll">
           <table>
-            <thead><tr><th>Full Name</th><th>Username</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Account</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="accBody"></tbody>
           </table>
         </div>
@@ -2793,6 +3025,22 @@ tr:hover td { background: var(--bg2); }
   </div>
 </div>
 
+<!-- HOST ACCOUNT BOOKINGS & BALANCE -->
+<div class="overlay" id="hostAccountModal" aria-hidden="true" inert hidden>
+  <div class="modal host-finance-modal" role="dialog" aria-modal="true" aria-labelledby="hostAccountModalTitle" tabindex="-1" onkeydown="hostAccountModalKeydown(event)">
+    <div class="m-hd">
+      <div class="host-finance-title">
+        <h2 id="hostAccountModalTitle">HOST ACCOUNT DETAILS</h2>
+        <p>Bookings, verified payments, and outstanding balance</p>
+      </div>
+      <button class="m-x" type="button" aria-label="Close host account details" onclick="closeHostAccountDetails()">&#10005;</button>
+    </div>
+    <div class="host-finance-body" id="hostAccountBody" aria-live="polite">
+      <div class="hf-loading"><div class="hf-loading-inner"><span class="hf-spinner" aria-hidden="true"></span><span>Loading host account...</span></div></div>
+    </div>
+  </div>
+</div>
+
 <!-- CHANGE PASSWORD MODAL (any signed-in user) -->
 <div class="overlay" id="pwModal">
   <div class="modal">
@@ -2810,11 +3058,11 @@ tr:hover td { background: var(--bg2); }
 </div>
 
 <!-- VERIFY PAYMENT MODAL -->
-<div class="overlay" id="verifyModal">
-  <div class="modal verify-payment-modal">
+<div class="overlay" id="verifyModal" aria-hidden="true" inert hidden>
+  <div class="modal verify-payment-modal" role="dialog" aria-modal="true" aria-labelledby="verifyPaymentTitle" tabindex="-1" onkeydown="verifyPaymentModalKeydown(event)">
     <div class="m-hd" style="background:linear-gradient(135deg,rgba(200,160,96,.1),transparent)">
-      <h2 style="color:var(--yellow)">🔍 VERIFY PAYMENT</h2>
-      <button class="m-x" onclick="closeModal('verifyModal')">✕</button>
+      <h2 id="verifyPaymentTitle" style="color:var(--yellow)">🔍 VERIFY PAYMENT</h2>
+      <button class="m-x" type="button" aria-label="Close payment verification" onclick="closeVerifyModal()">✕</button>
     </div>
     <div class="m-body">
       <div style="text-align:center;margin-bottom:16px">
@@ -3791,7 +4039,7 @@ let sess;
    NAVIGATION
    ============================================== */
 const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',blocked:'Open Play',hosts:'Host Center',gamemgr:'Game Manager',maintenance:'Maintenance',payments:'Payments'};
-const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'accounts',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
+const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
 const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:renderGameManager,maintenance:renderMaintenance,payments:renderPaymentSettings};
 let _curSection=null;
 async function goto(s){
@@ -4158,7 +4406,7 @@ async function renderBookings(){
   bks=bks.filter(b=>b.email!=='reserve@hold.internal');
   const totalRawBookings = bks.length;
   const { q, fd, fs } = bookingFilters();
-  if(q) bks=bks.filter(b=>[b.ref,b.fullName,b.email,b.courtName,b.gcashRef].some(v=>String(v||'').toLowerCase().includes(q)));
+  if(q) bks=bks.filter(b=>[b.ref,b.groupRef,b.fullName,b.email,b.courtName,b.gcashRef].some(v=>String(v||'').toLowerCase().includes(q)));
   if(fd) bks=bks.filter(b=>b.date===fd);
   if(fs) bks=bks.filter(b=>b.status===fs);
   const groupedBookings = groupBookings(bks);
@@ -4882,7 +5130,10 @@ async function updateStatus(ref, status) {
   }).catch(() => {});
 }
 
-async function openVerifyModal(ref) {
+let _verifyModalLastFocus = null;
+
+async function openVerifyModal(ref, { returnFocus = null } = {}) {
+  _verifyModalLastFocus = returnFocus || document.activeElement;
   const b = await getBookingGroupByRef(ref);
   if (!b) { toast('Booking not found.', 'err'); return; }
   $('vmMethod').textContent = paymentMethodLabel(b.paymentMethod);
@@ -4902,7 +5153,49 @@ async function openVerifyModal(ref) {
   await vmPopulateReceipt(b);
   $('verifyModal').dataset.ref = ref;
   $('verifyModal').dataset.refs = JSON.stringify(b.refs || [ref]);
-  $('verifyModal').classList.add('show');
+  const overlay = $('verifyModal');
+  overlay.hidden = false;
+  overlay.inert = false;
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.classList.add('show');
+  requestAnimationFrame(() => overlay.querySelector('.verify-payment-modal')?.focus());
+}
+
+function closeVerifyModal({ restoreFocus = true } = {}) {
+  const overlay = $('verifyModal');
+  if (!overlay) return;
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.inert = true;
+  overlay.hidden = true;
+  if (!restoreFocus) return;
+  const previous = _verifyModalLastFocus;
+  requestAnimationFrame(() => {
+    const blocked = previous?.closest?.('[hidden], [inert]');
+    if (previous && !blocked && typeof previous.focus === 'function' && document.contains(previous)) {
+      previous.focus();
+      return;
+    }
+    const fallback = $('topTitle');
+    if (fallback) { fallback.tabIndex = -1; fallback.focus(); }
+  });
+}
+
+function verifyPaymentModalKeydown(event) {
+  const overlay = $('verifyModal');
+  if (!overlay?.classList.contains('show')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeVerifyModal();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...overlay.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [href], [tabindex]:not([tabindex="-1"])')]
+    .filter(el => el.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
 async function vmPopulateReceipt(b){
@@ -4957,7 +5250,7 @@ async function verifyAndConfirm() {
     const verifiedPayStatus = isFullyPaid ? 'paid' : 'downpayment_paid';
     await updateBookingGroupByRef(ref, { status: 'confirmed', paymentStatus: verifiedPayStatus });
 
-    closeModal('verifyModal');
+    closeVerifyModal();
     toast('Payment verified & booking confirmed!');
     await renderBookings();
     if (_curSection === 'payreview') await renderPaymentReview();
@@ -4993,7 +5286,7 @@ async function rejectPayment() {
   if (!confirm(`Cancel booking ${ref}? This cannot be undone.`)) return;
   try {
     await updateBookingGroupByRef(ref, { status: 'cancelled', paymentStatus: 'rejected' });
-    closeModal('verifyModal');
+    closeVerifyModal();
     toast('Booking cancelled — payment not verified.', 'err');
     await renderBookings();
     if (_curSection === 'payreview') await renderPaymentReview();
@@ -7179,25 +7472,91 @@ async function savePaymentSettings() {
 /* ==============================================
    ACCOUNTS
    ============================================== */
+let _accountDirectory = [];
+let _hostFinanceState = {
+  account: null,
+  bookings: [],
+  filter: 'all',
+  query: '',
+  lastFocus: null,
+};
+let _hostFinanceLoadSeq = 0;
+
+const ACCOUNT_ROLE_LABELS = { owner:'System Owner', court_owner:'Court Owner', staff:'Court Staff', host:'Open Play Host' };
+const ACCOUNT_ROLE_BADGES = { owner:'bdg-c', court_owner:'bdg-p', staff:'bdg-d', host:'bdg-v' };
+
+function accountInitials(name = '') {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return (parts.length ? `${parts[0][0] || ''}${parts.length > 1 ? (parts[parts.length - 1][0] || '') : ''}` : 'H').toUpperCase().slice(0, 2);
+}
+
+function accountCreatedLabel(value) {
+  if (!value) return 'Creation date unavailable';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return 'Creation date unavailable';
+  return `Joined ${d.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })}`;
+}
+
 async function renderAccounts(){
-  const accs=(await Auth.getAll()).filter(a=>a.id!==sess.id);
-  const ROLE_LABELS={owner:'System Owner',court_owner:'Court Owner',staff:'Court Staff',host:'Open Play Host'};
-  const ROLE_BDG={owner:'bdg-c',court_owner:'bdg-p',staff:'bdg-d',host:'bdg-v'};
-  $('accBody').innerHTML=accs.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No other accounts.</td></tr>':
-    accs.map(a=>`<tr>
-      <td data-label="Full Name"><strong>${esc(a.fullName)}</strong></td>
-      <td data-label="Username">${esc(a.username)}</td>
-      <td data-label="Email">${esc(a.email)}</td>
-      <td data-label="Role"><span class="bdg ${ROLE_BDG[a.role]||'bdg-d'}">${esc(ROLE_LABELS[a.role]||a.role)}</span></td>
-      <td data-label="Actions"><div style="display:flex;gap:6px">
-        <button class="btn btn-g btn-sm" onclick="openAccModal('${jsArg(a.id)}')">✏️ Edit</button>
-        <button class="btn btn-d btn-sm" onclick="delAcc('${jsArg(a.id)}')">🗑️</button>
-      </div></td>
-    </tr>`).join('');
+  const body = $('accBody');
+  const canManage = Auth.can('accounts', sess.role);
+  if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:28px">Loading accounts...</td></tr>';
+  try {
+    const source = canManage ? await Auth.getAll() : await DB.getHostFinanceAccounts();
+    const accs = source
+      .filter(a => a && a.id !== sess.id)
+      .filter(a => canManage || a.role === 'host')
+      .sort((a, b) => String(a.fullName || a.email || '').localeCompare(String(b.fullName || b.email || ''), undefined, { sensitivity:'base' }));
+    _accountDirectory = accs;
+
+    $('accSectionTitle').textContent = canManage ? 'ACCOUNT MANAGEMENT' : 'HOST ACCOUNTS & BALANCES';
+    $('accSectionCopy').textContent = canManage
+      ? 'Manage system accounts. Open any host to review their bookings, verified payments, and remaining balance.'
+      : 'View every Open Play Host and open a dedicated, read-only booking and payment summary.';
+
+    const hosts = accs.filter(a => a.role === 'host');
+    const activeHosts = hosts.filter(a => String(a.status || 'active').toLowerCase() === 'active');
+    $('accDirectoryMeta').innerHTML = `
+      <span class="account-meta-pill"><span class="account-meta-dot"></span>${hosts.length} host${hosts.length === 1 ? '' : 's'}</span>
+      <span class="account-meta-pill">${activeHosts.length} active</span>
+      ${canManage ? `<span class="account-meta-pill">${accs.length} total managed account${accs.length === 1 ? '' : 's'}</span>` : '<span>Read-only financial overview</span>'}`;
+
+    if (!accs.length) {
+      body.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:28px">${canManage ? 'No other accounts.' : 'No host accounts found.'}</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = accs.map(a => {
+      const role = a.role || 'staff';
+      const isHost = role === 'host';
+      const status = String(a.status || 'active').toLowerCase();
+      const statusClass = status === 'active' ? 'bdg-c' : status === 'suspended' ? 'bdg-x' : 'bdg-p';
+      return `<tr>
+        <td data-label="Account"><div class="acc-name-cell">
+          <span class="acc-avatar" aria-hidden="true">${esc(accountInitials(a.fullName || a.email))}</span>
+          <span class="acc-name-main"><strong>${esc(a.fullName || 'Unnamed host')}</strong><span>${a.username ? `@${esc(a.username)} · ` : ''}${esc(accountCreatedLabel(a.createdAt))}</span></span>
+        </div></td>
+        <td data-label="Email">${esc(a.email || '—')}</td>
+        <td data-label="Role"><span class="bdg ${ACCOUNT_ROLE_BADGES[role] || 'bdg-d'}">${esc(ACCOUNT_ROLE_LABELS[role] || role)}</span></td>
+        <td data-label="Status"><span class="bdg ${statusClass}">${esc(status)}</span></td>
+        <td data-label="Actions"><div class="acc-action-row">
+          ${isHost ? `<button class="btn btn-sm acc-view-btn" type="button" onclick="openHostAccountDetails('${jsArg(a.id)}')">Bookings &amp; Balance</button>` : ''}
+          ${canManage ? `<button class="btn btn-g btn-sm" type="button" onclick="openAccModal('${jsArg(a.id)}')">Edit</button>
+          <button class="btn btn-d btn-sm" type="button" aria-label="Delete ${esc(a.fullName || 'account')}" onclick="delAcc('${jsArg(a.id)}')">Delete</button>` : ''}
+        </div></td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('renderAccounts failed:', e);
+    _accountDirectory = [];
+    if ($('accDirectoryMeta')) $('accDirectoryMeta').textContent = 'Account directory unavailable';
+    if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--red);padding:28px">Could not load host accounts. Please refresh and try again.</td></tr>';
+  }
 }
 
 async function openAccModal(id){
-  const a=id?(await Auth.getAll()).find(x=>x.id===id):null;
+  if (!Auth.can('accounts', sess.role)) { toast('Only the system owner can manage accounts.', 'err'); return; }
+  const a=id?(_accountDirectory.find(x=>x.id===id) || (await Auth.getAll()).find(x=>x.id===id)):null;
   $('amTitle').textContent=a?'EDIT ACCOUNT':'ADD ACCOUNT';
   $('amId').value=a?a.id:'';
   $('amFull').value=a?a.fullName:'';
@@ -7209,6 +7568,7 @@ async function openAccModal(id){
 }
 
 async function saveAcc(){
+  if (!Auth.can('accounts', sess.role)) { toast('Only the system owner can manage accounts.', 'err'); return; }
   const id=$('amId').value;
   const fullName=$('amFull').value.trim();
   const username=$('amUser').value.trim();
@@ -7232,11 +7592,402 @@ async function saveAcc(){
 }
 
 async function delAcc(id){
+  if (!Auth.can('accounts', sess.role)) { toast('Only the system owner can manage accounts.', 'err'); return; }
   if(!confirm('Delete this account?'))return;
   const r=await Auth.del(id);
   if(!r.ok){toast(r.msg || 'Delete failed.','err');return;}
   await renderAccounts();
   toast('Account deleted.','inf');
+}
+
+function hostFinanceTodayKey() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date()).reduce((out, part) => ({ ...out, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function normalizeHostIdentityEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function hostAccountBookingMatches(booking, account) {
+  if (!booking?.hostBooking || booking.email === 'reserve@hold.internal') return false;
+  const hostUserId = String(booking.hostUserId || '').trim();
+  if (hostUserId) return hostUserId === String(account.id || '').trim();
+
+  const email = normalizeHostIdentityEmail(account.email);
+  if (!email) return false;
+  const sameEmailHosts = _accountDirectory.filter(a => a.role === 'host' && normalizeHostIdentityEmail(a.email) === email);
+  if (sameEmailHosts.length !== 1) return false;
+  const legacyHostEmail = normalizeHostIdentityEmail(booking.hostEmail || (booking.createdByRole === 'host' ? booking.createdByEmail : ''));
+  if (legacyHostEmail) return legacyHostEmail === email;
+  return normalizeHostIdentityEmail(booking.email) === email;
+}
+
+function hostFinanceItems(booking) {
+  return Array.isArray(booking?.items) && booking.items.length ? booking.items : [booking];
+}
+
+function hostFinanceItemInactive(item) {
+  return ['cancelled', 'rejected'].includes(String(item?.status || '').toLowerCase());
+}
+
+function hostFinanceVerifiedPaidItem(item) {
+  const total = Math.max(0, Number(item?.total) || 0);
+  const state = String(item?.paymentStatus || 'unpaid').toLowerCase();
+  if (state === 'paid') return total;
+  if (state === 'downpayment_paid') return Math.min(total, Math.max(0, Number(item?.downpayment) || 0));
+  return 0;
+}
+
+function hostFinanceAmounts(booking) {
+  return hostFinanceItems(booking).reduce((sum, item) => {
+    const total = Math.max(0, Number(item?.total) || 0);
+    const paid = hostFinanceVerifiedPaidItem(item);
+    const inactive = hostFinanceItemInactive(item);
+    const requestedInitial = Math.min(total, Math.max(0, Number(item?.downpayment) || 0));
+    sum.total += total;
+    sum.verifiedPaid += paid;
+    sum.requestedInitial += requestedInitial;
+    if (!inactive) {
+      sum.activeTotal += total;
+      sum.activeVerifiedPaid += paid;
+      sum.balance += Math.max(0, total - paid);
+      sum.activeItems++;
+    } else {
+      sum.inactiveItems++;
+    }
+    return sum;
+  }, { total:0, verifiedPaid:0, requestedInitial:0, activeTotal:0, activeVerifiedPaid:0, balance:0, activeItems:0, inactiveItems:0 });
+}
+
+function hostFinanceNeedsReview(booking) {
+  return hostFinanceItems(booking).some(item => {
+    const pay = String(item?.paymentStatus || '').toLowerCase();
+    const status = String(item?.status || '').toLowerCase();
+    const receipt = String(item?.receiptStatus || '').toLowerCase();
+    if (['cancelled','rejected'].includes(status)) return false;
+    if (['paid','downpayment_paid','rejected','failed'].includes(pay)) return false;
+    return pay === 'for_verification' || receipt === 'manual_review' || receipt === 'rejected';
+  });
+}
+
+function hostFinanceIsUpcoming(booking) {
+  if (hostFinanceItems(booking).every(hostFinanceItemInactive)) return false;
+  if (String(booking?.status || '').toLowerCase() === 'completed') return false;
+  return Boolean(booking?.date && booking.date >= hostFinanceTodayKey());
+}
+
+function hostFinanceIsHistory(booking) {
+  if (hostFinanceItems(booking).every(hostFinanceItemInactive)) return true;
+  if (String(booking?.status || '').toLowerCase() === 'completed') return true;
+  return Boolean(booking?.date && booking.date < hostFinanceTodayKey());
+}
+
+function hostFinanceMatchesSearch(booking, query) {
+  if (!query) return true;
+  const haystack = [
+    booking.displayRef, booking.ref, ...(booking.refs || []), booking.fullName,
+    booking.email, booking.courtName, booking.date, booking.gcashRef
+  ].map(value => String(value || '').toLowerCase());
+  return haystack.some(value => value.includes(query));
+}
+
+function hostFinanceMatchesFilter(booking, filter) {
+  if (filter === 'upcoming') return hostFinanceIsUpcoming(booking);
+  if (filter === 'balance') return hostFinanceAmounts(booking).balance > 0;
+  if (filter === 'review') return hostFinanceNeedsReview(booking);
+  if (filter === 'history') return hostFinanceIsHistory(booking);
+  return true;
+}
+
+function hostFinanceReceiptLabel(booking) {
+  const state = String(booking?.receiptStatus || 'none').toLowerCase();
+  const resolved = !hostFinanceNeedsReview(booking);
+  const verified = hostFinanceItems(booking).some(item => ['paid','downpayment_paid'].includes(String(item?.paymentStatus || '').toLowerCase()));
+  if (resolved && ['manual_review','rejected'].includes(state)) return verified ? 'Manually verified' : 'Review resolved';
+  return state === 'auto_approved' ? 'Auto-verified'
+    : state === 'manual_review' ? 'Needs manual review'
+    : state === 'rejected' ? 'Receipt flagged'
+    : booking?.receiptImageUrl ? 'Receipt uploaded'
+    : 'No receipt recorded';
+}
+
+function hostFinancePaymentBadge(state) {
+  return state === 'mixed'
+    ? '<span class="bdg bdg-v">Mixed payment states</span>'
+    : payStatusBdg(state);
+}
+
+function hostFinanceStatusBadge(state) {
+  return state === 'mixed'
+    ? '<span class="bdg bdg-v">Mixed booking states</span>'
+    : statusBdg(state || 'pending');
+}
+
+function hostFinanceBookingCard(booking) {
+  const amount = hostFinanceAmounts(booking);
+  const needsReview = hostFinanceNeedsReview(booking);
+  const fullyInactive = amount.activeItems === 0 && amount.inactiveItems > 0;
+  const hasInactiveItems = amount.inactiveItems > 0;
+  const displayedTotal = fullyInactive ? amount.total : amount.activeTotal;
+  const displayedPaid = fullyInactive ? amount.verifiedPaid : amount.activeVerifiedPaid;
+  const reference = booking.displayRef || booking.primaryRef || booking.ref || '—';
+  const actionRef = booking.primaryRef || booking.ref;
+  const bookingSearchRef = booking.displayRef || actionRef;
+  const bookedOn = booking.createdAt && !Number.isNaN(new Date(booking.createdAt).getTime())
+    ? new Date(booking.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+    : '—';
+  const dateLabel = booking.dateLabel || fmtD(booking.date);
+  const timeLabel = booking.timeLabel || [booking.startTime, booking.endTime].filter(Boolean).join(' - ') || 'Time unavailable';
+  const showReview = Auth.can('payment_review', sess.role)
+    && hostFinanceItems(booking).some(item => isDigitalPayment(item.paymentMethod))
+    && needsReview;
+  return `<article class="hf-booking-card ${needsReview ? 'needs-review' : ''}">
+    <div class="hf-booking-head">
+      <div class="hf-customer"><strong>${esc(booking.fullName || 'Booking customer')}</strong><div class="hf-reference">${esc(reference)}</div></div>
+      <div class="hf-booking-badges">${hostFinanceStatusBadge(booking.status)}${hostFinancePaymentBadge(booking.paymentStatus)}</div>
+    </div>
+    <div class="hf-schedule">
+      <div class="hf-court">${esc(booking.courtName || 'Court unavailable')}${booking.isGroup ? ` · ${booking.items.length} booking items` : ''}</div>
+      <div class="hf-datetime">${esc(dateLabel)}<br>${esc(timeLabel)}</div>
+    </div>
+    <div class="hf-money-grid" aria-label="Booking amount summary">
+      <div class="hf-money-cell"><span>${fullyInactive ? 'Historical total' : hasInactiveItems ? 'Active total' : 'Total'}</span><strong>${fmt(displayedTotal)}</strong></div>
+      <div class="hf-money-cell paid"><span>Verified paid</span><strong>${fmt(displayedPaid)}</strong></div>
+      <div class="hf-money-cell balance ${fullyInactive ? 'inactive' : amount.balance <= 0 ? 'settled' : ''}"><span>Balance</span><strong>${fullyInactive ? 'Not due' : fmt(amount.balance)}</strong></div>
+    </div>
+    <details class="hf-booking-detail">
+      <summary>Payment and booking details</summary>
+      <div class="hf-booking-detail-grid">
+        <div class="hf-booking-detail-row"><span>Requested initial due</span><span>${fmt(amount.requestedInitial)}</span></div>
+        ${hasInactiveItems ? `<div class="hf-booking-detail-row"><span>Original booking total</span><span>${fmt(amount.total)}</span></div>` : ''}
+        <div class="hf-booking-detail-row"><span>Payment method</span><span>${esc(paymentMethodLabel(booking.paymentMethod))}</span></div>
+        <div class="hf-booking-detail-row"><span>Receipt</span><span>${esc(hostFinanceReceiptLabel(booking))}</span></div>
+        <div class="hf-booking-detail-row"><span>Payment reference</span><span>${esc(booking.gcashRef || '—')}</span></div>
+        <div class="hf-booking-detail-row"><span>Booked on</span><span>${esc(bookedOn)}</span></div>
+        <div class="hf-booking-detail-row"><span>Initial payment policy</span><span>Booking fee + 25% court fee</span></div>
+      </div>
+    </details>
+    <div class="hf-card-foot">
+      <div class="hf-card-meta"><span>${esc(paymentMethodLabel(booking.paymentMethod))}</span>${fullyInactive ? '<span>· Cancelled — excluded from balance</span>' : needsReview ? '<span>· Needs review</span>' : ''}</div>
+      <div class="hf-card-actions">
+        ${showReview ? `<button class="btn btn-g btn-sm" type="button" onclick="openHostFinanceBooking('${jsArg(actionRef)}','review')">Review payment</button>` : ''}
+        ${Auth.can('bookings', sess.role) ? `<button class="btn btn-p btn-sm" type="button" onclick="openHostFinanceBooking('${jsArg(bookingSearchRef)}','booking')">View booking</button>` : ''}
+      </div>
+    </div>
+  </article>`;
+}
+
+function hostFinanceFilterCount(filter) {
+  return _hostFinanceState.bookings.filter(booking => hostFinanceMatchesFilter(booking, filter)).length;
+}
+
+function renderHostFinanceBookingResults() {
+  const list = $('hostFinanceBookingList');
+  const meta = $('hostFinanceListMeta');
+  if (!list || !meta) return;
+  const query = String(_hostFinanceState.query || '').trim().toLowerCase();
+  let visible = _hostFinanceState.bookings
+    .filter(booking => hostFinanceMatchesFilter(booking, _hostFinanceState.filter))
+    .filter(booking => hostFinanceMatchesSearch(booking, query));
+
+  if (_hostFinanceState.filter === 'upcoming') {
+    visible.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.startTime || '').localeCompare(String(b.startTime || '')));
+  }
+
+  document.querySelectorAll('#hostAccountTabs .hf-tab').forEach(tab => {
+    const active = tab.dataset.filter === _hostFinanceState.filter;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    tab.tabIndex = active ? 0 : -1;
+    const count = tab.querySelector('[data-count]');
+    if (count) count.textContent = hostFinanceFilterCount(tab.dataset.filter);
+  });
+
+  meta.textContent = `${visible.length} of ${_hostFinanceState.bookings.length} booking${_hostFinanceState.bookings.length === 1 ? '' : 's'} shown`;
+  if (!visible.length) {
+    const copy = query ? 'No bookings match your search.'
+      : _hostFinanceState.filter === 'balance' ? 'No outstanding balances in this account.'
+      : _hostFinanceState.filter === 'review' ? 'No payments currently need review.'
+      : _hostFinanceState.filter === 'upcoming' ? 'No upcoming bookings.'
+      : _hostFinanceState.filter === 'history' ? 'No booking history yet.'
+      : 'No host bookings found for this account.';
+    list.innerHTML = `<div class="hf-empty"><div><strong style="display:block;color:var(--text);margin-bottom:5px">Nothing to show</strong>${esc(copy)}</div></div>`;
+    return;
+  }
+  list.innerHTML = visible.map(hostFinanceBookingCard).join('');
+}
+
+function renderHostAccountDetails() {
+  const account = _hostFinanceState.account;
+  const bookings = _hostFinanceState.bookings;
+  const summary = bookings.reduce((out, booking) => {
+    const amount = hostFinanceAmounts(booking);
+    out.activeTotal += amount.activeTotal;
+    out.verifiedPaid += amount.activeVerifiedPaid;
+    out.balance += amount.balance;
+    if (hostFinanceIsUpcoming(booking)) out.upcoming++;
+    if (hostFinanceNeedsReview(booking)) out.review++;
+    return out;
+  }, { activeTotal:0, verifiedPaid:0, balance:0, upcoming:0, review:0 });
+  const status = String(account.status || 'active').toLowerCase();
+  const statusClass = status === 'active' ? 'bdg-c' : status === 'suspended' ? 'bdg-x' : 'bdg-p';
+
+  $('hostAccountModalTitle').textContent = account.fullName || 'Host Account Details';
+  $('hostAccountBody').innerHTML = `
+    <section class="hf-profile" aria-label="Host identity">
+      <div class="hf-avatar" aria-hidden="true">${esc(accountInitials(account.fullName || account.email))}</div>
+      <div class="hf-profile-main">
+        <h3>${esc(account.fullName || 'Unnamed host')}</h3>
+        <p>${esc(account.email || 'No email recorded')}</p>
+        <div class="hf-profile-date">${esc(accountCreatedLabel(account.createdAt))}</div>
+      </div>
+      <div class="hf-profile-badges"><span class="bdg bdg-v">Open Play Host</span><span class="bdg ${statusClass}">${esc(status)}</span></div>
+    </section>
+    <section class="hf-stat-grid" aria-label="Host financial summary">
+      <div class="hf-stat"><div class="hf-stat-label">Bookings</div><div class="hf-stat-value">${bookings.length}</div><div class="hf-stat-note">${summary.upcoming} upcoming</div></div>
+      <div class="hf-stat"><div class="hf-stat-label">Active value</div><div class="hf-stat-value money">${fmt(summary.activeTotal)}</div><div class="hf-stat-note">Excludes cancelled bookings</div></div>
+      <div class="hf-stat"><div class="hf-stat-label">Verified paid</div><div class="hf-stat-value money">${fmt(summary.verifiedPaid)}</div><div class="hf-stat-note">${summary.review} awaiting review</div></div>
+      <div class="hf-stat"><div class="hf-stat-label">Outstanding</div><div class="hf-stat-value money">${fmt(summary.balance)}</div><div class="hf-stat-note">Based on recorded status</div></div>
+    </section>
+    <div class="hf-policy-note"><span aria-hidden="true">&#9432;</span><span><strong>How balance is calculated:</strong> uploaded receipts awaiting review are not counted as paid. A host's requested initial due already includes the full booking fee plus 25% of the court fee; the system does not apply another 25% calculation here.</span></div>
+    <div class="hf-toolbar">
+      <label class="hf-search-wrap"><input class="hf-search" id="hostAccountSearch" type="search" aria-label="Search host bookings" placeholder="Search customer, reference, court..." value="${esc(_hostFinanceState.query)}" oninput="updateHostAccountSearch(this.value)"></label>
+      <button class="btn btn-g hf-refresh" id="hostFinanceRefreshBtn" type="button" aria-label="Refresh host bookings" onclick="refreshHostAccountDetails()" title="Refresh host bookings"><span aria-hidden="true">&#8635;</span><span class="hf-refresh-label">Refresh</span></button>
+    </div>
+    <div class="hf-tabs" id="hostAccountTabs" role="tablist" aria-label="Filter host bookings">
+      ${[
+        ['all','All'], ['upcoming','Upcoming'], ['balance','Balance Due'], ['review','Needs Review'], ['history','History']
+      ].map(([key, label]) => `<button class="hf-tab ${_hostFinanceState.filter === key ? 'active' : ''}" type="button" role="tab" data-filter="${key}" aria-selected="${_hostFinanceState.filter === key ? 'true' : 'false'}" aria-controls="hostFinanceBookingList" tabindex="${_hostFinanceState.filter === key ? '0' : '-1'}" onclick="setHostAccountFilter('${key}')" onkeydown="hostFinanceTabKeydown(event)">${label} <span data-count>${hostFinanceFilterCount(key)}</span></button>`).join('')}
+    </div>
+    <div class="hf-list-meta" id="hostFinanceListMeta"></div>
+    <div class="hf-booking-list" id="hostFinanceBookingList" role="tabpanel" aria-live="polite"></div>`;
+  renderHostFinanceBookingResults();
+}
+
+async function loadHostAccountBookings({ announce = false } = {}) {
+  const account = _hostFinanceState.account;
+  if (!account) return;
+  const requestId = ++_hostFinanceLoadSeq;
+  const accountId = String(account.id || '');
+  if (announce) {
+    $('hostAccountBody').innerHTML = '<div class="hf-loading"><div class="hf-loading-inner"><span class="hf-spinner" aria-hidden="true"></span><span>Refreshing host bookings...</span></div></div>';
+  }
+  try {
+    const allBookings = await DB.getBookings();
+    if (requestId !== _hostFinanceLoadSeq || String(_hostFinanceState.account?.id || '') !== accountId || !$('hostAccountModal')?.classList.contains('show')) return;
+    const raw = allBookings.filter(booking => hostAccountBookingMatches(booking, account));
+    _hostFinanceState.bookings = groupBookings(raw);
+    renderHostAccountDetails();
+    if (announce) requestAnimationFrame(() => $('hostFinanceRefreshBtn')?.focus());
+  } catch (e) {
+    if (requestId !== _hostFinanceLoadSeq || String(_hostFinanceState.account?.id || '') !== accountId || !$('hostAccountModal')?.classList.contains('show')) return;
+    console.error('loadHostAccountBookings failed:', e);
+    $('hostAccountBody').innerHTML = `<div class="hf-error"><div><strong style="display:block;color:var(--text);margin-bottom:6px">Could not load host bookings</strong><span>Please check your connection and try again.</span><div style="margin-top:14px"><button class="btn btn-p" type="button" onclick="refreshHostAccountDetails()">Try again</button></div></div></div>`;
+  }
+}
+
+async function openHostAccountDetails(id) {
+  if (!Auth.can('host_accounts_view', sess.role)) { toast('You do not have access to host balances.', 'err'); return; }
+  let account = _accountDirectory.find(a => String(a.id) === String(id) && a.role === 'host');
+  if (!account) {
+    await renderAccounts();
+    account = _accountDirectory.find(a => String(a.id) === String(id) && a.role === 'host');
+  }
+  if (!account) { toast('Host account not found.', 'err'); return; }
+
+  _hostFinanceState = {
+    account,
+    bookings: [],
+    filter: 'all',
+    query: '',
+    lastFocus: document.activeElement,
+  };
+  const overlay = $('hostAccountModal');
+  overlay.hidden = false;
+  overlay.inert = false;
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  $('hostAccountModalTitle').textContent = account.fullName || 'Host Account Details';
+  $('hostAccountBody').innerHTML = '<div class="hf-loading"><div class="hf-loading-inner"><span class="hf-spinner" aria-hidden="true"></span><span>Loading host bookings and balances...</span></div></div>';
+  requestAnimationFrame(() => overlay.querySelector('.host-finance-modal')?.focus());
+  await loadHostAccountBookings();
+}
+
+async function refreshHostAccountDetails() {
+  await loadHostAccountBookings({ announce: true });
+}
+
+function closeHostAccountDetails({ restoreFocus = true } = {}) {
+  const overlay = $('hostAccountModal');
+  if (!overlay) return;
+  _hostFinanceLoadSeq++;
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.inert = true;
+  overlay.hidden = true;
+  const previous = _hostFinanceState.lastFocus;
+  if (restoreFocus && previous && typeof previous.focus === 'function' && document.contains(previous)) requestAnimationFrame(() => previous.focus());
+}
+
+function setHostAccountFilter(filter) {
+  if (!['all','upcoming','balance','review','history'].includes(filter)) return;
+  _hostFinanceState.filter = filter;
+  renderHostFinanceBookingResults();
+}
+
+function updateHostAccountSearch(value) {
+  _hostFinanceState.query = String(value || '');
+  renderHostFinanceBookingResults();
+}
+
+function hostFinanceTabKeydown(event) {
+  if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+  const tabs = [...document.querySelectorAll('#hostAccountTabs .hf-tab')];
+  if (!tabs.length) return;
+  event.preventDefault();
+  const current = Math.max(0, tabs.indexOf(event.currentTarget));
+  const next = event.key === 'Home' ? 0
+    : event.key === 'End' ? tabs.length - 1
+    : event.key === 'ArrowRight' ? (current + 1) % tabs.length
+    : (current - 1 + tabs.length) % tabs.length;
+  tabs[next].click();
+  tabs[next].focus();
+}
+
+function hostAccountModalKeydown(event) {
+  const overlay = $('hostAccountModal');
+  if (!overlay?.classList.contains('show')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeHostAccountDetails();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...overlay.querySelectorAll('button:not([disabled]), input:not([disabled]), summary, [href], [tabindex]:not([tabindex="-1"])')]
+    .filter(el => el.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}
+
+async function openHostFinanceBooking(ref, mode) {
+  if (mode === 'review') {
+    await openVerifyModal(ref, { returnFocus: _hostFinanceState.lastFocus });
+    if ($('verifyModal')?.classList.contains('show')) {
+      closeHostAccountDetails({ restoreFocus: false });
+      requestAnimationFrame(() => $('verifyModal').querySelector('.verify-payment-modal')?.focus());
+    }
+    return;
+  }
+  closeHostAccountDetails({ restoreFocus: false });
+  await goto('bookings');
+  if ($('srch')) $('srch').value = ref;
+  await renderBookings();
+  $('srch')?.focus();
 }
 
 /* ==============================================
@@ -8970,7 +9721,12 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   applyRoleVisibility(role);
 
   // Modal close on overlay click
-  document.querySelectorAll('.overlay').forEach(ov=>ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('show');}));
+  document.querySelectorAll('.overlay').forEach(ov=>ov.addEventListener('click',e=>{
+    if(e.target!==ov) return;
+    if(ov.id==='hostAccountModal') closeHostAccountDetails();
+    else if(ov.id==='verifyModal') closeVerifyModal();
+    else ov.classList.remove('show');
+  }));
 
   // Land on the first section this role is allowed to see
   const firstAllowed = Auth.can('dashboard', role) ? 'dash'
@@ -9284,6 +10040,6 @@ async function checkAgreementGate(session) {
 </script>
 
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260713-receipt-upload2"></script>
+<script src="supabase-config.js?v=20260713-host-finance"></script>
 </body>
 </html>
