@@ -5020,6 +5020,7 @@ function receiptReasonFromFlags(flags) {
     LOW_OCR_CONFIDENCE: 'Low OCR confidence',
     OCR_UNAVAILABLE: 'OCR unavailable',
     AMOUNT_UNREADABLE: 'Amount unreadable',
+    AMOUNT_REVIEW: 'Amount needs owner review',
   };
   return (flags || []).map(f => labels[f] || String(f).replace(/_/g, ' ')).join(', ');
 }

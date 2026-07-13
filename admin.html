@@ -3761,6 +3761,7 @@ const RECEIPT_FLAG_LABELS = {
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
   EDITED_METADATA:'Edited image metadata', SUSPECTED_FAKE:'Not a receipt', REF_FORMAT_INVALID:'Bad reference format',
   REF_UNREADABLE:'Reference unreadable', INVOICE_UNREADABLE:'Invoice unreadable', LOW_OCR_CONFIDENCE:'Blurry / low OCR', OCR_UNAVAILABLE:'OCR unavailable', AMOUNT_UNREADABLE:'Amount unreadable',
+  AMOUNT_REVIEW:'Amount needs owner review',
   DATE_UNREADABLE:'Date unreadable', TIME_UNREADABLE:'Time unreadable', NUMBER_UNREADABLE:'Receiver number unreadable',
   BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', BPI_UNREADABLE:'BPI unreadable', BPI_CONFIRMATION_UNREADABLE:'BPI confirmation unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable',
 };
@@ -3857,7 +3858,19 @@ function receiptDetailsHtml(b){
   const ex = b.receiptExtracted || {};
   const displayFlags = receiptFlagsForDisplay(b);
   const reason = displayFlags.length ? receiptReasonText(displayFlags) : 'All visible checks passed';
-  const confidence = b.receiptConfidence != null ? `${Math.round(Number(b.receiptConfidence) * 100)}%` : '--';
+  const ocrConfidenceNumber = Number(ex.ocrConfidence);
+  const ocrConfidence = ex.ocrConfidence != null && Number.isFinite(ocrConfidenceNumber)
+    ? `${Math.round(ocrConfidenceNumber * 100)}%`
+    : '--';
+  const amountParse = ex.amountReason === 'legacy_parser'
+    ? 'Legacy parser result'
+    : ex.amountReliable === true
+      ? 'Anchored Maya amount'
+      : ex.amountAmbiguous === true
+        ? 'Ambiguous — manual review'
+        : ex.amountReliable === false
+          ? 'Uncertain — manual review'
+          : '--';
   const rows = [
     ['OCR Ref', receiptDetailValue(ex.ref || b.gcashRef)],
     ['Amount Read', receiptAmountValue(ex.amount)],
@@ -3868,8 +3881,9 @@ function receiptDetailsHtml(b){
     ['OCR Engine', receiptOcrProviderLabel(ex.ocrProvider)],
     ['Receiver', receiptReceiverValue(ex), true],
     ...(ex.ocrFallbackReason ? [['OCR Fallback', receiptDetailValue(ex.ocrFallbackReason), true]] : []),
+    ...(ex.amountReliable !== undefined ? [['Amount Parse', receiptDetailValue(amountParse), true]] : []),
     ['Reason', receiptDetailValue(reason), true],
-    ['Confidence', receiptDetailValue(confidence)],
+    ['OCR Confidence', receiptDetailValue(ocrConfidence)],
   ];
   return rows.map(([label, value, full]) => `<div class="receipt-detail-item ${full ? 'receipt-detail-full' : ''}">
     <div class="receipt-detail-label">${label}</div>

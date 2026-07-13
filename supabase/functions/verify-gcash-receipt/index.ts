@@ -16,13 +16,14 @@
 //   manual_review : soft flag(s) or unreadable fields or low confidence
 //   rejected      : any hard flag (duplicate / wrong number / underpay / stale)
 //
-// Rejections never auto-cancel the booking (OCR is heuristic — avoid harming
-// honest customers). They flag the booking red and alert the admin.
+// Rejections auto-cancel the booking and release its slot. Uncertain OCR fields
+// must therefore route to manual review instead of becoming hard flags.
 // ----------------------------------------------------------------------------
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import { calculateCourtPayment, chooseExpectedDue, closeMoney, roundMoney, toNumber } from "../_shared/booking-payment.ts";
+import { extractReceiptAmount } from "../_shared/receipt-amount.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -518,12 +519,15 @@ function extractBpiTransactionRefNo(text: string): string | null {
 }
 
 function extractAmount(text: string): number | null {
-  // Prefer values near an amount keyword / peso sign.
+  // Legacy parser for non-Maya layouts. Require a complete money token so a
+  // value such as P1,080.00 can never fall through as the suffix ,080.00.
   const near = text.match(
-    /(?:amount|total|php|₱|p\s)\s*[:\-]?\s*([\d,]+\.\d{2})/i,
+    /(?:amount|total|php|₱|p)\s*[:\-]?\s*((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})(?![\d,.])/i,
   );
   if (near) return parseFloat(near[1].replace(/,/g, ""));
-  const any = text.match(/\b([\d,]{1,9}\.\d{2})\b/);
+  const any = text.match(
+    /(?<![A-Za-z0-9,])((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})(?![\d,.])/,
+  );
   return any ? parseFloat(any[1].replace(/,/g, "")) : null;
 }
 
@@ -903,7 +907,13 @@ function ocrCriticalGaps(
   if (!text) return ["text"];
   const gaps: string[] = [];
   if (!extractReference(text, provider, typedRef)) gaps.push("reference");
-  if (extractAmount(text) == null) gaps.push("amount");
+  const mayaAmount = provider === "maya"
+    ? extractReceiptAmount(text, { provider })
+    : null;
+  const hasReliableAmount = mayaAmount
+    ? mayaAmount.amount != null && mayaAmount.reliable
+    : extractAmount(text) != null;
+  if (!hasReliableAmount) gaps.push("amount");
   if (!parseReceiptDateTime(text).date) gaps.push("date");
   return gaps;
 }
@@ -1332,7 +1342,14 @@ Deno.serve(async (req) => {
     const extractedInvoice = provider === "bdopay" ? extractBdoInvoiceNumber(ocrText) : null;
     const extractedInstapayRefNo = provider === "maya" ? extractMayaInstapayRefNo(ocrText) : null;
     const extractedBpiTransactionRefNo = provider === "bpi" ? extractBpiTransactionRefNo(ocrText) : null;
-    const extractedAmount = extractAmount(ocrText);
+    const amountExtraction = provider === "maya"
+      ? extractReceiptAmount(ocrText, { provider })
+      : null;
+    // A weak or ambiguous Maya read is never evidence of underpayment. It is
+    // stored for diagnostics but routed to manual review as unreadable.
+    const extractedAmount = amountExtraction
+      ? (amountExtraction.reliable ? amountExtraction.amount : null)
+      : extractAmount(ocrText);
     const { date: receiptDate, shifted: receiptDateTime } = parseReceiptDateTime(ocrText);
     const bookingStartedAt = toPhWallClockDate(
       booking.created_at || booking.createdAt,
@@ -1440,7 +1457,11 @@ Deno.serve(async (req) => {
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
         else if (extractedAmount < expectedAmount - PESO_TOLERANCE) {
-          flags.push("AMOUNT_MISMATCH");
+          // Maya's flattened OCR can still turn a damaged/split thousands
+          // value into a plausible smaller number. Keep the booking pending
+          // for an owner to compare with the stored image; never auto-approve
+          // the short amount and never auto-cancel from this heuristic alone.
+          flags.push("AMOUNT_REVIEW");
         }
 
         if (!receiptDate) flags.push("DATE_UNREADABLE");
@@ -1628,6 +1649,17 @@ Deno.serve(async (req) => {
       bpiConfirmationNo: provider === "bpi" ? extractedRef : null,
       bpiTransactionRefNo: extractedBpiTransactionRefNo,
       amount: extractedAmount,
+      amountReliable: amountExtraction?.reliable ?? (extractedAmount != null),
+      amountAmbiguous: amountExtraction?.ambiguous ?? false,
+      amountReason: amountExtraction?.reason || "legacy_parser",
+      amountEvidence: amountExtraction?.evidence || [],
+      amountCandidates: amountExtraction?.candidates.map((candidate) => ({
+        amount: candidate.amount,
+        score: candidate.score,
+        evidence: candidate.evidence,
+        excluded: candidate.excluded,
+        exclusionReasons: candidate.exclusionReasons,
+      })) || [],
       date: receiptDate,
       time: receiptDateTime ? receiptDateTime.toISOString() : null,
       timePh12: formatPhDateTime12(receiptDateTime),
