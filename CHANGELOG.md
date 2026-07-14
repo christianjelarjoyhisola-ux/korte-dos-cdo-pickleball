@@ -568,3 +568,9 @@ This is the baseline snapshot of the project when the changelog was introduced.
 **Files affected:** `file1.js`, `file2.html`
 
 -->
+# 2026-07-14 — System Owner Void & Delete
+
+- Added an owner-only atomic action for deleting test or erroneous booking groups.
+- Unremitted booking-fee items are released and excluded from future remittance totals.
+- Voided bookings remain in Deleted Bookings as final, non-restorable audit records with the reason, actor, timestamp, and voided fee.
+- Submitted, partially settled, settled, and paid legacy fees remain protected from deletion.

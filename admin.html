@@ -4736,6 +4736,7 @@ async function renderDeletedBookings() {
     const b = deletedArchiveBooking(entry);
     const ref = b.ref || entry.bookingRef || '';
     const restored = entry.recoveryStatus === 'restored';
+    const voided = entry.recoveryStatus === 'voided' || entry.source === 'owner_void';
     const status = restored ? 'restored' : (entry.recoveryStatus || 'deleted');
     const schedule = b.date
       ? `${fmtD(b.date)}<div style="font-size:.75rem;color:var(--text);font-weight:600">${esc(b.startTime || '')}${b.endTime ? '&ndash;' + esc(b.endTime) : ''}</div>`
@@ -4748,7 +4749,7 @@ async function renderDeletedBookings() {
       <td data-label="Status">${statusBdg(status)}</td>
       <td data-label="Deleted At">${fmtDeletedAt(entry.deletedAt)}</td>
       <td data-label="Actions"><div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${restored ? `<span style="font-size:.76rem;color:var(--muted);font-weight:700">Restored</span>` : `<button class="btn btn-p btn-sm" onclick="restoreDeletedBooking('${jsArg(entry.id)}','${jsArg(ref)}')">Restore</button>`}
+        ${restored ? `<span style="font-size:.76rem;color:var(--muted);font-weight:700">Restored</span>` : voided ? `<span style="font-size:.76rem;color:var(--red);font-weight:700" title="${esc(entry.voidReason || entry.notes || 'Voided by System Owner')}">Final void</span>` : `<button class="btn btn-p btn-sm" onclick="restoreDeletedBooking('${jsArg(entry.id)}','${jsArg(ref)}')">Restore</button>`}
       </div></td>
     </tr>`;
   }).join('');
@@ -5485,14 +5486,25 @@ async function rejectPayment() {
 }
 
 async function delBooking(ref){
-  if(!confirm(`Delete booking ${ref}? It will be kept in Deleted Bookings so the system owner can restore it if needed.`)) return;
+  if (!Auth.can('owner_only', sess.role)) {
+    toast('Only the System Owner can void and delete bookings.', 'err');
+    return;
+  }
+  const reason = prompt(`Void and delete booking ${ref}?\n\nIts unremitted platform fee will be excluded from computation. This action is final.\n\nEnter the reason:`, 'Test/demo booking');
+  if (reason === null) return;
+  if (reason.trim().length < 3) {
+    toast('Please enter a reason of at least 3 characters.', 'err');
+    return;
+  }
+  if(!confirm(`FINAL CONFIRMATION\n\nVoid and delete ${ref}?\n\nThe booking will be removed and its unremitted fee will not be included in future computations.`)) return;
   try {
-    await deleteBookingGroupByRef(ref);
-    toast('Booking deleted and archived.','inf');
-    renderBookings();
-    renderDash();
+    const result = await DB.voidDeleteBookingGroup(ref, reason.trim());
+    const fee = Number(result?.voided_fee_amount || 0);
+    toast(`Booking voided and deleted. ${fmt(fee)} removed from future fee computation.`, 'inf');
+    await renderBookings();
+    await renderDash();
   } catch (e) {
-    toast(`Delete failed: ${e.message || e}`, 'err');
+    toast(`Void & delete failed: ${e.message || e}`, 'err');
   }
 }
 

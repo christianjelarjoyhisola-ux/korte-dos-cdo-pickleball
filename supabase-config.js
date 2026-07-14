@@ -455,6 +455,10 @@ function rowToDeletedBookingArchive(r) {
     recoveryStatus: r.recovery_status,
     recoveredFrom: r.recovered_from,
     notes: r.notes,
+    voidedFeeAmount: r.voided_fee_amount,
+    voidReason: r.void_reason,
+    voidedAt: r.voided_at,
+    voidedBy: r.voided_by,
     deletedAt: r.deleted_at,
     archivedAt: r.archived_at,
     restoredAt: r.restored_at,
@@ -883,6 +887,16 @@ window.DB = {
     const { error } = await _sb.from('bookings').delete().eq('ref', ref);
     if (error) { console.error('deleteBooking:', error); throw error; }
     _pbClearFastCache(['bookings']);
+  },
+
+  async voidDeleteBookingGroup(ref, reason) {
+    const { data, error } = await _sb.rpc('void_delete_booking_group', {
+      p_booking_ref: ref,
+      p_reason: reason,
+    });
+    if (error) { console.error('voidDeleteBookingGroup:', error); throw error; }
+    _pbClearFastCache(['bookings']);
+    return data || null;
   },
 
   async getDeletedBookingArchive(filters = {}) {
@@ -2114,6 +2128,36 @@ window.DB = {
       writeDb(db);
     },
 
+    async voidDeleteBookingGroup(ref, reason) {
+      if (Auth.getSession()?.role !== 'owner') throw new Error('Only the System Owner can void and delete a booking.');
+      if (String(reason || '').trim().length < 3) throw new Error('A void reason of at least 3 characters is required.');
+      const db = readDb();
+      const target = db.bookings.find(b => String(b.ref) === String(ref));
+      if (!target) throw new Error('Booking not found.');
+      const groupKey = target.groupRef || target.bookingGroupRef || target.ref;
+      const matches = db.bookings.filter(b => String(b.groupRef || b.bookingGroupRef || b.ref) === String(groupKey));
+      const refs = new Set(matches.map(b => String(b.ref)));
+      const now = nowIso();
+      let voidedFee = 0;
+      matches.forEach(b => {
+        const fee = b.bookingFeeEarnedAt || b.booking_fee_earned_at
+          ? Number(b.bookingFeeAmountSnapshot ?? b.booking_fee_amount_snapshot ?? 0) : 0;
+        voidedFee += Math.max(fee, 0);
+        db.deletedBookingArchive.unshift({
+          id: localRef('del'), bookingRef: b.ref, source: 'owner_void',
+          originalBooking: { ...b }, originalBookingRow: { ...b },
+          recoveryStatus: 'voided',
+          notes: `System Owner voided and deleted this booking. Fee excluded from future computation. Reason: ${String(reason).trim()}`,
+          voidedFeeAmount: Math.max(fee, 0), voidReason: String(reason).trim(),
+          voidedAt: now, voidedBy: Auth.getSession()?.id || null,
+          deletedAt: now, archivedAt: now, createdAt: now,
+        });
+      });
+      db.bookings = db.bookings.filter(b => !refs.has(String(b.ref)));
+      writeDb(db);
+      return { deleted_count: matches.length, voided_fee_amount: voidedFee };
+    },
+
     async getDeletedBookingArchive(filters = {}) {
       const opts = filters || {};
       return readDb().deletedBookingArchive
@@ -2128,6 +2172,9 @@ window.DB = {
       const idx = db.deletedBookingArchive.findIndex(r => String(r.id) === String(id));
       if (idx < 0) throw new Error('Deleted booking archive row not found.');
       const entry = db.deletedBookingArchive[idx];
+      if (entry.recoveryStatus === 'voided' || entry.source === 'owner_void') {
+        throw new Error('A voided booking is final and cannot be restored.');
+      }
       const booking = { ...(entry.originalBooking || entry.originalBookingRow || {}) };
       if (!booking.ref) throw new Error('Archive row has no booking reference.');
       if (db.bookings.some(b => String(b.ref) === String(booking.ref))) {
