@@ -27,3 +27,41 @@ test('group deadline uses the earliest scheduled start', () => {
   ];
   assert.equal(balance.balanceDeadline(items).toISOString(), '2026-08-27T10:00:00.000Z');
 });
+
+test('court revenue splits a grouped booking into its actual courts', () => {
+  const transactions = [{
+    status: 'confirmed',
+    total: 930,
+    courtName: 'Court 1, Court 2, Court 3',
+    items: [
+      { courtName: 'Court 1', total: 310, paymentStatus: 'paid' },
+      { courtName: 'Court 2', total: 310, paymentStatus: 'paid' },
+      { courtName: 'Court 3', total: 310, paymentStatus: 'paid' },
+    ],
+  }];
+
+  assert.deepEqual(balance.courtRevenueBreakdown(transactions), [
+    ['Court 1', 310],
+    ['Court 2', 310],
+    ['Court 3', 310],
+  ]);
+});
+
+test('court revenue counts each retained deposit against its actual court', () => {
+  const transactions = [{
+    status: 'forfeited',
+    total: 800,
+    downpayment: 200,
+    paymentStatus: 'deposit_retained',
+    courtName: 'Court 1, Court 2',
+    items: [
+      { status: 'forfeited', courtName: 'Court 1', total: 400, downpayment: 100, paymentStatus: 'deposit_retained' },
+      { status: 'forfeited', courtName: 'Court 2', total: 400, downpayment: 100, paymentStatus: 'deposit_retained' },
+    ],
+  }];
+
+  assert.deepEqual(balance.courtRevenueBreakdown(transactions), [
+    ['Court 1', 100],
+    ['Court 2', 100],
+  ]);
+});

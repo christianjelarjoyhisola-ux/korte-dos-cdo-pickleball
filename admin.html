@@ -6917,9 +6917,9 @@ async function renderReport(){
   $('rpCount').textContent=txns.length;
 
   // Revenue by court
-  const courtMap={};
-  reportTxns.forEach(b=>{const k=b.courtName||'Unknown Court';const value=b.status==='forfeited'?(window.BookingBalance?.paidAmount?.(b)||0):(b.total||0);courtMap[k]=(courtMap[k]||0)+value;});
-  const courtEntries=Object.entries(courtMap).sort((a,b)=>b[1]-a[1]);
+  // Multi-court transactions are allocated from their individual booking rows,
+  // so each physical court has one accurate total instead of a combined label.
+  const courtEntries=window.BookingBalance.courtRevenueBreakdown(reportTxns);
   renderReportBars('rpCourtChart', courtEntries);
 
   // Revenue by how the player paid. This is kept separate from where the money

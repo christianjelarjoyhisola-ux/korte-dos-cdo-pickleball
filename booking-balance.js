@@ -61,10 +61,7 @@
     return !!deadline && new Date(now).getTime() < deadline.getTime();
   }
 
-  function paidAmount(booking) {
-    if (Array.isArray(booking?.items) && booking.items.length > 1) {
-      return booking.items.reduce((sum, item) => sum + paidAmount(item), 0);
-    }
+  function directPaidAmount(booking) {
     const total = Math.max(0, Number(booking?.total || 0));
     const payment = String(booking?.paymentStatus || booking?.payment_status || 'unpaid').toLowerCase();
     if (payment === 'paid') return total;
@@ -72,6 +69,13 @@
       return Math.min(total, Math.max(0, Number(booking?.downpayment || 0)));
     }
     return 0;
+  }
+
+  function paidAmount(booking) {
+    if (Array.isArray(booking?.items) && booking.items.length > 1) {
+      return booking.items.reduce((sum, item) => sum + paidAmount(item), 0);
+    }
+    return directPaidAmount(booking);
   }
 
   function balanceAmount(booking) {
@@ -85,6 +89,43 @@
   function holdsSlot(booking) {
     const status = String(booking?.status || '').toLowerCase();
     return status !== 'cancelled' && status !== 'forfeited';
+  }
+
+  function courtRevenueBreakdown(transactions) {
+    const totals = new Map();
+
+    for (const transaction of Array.isArray(transactions) ? transactions : []) {
+      if (!transaction) continue;
+      const children = Array.isArray(transaction.items) && transaction.items.length
+        ? transaction.items.filter(Boolean)
+        : [transaction];
+      if (!children.length) continue;
+
+      const forfeited = isForfeited(transaction);
+      const childPaid = children.map(item => paidAmount(item));
+      const childPaidTotal = childPaid.reduce((sum, amount) => sum + amount, 0);
+      const aggregatePaid = directPaidAmount(transaction);
+      const childTotal = children.reduce((sum, item) => sum + Math.max(0, Number(item.total || 0)), 0);
+
+      children.forEach((item, index) => {
+        const court = String(item.courtName || item.court_name || 'Unknown Court').trim() || 'Unknown Court';
+        let revenue = Math.max(0, Number(item.total || 0));
+
+        if (forfeited) {
+          if (childPaidTotal > 0) {
+            revenue = childPaid[index];
+          } else if (aggregatePaid > 0 && childTotal > 0) {
+            revenue = aggregatePaid * Math.max(0, Number(item.total || 0)) / childTotal;
+          } else {
+            revenue = aggregatePaid / children.length;
+          }
+        }
+
+        totals.set(court, (totals.get(court) || 0) + revenue);
+      });
+    }
+
+    return [...totals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
 
   function deadlineState(booking, now = new Date()) {
@@ -121,6 +162,7 @@
     balanceAmount,
     isForfeited,
     holdsSlot,
+    courtRevenueBreakdown,
     deadlineState,
     formatDeadline,
   };
