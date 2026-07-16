@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Korte DOS — Bayabas, Cagayan de Oro</title>
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
+<script src="booking-balance.js?v=20260716-host-balance-v1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
 <style>
@@ -2575,6 +2576,12 @@ body.host-mode .courts { padding-bottom:140px; }
 .host-detail-cell strong { display:block; color:var(--text); font-size:.74rem; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .host-detail-cell.balance strong { color:var(--red); }
 .host-booking-meta { display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; min-width:0; }
+.host-deadline { display:grid; grid-template-columns:auto minmax(0,1fr); gap:3px 10px; align-items:center; margin-top:8px; padding:8px 10px; border:1px solid rgba(184,139,36,.28); border-radius:10px; background:rgba(184,139,36,.08); }
+.host-deadline span { color:var(--muted); font-size:.64rem; font-weight:900; text-transform:uppercase; letter-spacing:.5px; }
+.host-deadline strong { color:var(--text); font-size:.72rem; text-align:right; }
+.host-deadline em { grid-column:1/-1; color:var(--yellow); font-size:.68rem; font-style:normal; font-weight:850; }
+.host-deadline.final,.host-deadline.overdue,.host-deadline.forfeited { border-color:rgba(200,61,38,.28); background:rgba(200,61,38,.08); }
+.host-deadline.final em,.host-deadline.overdue em,.host-deadline.forfeited em { color:var(--red); }
 .host-chip { max-width:100%; font-size:.6rem; font-weight:850; color:var(--muted); background:var(--card); border:1px solid var(--border); border-radius:999px; padding:3px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .host-empty { text-align:center; color:var(--muted); padding:24px 14px; border:1px dashed var(--border); border-radius:12px; background:var(--input); }
 @media(max-width:560px) {
@@ -2615,6 +2622,7 @@ body.host-mode .courts { padding-bottom:140px; }
       <div class="host-booking-tabs" role="tablist" aria-label="Host booking filters">
         <button type="button" class="host-booking-tab active" data-host-booking-filter="upcoming" onclick="setHostBookingFilter('upcoming')">Upcoming</button>
         <button type="button" class="host-booking-tab" data-host-booking-filter="balance" onclick="setHostBookingFilter('balance')">Balance</button>
+        <button type="button" class="host-booking-tab" data-host-booking-filter="forfeited" onclick="setHostBookingFilter('forfeited')">Forfeited</button>
         <button type="button" class="host-booking-tab" data-host-booking-filter="past" onclick="setHostBookingFilter('past')">Past</button>
       </div>
       <div id="hostBookingsList" class="host-booking-list">
@@ -3251,7 +3259,7 @@ body.host-mode .courts { padding-bottom:140px; }
 
           <label class="booking-policy-check">
             <input type="checkbox" id="bookingPolicyAgree" />
-            <span><strong>I agree</strong> that booking payments are non-refundable, my payment details and receipt must be correct, and invalid or missing proof may cancel this reservation.</span>
+            <span id="bookingPolicyText"><strong>I agree</strong> that all booking payments are final and non-refundable, my payment details and receipt must be correct, and an invalid payment may release this reservation.</span>
           </label>
 
           <!-- Cash note -->
@@ -3573,13 +3581,22 @@ async function refreshHostBookingSession() {
 function isVerifiedHostBooking() {
   return !!activeHostSession();
 }
+function hostBookingBalanceDeadline(items = activeBookingItems()) {
+  return window.BookingBalance?.balanceDeadline?.(items) || null;
+}
+function hostBookingDepositEligible(items = activeBookingItems()) {
+  return isVerifiedHostBooking() && !!window.BookingBalance?.depositEligible?.(items, new Date());
+}
 function downpaymentRate() {
-  return isVerifiedHostBooking() ? HOST_DOWNPAYMENT_RATE : 0.5;
+  if (isVerifiedHostBooking()) return hostBookingDepositEligible() ? HOST_DOWNPAYMENT_RATE : 1;
+  return 0.5;
 }
 function downpaymentLabel() {
-  return isVerifiedHostBooking() ? 'Due today' : 'Booking Fee + 50% Court Fee';
+  if (isVerifiedHostBooking()) return hostBookingDepositEligible() ? '25% Reservation Payment' : 'Full Payment Required';
+  return 'Booking Fee + 50% Court Fee';
 }
 function downpaymentAmount(total, courtFee = null, serviceFee = null) {
+  if (isVerifiedHostBooking() && !hostBookingDepositEligible()) return total;
   if (payFull) return total;
   const fee = Number(serviceFee ?? 0);
   const court = Number(courtFee ?? (Number(total || 0) - fee));
@@ -3588,7 +3605,11 @@ function downpaymentAmount(total, courtFee = null, serviceFee = null) {
 }
 function hostBookingNoteText() {
   const host = activeHostSession();
-  return host ? 'Full booking fee + 25% court fee due today. Balance is court fee only.' : '';
+  if (!host) return '';
+  if (!hostBookingDepositEligible()) return 'This Open Play starts in five days or less, so full payment is required now.';
+  const deadline = hostBookingBalanceDeadline();
+  const label = deadline && window.BookingBalance?.formatDeadline ? window.BookingBalance.formatDeadline(deadline) : 'five full days before Open Play';
+  return `Pay the full booking fee plus 25% of the court fee now. The remaining court balance is due by ${label}.`;
 }
 function downpaymentNoteHtml(prefix = '') {
   if (payFull) return '';
@@ -5008,8 +5029,9 @@ function receiptReasonFromFlags(flags) {
     INVOICE_UNREADABLE: 'Invoice number unreadable',
     BDO_PAY_UNREADABLE: 'BDO Pay/InstaPay text unreadable',
     MAYA_UNREADABLE: 'Maya text unreadable',
-    BPI_UNREADABLE: 'BPI text unreadable',
+    BPI_UNREADABLE: 'BPI transfer-success text unreadable',
     BPI_CONFIRMATION_UNREADABLE: 'BPI Confirmation No. unreadable',
+    BPI_TRANSACTION_UNREADABLE: 'BPI Transaction Ref. No. unreadable',
     INSTAPAY_QRPH_UNREADABLE: 'InstaPay/QRPh text unreadable',
     GXI_DESTINATION_UNREADABLE: 'GXI/GCash destination unreadable',
     RECEIVER_NAME_UNREADABLE: 'Receiver name unreadable',
@@ -5572,7 +5594,7 @@ function isHeldVerifying(b) {
 // True if this booking currently occupies its slot (confirmed/pending always do;
 // verifying only while still within its reservation window).
 function bookingHoldsSlot(b) {
-  if (b.status === 'cancelled') return false;
+  if (!window.BookingBalance?.holdsSlot?.(b)) return false;
   if (b.status === 'verifying') return isHeldVerifying(b);
   return true;
 }
@@ -6282,7 +6304,7 @@ async function renderCourts() {
     </div>`;
   }).join('');
 
-  const active = bookings.filter(b => b.status !== 'cancelled');
+  const active = bookings.filter(b => window.BookingBalance?.holdsSlot?.(b));
   const totalRev = fmt(active.reduce((s,b) => s+b.total, 0));
   if ($('sCourts')) $('sCourts').textContent = courts.length;
   if ($('sBook'))   $('sBook').textContent   = bookings.length;
@@ -6302,7 +6324,7 @@ async function renderCourts() {
       const blk = c.blocked;
       const allSl_ = Array.from({length: closeHour - openHour}, (_, i) => i + openHour);
       const booked_ = new Set(
-        bookings.filter(b => b.courtId === c.id && b.date === today_ && b.status !== 'cancelled')
+        bookings.filter(b => b.courtId === c.id && b.date === today_ && window.BookingBalance?.holdsSlot?.(b))
                 .flatMap(b => b.slots)
       );
       const tabBadge = courtAvailabilityBadge({ blocked: blk, date: today_, allSlots: allSl_, curHour: cur_, bookedHours: booked_, courtId: c.id });
@@ -6673,10 +6695,10 @@ function pickPay(m) {
   }
   gcashSettings.checkoutVisited = false;
 
-  // Reset payment amount toggle to 50% when switching payment methods
-  payFull = false;
-  ['gcPat50','gtPat50','pnPat50'].forEach(id => $(id)?.classList.add('on'));
-  ['gcPat100','gtPat100','pnPat100'].forEach(id => $(id)?.classList.remove('on'));
+  // Host pricing is automatic: 25% only before the five-day deadline.
+  payFull = isVerifiedHostBooking() && !hostBookingDepositEligible();
+  ['gcPat50','gtPat50','pnPat50'].forEach(id => $(id)?.classList.toggle('on', !payFull));
+  ['gcPat100','gtPat100','pnPat100'].forEach(id => $(id)?.classList.toggle('on', payFull));
 
   syncGcashSharedPanel(m);
   $('gcashBox').classList.toggle('show',  m === 'gcash' || m === 'bdopay' || m === 'maya' || m === 'bpi');
@@ -6861,6 +6883,7 @@ function updateRefCount() {
 
 function updatePaymentAmountUI() {
   const hostBooking = isVerifiedHostBooking();
+  const hostDeposit = hostBooking && hostBookingDepositEligible();
   const dpOnly = paymentAcceptanceMode === 'downpayment_only';
   const fpOnly = paymentAcceptanceMode === 'full_payment_only';
 
@@ -6872,15 +6895,15 @@ function updatePaymentAmountUI() {
     const btn50 = $(p + 'Pat50');
     const btn100 = $(p + 'Pat100');
     const dpLabel = btn50?.querySelector('div:first-child');
-    if (dpLabel) dpLabel.textContent = hostBooking ? 'Fee + 25% Court' : 'Fee + 50% Court';
+    if (dpLabel) dpLabel.textContent = hostBooking ? (hostDeposit ? 'Fee + 25% Court' : 'Full Payment') : 'Fee + 50% Court';
 
     if (hostBooking || dpOnly) {
       // Only downpayment — hide toggle and label, auto-select 50%
       if (label) label.style.display = 'none';
       if (toggle) toggle.style.display = 'none';
-      if (btn50) btn50.classList.add('on');
-      if (btn100) btn100.classList.remove('on');
-      payFull = false;
+      if (btn50) btn50.classList.toggle('on', hostBooking ? hostDeposit : true);
+      if (btn100) btn100.classList.toggle('on', hostBooking ? !hostDeposit : false);
+      payFull = hostBooking ? !hostDeposit : false;
     } else if (fpOnly) {
       // Only full payment — hide toggle and label, auto-select 100%
       if (label) label.style.display = 'none';
@@ -6896,11 +6919,19 @@ function updatePaymentAmountUI() {
       if (btn100) btn100.style.display = '';
     }
   });
+  const policy = $('bookingPolicyText');
+  if (policy) {
+    policy.innerHTML = hostBooking
+      ? hostDeposit
+        ? '<strong>I agree</strong> that all payments are final and non-refundable. The remaining balance is due five full days before Open Play; missing the deadline forfeits the reservation and releases the slot.'
+        : '<strong>I agree</strong> that full payment is required because this Open Play starts in five days or less, and all payments are final and non-refundable.'
+      : '<strong>I agree</strong> that all booking payments are final and non-refundable, my payment details and receipt must be correct, and an invalid payment may release this reservation.';
+  }
   updatePrice();
 }
 
 function setPayAmount(mode) {
-  if (isVerifiedHostBooking()) mode = 'half';
+  if (isVerifiedHostBooking()) mode = hostBookingDepositEligible() ? 'half' : 'full';
   payFull = (mode === 'full');
   ['gc','gt','pn'].forEach(p => {
     const btn50  = $(p + 'Pat50');
@@ -7007,6 +7038,7 @@ async function submitBookingLegacy(e) {
     paymentFlow: payMethod,
     downpayment,
     ...bookingIdentity,
+    balanceDueAt: bookingIdentity.hostBooking ? hostBookingBalanceDeadline([{ date: $('bDate').value, startTime: fmtT(startH), slots: [...selSlots] }])?.toISOString() || null : null,
     paymentStatus: payMethod === 'cash' ? 'unpaid' : 'for_verification',
     status: digitalPay ? 'verifying' : 'pending',
     createdAt: _reservationStartedAt || new Date().toISOString(),
@@ -7261,6 +7293,7 @@ async function submitBooking(e) {
     paymentFlow: payMethod,
     downpayment: downpaymentAmount(item.total, item.courtFee, item.serviceFee),
     ...bookingIdentity,
+    balanceDueAt: bookingIdentity.hostBooking ? hostBookingBalanceDeadline(items)?.toISOString() || null : null,
     paymentStatus,
     status,
     createdAt,
@@ -7510,6 +7543,9 @@ function showInvoice(b) {
   const isRejected = b.status === 'cancelled' || b.paymentStatus === 'rejected' || receiptStatus === 'rejected';
   const isDigitalPay = isDigitalPayMethod(b.paymentMethod);
   const isFullPay = b.downpayment >= b.total;
+  const hostDeadline = b.hostBooking && !isFullPay
+    ? (b.balanceDueAt ? new Date(b.balanceDueAt) : window.BookingBalance?.balanceDeadline?.(b))
+    : null;
   const payLabel = paymentMethodName(b.paymentMethod === 'gotyme' ? 'gotyme' : b.paymentMethod || 'cash');
 
   // Hero — base state (may be overridden by receipt result below)
@@ -7553,6 +7589,7 @@ function showInvoice(b) {
   set('iDownLabel', isFullPay ? 'Full Payment' : invoiceDownLabel);
   set('iDownNote', isRejected ? 'Receipt verification failed. The slot has been released.' :
     isFullPay ? 'Fully paid. No balance due on arrival.' :
+    hostDeadline ? `Your remaining balance is due by ${window.BookingBalance.formatDeadline(hostDeadline)}. All payments are non-refundable.` :
     b.gcashRef ? `${payLabel} ref submitted. Owner will verify shortly.` :
     'Pay downpayment at the front desk before your session.');
 
@@ -7583,7 +7620,9 @@ function showInvoice(b) {
         statusEl.textContent = '✅ Payment Verified';
         statusEl.className = 'inv-status-bdg inv-status-confirmed';
       }
-      if (noteEl) noteEl.textContent = '✅ Payment auto-verified from your receipt! Your slot is being confirmed.';
+      if (noteEl) noteEl.textContent = hostDeadline && !isFullPay
+        ? `Payment verified. Your remaining balance is due by ${window.BookingBalance.formatDeadline(hostDeadline)}. All payments are non-refundable.`
+        : 'Payment auto-verified from your receipt! Your slot is being confirmed.';
     } else {
       // manual_review
       if (statusEl) {
@@ -7672,7 +7711,7 @@ function applyHostChrome() {
   const host = activeHostSession();
   document.body.classList.toggle('host-mode', !!host);
   if (host && $('hostBookingsSubtitle')) {
-    $('hostBookingsSubtitle').textContent = `${host.fullName || host.email || 'Host'} · 25% downpayment booking`;
+    $('hostBookingsSubtitle').textContent = `${host.fullName || host.email || 'Host'} · balances are due 5 days before Open Play`;
   }
 }
 
@@ -7704,6 +7743,7 @@ function hostBookingBelongsToSession(booking, host) {
 }
 
 function hostBookingStatusLabel(booking) {
+  if (booking.status === 'forfeited' || booking.paymentStatus === 'deposit_retained') return 'Forfeited';
   if (booking.status === 'cancelled' || booking.paymentStatus === 'rejected') return 'Cancelled';
   if (booking.paymentStatus === 'paid') return 'Paid';
   if (booking.paymentStatus === 'downpayment_paid') return 'Paid down';
@@ -7714,17 +7754,7 @@ function hostBookingStatusLabel(booking) {
 }
 
 function hostBookingPaidAmount(booking) {
-  if (Array.isArray(booking?.items) && booking.items.length > 1) {
-    return booking.items.reduce((sum, item) => sum + hostBookingPaidAmount(item), 0);
-  }
-  const total = Math.max(0, Number(booking?.total || 0));
-  const paymentStatus = String(booking?.paymentStatus || 'unpaid').toLowerCase();
-  if (paymentStatus === 'paid') return total;
-  if (paymentStatus === 'downpayment_paid') {
-    return Math.min(total, Math.max(0, Number(booking?.downpayment || 0)));
-  }
-  // `downpayment` is the amount requested, not proof that it was paid.
-  return 0;
+  return window.BookingBalance?.paidAmount?.(booking) || 0;
 }
 
 function hostBookingCardHtml(booking) {
@@ -7738,6 +7768,9 @@ function hostBookingCardHtml(booking) {
   const subtitle = courtDetail ? `${courtDetail} | ${schedule}` : schedule;
   const ref = booking.displayRef || booking.ref || '';
   const status = hostBookingStatusLabel(booking);
+  const forfeited = booking.status === 'forfeited' || booking.paymentStatus === 'deposit_retained';
+  const deadlineState = window.BookingBalance?.deadlineState?.(booking) || {};
+  const amountHeadline = forfeited ? `${fmt(paid)} retained` : fmt(balance);
   return `
     <details class="host-booking-card">
       <summary>
@@ -7746,7 +7779,7 @@ function hostBookingCardHtml(booking) {
           <span>${esc(subtitle)}</span>
         </div>
         <div class="host-booking-side">
-          <div class="host-balance">${fmt(balance)}</div>
+          <div class="host-balance">${amountHeadline}</div>
           <div class="host-status">${esc(status)}</div>
         </div>
       </summary>
@@ -7754,11 +7787,12 @@ function hostBookingCardHtml(booking) {
         <div class="host-detail-grid">
           <div class="host-detail-cell"><span>Total</span><strong>${fmt(total)}</strong></div>
           <div class="host-detail-cell"><span>Paid</span><strong>${fmt(paid)}</strong></div>
-          <div class="host-detail-cell balance"><span>Balance</span><strong>${fmt(balance)}</strong></div>
+          <div class="host-detail-cell balance"><span>${forfeited ? 'Unpaid at forfeiture' : 'Balance'}</span><strong>${fmt(balance)}</strong></div>
         </div>
+        ${deadlineState.deadline ? `<div class="host-deadline ${esc(deadlineState.code || '')}"><span>${forfeited ? 'Forfeited' : 'Balance deadline'}</span><strong>${esc(window.BookingBalance.formatDeadline(deadlineState.deadline))}</strong>${deadlineState.label ? `<em>${esc(deadlineState.label)}</em>` : ''}</div>` : ''}
         <div class="host-booking-meta">
           <span class="host-chip">${esc(paymentMethodName(booking.paymentMethod || 'cash'))}</span>
-          ${booking.hostBooking ? '<span class="host-chip">Host 25%</span>' : ''}
+          ${booking.hostBooking ? `<span class="host-chip">${forfeited ? 'Deposit retained' : balance > 0 ? '25% reserved' : 'Fully paid'}</span>` : ''}
           ${booking.courtCount > 1 ? `<span class="host-chip">${booking.duration} hrs</span>` : ''}
           ${ref ? `<span class="host-chip" title="${esc(ref)}">${esc(ref)}</span>` : ''}
           ${booking.gcashRef ? `<span class="host-chip" title="${esc(booking.gcashRef)}">Pay ref ${esc(booking.gcashRef)}</span>` : ''}
@@ -7781,11 +7815,13 @@ function groupHostBookingRows(bookings = []) {
     const sameTime = items.every(i => String(i.timeLabel || '') === String(first.timeLabel || ''));
     const paymentStatuses = items.map(i => i.paymentStatus || 'unpaid');
     const statuses = items.map(i => i.status || 'pending');
-    const paymentStatus = paymentStatuses.includes('for_verification') ? 'for_verification'
+    const paymentStatus = paymentStatuses.includes('deposit_retained') ? 'deposit_retained'
+      : paymentStatuses.includes('for_verification') ? 'for_verification'
       : paymentStatuses.includes('unpaid') ? 'unpaid'
       : paymentStatuses.every(s => s === 'paid') ? 'paid'
       : 'downpayment_paid';
-    const status = statuses.includes('verifying') ? 'verifying'
+    const status = statuses.includes('forfeited') ? 'forfeited'
+      : statuses.includes('verifying') ? 'verifying'
       : statuses.includes('pending') ? 'pending'
       : statuses.every(s => s === 'confirmed') ? 'confirmed'
       : first.status;
@@ -7810,15 +7846,17 @@ function groupHostBookingRows(bookings = []) {
 
 function hostBookingHasBalance(booking) {
   return booking.status !== 'cancelled'
+    && booking.status !== 'forfeited'
     && booking.paymentStatus !== 'rejected'
     && Math.max(0, Number(booking.total || 0) - hostBookingPaidAmount(booking)) > 0;
 }
 
 function filteredHostBookings(bookings, filter) {
   const today = todayStr();
-  const active = (bookings || []).filter(b => b.status !== 'cancelled' && b.paymentStatus !== 'rejected');
+  const active = (bookings || []).filter(b => b.status !== 'cancelled' && b.status !== 'forfeited' && b.paymentStatus !== 'rejected');
   if (filter === 'balance') return active.filter(hostBookingHasBalance);
-  if (filter === 'past') return (bookings || []).filter(b => String(b.date || '') < today || b.status === 'cancelled' || b.paymentStatus === 'rejected');
+  if (filter === 'forfeited') return (bookings || []).filter(b => b.status === 'forfeited' || b.paymentStatus === 'deposit_retained');
+  if (filter === 'past') return (bookings || []).filter(b => String(b.date || '') < today || b.status === 'cancelled' || b.status === 'forfeited' || b.paymentStatus === 'rejected');
   return active.filter(b => String(b.date || '') >= today);
 }
 
@@ -7831,14 +7869,16 @@ function renderHostBookingsList() {
   const rows = filteredHostBookings(_hostBookingsCache, _hostBookingFilter);
   const emptyText = _hostBookingFilter === 'balance'
     ? 'No bookings with pending balance.'
-    : _hostBookingFilter === 'past'
+    : _hostBookingFilter === 'forfeited'
+      ? 'No forfeited bookings.'
+      : _hostBookingFilter === 'past'
       ? 'No past bookings yet.'
       : 'No upcoming host bookings yet.';
   list.innerHTML = rows.length ? rows.map(hostBookingCardHtml).join('') : `<div class="host-empty">${emptyText}</div>`;
 }
 
 function setHostBookingFilter(filter) {
-  _hostBookingFilter = ['upcoming', 'balance', 'past'].includes(filter) ? filter : 'upcoming';
+  _hostBookingFilter = ['upcoming', 'balance', 'forfeited', 'past'].includes(filter) ? filter : 'upcoming';
   renderHostBookingsList();
 }
 
@@ -7863,7 +7903,7 @@ async function openHostBookings() {
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     _hostBookingsCache = groupedBookings;
     const today = todayStr();
-    const active = groupedBookings.filter(b => b.status !== 'cancelled' && b.paymentStatus !== 'rejected');
+    const active = groupedBookings.filter(b => b.status !== 'cancelled' && b.status !== 'forfeited' && b.paymentStatus !== 'rejected');
     const upcoming = active.filter(b => String(b.date || '') >= today);
     const openBalance = active.reduce((sum, b) => sum + Math.max(0, Number(b.total || 0) - hostBookingPaidAmount(b)), 0);
     if ($('hostBkTotal')) $('hostBkTotal').textContent = String(groupedBookings.length);
@@ -8331,7 +8371,7 @@ function opPickPay(method) {
       : method === 'maya'
         ? 'Maya to GCash only.<br>GCash/BDO Pay receipts will be rejected.<br>Please choose the correct payment method before paying.'
       : method === 'bpi'
-        ? 'BPI to GCash/G-Xchange only.<br>Enter the BPI Confirmation No., not the Transaction Ref. No.<br>Receipts from another payment method will not auto-approve.'
+        ? 'BPI to GCash/G-Xchange only.<br>Enter the BPI Confirmation No., not the Transaction Ref. No.<br>Upload the full success screen showing both reference numbers, receiver number, amount, and time.'
       : method === 'gcash'
         ? 'GCash to GCash only.<br>BDO Pay/InstaPay receipts will be rejected.<br>Please choose the correct payment method before paying.'
         : `Use ${meta.label} only. Receipts from another payment method will not auto-approve.`;

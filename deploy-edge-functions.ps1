@@ -109,6 +109,7 @@ try {
     "host-application",
     "manage-account",
     "send-confirmation-email",
+    "process-host-balance-deadlines",
     "send-reschedule-email",
     "send-telegram-notification",
     "integration-status"

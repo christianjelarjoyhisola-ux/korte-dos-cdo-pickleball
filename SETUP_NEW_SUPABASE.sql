@@ -58,6 +58,9 @@ create table if not exists public.bookings (
   paid_at timestamptz,
   gcash_ref text,
   downpayment numeric,
+  balance_due_at timestamptz,
+  forfeited_at timestamptz,
+  forfeiture_reason text,
   host_booking boolean not null default false,
   host_user_id uuid,
   host_name text,
@@ -90,10 +93,11 @@ create table if not exists public.bookings (
       'downpayment_paid',
       'paid',
       'failed',
-      'rejected'
+      'rejected',
+      'deposit_retained'
     )),
   constraint bookings_status_check
-    check (status in ('pending','verifying','confirmed','cancelled','completed')),
+    check (status in ('pending','verifying','confirmed','cancelled','completed','forfeited')),
   constraint bookings_created_via_check
     check (created_via in ('customer','admin','host','import','system')),
   constraint bookings_receipt_status_check
@@ -393,7 +397,10 @@ alter table public.bookings
   add column if not exists weekly_fee_id uuid,
   add column if not exists confirmation_email_id text,
   add column if not exists confirmation_email_sent_at timestamptz,
-  add column if not exists confirmation_email_last_event text;
+  add column if not exists confirmation_email_last_event text,
+  add column if not exists balance_due_at timestamptz,
+  add column if not exists forfeited_at timestamptz,
+  add column if not exists forfeiture_reason text;
 
 alter table public.bookings
   alter column payment_status set default 'unpaid',
@@ -431,13 +438,14 @@ alter table public.bookings
     'downpayment_paid',
     'paid',
     'failed',
-    'rejected'
+    'rejected',
+    'deposit_retained'
   ));
 
 alter table public.bookings drop constraint if exists bookings_status_check;
 alter table public.bookings
   add constraint bookings_status_check
-  check (status in ('pending','verifying','confirmed','cancelled','completed'));
+  check (status in ('pending','verifying','confirmed','cancelled','completed','forfeited'));
 
 alter table public.bookings drop constraint if exists bookings_receipt_status_check;
 alter table public.bookings

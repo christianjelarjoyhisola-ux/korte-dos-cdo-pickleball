@@ -33,6 +33,7 @@ $publicFiles = @(
   "admin.js",
   "ads.txt",
   "auth.js",
+  "booking-balance.js",
   "c737b56c-ac91-406b-af7d-7d06f2ac775c.jpg",
   "CHANGELOG.md",
   "chart.min.js",

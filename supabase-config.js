@@ -309,7 +309,10 @@ function _bookingEmailPayload(b) {
     endTime: b.endTime,
     duration: b.duration,
     total: b.total,
-    downpayment: b.downpayment || Math.round((b.total || 0) * 0.5),
+    downpayment: b.paymentStatus === 'paid' ? Number(b.total || 0) : (b.downpayment || Math.round((b.total || 0) * 0.5)),
+    hostBooking: !!b.hostBooking,
+    balanceDueAt: b.balanceDueAt || null,
+    remainingBalance: b.paymentStatus === 'paid' ? 0 : Math.max(0, Number(b.total || 0) - Number(b.downpayment || 0)),
     contactNumber: b.contactNumber,
     bookingItems: items.map(item => ({
       courtName: item.courtName,
@@ -411,6 +414,9 @@ function rowToBooking(r) {
     paidAt:        r.paid_at || null,
     gcashRef:      r.gcash_ref || null,
     downpayment:   r.downpayment || null,
+    balanceDueAt:  r.balance_due_at || null,
+    forfeitedAt:   r.forfeited_at || null,
+    forfeitureReason: r.forfeiture_reason || null,
     hostBooking:   !!r.host_booking,
     hostUserId:    r.host_user_id || null,
     hostName:      r.host_name || null,
@@ -470,7 +476,7 @@ function rowToDeletedBookingArchive(r) {
 const PB_RESERVATION_HOLD_MINUTES = 15;
 
 function bookingHoldsSlotForConflict(b) {
-  if (!b || b.status === 'cancelled') return false;
+  if (!b || b.status === 'cancelled' || b.status === 'forfeited') return false;
   if (b.status !== 'verifying') return true;
 
   const created = b.created_at || b.createdAt;
@@ -778,7 +784,7 @@ window.DB = {
       if (opts.date) query = query.eq('date', opts.date);
       if (opts.courtId) query = query.eq('court_id', String(opts.courtId));
       if (opts.hostUserId) query = query.eq('host_user_id', String(opts.hostUserId));
-      if (opts.activeOnly) query = query.neq('status', 'cancelled');
+      if (opts.activeOnly) query = query.neq('status', 'cancelled').neq('status', 'forfeited');
       const { data, error } = await query;
       if (error) {
         console.error('getBookings:', error);
@@ -798,7 +804,8 @@ window.DB = {
       .select('ref, status, slots, created_at')
       .eq('court_id', booking.courtId)
       .eq('date', booking.date)
-      .neq('status', 'cancelled');
+      .neq('status', 'cancelled')
+      .neq('status', 'forfeited');
 
     if (hasSlotConflict(existing, booking)) {
       throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
@@ -839,6 +846,9 @@ window.DB = {
     if (updates.paidAt !== undefined) row.paid_at = updates.paidAt;
     if (updates.gcashRef !== undefined) row.gcash_ref = updates.gcashRef;
     if (updates.downpayment !== undefined) row.downpayment = updates.downpayment;
+    if (updates.balanceDueAt !== undefined) row.balance_due_at = updates.balanceDueAt;
+    if (updates.forfeitedAt !== undefined) row.forfeited_at = updates.forfeitedAt;
+    if (updates.forfeitureReason !== undefined) row.forfeiture_reason = updates.forfeitureReason;
     if (updates.hostBooking !== undefined) row.host_booking = !!updates.hostBooking;
     if (updates.hostUserId !== undefined) row.host_user_id = updates.hostUserId;
     if (updates.hostName !== undefined) row.host_name = updates.hostName;
@@ -1595,6 +1605,26 @@ window.DB = {
     };
   },
 
+  async sendHostBalanceNotice(bookingRef, eventType = 'reminder_1d', options = {}) {
+    return _invokeEdgeFunction('process-host-balance-deadlines', {
+      action: 'manual', bookingRef, eventType,
+    }, { allowFailure: !!options.allowFailure });
+  },
+
+  async processHostBalanceDeadlines(options = {}) {
+    return _invokeEdgeFunction('process-host-balance-deadlines', {
+      action: 'process', source: 'admin',
+    }, { allowFailure: options.allowFailure !== false });
+  },
+
+  async getBookingBalanceNotifications(bookingKey) {
+    if (!bookingKey) return [];
+    const { data, error } = await _sb.from('booking_balance_notifications')
+      .select('*').eq('booking_key', bookingKey).order('created_at', { ascending: false });
+    if (error) { console.error('getBookingBalanceNotifications:', error); return []; }
+    return data || [];
+  },
+
   async getBookingFeeRemittanceHistory({ limit = 30, before = null } = {}) {
     const { data, error } = await _sb.rpc('get_booking_fee_remittance_history', {
       p_limit: Math.max(1, Math.min(100, Number(limit) || 30)),
@@ -2056,13 +2086,13 @@ window.DB = {
         .filter(b => !opts.date || b.date === opts.date)
         .filter(b => !opts.courtId || String(b.courtId) === String(opts.courtId))
         .filter(b => !opts.hostUserId || String(b.hostUserId) === String(opts.hostUserId))
-        .filter(b => !opts.activeOnly || b.status !== 'cancelled')
+        .filter(b => !opts.activeOnly || (b.status !== 'cancelled' && b.status !== 'forfeited'))
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     },
     async addBooking(booking) {
       const db = readDb();
       const existing = db.bookings
-        .filter(b => String(b.courtId) === String(booking.courtId) && b.date === booking.date && b.status !== 'cancelled');
+        .filter(b => String(b.courtId) === String(booking.courtId) && b.date === booking.date && b.status !== 'cancelled' && b.status !== 'forfeited');
       if (hasSlotConflict(existing, booking)) {
         throw new Error('One or more time slots are no longer available. Please refresh and choose a different time.');
       }
@@ -2181,7 +2211,7 @@ window.DB = {
         throw new Error(`Booking ${booking.ref} already exists in active bookings.`);
       }
       const existing = db.bookings
-        .filter(b => String(b.courtId) === String(booking.courtId) && b.date === booking.date && b.status !== 'cancelled');
+        .filter(b => String(b.courtId) === String(booking.courtId) && b.date === booking.date && b.status !== 'cancelled' && b.status !== 'forfeited');
       if (hasSlotConflict(existing, booking)) {
         throw new Error('Cannot restore because one or more slots are already booked.');
       }
@@ -2656,6 +2686,9 @@ window.DB = {
 
     async createPaymentSession() { throw new Error('Online checkout is disabled in local data mode.'); },
     async sendConfirmationEmail() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async sendHostBalanceNotice() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async processHostBalanceDeadlines() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async getBookingBalanceNotifications() { return []; },
     async sendRescheduleEmail() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async sendTelegramNotification() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingSubmitted() { return { ok: true, skipped: true, reason: 'Local data mode' }; },

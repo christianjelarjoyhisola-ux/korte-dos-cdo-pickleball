@@ -16,6 +16,9 @@ type Payload = {
   duration: number;
   total: number;
   downpayment: number;
+  hostBooking?: boolean;
+  balanceDueAt?: string | null;
+  remainingBalance?: number;
   contactNumber?: string;
   bookingItems?: Array<{
     courtName: string;
@@ -51,6 +54,16 @@ function fmtPHP(n: number): string {
   return "&#8369;" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 });
 }
 
+function fmtDeadline(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila", weekday: "long", year: "numeric", month: "long", day: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  });
+}
+
 function buildHtml(p: Payload): string {
   const fullName = escapeHtml(p.fullName);
   const bookingRef = escapeHtml(p.bookingRef);
@@ -81,6 +94,7 @@ function buildHtml(p: Payload): string {
           </tr>`).join("") : "";
   const isFullPay = Number(p.downpayment || 0) >= Number(p.total || 0) - 1;
   const balance = Number(p.total || 0) - Number(p.downpayment || 0);
+  const hostBalanceDeadline = p.hostBooking && !isFullPay ? fmtDeadline(p.balanceDueAt) : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -173,7 +187,11 @@ function buildHtml(p: Payload): string {
               <strong>&#128203; Reminders:</strong><br/>
               &bull; Please arrive <strong>10 minutes early</strong> to warm up.<br/>
               &bull; Bring your booking reference: <strong>${bookingRef}</strong><br/>
-              ${isFullPay ? "&bull; No remaining balance &mdash; you're all paid up! <strong style=\"color:#f49a4a;\">&#10003;</strong>" : `&bull; Remaining balance of <strong>${fmtPHP(balance)}</strong> is due on the day of play.`}
+              ${isFullPay
+                ? "&bull; No remaining balance &mdash; you're all paid up! <strong style=\"color:#f49a4a;\">&#10003;</strong>"
+                : hostBalanceDeadline
+                  ? `&bull; Remaining balance of <strong>${fmtPHP(balance)}</strong> is due by <strong>${escapeHtml(hostBalanceDeadline)}</strong> (five full days before Open Play).<br/>&bull; If the deadline is missed, the reservation is forfeited, the slot is released, and the payment already made remains non-refundable.`
+                  : `&bull; Remaining balance of <strong>${fmtPHP(balance)}</strong> is due on the day of play.`}
             </div>
           </td></tr>
         </table>
