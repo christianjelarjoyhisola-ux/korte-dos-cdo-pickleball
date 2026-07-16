@@ -6,7 +6,7 @@
 <title>Korte DOS — Admin Dashboard</title>
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="chart.min.js"></script>
-<script src="booking-balance.js?v=20260716-host-balance-v1"></script>
+<script src="booking-balance.js?v=20260716-court-revenue-v2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -6887,6 +6887,32 @@ function renderReportBars(targetId, entries, emptyCopy = 'No bookings in this pe
   }).join('');
 }
 
+function reportCourtRevenueBreakdown(transactions) {
+  if (typeof window.BookingBalance?.courtRevenueBreakdown === 'function') {
+    return window.BookingBalance.courtRevenueBreakdown(transactions);
+  }
+
+  // Compatibility path for devices that still have an older helper script in
+  // their browser cache. Keep the report usable while the new asset refreshes.
+  const totals = {};
+  (Array.isArray(transactions) ? transactions : []).forEach(transaction => {
+    const items = Array.isArray(transaction?.items) && transaction.items.length
+      ? transaction.items
+      : [transaction];
+    const forfeited = String(transaction?.status || '').toLowerCase() === 'forfeited';
+
+    items.filter(Boolean).forEach(item => {
+      const court = String(item.courtName || item.court_name || 'Unknown Court').trim() || 'Unknown Court';
+      const value = forfeited
+        ? (window.BookingBalance?.paidAmount?.(item) || 0)
+        : Math.max(0, Number(item.total || 0));
+      totals[court] = (totals[court] || 0) + value;
+    });
+  });
+
+  return Object.entries(totals).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
 async function renderReport(){
   const allBks=await DB.getBookings();
   const{from,to}=_rpDateRange();
@@ -6919,7 +6945,7 @@ async function renderReport(){
   // Revenue by court
   // Multi-court transactions are allocated from their individual booking rows,
   // so each physical court has one accurate total instead of a combined label.
-  const courtEntries=window.BookingBalance.courtRevenueBreakdown(reportTxns);
+  const courtEntries=reportCourtRevenueBreakdown(reportTxns);
   renderReportBars('rpCourtChart', courtEntries);
 
   // Revenue by how the player paid. This is kept separate from where the money
