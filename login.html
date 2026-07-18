@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Backyard Pickle — Admin Login</title>
-<link rel="icon" type="image/jpeg" href="backyardpicklelogo.jpg">
+<title>Korte DOS — Admin Login</title>
+<link rel="icon" type="image/png" href="korte-dos-logo.png">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
-:root{--navy:#0b356d;--navy-dark:#06264f;--court-blue:#185a9d;--pickle-lime:#91c43c;--green:var(--navy);--green-dark:var(--navy-dark);--cta:#4f7f25;--cta-dark:#3e6e1f;--glow:rgba(11,53,109,.18);--ac:11,53,109;--bg:#f4f7f1;--card:#fff;--border:#d6e1d1;--text:#102a43;--muted:#5f6f7c;--input:#edf3ea;--red:#c2413a;}
-body.light{--bg:#f4f7f1;--card:#fff;--border:#d6e1d1;--text:#102a43;--muted:#5f6f7c;--input:#edf3ea;}body.dark{--bg:#071b30;--card:#0e2a45;--border:#244a67;--text:#f6faf3;--muted:#b6c9d6;--input:#0a2239;--green:#7fb2d8;--green-dark:#185a9d;--glow:rgba(127,178,216,.18);--ac:127,178,216;}
+:root{--navy:#143d63;--navy-dark:#0b2744;--court-red:#c83d26;--court-red-dark:#9f2f1f;--pickle-lime:#c9cf43;--green:var(--navy);--green-dark:var(--navy-dark);--cta:var(--court-red);--cta-dark:var(--court-red-dark);--glow:rgba(20,61,99,.18);--ac:20,61,99;--bg:#f4f7f8;--card:#fff;--border:#d7e0e6;--text:#0f2438;--muted:#657486;--input:#eef3f6;--red:#c83d26;}
+body.light{--bg:#f4f7f8;--card:#fff;--border:#d7e0e6;--text:#0f2438;--muted:#657486;--input:#eef3f6;}body.dark{--bg:#091521;--card:#12283b;--border:#29475f;--text:#f8faf6;--muted:#aec0cf;--input:#0f2234;--green:#7fa9cc;--green-dark:#143d63;--glow:rgba(127,169,204,.18);--ac:127,169,204;}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;transition:background .3s,color .3s;touch-action:manipulation;padding:16px;}
 button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulation}
 .bg-glow{position:fixed;top:-100px;left:50%;transform:translateX(-50%);width:700px;height:500px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--ac),.1) 0%,transparent 70%);pointer-events:none;}
@@ -29,8 +29,8 @@ button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulat
 .fi::placeholder{color:var(--muted);}
 @media (pointer: coarse){.fi,input,select,textarea,button,.btn{font-size:16px!important;}}
 .btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:13px 20px;border:none;border-radius:9px;font-family:'Outfit',sans-serif;font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s;}
-.btn-p{background:linear-gradient(135deg,var(--cta),var(--cta-dark));color:#fff;box-shadow:0 4px 14px rgba(79,127,37,.22);}
-.btn-p:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(79,127,37,.3);}
+.btn-p{background:linear-gradient(135deg,var(--cta),var(--cta-dark));color:#fff;box-shadow:0 4px 14px rgba(200,61,38,.22);}
+.btn-p:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(200,61,38,.28);}
 .hint{background:rgba(var(--ac),.07);border:1px solid rgba(var(--ac),.22);border-radius:8px;padding:12px;font-size:.82rem;color:var(--muted);margin-top:18px;text-align:center;}
 .hint strong{color:var(--green);}
 .back{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:20px;font-size:.86rem;color:var(--muted);transition:color .2s;text-decoration:none;}
@@ -57,7 +57,7 @@ button,input,select,textarea,label,a,[role="button"],.btn{touch-action:manipulat
 
 <div class="card">
   <div class="logo">
-    <img class="logo-ic" src="backyardpicklelogo.jpg" alt="Backyard Pickle logo">
+    <img class="logo-ic" src="korte-dos-logo.png" alt="Korte DOS logo">
     <div class="logo-tx">PICKLEBALL COURT DASHBOARD</div>
     <div class="logo-sub">Admin Control Panel</div>
   </div>

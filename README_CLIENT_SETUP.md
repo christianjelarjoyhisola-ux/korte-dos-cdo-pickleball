@@ -1,19 +1,17 @@
-# Backyard Pickle Booking System
+# Pickleball Booking System Template
 
-This is the dedicated single-venue copy for onboarding the Backyard Pickle court owner while keeping the Platform Provider's booking-fee model separate from court revenue.
+This is the clean master copy for onboarding a new pickleball court owner.
 
 ## New Client Setup
 
-1. Create a brand-new Supabase project for Backyard Pickle.
-2. Copy `.env.example` to `.env.local` and replace every placeholder with the new project's values.
+1. Copy this folder and rename it for the new court.
+2. Create a brand-new Supabase project for that court owner.
 3. Run `SETUP_NEW_SUPABASE.sql` in the new Supabase SQL editor.
 4. Update `supabase-config.js` with the new Supabase project URL and anon key.
-5. Run `create-accounts.js` only after `.env.local` contains real, unique account credentials. Never put the service-role key in frontend files.
-6. Complete the remaining court-owner details in `BACKYARD_PICKLE_LAUNCH.md`.
+5. If using setup scripts, update `setup-db.js` and `create-accounts.js` with the new service role key, run them, then remove the service role key from local files when done.
+6. Replace the placeholder brand text, logo, court photos, contact info, and payment QR settings.
 7. Deploy the Supabase edge functions to the new Supabase project.
 8. Deploy the frontend to a new Cloudflare Pages project or domain.
-
-Email delivery uses Maileroo. `EMAIL_FROM` must use a domain verified in the Maileroo dashboard, and `MAILEROO_API_KEY` must be that domain's sending key.
 
 ## Important
 

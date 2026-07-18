@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Backyard Pickle - Open Play Host Portal</title>
-<link rel="icon" type="image/jpeg" href="backyardpicklelogo.jpg">
+<title>Korte DOS - Open Play Host Portal</title>
+<link rel="icon" type="image/png" href="korte-dos-logo.png">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--navy:#0b356d;--navy-dark:#06264f;--court-blue:#185a9d;--cta:#4f7f25;--cta-dark:#3e6e1f;--red:#c2413a;--red-dark:#9c2f2a;--lime:#91c43c;--bg:#f4f7f1;--card:#fff;--border:#d6e1d1;--text:#102a43;--muted:#5f6f7c;--input:#edf3ea;--ac:11,53,109}
-body.dark{--bg:#071b30;--card:#0e2a45;--border:#244a67;--text:#f6faf3;--muted:#b6c9d6;--input:#0a2239;--ac:127,178,216}
+:root{--navy:#143d63;--navy-dark:#0b2744;--red:#c83d26;--red-dark:#9f2f1f;--lime:#c9cf43;--bg:#f4f7f8;--card:#fff;--border:#d7e0e6;--text:#0f2438;--muted:#657486;--input:#eef3f6;--ac:20,61,99}
+body.dark{--bg:#091521;--card:#12283b;--border:#29475f;--text:#f8faf6;--muted:#aec0cf;--input:#0f2234;--ac:127,169,204}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:18px;display:flex;align-items:center;justify-content:center}
 button,input,textarea,label,a{touch-action:manipulation}
 @media (pointer:coarse){input,textarea,button{font-size:16px!important}}
@@ -30,7 +30,7 @@ button,input,textarea,label,a{touch-action:manipulation}
 textarea.fi{min-height:82px;resize:vertical}
 .btn{display:flex;align-items:center;justify-content:center;width:100%;border:0;border-radius:9px;padding:13px 18px;font-family:'Outfit',sans-serif;font-weight:800;cursor:pointer;transition:transform .18s,box-shadow .18s}
 .btn:disabled{opacity:.65;cursor:wait;transform:none}
-.btn-p{background:linear-gradient(135deg,var(--cta),var(--cta-dark));color:#fff;box-shadow:0 4px 14px rgba(79,127,37,.22)}
+.btn-p{background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;box-shadow:0 4px 14px rgba(200,61,38,.2)}
 .btn-p:hover{transform:translateY(-1px)}
 .btn-g{background:var(--input);border:1px solid var(--border);color:var(--text)}
 .file{display:block;border:1px dashed var(--border);border-radius:9px;padding:13px;background:var(--input);cursor:pointer;margin-bottom:14px}
@@ -38,7 +38,7 @@ textarea.fi{min-height:82px;resize:vertical}
 .file strong{display:block;color:var(--text);font-size:.9rem;margin-bottom:2px}
 .msg{display:none;border-radius:8px;padding:11px 13px;font-size:.84rem;line-height:1.45;margin-bottom:14px}
 .msg.show{display:block}
-.msg.err{background:rgba(194,65,58,.10);border:1px solid rgba(194,65,58,.28);color:var(--red)}
+.msg.err{background:rgba(200,61,38,.10);border:1px solid rgba(200,61,38,.28);color:var(--red)}
 .msg.ok{background:rgba(var(--ac),.09);border:1px solid rgba(var(--ac),.22);color:var(--navy)}
 .links{padding:0 24px 24px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .links a{color:var(--muted);font-size:.84rem;text-decoration:none}
@@ -48,7 +48,7 @@ textarea.fi{min-height:82px;resize:vertical}
 <body class="light">
 <main class="shell">
   <header class="head">
-    <img class="logo" src="backyardpicklelogo.jpg" alt="Backyard Pickle logo">
+    <img class="logo" src="korte-dos-logo.png" alt="Korte DOS logo">
     <div class="title">Open Play Host Portal</div>
     <div class="sub">Approved hosts can book courts with a 25% downpayment. New hosts can apply for review.</div>
   </header>

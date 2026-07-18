@@ -42,15 +42,6 @@ $projectRef = Resolve-ConfigValue "SUPABASE_PROJECT_REF" $envMap -Required
 $serviceRoleKey = Resolve-ConfigValue "SUPABASE_SERVICE_ROLE_KEY" $envMap -Required
 $databasePassword = Resolve-ConfigValue "SUPABASE_DB_PASSWORD" $envMap
 $googleVisionKey = Resolve-ConfigValue "GOOGLE_VISION_API_KEY" $envMap
-$mailerooKey = Resolve-ConfigValue "MAILEROO_API_KEY" $envMap
-$emailFrom = Resolve-ConfigValue "EMAIL_FROM" $envMap
-$appBaseUrl = Resolve-ConfigValue "APP_BASE_URL" $envMap
-$appAdminUrl = Resolve-ConfigValue "APP_ADMIN_URL" $envMap
-$brandName = Resolve-ConfigValue "BRAND_NAME" $envMap
-$venueLocation = Resolve-ConfigValue "VENUE_LOCATION" $envMap
-$brandLogoUrl = Resolve-ConfigValue "BRAND_LOGO_URL" $envMap
-$supportPhone = Resolve-ConfigValue "SUPPORT_PHONE" $envMap
-$facebookUrl = Resolve-ConfigValue "FACEBOOK_URL" $envMap
 $paymentProvider = Resolve-ConfigValue "PAYMENT_PROVIDER" $envMap
 if (-not $paymentProvider) { $paymentProvider = "template" }
 $paymentWebhookSecret = Resolve-ConfigValue "PAYMENT_WEBHOOK_SECRET" $envMap
@@ -108,15 +99,6 @@ try {
     "PAYMENT_PROVIDER=$paymentProvider"
   )
   if ($googleVisionKey) { $secretArgs += "GOOGLE_VISION_API_KEY=$googleVisionKey" }
-  if ($mailerooKey) { $secretArgs += "MAILEROO_API_KEY=$mailerooKey" }
-  if ($emailFrom) { $secretArgs += "EMAIL_FROM=$emailFrom" }
-  if ($appBaseUrl) { $secretArgs += "APP_BASE_URL=$appBaseUrl" }
-  if ($appAdminUrl) { $secretArgs += "APP_ADMIN_URL=$appAdminUrl" }
-  if ($brandName) { $secretArgs += "BRAND_NAME=$brandName" }
-  if ($venueLocation) { $secretArgs += "VENUE_LOCATION=$venueLocation" }
-  if ($brandLogoUrl) { $secretArgs += "BRAND_LOGO_URL=$brandLogoUrl" }
-  if ($supportPhone) { $secretArgs += "SUPPORT_PHONE=$supportPhone" }
-  if ($facebookUrl) { $secretArgs += "FACEBOOK_URL=$facebookUrl" }
   if ($paymentWebhookSecret) { $secretArgs += "PAYMENT_WEBHOOK_SECRET=$paymentWebhookSecret" }
   Invoke-Supabase @secretArgs
 

@@ -70,7 +70,7 @@ begin
   if length(trim(coalesce(p_booking_ref, ''))) = 0 then raise exception 'A booking reference is required.' using errcode = '22023'; end if;
   if length(trim(coalesce(p_reason, ''))) < 3 then raise exception 'A void reason of at least 3 characters is required.' using errcode = '22023'; end if;
 
-  perform pg_advisory_xact_lock(hashtextextended('backyard-pickle-booking-fee-remittance', 0));
+  perform pg_advisory_xact_lock(hashtextextended('korte-dos-booking-fee-remittance', 0));
   select * into target from public.bookings where ref = trim(p_booking_ref) for update;
   if not found then raise exception 'Booking % was not found.', trim(p_booking_ref) using errcode = 'P0002'; end if;
   group_key := coalesce(nullif(target.booking_group_ref, ''), target.ref);

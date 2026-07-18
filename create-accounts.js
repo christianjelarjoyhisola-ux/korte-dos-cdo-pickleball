@@ -16,12 +16,8 @@ function loadLocalEnv() {
 }
 
 const env = loadLocalEnv();
-const SUPABASE_URL = env.SUPABASE_URL;
-const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local before creating accounts.');
-}
+const SUPABASE_URL = env.SUPABASE_URL || 'https://zcuufcpkgidmaanxjufo.supabase.co';
+const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || 'YOUR_SUPABASE_SERVICE_ROLE_KEY';
 
 const { createClient } = require('@supabase/supabase-js');
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -29,14 +25,10 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
 });
 
 const ACCOUNTS = [
-  { email: env.OWNER_EMAIL, password: env.OWNER_PASSWORD, username: 'sysowner', full_name: 'System Owner', role: 'owner' },
-  { email: env.COURT_OWNER_EMAIL, password: env.COURT_OWNER_PASSWORD, username: 'courtowner', full_name: 'Backyard Pickle Court Owner', role: 'court_owner' },
-  { email: env.STAFF_EMAIL, password: env.STAFF_PASSWORD, username: 'courtstaff', full_name: 'Backyard Pickle Court Staff', role: 'staff' },
+  { email: env.OWNER_EMAIL || 'owner@kortedos.local', password: env.OWNER_PASSWORD || 'CHANGE_THIS_PASSWORD!', username: 'sysowner', full_name: 'System Owner', role: 'owner' },
+  { email: env.COURT_OWNER_EMAIL || 'courtowner@kortedos.local', password: env.COURT_OWNER_PASSWORD || 'CHANGE_THIS_PASSWORD!', username: 'courtowner', full_name: 'Court Owner', role: 'court_owner' },
+  { email: env.STAFF_EMAIL || 'staff@kortedos.local', password: env.STAFF_PASSWORD || 'CHANGE_THIS_PASSWORD!', username: 'courtstaff', full_name: 'Court Staff', role: 'staff' },
 ];
-
-if (ACCOUNTS.some(account => !account.email || !account.password || account.password.includes('CHANGE_THIS'))) {
-  throw new Error('Set all OWNER, COURT_OWNER, and STAFF email/password values in .env.local before creating accounts.');
-}
 
 async function run() {
   console.log('Creating admin accounts in Supabase project:', SUPABASE_URL, '\n');

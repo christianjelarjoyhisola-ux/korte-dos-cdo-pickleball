@@ -1,7 +1,6 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -58,35 +57,19 @@ function receiptOcrService(): ServiceStatus {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (!["GET", "POST"].includes(req.method)) {
-    return new Response(
-      JSON.stringify({ ok: false, error: "Method not allowed" }),
-      {
-        status: 405,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
-  const serviceRoleConfigured = hasEnv("SERVICE_ROLE_KEY") ||
-    hasEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRoleConfigured = hasEnv("SERVICE_ROLE_KEY") || hasEnv("SUPABASE_SERVICE_ROLE_KEY");
   const services: ServiceStatus[] = [
-    service("email", "Email confirmations (Maileroo)", [
-      "MAILEROO_API_KEY",
-      "EMAIL_FROM",
-    ]),
-    service("telegram", "Telegram admin alerts", [
-      "TELEGRAM_BOT_TOKEN",
-      "TELEGRAM_CHAT_ID",
-    ], ["APP_ADMIN_URL"]),
-    service("payments", "PayMongo checkout", [
-      "PAYMONGO_SECRET_KEY",
-      "PAYMENT_SUCCESS_URL",
-      "PAYMENT_CANCEL_URL",
-    ], ["PAYMENT_WEBHOOK_SECRET"]),
+    service("email", "Email confirmations", ["RESEND_API_KEY"], ["EMAIL_FROM"]),
+    service("telegram", "Telegram admin alerts", ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"], ["APP_ADMIN_URL"]),
+    service("payments", "PayMongo checkout", ["PAYMONGO_SECRET_KEY", "PAYMENT_SUCCESS_URL", "PAYMENT_CANCEL_URL"], ["PAYMENT_WEBHOOK_SECRET"]),
     receiptOcrService(),
     {
       id: "service_role",
@@ -94,24 +77,19 @@ Deno.serve(async (req) => {
       configured: serviceRoleConfigured,
       required: ["SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"],
       recommended: [],
-      missing: serviceRoleConfigured
-        ? []
-        : ["SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"],
+      missing: serviceRoleConfigured ? [] : ["SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"],
       note: "Needed by payment sessions, webhooks, and receipt storage.",
     },
   ];
 
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      generatedAt: new Date().toISOString(),
-      readyCount: services.filter((s) => s.configured).length,
-      totalCount: services.length,
-      services,
-    }),
-    {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    },
-  );
+  return new Response(JSON.stringify({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    readyCount: services.filter((s) => s.configured).length,
+    totalCount: services.length,
+    services,
+  }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 });

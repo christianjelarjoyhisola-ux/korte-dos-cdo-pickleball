@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-DEFAULT_WORKBOOK = Path(r"Backyard-Pickle-Manual-Bookings.xlsx")
+DEFAULT_WORKBOOK = Path(r"C:\Users\casto\Downloads\01.-Korte-Dos-2026-Pickleball-Booking.xlsx")
 CONFIG = Path("supabase-config.js")
 NS = {
     "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
