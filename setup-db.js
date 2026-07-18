@@ -1,5 +1,5 @@
 // Run: node setup-db.js
-// Sets up the full Korte DOS schema in the new Supabase project
+// Sets up the full Backyard Pickle schema in a dedicated Supabase project
 
 const fs = require('fs');
 
@@ -16,8 +16,12 @@ function loadLocalEnv() {
 }
 
 const env = loadLocalEnv();
-const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || 'YOUR_SUPABASE_SERVICE_ROLE_KEY';
-const SUPABASE_URL = env.SUPABASE_URL || 'https://zcuufcpkgidmaanxjufo.supabase.co';
+const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = env.SUPABASE_URL;
+
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local before running setup-db.js.');
+}
 
 const { createClient } = require('@supabase/supabase-js');
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -259,7 +263,7 @@ async function run() {
   console.log(courtErr ? `  ✗ seed courts: ${courtErr.message}` : '  ✓ seed courts');
 
   const { error: settErr } = await sb.from('settings').upsert([
-    { key: 'venue_name',    value: 'Korte DOS' },
+    { key: 'venue_name',    value: 'Backyard Pickle' },
     { key: 'open_time',     value: '6' },
     { key: 'close_time',    value: '22' },
     { key: 'booking_fee',   value: '5' },

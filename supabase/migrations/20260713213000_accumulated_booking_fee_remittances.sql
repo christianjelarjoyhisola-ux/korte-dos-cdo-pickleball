@@ -340,7 +340,7 @@ begin
      and new.payment_status in ('paid', 'downpayment_paid') then
     -- Shared eligibility locks serialize against the exclusive prepare lock.
     perform pg_advisory_xact_lock_shared(
-      hashtextextended('korte-dos-booking-fee-remittance', 0)
+      hashtextextended('backyard-pickle-booking-fee-remittance', 0)
     );
     new.booking_fee_earned_at := clock_timestamp();
   end if;
@@ -1587,7 +1587,7 @@ begin
   -- No fee can transition to earned while this transaction holds the exclusive
   -- lock. The cutoff assigned immediately afterward is therefore exact.
   perform pg_advisory_xact_lock(
-    hashtextextended('korte-dos-booking-fee-remittance', 0)
+    hashtextextended('backyard-pickle-booking-fee-remittance', 0)
   );
 
   -- Recheck after waiting for a concurrent request with the same key.
@@ -2183,7 +2183,7 @@ begin
 
   -- Serialize release/replacement with preparation of a new exact-cutoff batch.
   perform pg_advisory_xact_lock(
-    hashtextextended('korte-dos-booking-fee-remittance', 0)
+    hashtextextended('backyard-pickle-booking-fee-remittance', 0)
   );
 
   select r.* into remittance

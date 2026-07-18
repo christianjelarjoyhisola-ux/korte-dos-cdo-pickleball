@@ -63,7 +63,7 @@ function fmtPHP(n: number): string {
 }
 
 function adminUrl(): string {
-  return Deno.env.get("APP_ADMIN_URL") || "https://korte-dos.pages.dev/admin.html";
+  return Deno.env.get("APP_ADMIN_URL") || "https://backyard-pickle.example/admin.html";
 }
 
 function paymentMethodLabel(method?: string): string {

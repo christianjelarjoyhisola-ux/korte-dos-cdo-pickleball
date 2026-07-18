@@ -114,7 +114,7 @@ begin
        or new.forfeiture_reason is distinct from old.forfeiture_reason
        or new.status = 'forfeited'
        or new.payment_status = 'deposit_retained' then
-      raise exception 'Balance deadlines and forfeiture records are managed by Korte DOS.'
+      raise exception 'Balance deadlines and forfeiture records are managed by the Backyard Pickle platform.'
         using errcode = '42501';
     end if;
   end if;
@@ -248,7 +248,7 @@ begin
     'process-host-balance-deadlines',
     '*/15 * * * *',
     $job$select net.http_post(
-      url := 'https://zcuufcpkgidmaanxjufo.supabase.co/functions/v1/process-host-balance-deadlines',
+      url := current_setting('app.settings.supabase_url', true) || '/functions/v1/process-host-balance-deadlines',
       headers := '{"Content-Type":"application/json"}'::jsonb,
       body := '{"source":"database-cron"}'::jsonb
     );$job$

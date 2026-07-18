@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Korte DOS — Admin Dashboard</title>
-<link rel="icon" type="image/png" href="korte-dos-logo.png">
+<title>Backyard Pickle — Admin Dashboard</title>
+<link rel="icon" type="image/jpeg" href="backyardpicklelogo.jpg">
 <script src="chart.min.js"></script>
 <script src="booking-balance.js?v=20260716-court-revenue-v2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,40 +12,42 @@
 <style>
 /* ── DESIGN TOKENS ─────────────────────────────────────── */
 :root {
-  --navy: #143d63; --navy-dark: #0b2744; --court-blue: #0e5a8a;
-  --court-red: #c83d26; --court-red-bg: #fdebe6;
-  --pickle-lime: #c9cf43; --pickle-lime-bg: #f3f6d8;
-  --bg: #f4f7f8; --bg2: #eaf0f3;
-  --surface: #ffffff; --surface2: #f2f6f8;
-  --border: #d7e0e6;
-  --text: #0f2438; --text2: #546579; --text3: #8794a3;
-  --green: var(--navy); --green-dark: var(--navy-dark); --green-bg: #e6eef4; --green-rgb: 20,61,99;
+  --navy: #0b356d; --navy-dark: #06264f; --court-blue: #185a9d;
+  --court-red: #c2413a; --court-red-bg: #fbecea;
+  --pickle-lime: #91c43c; --pickle-lime-bg: #edf6df;
+  --bg: #f4f7f1; --bg2: #e8f0e4;
+  --surface: #ffffff; --surface2: #f1f6ee;
+  --border: #d6e1d1;
+  --text: #102a43; --text2: #536576; --text3: #8796a4;
+  --green: #4f7f25; --green-dark: #3e6e1f; --green-bg: #edf5e8; --green-rgb: 79,127,37;
+  --cta: #4f7f25; --cta-dark: #3e6e1f;
   --red: var(--court-red); --red-bg: var(--court-red-bg);
   --yellow: #9a6b16; --yellow-bg: #fff4d6; --yellow-rgb: 154,107,22;
-  --shadow: 0 2px 12px rgba(20,61,99,0.08);
-  --shadow-lg: 0 8px 40px rgba(20,61,99,0.14);
+  --shadow: 0 2px 12px rgba(11,53,109,0.08);
+  --shadow-lg: 0 8px 40px rgba(11,53,109,0.14);
   --radius: 12px; --radius-sm: 8px;
   --transition: 0.2s ease;
   --r: 12px;
   /* legacy compat */
   --card: var(--surface); --input: var(--bg2); --muted: var(--text3);
-  --glow: rgba(20,61,99,.24);
+  --glow: rgba(11,53,109,.24);
 }
 [data-theme="dark"] {
-  --navy: #7fa9cc; --navy-dark: #143d63; --court-blue: #8ab9d9;
-  --court-red: #e0664e; --court-red-bg: rgba(224,102,78,.16);
-  --pickle-lime: #dce768; --pickle-lime-bg: rgba(220,231,104,.16);
-  --bg: #091521; --bg2: #0f2234;
-  --surface: #12283b; --surface2: #18334a;
-  --border: #29475f;
-  --text: #f8faf6; --text2: #b8c7d4; --text3: #8395a4;
-  --green: var(--navy); --green-dark: #d6e6f3; --green-bg: rgba(127,169,204,.16); --green-rgb: 127,169,204;
+  --navy: #7fb2d8; --navy-dark: #185a9d; --court-blue: #8fc1e6;
+  --court-red: #ef746d; --court-red-bg: rgba(239,116,109,.16);
+  --pickle-lime: #b8de73; --pickle-lime-bg: rgba(184,222,115,.16);
+  --bg: #071b30; --bg2: #0a2239;
+  --surface: #0e2a45; --surface2: #153752;
+  --border: #244a67;
+  --text: #f6faf3; --text2: #c1d0da; --text3: #8ea2b2;
+  --green: #a0d570; --green-dark: #c3e8a1; --green-bg: rgba(160,213,112,.16); --green-rgb: 160,213,112;
+  --cta: #4f7f25; --cta-dark: #3e6e1f;
   --red: var(--court-red); --red-bg: var(--court-red-bg);
   --yellow: #d8b24c; --yellow-bg: rgba(216,178,76,.16); --yellow-rgb: 216,178,76;
   --shadow: 0 2px 12px rgba(0,0,0,0.4);
   --shadow-lg: 0 8px 40px rgba(0,0,0,0.5);
   --card: var(--surface); --input: var(--bg2); --muted: var(--text3);
-  --glow: rgba(127,169,204,.22);
+  --glow: rgba(127,178,216,.22);
 }
 
 /* ── SMOOTH THEME SWITCH ───────────────────────────────── */
@@ -229,7 +231,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
   display:grid; gap:11px; padding:14px; border:1px solid var(--border); border-radius:14px;
   background:var(--card); box-shadow:0 7px 20px rgba(0,0,0,.035);
 }
-.rm-record.overdue, .rm-record.rejected { border-color:rgba(200,61,38,.38); }
+.rm-record.overdue, .rm-record.rejected { border-color:rgba(194,65,58,.38); }
 .rm-record.under-review { border-color:rgba(var(--yellow-rgb),.4); }
 .rm-record-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:start; }
 .rm-ref { color:var(--green); font:800 .78rem 'DM Mono',monospace; overflow-wrap:anywhere; }
@@ -239,7 +241,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .rm-status.awaiting-payment { color:var(--yellow); background:var(--yellow-bg); border-color:rgba(var(--yellow-rgb),.28); }
 .rm-status.under-review { color:#407cb4; background:rgba(64,124,180,.11); border-color:rgba(64,124,180,.28); }
 .rm-status.settled { color:var(--green); background:var(--green-bg); border-color:rgba(var(--green-rgb),.25); }
-.rm-status.overdue, .rm-status.rejected, .rm-status.cancelled { color:var(--red); background:var(--red-bg); border-color:rgba(200,61,38,.25); }
+.rm-status.overdue, .rm-status.rejected, .rm-status.cancelled { color:var(--red); background:var(--red-bg); border-color:rgba(194,65,58,.25); }
 .rm-status.accumulating { color:var(--text2); background:var(--bg2); }
 .rm-record-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
 .rm-field { min-width:0; padding:9px 10px; border:1px solid var(--border); border-radius:10px; background:var(--bg2); }
@@ -569,8 +571,8 @@ tr:hover td { background: var(--bg2); }
   font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
   cursor: pointer; transition: all var(--transition); white-space: nowrap;
 }
-.btn-p { background: var(--green); color: #fff; }
-.btn-p:hover { background: var(--green-dark); transform: translateY(-1px); }
+.btn-p { background: var(--cta); color: #fff; box-shadow:0 4px 14px rgba(79,127,37,.2); }
+.btn-p:hover { background: var(--cta-dark); transform: translateY(-1px); box-shadow:0 8px 20px rgba(79,127,37,.26); }
 .btn-g { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .btn-g:hover { background: var(--surface2); }
 .btn-d { background: var(--red-bg); border: 1px solid var(--red); color: var(--red); }
@@ -781,7 +783,7 @@ tr:hover td { background: var(--bg2); }
 .booking-detail-card.money strong { color:var(--green); font-size:1.05rem; }
 .booking-detail-card.warn { border-color:rgba(var(--yellow-rgb),.35); background:var(--yellow-bg); }
 .booking-detail-card.warn strong { color:var(--yellow); }
-.booking-detail-card.danger { border-color:rgba(200,61,38,.3); background:var(--red-bg); }
+.booking-detail-card.danger { border-color:rgba(194,65,58,.3); background:var(--red-bg); }
 .booking-detail-card.danger strong { color:var(--red); }
 .booking-detail-section { margin-top:12px; padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
 .booking-detail-section h3 { margin:0 0 10px; font:900 .76rem 'DM Sans',sans-serif; color:var(--text2); text-transform:uppercase; letter-spacing:.7px; }
@@ -849,7 +851,7 @@ tr:hover td { background: var(--bg2); }
 .bdg-d { background: rgba(128,128,255,.1); color: #7070ee; }
 .bdg-v { background: rgba(100,180,255,.15); color: #4a9ad4; }
 .bdg-x { background: var(--red-bg); color: var(--red); }
-.bdg-f { background:#f4e8e5; color:#9f2f1f; border:1px solid rgba(159,47,31,.22); }
+.bdg-f { background:#fbecea; color:#9c2f2a; border:1px solid rgba(156,47,42,.22); }
 
 /* ── FORM ──────────────────────────────────────────────── */
 .fg { margin-bottom: 14px; }
@@ -2049,8 +2051,8 @@ tr:hover td { background: var(--bg2); }
 <!-- TOP NAV -->
 <nav class="topnav">
   <div class="nav-brand" onclick="window.location.href='index.html'">
-    <img class="logo-img" src="korte-dos-logo.png" alt="Korte DOS"/>
-    Korte DOS <span class="brand-accent">Admin</span>
+    <img class="logo-img" src="backyardpicklelogo.jpg" alt="Backyard Pickle logo"/>
+    Backyard Pickle <span class="brand-accent">Admin</span>
   </div>
   <div class="nav-actions">
     <div class="nav-user">
@@ -3013,7 +3015,7 @@ tr:hover td { background: var(--bg2); }
           </div>
           <div class="fg" style="margin:0;flex:1">
             <label class="fl">Remittance GCash Account Name</label>
-            <input type="text" class="fi" id="platformGcashNameInput" placeholder="e.g. Korte DOS Platform Inc." />
+            <input type="text" class="fi" id="platformGcashNameInput" placeholder="Platform Provider legal or account name" />
           </div>
         </div>
         <div class="fg" style="margin:0">
@@ -3088,7 +3090,7 @@ tr:hover td { background: var(--bg2); }
             </div>
             <div class="fg" style="margin:0;flex:1">
               <label class="fl">Account Name</label>
-              <input type="text" class="fi" id="gcashNameInput" placeholder="e.g. Korte DOS Bayabas" />
+              <input type="text" class="fi" id="gcashNameInput" placeholder="e.g. Backyard Pickle" />
             </div>
           </div>
           <div class="fg" style="margin:0">
@@ -3116,7 +3118,7 @@ tr:hover td { background: var(--bg2); }
             </div>
             <div class="fg" style="margin:0;flex:1">
               <label class="fl">Account Name</label>
-              <input type="text" class="fi" id="gotymeNameInput" placeholder="e.g. Korte DOS Bayabas" />
+              <input type="text" class="fi" id="gotymeNameInput" placeholder="e.g. Backyard Pickle" />
             </div>
           </div>
           <div class="fg" style="margin:0">
@@ -3144,7 +3146,7 @@ tr:hover td { background: var(--bg2); }
             </div>
             <div class="fg" style="margin:0;flex:1">
               <label class="fl">Account Name</label>
-              <input type="text" class="fi" id="pnbNameInput" placeholder="e.g. Korte DOS Bayabas" />
+              <input type="text" class="fi" id="pnbNameInput" placeholder="e.g. Backyard Pickle" />
             </div>
           </div>
           <div class="fg" style="margin:0">
@@ -3639,7 +3641,7 @@ tr:hover td { background: var(--bg2); }
     <div class="m-hd"><div><h2 id="rmCancelTitle">CANCEL PREPARED REMITTANCE</h2><div class="rm-modal-sub">Return its bookings to the live accumulated balance</div></div><button class="m-x" type="button" aria-label="Close cancel remittance" onclick="closeRemittanceModal('rmCancelModal')">&#10005;</button></div>
     <div class="m-body">
       <input type="hidden" id="rmCancelId" />
-      <div class="rm-info-note" style="border-color:rgba(200,61,38,.25);background:var(--red-bg)"><span aria-hidden="true">&#9888;</span><span>This does not delete the record. The frozen booking fees become eligible again, and the cancellation remains in the audit history.</span></div>
+      <div class="rm-info-note" style="border-color:rgba(194,65,58,.25);background:var(--red-bg)"><span aria-hidden="true">&#9888;</span><span>This does not delete the record. The frozen booking fees become eligible again, and the cancellation remains in the audit history.</span></div>
       <div class="fg"><label class="fl" for="rmCancelReason">Reason <span style="color:var(--red)">*</span></label><textarea class="fi" id="rmCancelReason" rows="3" maxlength="500" placeholder="Explain why this prepared remittance is being cancelled" required style="resize:vertical"></textarea></div>
     </div>
     <div class="m-foot"><button class="btn btn-g" type="button" onclick="closeRemittanceModal('rmCancelModal')">Keep Remittance</button><button class="btn btn-d" id="rmCancelConfirmBtn" type="submit">Cancel &amp; Return Balance</button></div>
@@ -7796,7 +7798,7 @@ function rmRecordCard(record) {
   const hoursLabel = billableHours === null ? 'Not recorded' : (billableHours === 0 && flatBookings > 0) ? 'N/A - flat fee' : `${rmMetricNumber(billableHours)} hr${billableHours === 1 ? '' : 's'}`;
   const cutoff = rmCutoff(record);
   const submitted = rmSubmittedAt(record);
-  const ownerMeta = String(rmPick(record, 'court_owner_name', 'courtOwnerName', 'court_owner_email', 'courtOwnerEmail', 'venue_name', 'venueName') || 'Korte Dos CDO venue ledger');
+  const ownerMeta = String(rmPick(record, 'court_owner_name', 'courtOwnerName', 'court_owner_email', 'courtOwnerEmail', 'venue_name', 'venueName') || 'Backyard Pickle venue ledger');
   const actions = [
     `<button class="btn btn-g btn-sm" type="button" onclick="openRemittanceDetails('${jsArg(id)}')">View Details</button>`,
   ];
@@ -10684,7 +10686,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   const allowLocalBypass = isLocalDev && window.PB_USE_LOCAL_DATA;
   if (allowLocalBypass && !Auth.getSession()) {
-    const devSession = { id: 'owner_001', email: 'owner@kortedos.local', role: 'owner', fullName: 'System Owner', loginAt: new Date().toISOString(), isLocalData: true };
+    const devSession = { id: 'owner_001', email: 'owner@backyard-pickle.local', role: 'owner', fullName: 'System Owner', loginAt: new Date().toISOString(), isLocalData: true };
     localStorage.setItem('pb_session', JSON.stringify(devSession));
     localStorage.setItem('pb_remember', '1');
   }
@@ -10800,7 +10802,7 @@ function applyRoleVisibility(role) {
       <p style="margin:0 0 14px;color:#a0b0c0;font-size:.8rem;font-style:italic">Read the full agreement before signing. The <strong>Sign</strong> button unlocks only after you scroll to the bottom.</p>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">1. Parties</h4>
-      <p style="margin:0 0 14px"><strong>Platform Provider:</strong> [Platform Provider / System Owner Legal Name] ("Platform Provider"), the developer, system owner, and administrator of the Pickleball Court Booking System, a software platform that enables customers to discover and book pickleball courts online.<br><br><strong>Court Owner:</strong> The individual or business identified by the account below ("Court Owner"), who independently owns, operates, and is solely responsible for the physical Korte DOS court in Bayabas, Cagayan de Oro City, Misamis Oriental, Philippines.<br><br>The Platform Provider does not own, manage, staff, price, or operate the physical court. The Platform Provider provides the online booking software and related platform services only.</p>
+      <p style="margin:0 0 14px"><strong>Platform Provider:</strong> [Platform Provider / System Owner Legal Name] ("Platform Provider"), the developer, system owner, and administrator of the Pickleball Court Booking System, a software platform that enables customers to discover and book pickleball courts online.<br><br><strong>Court Owner:</strong> The individual or business identified by the account below ("Court Owner"), who independently owns, operates, and is solely responsible for the physical Backyard Pickle venue at [Court Owner-confirmed full address], Philippines.<br><br>The Platform Provider does not own, manage, staff, price, or operate the physical court. The Platform Provider provides the online booking software and related platform services only.</p>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">2. What the Platform Provides</h4>
       <p style="margin:0 0 14px">While this Agreement remains active, the Platform Provider grants the Court Owner access to the following at <strong>no setup fee, one-time fee, monthly subscription fee, hidden fee, or any other platform charge</strong> to the Court Owner:</p>
@@ -10856,7 +10858,7 @@ function applyRoleVisibility(role) {
       <p style="margin:0 0 14px">Either party may terminate this Agreement with <strong>14 days written notice</strong> by email or another written channel recorded by both parties. The Platform Provider may suspend access or terminate immediately if the Court Owner breaches Sections 5 (Anti-Circumvention) or 6 (Honor Bookings), fails to remit overdue booking fees, engages in fraud, or misuses customer data.</p>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">11. Governing Law</h4>
-      <p style="margin:0 0 14px">This Agreement is governed by the laws of the <strong>Republic of the Philippines</strong>, including the Electronic Commerce Act of 2000 (RA 8792), the Data Privacy Act of 2012 (RA 10173), and the Civil Code of the Philippines. Any disputes shall be resolved in the proper courts of Cagayan de Oro City, Misamis Oriental.</p>
+      <p style="margin:0 0 14px">This Agreement is governed by the laws of the <strong>Republic of the Philippines</strong>, including the Electronic Commerce Act of 2000 (RA 8792), the Data Privacy Act of 2012 (RA 10173), and the Civil Code of the Philippines. Any disputes shall be resolved in the proper Philippine courts with jurisdiction over the parties and dispute.</p>
 
       <h4 style="margin:0 0 8px;color:var(--green);font-size:.85rem;letter-spacing:.6px;text-transform:uppercase">12. Acceptance by Electronic Signature</h4>
       <p style="margin:0 0 14px">Pursuant to the Philippine <strong>Electronic Commerce Act of 2000 (Republic Act No. 8792)</strong>, this Agreement is legally binding upon electronic acceptance. By typing your legal full name and drawing your signature below and clicking "I Agree & Sign", you confirm that:</p>
@@ -10871,7 +10873,7 @@ function applyRoleVisibility(role) {
       </ul>
 
       <div style="background:rgba(var(--green-rgb),.07);border:1px solid rgba(var(--green-rgb),.2);border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:.8rem;color:#a0b0c0">
-        📍 <strong>Agreement recorded with:</strong> timestamp (UTC), IP address, browser fingerprint, typed name, and drawn signature — stored securely in the Korte DOS database.
+        📍 <strong>Agreement recorded with:</strong> timestamp (UTC), IP address, browser fingerprint, typed name, and drawn signature — stored securely in the Backyard Pickle platform database.
       </div>
 
       <!-- Signature section (unlocked after scroll) -->

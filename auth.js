@@ -41,7 +41,7 @@ const Auth = (() => {
       password: 'dev123',
       role: 'owner',
       fullName: 'System Owner',
-      email: 'owner@kortedos.local',
+      email: 'owner@backyard-pickle.local',
       createdAt: new Date().toISOString(),
     },
   ];

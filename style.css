@@ -8,17 +8,19 @@
 
 /* ---------- CSS Variables ---------- */
 :root {
-  --green-primary: #143d63;
-  --green-light: #2b6f9f;
-  --green-dark: #0b2744;
-  --dark-bg: #091521;
-  --dark-card: #12283b;
-  --dark-border: #29475f;
-  --dark-text: #f8faf6;
-  --dark-muted: #aec0cf;
-  --dark-input: #0f2234;
-  --accent-yellow: #c9cf43;
-  --accent-red: #c83d26;
+  --green-primary: #0b356d;
+  --green-light: #185a9d;
+  --green-dark: #06264f;
+  --action-green: #4f7f25;
+  --action-green-dark: #3e6e1f;
+  --dark-bg: #071b30;
+  --dark-card: #0e2a45;
+  --dark-border: #244a67;
+  --dark-text: #f6faf3;
+  --dark-muted: #b6c9d6;
+  --dark-input: #0a2239;
+  --accent-yellow: #91c43c;
+  --accent-red: #c2413a;
   --radius: 12px;
   --shadow: 0 8px 32px rgba(0,0,0,0.4);
   --transition: 0.2s ease;
@@ -26,13 +28,13 @@
 
 /* Light mode */
 body.light-mode {
-  --dark-bg: #f4f7f8;
+  --dark-bg: #f4f7f1;
   --dark-card: #ffffff;
-  --dark-border: #d7e0e6;
-  --dark-text: #0f2438;
-  --dark-muted: #657486;
-  --dark-input: #eef3f6;
-  --shadow: 0 8px 32px rgba(20,61,99,0.12);
+  --dark-border: #d6e1d1;
+  --dark-text: #102a43;
+  --dark-muted: #5f6f7c;
+  --dark-input: #edf3ea;
+  --shadow: 0 8px 32px rgba(11,53,109,0.12);
 }
 
 /* ---------- Reset & Base ---------- */
@@ -93,13 +95,13 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent-red), #9f2f1f);
+  background: linear-gradient(135deg, var(--action-green), var(--action-green-dark));
   color: #fff;
-  box-shadow: 0 4px 16px rgba(200,61,38,0.22);
+  box-shadow: 0 4px 16px rgba(79,127,37,0.22);
 }
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(200,61,38,0.28);
+  box-shadow: 0 8px 24px rgba(79,127,37,0.3);
 }
 
 .btn-secondary {
@@ -423,7 +425,7 @@ body.light-mode .navbar {
   font-weight: 700;
 }
 
-.step.active .step-num { background: var(--green-primary); color: #000; }
+.step.active .step-num { background: var(--green-primary); color: #fff; }
 .step.active { color: var(--green-primary); }
 .step-divider { flex: 1; height: 1px; background: var(--dark-border); align-self: center; }
 
@@ -492,7 +494,7 @@ select.form-control option { background: var(--dark-card); }
 }
 
 .time-slot:hover:not(.booked) { border-color: var(--green-primary); color: var(--green-primary); }
-.time-slot.selected { background: var(--green-primary); border-color: var(--green-primary); color: #000; font-weight: 700; }
+.time-slot.selected { background: var(--green-primary); border-color: var(--green-primary); color: #fff; font-weight: 700; }
 .time-slot.booked { background: rgba(255,77,79,0.1); border-color: rgba(255,77,79,0.3); color: var(--dark-muted); cursor: not-allowed; text-decoration: line-through; }
 
 /* Price summary */

@@ -471,12 +471,12 @@ function selectedMethodMismatch(
 
 function hasExpectedReceiverName(text: string, expectedName: string): boolean {
   const upper = text.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const expected = (expectedName || "Korte Dos").toUpperCase().replace(
+  const expected = (expectedName || "Backyard Pickle").toUpperCase().replace(
     /[^A-Z0-9]/g,
     "",
   );
   if (expected.length >= 3 && upper.includes(expected)) return true;
-  return upper.includes("KORTEDOS");
+  return upper.includes("BACKYARDPICKLE");
 }
 
 function extractBdoInvoiceNumber(text: string): string | null {
@@ -569,21 +569,21 @@ function expectedMerchantForProvider(
     return {
       number: settings.bdopay_merchant_number || "",
       name: settings.bdopay_merchant_name || settings.payment_merchant_name ||
-        "Korte DOS",
+        "Backyard Pickle",
     };
   }
   if (provider === "maya") {
     return {
       number: settings.maya_merchant_number || "",
       name: settings.maya_merchant_name || settings.payment_merchant_name ||
-        "Korte DOS",
+        "Backyard Pickle",
     };
   }
   if (provider === "bpi") {
     return {
       number: settings.bpi_merchant_number || "",
       name: settings.bpi_merchant_name || settings.payment_merchant_name ||
-        "Korte DOS",
+        "Backyard Pickle",
     };
   }
   if (provider === "gotyme") {
@@ -772,7 +772,7 @@ function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
   return "unreadable";
 }
 
-// Loose masked-name match (e.g. "CO**TY**D P*CKL*B*LL" vs "KORTE DOS").
+// Loose masked-name match (e.g. "B**KY**D P*CKL*" vs "BACKYARD PICKLE").
 function checkReceiverName(
   text: string,
   expectedName: string,

@@ -3,8 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Korte DOS — Bayabas, Cagayan de Oro</title>
-<link rel="icon" type="image/png" href="korte-dos-logo.png">
+<title>Backyard Pickle — Court Booking</title>
+<meta name="description" content="Book a pickleball court at Backyard Pickle. Check availability, reserve your time, and manage your booking online." />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Backyard Pickle" />
+<meta property="og:title" content="Backyard Pickle — Court Booking" />
+<meta property="og:description" content="Check court availability and book your next pickleball game at Backyard Pickle." />
+<meta property="og:image" content="https://backyard-pickle-pickleball.pages.dev/linkimage.jpg" />
+<meta property="og:image:type" content="image/jpeg" />
+<meta property="og:image:width" content="1536" />
+<meta property="og:image:height" content="1024" />
+<meta property="og:image:alt" content="Backyard Pickle venue sign" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Backyard Pickle — Court Booking" />
+<meta name="twitter:description" content="Check court availability and book your next pickleball game at Backyard Pickle." />
+<meta name="twitter:image" content="https://backyard-pickle-pickleball.pages.dev/linkimage.jpg" />
+<meta name="twitter:image:alt" content="Backyard Pickle venue sign" />
+<link rel="icon" type="image/jpeg" href="backyardpicklelogo.jpg">
 <script src="booking-balance.js?v=20260716-host-balance-v1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
@@ -12,22 +27,22 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipulation; }
 :root {
-  --navy: #143d63; --navy-dark: #0b2744; --court-blue: #0e5a8a;
-  --court-red: #c83d26; --court-red-dark: #9f2f1f; --pickle-lime: #c9cf43;
-  --accent: var(--navy); --accent-dark: var(--navy-dark); --glow: rgba(20,61,99,.18);
-  --cta: var(--court-red); --cta-dark: var(--court-red-dark);
-  --ac: 20, 61, 99;
-  --bg: #f4f7f8; --card: #ffffff; --border: #d7e0e6;
-  --text: #0f2438; --muted: #657486; --input: #eef3f6;
-  --dark-text: #f8faf6; --dark-muted: #aec0cf;
+  --navy: #0b356d; --navy-dark: #06264f; --court-blue: #185a9d;
+  --court-red: #c2413a; --court-red-dark: #9c2f2a; --pickle-lime: #91c43c;
+  --accent: var(--navy); --accent-dark: var(--navy-dark); --glow: rgba(11,53,109,.18);
+  --cta: #4f7f25; --cta-dark: #3e6e1f;
+  --ac: 11, 53, 109;
+  --bg: #f4f7f1; --card: #ffffff; --border: #d6e1d1;
+  --text: #102a43; --muted: #5f6f7c; --input: #edf3ea;
+  --dark-text: #f6faf3; --dark-muted: #b6c9d6;
   --red: var(--court-red); --yellow: #b88b24; --yellow-rgb: 184,139,36;
-  --lime: var(--pickle-lime); --lime-rgb: 201,207,67; --lime-ink: #70771e;
-  --slot-selected: #f97316; --slot-selected-dark: #ea580c; --slot-selected-rgb: 249,115,22;
-  --slot-processing: #22c55e; --slot-processing-dark: #16a34a; --slot-processing-rgb: 34,197,94;
+  --lime: var(--pickle-lime); --lime-rgb: 145,196,60; --lime-ink: #3e681f;
+  --slot-selected: #185a9d; --slot-selected-dark: #0b356d; --slot-selected-rgb: 24,90,157;
+  --slot-processing: #4f7f25; --slot-processing-dark: #3e6e1f; --slot-processing-rgb: 79,127,37;
   --r-sm: 8px; --r: 12px; --r-lg: 18px; --pill: 999px;
 }
-body.light { --bg:#f4f7f8; --card:#ffffff; --border:#d7e0e6; --text:#0f2438; --muted:#657486; --input:#eef3f6; --dark-text:#f8faf6; --dark-muted:#aec0cf; }
-body.dark { --bg:#091521; --card:#12283b; --border:#29475f; --text:#f8faf6; --muted:#aec0cf; --input:#0f2234; --accent:#7fa9cc; --accent-dark:#143d63; --glow:rgba(127,169,204,.18); --ac:127,169,204; --dark-text:#f8faf6; --dark-muted:#aec0cf; --lime:#dce768; --lime-rgb:220,231,104; --lime-ink:#dce768; }
+body.light { --bg:#f4f7f1; --card:#ffffff; --border:#d6e1d1; --text:#102a43; --muted:#5f6f7c; --input:#edf3ea; --dark-text:#f6faf3; --dark-muted:#b6c9d6; }
+body.dark { --bg:#071b30; --card:#0e2a45; --border:#244a67; --text:#f6faf3; --muted:#b6c9d6; --input:#0a2239; --accent:#7fb2d8; --accent-dark:#185a9d; --glow:rgba(127,178,216,.18); --ac:127,178,216; --dark-text:#f6faf3; --dark-muted:#b6c9d6; --lime:#b8de73; --lime-rgb:184,222,115; --lime-ink:#b8de73; }
 body { font-family:'Outfit',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; transition:background .3s,color .3s; touch-action:manipulation; }
 button, input, select, textarea, label, a, [role="button"], .btn, .cc-slot-btn, .court-tab, .wiz-court-card, .pay-opt, .time-chip {
   touch-action: manipulation;
@@ -91,8 +106,8 @@ body.dark .nav { background:rgba(9,21,33,.94); }
   font-family:'Outfit',sans-serif; font-size:.9rem; font-weight:600;
   cursor:pointer; transition:all .2s; white-space:nowrap;
 }
-.btn-p { background:linear-gradient(135deg,var(--cta),var(--cta-dark)); color:#fff; box-shadow:0 4px 14px rgba(200,61,38,.22); }
-.btn-p:hover { transform:translateY(-2px); box-shadow:0 8px 22px rgba(200,61,38,.28); }
+.btn-p { background:linear-gradient(135deg,var(--cta),var(--cta-dark)); color:#fff; box-shadow:0 4px 14px rgba(79,127,37,.22); }
+.btn-p:hover { transform:translateY(-2px); box-shadow:0 8px 22px rgba(79,127,37,.3); }
 .btn-g { background:var(--input); color:var(--text); border:1px solid var(--border); }
 .btn-g:hover { background:var(--border); }
 .btn-sm { padding:7px 14px; font-size:.82rem; }
@@ -483,8 +498,8 @@ body.dark .shared-date-display {
 }
 .pb-ball {
   width:64px; height:64px; border-radius:50%;
-  background:radial-gradient(circle at 32% 30%, #fde047, #facc15 55%, #d4a017);
-  box-shadow:inset -6px -6px 12px rgba(120,80,0,.35), 0 6px 18px rgba(250,204,21,.35);
+  background:radial-gradient(circle at 32% 30%, #c8e86a, #91c43c 55%, #5f9026);
+  box-shadow:inset -6px -6px 12px rgba(49,92,22,.3), 0 6px 18px rgba(var(--lime-rgb),.32);
   position:relative;
   animation:pb-spin 1s linear infinite;
 }
@@ -492,15 +507,15 @@ body.dark .shared-date-display {
 .pb-ball::before {
   content:''; position:absolute; top:30px; left:30px;
   width:6px; height:6px; border-radius:50%;
-  background:rgba(90,62,0,.55);
+  background:rgba(29,65,18,.58);
   box-shadow:
-    -16px -14px 0 0 rgba(90,62,0,.5),
-     2px  -20px 0 0 rgba(90,62,0,.5),
-    18px  -10px 0 0 rgba(90,62,0,.5),
-   -20px    2px 0 0 rgba(90,62,0,.5),
-    20px    6px 0 0 rgba(90,62,0,.5),
-   -10px   18px 0 0 rgba(90,62,0,.5),
-    12px   18px 0 0 rgba(90,62,0,.5);
+    -16px -14px 0 0 rgba(29,65,18,.52),
+     2px  -20px 0 0 rgba(29,65,18,.52),
+    18px  -10px 0 0 rgba(29,65,18,.52),
+   -20px    2px 0 0 rgba(29,65,18,.52),
+    20px    6px 0 0 rgba(29,65,18,.52),
+   -10px   18px 0 0 rgba(29,65,18,.52),
+    12px   18px 0 0 rgba(29,65,18,.52);
 }
 @keyframes pb-spin { to { transform:rotate(360deg); } }
 .pb-loader-txt {
@@ -515,19 +530,19 @@ body.dark .shared-date-display {
 }
 .pb-loader.mini .pb-ball {
   width:34px; height:34px;
-  box-shadow:inset -4px -4px 8px rgba(120,80,0,.3),0 4px 12px rgba(250,204,21,.22);
+  box-shadow:inset -4px -4px 8px rgba(49,92,22,.28),0 4px 12px rgba(var(--lime-rgb),.22);
 }
 .pb-loader.mini .pb-ball::before {
   top:15px; left:15px;
   width:3px; height:3px;
   box-shadow:
-    -8px -7px 0 0 rgba(90,62,0,.5),
-     1px -10px 0 0 rgba(90,62,0,.5),
-    10px -5px 0 0 rgba(90,62,0,.5),
-   -10px  1px 0 0 rgba(90,62,0,.5),
-    10px  3px 0 0 rgba(90,62,0,.5),
-    -5px  9px 0 0 rgba(90,62,0,.5),
-     6px  9px 0 0 rgba(90,62,0,.5);
+    -8px -7px 0 0 rgba(29,65,18,.52),
+     1px -10px 0 0 rgba(29,65,18,.52),
+    10px -5px 0 0 rgba(29,65,18,.52),
+   -10px  1px 0 0 rgba(29,65,18,.52),
+    10px  3px 0 0 rgba(29,65,18,.52),
+    -5px  9px 0 0 rgba(29,65,18,.52),
+     6px  9px 0 0 rgba(29,65,18,.52);
 }
 .pb-loader.mini .pb-loader-txt {
   font-family:'Outfit',sans-serif; font-size:.78rem; letter-spacing:.2px;
@@ -1418,7 +1433,7 @@ select.fi option { background:var(--card); }
   overflow:hidden;
 }
 footer { background:var(--card); border-top:1px solid var(--border); padding:40px 28px 24px; margin-top:60px; }
-.ft-g { max-width:1080px; margin:0 auto; display:grid; grid-template-columns:2fr 1fr 1fr; gap:40px; margin-bottom:28px; }
+.ft-g { max-width:1080px; margin:0 auto; display:grid; grid-template-columns:1.55fr .7fr 1.15fr; gap:40px; margin-bottom:28px; }
 .ft-d { color:var(--muted); font-size:.87rem; margin-top:12px; line-height:1.7; }
 .ft-address { color:var(--muted); font-size:.84rem; margin-top:10px; line-height:1.6; max-width:420px; }
 .ft-address a { color:var(--accent); text-decoration:none; font-weight:700; }
@@ -1428,6 +1443,24 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .ft-c li { margin-bottom:8px; }
 .ft-c a { color:var(--muted); font-size:.87rem; transition:color .2s; }
 .ft-c a:hover { color:var(--accent); }
+.ft-contact-list { display:grid; gap:9px; }
+.ft-contact-card {
+  display:flex; align-items:center; gap:11px; min-height:58px; padding:10px 12px;
+  color:var(--text)!important; background:var(--input); border:1px solid var(--border); border-radius:12px;
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease!important;
+}
+.ft-contact-card:hover { transform:translateY(-2px); border-color:rgba(var(--ac),.45); box-shadow:0 8px 20px var(--glow); }
+.ft-contact-icon {
+  width:36px; height:36px; flex:0 0 36px; display:grid; place-items:center;
+  color:#fff; background:linear-gradient(135deg,var(--navy),var(--court-blue)); border-radius:10px;
+}
+.ft-contact-icon.fb { background:linear-gradient(135deg,#1877f2,#0b5dcc); }
+.ft-contact-icon svg { width:18px; height:18px; }
+.ft-contact-copy { min-width:0; }
+.ft-contact-copy small { display:block; color:var(--muted); font-size:.62rem; font-weight:800; letter-spacing:.7px; text-transform:uppercase; }
+.ft-contact-copy strong { display:block; margin-top:3px; color:var(--text); font-size:.82rem; line-height:1.25; }
+.ft-support-links { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.ft-support-links a { display:inline-flex; align-items:center; min-height:34px; }
 .ft-bot { max-width:1080px; margin:0 auto; padding-top:20px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:.81rem; color:var(--muted); flex-wrap:wrap; gap:8px; }
 
 /* TOASTS */
@@ -1889,7 +1922,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   grid-column: 1 / -1;
   margin-bottom: 10px;
   padding: 16px;
-  background: linear-gradient(135deg, rgba(var(--lime-rgb),.14), rgba(15,23,42,.82));
+  background: linear-gradient(135deg, rgba(var(--lime-rgb),.2), rgba(var(--ac),.07));
   border: 1.5px solid rgba(var(--lime-rgb),.48);
   border-radius: 8px;
   cursor: pointer;
@@ -1897,6 +1930,9 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   position: relative;
   overflow: hidden;
   min-height: 112px;
+}
+body.dark .open-play-block {
+  background: linear-gradient(135deg, rgba(var(--lime-rgb),.13), rgba(11,53,109,.44));
 }
 .open-play-block::before {
   content: '';
@@ -1960,7 +1996,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   cursor: default;
   opacity: .68;
   border-color: rgba(148,163,184,.22);
-  background: rgba(15,23,42,.74);
+  background: var(--input);
 }
 .open-play-block.full:hover { transform:none; box-shadow:none; border-color:rgba(148,163,184,.22); }
 .cc-open-play-card {
@@ -2071,8 +2107,12 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 #splashScreen::before {
   content: '';
   position: absolute; inset: -16px;
-  background: url('court-splash.jpg') center 45% / cover no-repeat;
-  filter: blur(1.4px) saturate(1.02) contrast(1.04);
+  background:
+    radial-gradient(circle at 72% 18%, rgba(183,227,79,.34), transparent 24%),
+    linear-gradient(135deg, transparent 45%, rgba(255,245,221,.13) 45% 47%, transparent 47%),
+    repeating-linear-gradient(90deg, rgba(11,40,37,.15) 0 72px, rgba(255,245,221,.07) 72px 78px),
+    linear-gradient(145deg, #205746, #0b2825 58%, #071b20);
+  filter: saturate(1.04) contrast(1.03);
   transform: scale(1.02);
   z-index: 0;
 }
@@ -2097,39 +2137,6 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   0%,100% { opacity:.6; transform:translateX(-50%) scale(1); }
   50%      { opacity:1;  transform:translateX(-50%) scale(1.1); }
 }
-/* Grid */
-.sp-grid {
-  display: none;
-  position: absolute; inset: 0; pointer-events: none; opacity: 0;
-  background-image:
-    repeating-linear-gradient(0deg,  rgba(255,255,255,.75) 0, rgba(255,255,255,.75) 1px, transparent 1px, transparent 72px),
-    repeating-linear-gradient(90deg, rgba(255,255,255,.75) 0, rgba(255,255,255,.75) 1px, transparent 1px, transparent 72px);
-  z-index: 2;
-}
-/* Expanding rings */
-.sp-ring {
-  display: none;
-  position: absolute; border-radius: 50%;
-  border: 1px solid rgba(255,255,255,.18);
-  top: 50%; left: 50%; transform: translate(-50%,-50%);
-  animation: spRingExpand 3.2s ease-out infinite;
-  z-index: 2;
-}
-.sp-ring:nth-child(1) { width:260px; height:260px; animation-delay:0s; }
-.sp-ring:nth-child(2) { width:430px; height:430px; animation-delay:.9s; }
-.sp-ring:nth-child(3) { width:600px; height:600px; animation-delay:1.8s; }
-@keyframes spRingExpand {
-  0%   { opacity:0; transform:translate(-50%,-50%) scale(.7); }
-  35%  { opacity:1; }
-  100% { opacity:0; transform:translate(-50%,-50%) scale(1.12); }
-}
-/* Content */
-.sp-content {
-  position: relative; z-index: 10;
-  display: flex; flex-direction: column; align-items: center; text-align: center;
-  padding: 24px;
-  text-shadow: 0 2px 24px rgba(0,0,0,.7);
-}
 /* Logo */
 .sp-logo-img {
   width: 96px; height: 96px; border-radius:50%; object-fit: contain;
@@ -2151,68 +2158,9 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   text-shadow: 0 4px 40px rgba(0,0,0,.82);
   animation: spFadeUp .6s ease .3s both;
 }
-.sp-sub {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(.8rem, 2.5vw, 1rem);
-  letter-spacing: 7px; color: #ffb043;
-  margin-top: 4px; margin-bottom: 36px;
-  animation: spFadeUp .6s ease .45s both;
-}
 @keyframes spFadeUp {
   from { opacity:0; transform:translateY(18px); }
   to   { opacity:1; transform:translateY(0); }
-}
-/* Divider */
-.sp-line {
-  width: 64px; height: 2px; margin-bottom: 36px;
-  background: linear-gradient(90deg, transparent, #ffb043, transparent);
-  animation: spFadeUp .4s ease .55s both;
-}
-/* Tap circle */
-.sp-tap-ring-wrap {
-  position: relative; width: 78px; height: 78px;
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 20px;
-  animation: spFadeUp .5s ease .65s both;
-}
-.sp-tap-ring-wrap::before,
-.sp-tap-ring-wrap::after {
-  content: ''; position: absolute; inset: 0; border-radius: 50%;
-  border: 2px solid var(--accent);
-  animation: spTapPulse 2s ease-in-out infinite;
-}
-.sp-tap-ring-wrap::after {
-  inset: -10px; border-color: rgba(255,176,67,.38);
-  animation-delay: .4s;
-}
-@keyframes spTapPulse {
-  0%,100% { transform:scale(1);    opacity:1;  }
-  50%      { transform:scale(1.14); opacity:.5; }
-}
-.sp-tap-icon {
-  display: block; width: 62px; height: 62px;
-  animation: spBounce 2.2s ease-in-out infinite;
-  filter: drop-shadow(0 4px 10px rgba(0,0,0,.46));
-}
-@keyframes spBounce {
-  0%,100% { transform:translateY(0); }
-  50%     { transform:translateY(-5px); }
-}
-/* Tap text */
-.sp-tap-text {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1.7rem, 4.5vw, 2.4rem);
-  letter-spacing: 10px; color: #ffb043;
-  animation: spFadeUp .5s ease .75s both, tapGlow 2.2s ease-in-out infinite;
-  margin-bottom: 10px;
-}
-@keyframes tapGlow {
-  0%,100% { text-shadow: 0 0 16px rgba(255,176,67,.34), 0 3px 18px rgba(0,0,0,.72); }
-  50%      { text-shadow: 0 0 32px rgba(255,176,67,.62), 0 0 60px rgba(217,81,43,.24), 0 3px 18px rgba(0,0,0,.72); }
-}
-.sp-tap-sub {
-  font-size: .82rem; color: rgba(232,240,248,.84); letter-spacing: 1.5px;
-  animation: spFadeUp .5s ease .88s both;
 }
 /* Bottom label */
 .sp-bottom {
@@ -2227,6 +2175,213 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 }
 /* Light mode overrides for splash */
 body.light #splashScreen { background: #071320; }
+
+/* Modern splash */
+#splashScreen {
+  padding:clamp(14px,3vw,34px); cursor:default; background:#06192c;
+}
+#splashScreen::before {
+  inset:0; transform:none; filter:none;
+  background:
+    radial-gradient(circle at 12% 18%,rgba(24,90,157,.38),transparent 32%),
+    radial-gradient(circle at 88% 78%,rgba(145,196,60,.2),transparent 28%),
+    linear-gradient(145deg,#06192c 0%,#0b356d 52%,#071b30 100%);
+}
+#splashScreen::after {
+  background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:42px 42px;
+}
+.sp-glow {
+  inset:auto auto -28% -10%; width:min(52vw,720px); height:min(52vw,720px); transform:none;
+  background:radial-gradient(circle,rgba(145,196,60,.13),transparent 68%);
+  animation:spGlowDrift 7s ease-in-out infinite alternate;
+}
+@keyframes spGlowDrift {
+  from { opacity:.65; transform:translate3d(0,0,0) scale(.96); }
+  to { opacity:1; transform:translate3d(7vw,-4vh,0) scale(1.08); }
+}
+.sp-shell {
+  position:relative; z-index:10; width:min(1080px,100%); height:min(720px,calc(100dvh - 68px)); min-height:0;
+  display:grid; grid-template-columns:1.08fr .92fr; overflow:hidden;
+  border:1px solid rgba(255,255,255,.16); border-radius:clamp(24px,3vw,36px);
+  background:rgba(7,27,48,.72); box-shadow:0 30px 100px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);
+  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  animation:spShellIn .72s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes spShellIn { from{opacity:0;transform:translateY(22px) scale(.975)} to{opacity:1;transform:none} }
+.sp-copy {
+  padding:clamp(28px,4.5vh,56px) clamp(32px,5vw,68px); display:flex; flex-direction:column; justify-content:center; text-align:left;
+}
+.sp-brand-row { display:flex; align-items:center; gap:14px; margin-bottom:clamp(20px,3.5vh,40px); }
+.sp-logo-img {
+  width:68px; height:68px; margin:0; border:2px solid rgba(255,255,255,.72);
+  box-shadow:0 12px 30px rgba(0,0,0,.35); animation:spDropIn .7s cubic-bezier(.22,1,.36,1) .08s both;
+}
+.sp-brand { font-size:1.4rem; letter-spacing:2.6px; line-height:1; animation:spFadeUp .55s ease .14s both; }
+.sp-brand small {
+  display:block; margin-top:7px; font-family:'Outfit',sans-serif; font-size:.62rem; font-weight:700;
+  color:#b6c9d6; letter-spacing:2px; text-transform:uppercase;
+}
+.sp-eyebrow {
+  display:inline-flex; align-items:center; gap:8px; width:max-content; padding:7px 12px; margin-bottom:18px;
+  border:1px solid rgba(145,196,60,.3); border-radius:999px; color:#b8de73;
+  background:rgba(145,196,60,.09); font-size:.68rem; font-weight:800; letter-spacing:1.4px; text-transform:uppercase;
+  animation:spFadeUp .55s ease .22s both;
+}
+.sp-eyebrow::before { content:''; width:7px; height:7px; border-radius:50%; background:#91c43c; box-shadow:0 0 0 5px rgba(145,196,60,.12); }
+.sp-title {
+  max-width:650px; margin:0; font-family:'Bebas Neue',sans-serif; font-size:clamp(3.2rem,min(6.3vw,9.5vh),6rem);
+  line-height:.9; letter-spacing:1px; color:#f6faf3; text-wrap:balance; animation:spFadeUp .58s ease .3s both;
+}
+.sp-title span { color:#91c43c; }
+.sp-lead { max-width:500px; margin:16px 0 0; color:#c7d6df; font-size:clamp(.92rem,1.5vw,1.05rem); line-height:1.6; animation:spFadeUp .58s ease .4s both; }
+.sp-trust {
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; margin-top:18px;
+  color:#dce7ed; font-size:.7rem; font-weight:750; animation:spFadeUp .58s ease .48s both;
+}
+.sp-trust span { display:inline-flex; align-items:center; gap:7px; }
+.sp-trust-dot { width:7px; height:7px; border-radius:50%; background:#91c43c; box-shadow:0 0 0 5px rgba(145,196,60,.12); }
+.sp-trust-check {
+  width:17px; height:17px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid rgba(145,196,60,.42); border-radius:50%; color:#b8de73; font-size:.65rem;
+}
+.sp-actions { display:flex; align-items:center; flex-wrap:wrap; gap:16px; margin-top:24px; animation:spFadeUp .58s ease .56s both; }
+.sp-start-btn {
+  min-width:232px; min-height:54px; padding:0 24px; display:inline-flex; align-items:center; justify-content:center; gap:12px;
+  border:1px solid rgba(216,245,152,.2); border-radius:14px; cursor:pointer; background:linear-gradient(135deg,#6ca431,#4f7f25); color:#fff;
+  font-family:'Outfit',sans-serif; font-size:.92rem; font-weight:850; box-shadow:0 12px 30px rgba(79,127,37,.32);
+  transition:transform .2s ease,box-shadow .2s ease,filter .2s ease;
+}
+.sp-start-btn:hover { transform:translateY(-2px); box-shadow:0 18px 38px rgba(79,127,37,.4); filter:brightness(1.05); }
+.sp-start-btn:focus-visible { outline:3px solid #b8de73; outline-offset:4px; }
+.sp-start-btn svg { width:18px; height:18px; transition:transform .2s ease; }
+.sp-start-btn:hover svg { transform:translateX(3px); }
+.sp-action-note { color:#8fa4b5; font-size:.68rem; line-height:1.45; }
+.sp-action-note strong { color:#dce7ed; font-size:.72rem; }
+.sp-contact {
+  display:flex; align-items:center; gap:8px; margin-top:14px;
+  animation:spFadeUp .58s ease .64s both;
+}
+.sp-contact-label { margin-right:2px; color:#7f96a7; font-size:.64rem; font-weight:750; letter-spacing:.4px; text-transform:uppercase; }
+.sp-contact-link {
+  min-height:34px; padding:0 10px; display:inline-flex; align-items:center; gap:7px;
+  border:1px solid rgba(255,255,255,.1); border-radius:10px;
+  background:rgba(255,255,255,.04); color:#b9cbd6; text-decoration:none;
+  font-size:.65rem; font-weight:750; letter-spacing:.1px;
+  transition:transform .2s ease,border-color .2s ease,background .2s ease,color .2s ease;
+}
+.sp-contact-link:hover { transform:translateY(-1px); border-color:rgba(184,222,115,.42); background:rgba(145,196,60,.1); color:#f6faf3; }
+.sp-contact-link:focus-visible { outline:2px solid #b8de73; outline-offset:3px; }
+.sp-contact-link svg { width:15px; height:15px; flex:0 0 auto; color:#b8de73; }
+.sp-contact-link.facebook svg { color:#77aaf7; }
+.sp-visual {
+  position:relative; min-width:0; padding:clamp(34px,5vw,64px); display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 80% 15%,rgba(145,196,60,.2),transparent 26%),linear-gradient(160deg,rgba(24,90,157,.48),rgba(6,38,79,.78));
+  border-left:1px solid rgba(255,255,255,.1); overflow:hidden;
+}
+.sp-visual::before {
+  content:''; position:absolute; width:420px; height:420px; border-radius:50%; border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 0 0 70px rgba(255,255,255,.025),0 0 0 140px rgba(255,255,255,.018);
+}
+.sp-demo { position:relative; width:min(390px,100%); z-index:1; }
+.sp-court {
+  position:relative; width:100%; aspect-ratio:1.38; border:3px solid rgba(255,255,255,.72); border-radius:18px;
+  background:linear-gradient(135deg,rgba(11,53,109,.92),rgba(24,90,157,.75));
+  box-shadow:0 28px 70px rgba(0,0,0,.34),inset 0 0 40px rgba(255,255,255,.035); overflow:hidden;
+  transform:perspective(700px) rotateX(6deg) rotateY(-5deg);
+}
+.sp-court::before,.sp-court::after { content:''; position:absolute; background:rgba(255,255,255,.68); }
+.sp-court::before { top:0; bottom:0; left:50%; width:2px; transform:translateX(-50%); }
+.sp-court::after { left:0; right:0; top:50%; height:2px; transform:translateY(-50%); }
+.sp-service-line { position:absolute; inset:19% 0; border-top:2px solid rgba(255,255,255,.58); border-bottom:2px solid rgba(255,255,255,.58); }
+.sp-net {
+  position:absolute; left:7%; right:7%; top:50%; height:8px; transform:translateY(-50%); z-index:2;
+  border-top:2px solid #b8de73; border-bottom:1px solid rgba(184,222,115,.45);
+  background:repeating-linear-gradient(90deg,rgba(184,222,115,.35) 0 2px,transparent 2px 8px); box-shadow:0 3px 10px rgba(0,0,0,.28);
+}
+.sp-ball {
+  position:absolute; right:17%; top:20%; width:42px; height:42px; border-radius:50%;
+  background:radial-gradient(circle at 32% 28%,#d2ef82,#91c43c 55%,#5f9026); box-shadow:0 10px 18px rgba(0,0,0,.3); animation:spBallFloat 3.2s ease-in-out infinite;
+}
+.sp-ball::before { content:''; position:absolute; width:5px; height:5px; border-radius:50%; top:12px; left:12px; background:#31591d; box-shadow:13px -2px #31591d,6px 13px #31591d,20px 12px #31591d; }
+@keyframes spBallFloat { 50% { transform:translateY(-10px) rotate(15deg); } }
+.sp-live-card,.sp-next-card {
+  position:absolute; z-index:4; border:1px solid rgba(255,255,255,.18); border-radius:15px;
+  background:rgba(7,27,48,.86); color:#f6faf3; box-shadow:0 16px 38px rgba(0,0,0,.28); backdrop-filter:blur(12px);
+}
+.sp-live-card { top:-24px; right:-18px; padding:10px 13px; display:flex; align-items:center; gap:8px; font-size:.68rem; font-weight:800; letter-spacing:.35px; }
+.sp-live-dot { width:8px; height:8px; border-radius:50%; background:#91c43c; box-shadow:0 0 0 5px rgba(145,196,60,.14); }
+.sp-next-card { left:-24px; bottom:-30px; min-width:190px; padding:13px 15px; }
+.sp-next-card span { display:block; color:#8fa4b5; font-size:.6rem; font-weight:800; letter-spacing:1px; text-transform:uppercase; }
+.sp-next-card strong { display:block; margin-top:5px; font-size:.84rem; }
+.sp-next-card em { display:block; margin-top:4px; color:#b8de73; font-size:.68rem; font-style:normal; font-weight:800; }
+.sp-bottom { bottom:12px; color:rgba(214,228,236,.52); font-size:.58rem; letter-spacing:2px; }
+@media (max-width:820px) {
+  #splashScreen {
+    width:100%; height:100dvh; min-height:100svh;
+    padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+    overflow:hidden; overscroll-behavior:none;
+  }
+  .sp-shell {
+    grid-template-columns:1fr; width:min(560px,100%); height:min(680px,calc(100dvh - 20px));
+    min-height:0; max-height:none; overflow:hidden;
+  }
+  .sp-copy { height:100%; padding:clamp(24px,5vh,38px) clamp(22px,6vw,34px); justify-content:center; }
+  .sp-brand-row { margin-bottom:clamp(20px,4vh,30px); }
+  .sp-title { font-size:clamp(3rem,14vw,5rem); }
+  .sp-title br { display:none; }
+  .sp-visual,.sp-bottom { display:none; }
+}
+@media (max-width:480px) {
+  .sp-shell { height:calc(100dvh - 20px); border-radius:22px; }
+  .sp-copy { padding:clamp(18px,4.5vh,28px) 18px; }
+  .sp-brand-row { gap:11px; margin-bottom:clamp(16px,3.5vh,24px); }
+  .sp-logo-img { width:52px; height:52px; }
+  .sp-brand { font-size:1.08rem; letter-spacing:2px; }
+  .sp-brand small { margin-top:5px; font-size:.54rem; letter-spacing:1.4px; }
+  .sp-eyebrow { margin-bottom:14px; padding:6px 10px; font-size:.56rem; letter-spacing:1px; }
+  .sp-title { font-size:clamp(2.8rem,14vw,4.2rem); line-height:.91; }
+  .sp-lead { margin-top:14px; font-size:.82rem; line-height:1.5; }
+  .sp-trust { gap:8px 14px; margin-top:16px; font-size:.63rem; }
+  .sp-actions { margin-top:18px; }
+  .sp-start-btn { width:100%; }
+  .sp-action-note { display:none; }
+  .sp-contact { display:grid; grid-template-columns:1fr 1fr; width:100%; margin-top:10px; }
+  .sp-contact-label { grid-column:1/-1; margin:0 0 -2px; text-align:center; }
+  .sp-contact-link { min-width:0; justify-content:center; padding:0 8px; font-size:.64rem; }
+}
+@media (max-width:480px) and (max-height:680px) {
+  .sp-brand-row { margin-bottom:13px; }
+  .sp-logo-img { width:46px; height:46px; }
+  .sp-eyebrow { margin-bottom:10px; }
+  .sp-title { font-size:clamp(2.55rem,12.5vw,3.45rem); }
+  .sp-lead { margin-top:10px; font-size:.76rem; }
+  .sp-trust { margin-top:12px; }
+  .sp-actions { margin-top:14px; }
+  .sp-start-btn { min-height:48px; }
+  .sp-contact { margin-top:8px; }
+  .sp-contact-link { min-height:34px; }
+}
+@media (max-width:480px) and (max-height:560px) {
+  .sp-trust { display:none; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .sp-shell,.sp-logo-img,.sp-brand,.sp-eyebrow,.sp-title,.sp-lead,.sp-trust,.sp-actions,.sp-contact,.sp-ball,.sp-glow { animation:none!important; }
+}
+
+.preview-mode-notice {
+  display:none; align-items:center; justify-content:center; gap:9px; width:min(100% - 28px,1080px);
+  margin:14px auto 0; padding:10px 14px; border:1px solid rgba(145,196,60,.28); border-radius:12px;
+  background:linear-gradient(135deg,rgba(145,196,60,.09),rgba(24,90,157,.08));
+  color:var(--muted); font-size:.72rem; font-weight:650; text-align:center;
+}
+body.pb-preview-mode .preview-mode-notice { display:flex; }
+.preview-mode-notice strong { color:var(--text); }
+.preview-mode-dot { width:8px; height:8px; flex:0 0 auto; border-radius:50%; background:#91c43c; box-shadow:0 0 0 4px rgba(145,196,60,.12); }
+@media (max-width:480px) {
+  .preview-mode-notice { align-items:flex-start; margin-top:10px; padding:9px 11px; font-size:.64rem; line-height:1.45; text-align:left; }
+  .preview-mode-dot { margin-top:3px; }
+}
 
 /* ── BOOKING WIZARD ── */
 .wiz-steps { display:flex; align-items:flex-start; padding:18px 22px 12px; gap:0; border-bottom:1px solid var(--border); flex-shrink:0; }
@@ -2580,7 +2735,7 @@ body.host-mode .courts { padding-bottom:140px; }
 .host-deadline span { color:var(--muted); font-size:.64rem; font-weight:900; text-transform:uppercase; letter-spacing:.5px; }
 .host-deadline strong { color:var(--text); font-size:.72rem; text-align:right; }
 .host-deadline em { grid-column:1/-1; color:var(--yellow); font-size:.68rem; font-style:normal; font-weight:850; }
-.host-deadline.final,.host-deadline.overdue,.host-deadline.forfeited { border-color:rgba(200,61,38,.28); background:rgba(200,61,38,.08); }
+.host-deadline.final,.host-deadline.overdue,.host-deadline.forfeited { border-color:rgba(194,65,58,.28); background:rgba(194,65,58,.08); }
 .host-deadline.final em,.host-deadline.overdue em,.host-deadline.forfeited em { color:var(--red); }
 .host-chip { max-width:100%; font-size:.6rem; font-weight:850; color:var(--muted); background:var(--card); border:1px solid var(--border); border-radius:999px; padding:3px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .host-empty { text-align:center; color:var(--muted); padding:24px 14px; border:1px dashed var(--border); border-radius:12px; background:var(--input); }
@@ -2681,55 +2836,62 @@ body.host-mode .courts { padding-bottom:140px; }
 </div>
 
 <!-- SPLASH SCREEN -->
-<div id="splashScreen" onclick="dismissSplash()">
+<div id="splashScreen" role="dialog" aria-modal="true" aria-labelledby="splashTitle">
   <div class="sp-glow"></div>
-  <div class="sp-grid"></div>
-  <div class="sp-ring"></div>
-  <div class="sp-ring"></div>
-  <div class="sp-ring"></div>
-
-  <div class="sp-content">
-    <img class="sp-logo-img" src="korte-dos-logo.png" alt="Korte DOS Logo" />
-    <div class="sp-brand">KORTE DOS</div>
-    <div class="sp-sub">BAYABAS, CAGAYAN DE ORO</div>
-    <div class="sp-line"></div>
-    <div class="sp-tap-ring-wrap">
-      <svg class="sp-tap-icon" viewBox="0 0 100 100">
-        <!-- Paddle group rotated -38deg -->
-        <g transform="rotate(-38, 46, 46)">
-          <!-- Paddle head: wide rounded square, navy fill -->
-          <rect x="18" y="4" width="42" height="46" rx="14" fill="var(--accent)"/>
-          <!-- Inner white border detail -->
-          <rect x="23" y="9" width="32" height="36" rx="9" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="2.2"/>
-          <!-- Handle -->
-          <rect x="31" y="49" width="18" height="28" rx="6" fill="var(--accent)"/>
-          <!-- Grip wrap lines -->
-          <rect x="31" y="57" width="18" height="3.5" rx="1.8" fill="rgba(0,0,0,0.28)"/>
-          <rect x="31" y="65" width="18" height="3.5" rx="1.8" fill="rgba(0,0,0,0.28)"/>
-          <!-- Handle butt cap -->
-          <rect x="31" y="73" width="18" height="4" rx="2" fill="var(--accent-dark)"/>
-        </g>
-        <!-- Pickleball (not rotated, lower-right) -->
-        <circle cx="74" cy="74" r="16" fill="#ffb043"/>
-        <!-- Ball holes pattern -->
-        <circle cx="69" cy="69" r="2.8" fill="#091521"/>
-        <circle cx="79" cy="69" r="2.8" fill="#091521"/>
-        <circle cx="74" cy="78" r="2.8" fill="#091521"/>
-        <circle cx="65" cy="76" r="2.2" fill="#091521"/>
-        <circle cx="83" cy="75" r="2.2" fill="#091521"/>
-        <circle cx="72" cy="62" r="2.2" fill="#091521"/>
-      </svg>
+  <div class="sp-shell">
+    <section class="sp-copy">
+      <div class="sp-brand-row">
+        <img class="sp-logo-img" src="backyardpicklelogo.jpg" alt="Backyard Pickle logo" />
+        <div class="sp-brand">BACKYARD PICKLE<small>Play · Connect · Enjoy</small></div>
+      </div>
+      <div class="sp-eyebrow">Backyard Pickle reservations</div>
+      <h1 class="sp-title" id="splashTitle">YOUR COURT.<br/><span>YOUR TIME.</span><br/>LET'S PLAY.</h1>
+      <p class="sp-lead">See live availability, choose your court and time, and reserve in a few quick taps.</p>
+      <div class="sp-trust" aria-label="Booking highlights">
+        <span><i class="sp-trust-dot" aria-hidden="true"></i> Live court schedules</span>
+        <span><i class="sp-trust-check" aria-hidden="true">✓</i> No account required</span>
+      </div>
+      <div class="sp-actions">
+        <button type="button" class="sp-start-btn" onclick="dismissSplash()">
+          Check Court Availability
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="sp-action-note"><strong>Quick booking</strong><br/>Choose a court + time</div>
+      </div>
+      <nav class="sp-contact" aria-label="Contact Backyard Pickle">
+        <span class="sp-contact-label">Need help?</span>
+        <a class="sp-contact-link" href="tel:+639153934597" aria-label="Call or text Backyard Pickle at 0915 393 4597">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8.4 3.5 10.2 8l-2.3 1.6a14.7 14.7 0 0 0 6.5 6.5l1.6-2.3 4.5 1.8v3.2c0 1-.8 1.7-1.7 1.7A15.3 15.3 0 0 1 3.5 5.2c0-.9.8-1.7 1.7-1.7h3.2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>0915 393 4597</span>
+        </a>
+        <a class="sp-contact-link facebook" href="https://web.facebook.com/profile.php?id=61590034812771" target="_blank" rel="noopener noreferrer" aria-label="Open the official Backyard Pickle Facebook page">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.7 21v-8h2.7l.4-3.1h-3.1v-2c0-.9.3-1.5 1.6-1.5H17V3.6c-.8-.1-1.7-.2-2.5-.2-2.5 0-4.2 1.5-4.2 4.3v2.2H7.5V13h2.8v8h3.4Z"/></svg>
+          <span>Facebook</span>
+        </a>
+      </nav>
+    </section>
+    <div class="sp-visual" aria-hidden="true">
+      <div class="sp-demo">
+        <div class="sp-live-card"><span class="sp-live-dot"></span> Live court availability</div>
+        <div class="sp-court">
+          <div class="sp-service-line"></div>
+          <div class="sp-net"></div>
+          <div class="sp-ball"></div>
+        </div>
+        <div class="sp-next-card">
+          <span>Simple booking</span>
+          <strong>Choose court + time</strong>
+          <em>Reserve in a few taps</em>
+        </div>
+      </div>
     </div>
-    <div class="sp-tap-text">TAP TO BOOK</div>
-    <div class="sp-tap-sub">Select a court and reserve your slot</div>
   </div>
-
-  <div class="sp-bottom">Korte DOS &nbsp;·&nbsp; Bayabas, Cagayan de Oro</div>
+  <div class="sp-bottom">Backyard Pickle &nbsp;·&nbsp; Your local pickleball court</div>
 </div>
 
 <!-- NAVBAR -->
 <!-- OPEN PLAY MAY 9 ANNOUNCEMENT -->
-<div id="opAnnounceSplash" style="display:none;position:fixed;inset:0;z-index:999;background:#091521;align-items:center;justify-content:center;padding:24px;flex-direction:column;text-align:center;overflow:hidden;">
+<div id="opAnnounceSplash" style="display:none;position:fixed;inset:0;z-index:999;background:#071b30;align-items:center;justify-content:center;padding:24px;flex-direction:column;text-align:center;overflow:hidden;">
   <div style="position:absolute;top:-120px;left:50%;transform:translateX(-50%);width:700px;height:700px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--lime-rgb),.15) 0%,transparent 70%);pointer-events:none;animation:gsGlow 3s ease-in-out infinite alternate"></div>
   <div style="position:absolute;bottom:-180px;left:50%;transform:translateX(-50%);width:500px;height:400px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--ac),.1) 0%,transparent 70%);pointer-events:none"></div>
   <div style="position:relative;z-index:2;max-width:500px;animation:gsIn .8s cubic-bezier(.34,1.4,.64,1) both">
@@ -2747,7 +2909,7 @@ body.host-mode .courts { padding-bottom:140px; }
     </p>
     <div style="background:rgba(var(--ac),.1);border:1.5px solid rgba(var(--ac),.35);border-radius:14px;padding:14px 20px;margin-bottom:24px;animation:gsPulse 2s 1s ease-in-out infinite">
       <div style="font-size:1.2rem;margin-bottom:4px">📍</div>
-      <div style="font-weight:800;font-size:.95rem;color:var(--accent);letter-spacing:.5px">KORTE DOS</div>
+      <div style="font-weight:800;font-size:.95rem;color:var(--accent);letter-spacing:.5px">BACKYARD PICKLE</div>
       <div style="font-size:.82rem;color:#b8c7d4;margin-top:3px">Tap below to register your slot now</div>
     </div>
     <button onclick="closeOpAnnounceSplash()" style="background:linear-gradient(135deg,var(--lime),#8a8f25);color:#000;border:none;border-radius:10px;padding:14px 36px;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:800;cursor:pointer;box-shadow:0 6px 28px rgba(var(--lime-rgb),.4);transition:transform .2s,box-shadow .2s;letter-spacing:.3px" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
@@ -2757,7 +2919,7 @@ body.host-mode .courts { padding-bottom:140px; }
 </div>
 
 <!-- EASTER SUNDAY SPLASH -->
-<div id="easterSplash" style="display:none;position:fixed;inset:0;z-index:999;background:#091521;align-items:center;justify-content:center;padding:24px;flex-direction:column;text-align:center;overflow:hidden;">
+<div id="easterSplash" style="display:none;position:fixed;inset:0;z-index:999;background:#071b30;align-items:center;justify-content:center;padding:24px;flex-direction:column;text-align:center;overflow:hidden;">
   <div style="position:absolute;top:-120px;left:50%;transform:translateX(-50%);width:600px;height:600px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--ac),.2) 0%,transparent 70%);pointer-events:none;animation:gsGlow 3s ease-in-out infinite alternate"></div>
   <div style="position:absolute;bottom:-180px;left:50%;transform:translateX(-50%);width:500px;height:400px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--ac),.1) 0%,transparent 70%);pointer-events:none"></div>
   <div style="position:relative;z-index:2;max-width:480px;animation:gsIn .8s cubic-bezier(.34,1.4,.64,1) both">
@@ -2769,7 +2931,7 @@ body.host-mode .courts { padding-bottom:140px; }
     <p style="color:#b8c7d4;font-size:clamp(1rem,2.8vw,1.15rem);line-height:1.75;margin-bottom:28px">
       <em style="color:var(--lime)">"He is risen — and so are your smashes."</em><br/><br/>
       Celebrate Easter the best way — on the court! 🏓<br/>
-      <strong style="color:#e6edf3">Korte DOS</strong> is open today.<br/>
+      <strong style="color:#e6edf3">Backyard Pickle</strong> is open today.<br/>
       Bring the family, grab a paddle, and let's play!
     </p>
     <button onclick="closeEasterSplash()" style="background:linear-gradient(135deg,var(--accent),var(--accent-dark));color:#fff;border:none;border-radius:10px;padding:14px 36px;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;box-shadow:0 6px 24px rgba(var(--ac),.35);transition:transform .2s,box-shadow .2s" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
@@ -2779,7 +2941,7 @@ body.host-mode .courts { padding-bottom:140px; }
 </div>
 
 <!-- GRAND OPENING SPLASH -->
-<div id="grandSplash" style="display:none;position:fixed;inset:0;z-index:999;background:#091521;align-items:center;justify-content:center;padding:24px;flex-direction:column;text-align:center;overflow:hidden;">
+<div id="grandSplash" style="display:none;position:fixed;inset:0;z-index:999;background:#071b30;align-items:center;justify-content:center;padding:24px;flex-direction:column;text-align:center;overflow:hidden;">
   <!-- Glow layers -->
   <div style="position:absolute;top:-120px;left:50%;transform:translateX(-50%);width:600px;height:600px;border-radius:50%;background:radial-gradient(ellipse,rgba(20,61,99,.24) 0%,transparent 70%);pointer-events:none;animation:gsGlow 3s ease-in-out infinite alternate"></div>
   <div style="position:absolute;bottom:-180px;left:50%;transform:translateX(-50%);width:500px;height:400px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--ac),.1) 0%,transparent 70%);pointer-events:none"></div>
@@ -2791,7 +2953,7 @@ body.host-mode .courts { padding-bottom:140px; }
       GRAND<br/><span style="color:var(--accent);text-shadow:0 0 40px rgba(127,169,204,.5)">OPENING</span>
     </h1>
     <p style="color:#b8c7d4;font-size:clamp(1rem,2.8vw,1.2rem);line-height:1.7;margin-bottom:28px">
-      <strong style="color:#e6edf3">Korte DOS</strong> is opening its doors!<br/>
+      <strong style="color:#e6edf3">Backyard Pickle</strong> is opening its doors!<br/>
       Starting at 4PM — March 29. See you on the court! 🎉
     </p>
     <div style="background:rgba(var(--lime-rgb),.1);border:1.5px solid rgba(var(--lime-rgb),.4);border-radius:14px;padding:16px 20px;margin-bottom:28px;animation:gsPulse 2s 1s ease-in-out infinite">
@@ -2799,7 +2961,7 @@ body.host-mode .courts { padding-bottom:140px; }
       <div style="font-weight:800;font-size:1.05rem;color:var(--lime);letter-spacing:.5px">OPEN PLAY IS LIVE TODAY!</div>
       <div style="font-size:.83rem;color:#d7dd8a;margin-top:4px">Walk in & sign up — limited slots available</div>
     </div>
-    <button onclick="closeGrandSplash()" style="background:linear-gradient(135deg,var(--cta),var(--cta-dark));color:#fff;border:none;border-radius:10px;padding:14px 36px;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;box-shadow:0 6px 24px rgba(200,61,38,.28);transition:transform .2s,box-shadow .2s" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+    <button onclick="closeGrandSplash()" style="background:linear-gradient(135deg,var(--cta),var(--cta-dark));color:#fff;border:none;border-radius:10px;padding:14px 36px;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;box-shadow:0 6px 24px rgba(79,127,37,.3);transition:transform .2s,box-shadow .2s" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
       Let's Play! &nbsp;<span id="gsCountdown" style="opacity:.7;font-weight:400;font-size:.85rem"></span>
     </button>
   </div>
@@ -2818,10 +2980,10 @@ body.host-mode .courts { padding-bottom:140px; }
 
 <nav class="nav">
   <div class="logo">
-    <img class="logo-img" src="korte-dos-logo.png" alt="Korte DOS Logo" />
+    <img class="logo-img" src="backyardpicklelogo.jpg" alt="Backyard Pickle logo" />
     <span class="logo-tx">
-      <span class="logo-name">Korte DOS</span>
-      <span class="logo-sub">Bayabas, Cagayan de Oro</span>
+      <span class="logo-name">Backyard Pickle</span>
+      <span class="logo-sub">Your local pickleball court</span>
     </span>
   </div>
   <div class="nav-headline">
@@ -2835,6 +2997,11 @@ body.host-mode .courts { padding-bottom:140px; }
     </div>
   </div>
 </nav>
+
+<div class="preview-mode-notice" role="status" aria-live="polite">
+  <span class="preview-mode-dot" aria-hidden="true"></span>
+  <span><strong>Preview mode:</strong> Online bookings are not live yet. Explore the system using sample data saved only on this device.</span>
+</div>
 
 <!-- COURTS -->
 <div class="sec" id="courts" style="padding-top:24px">
@@ -3104,7 +3271,7 @@ body.host-mode .courts { padding-bottom:140px; }
                   <div class="gc-num" id="gcMerchantNumber">09XX XXX XXXX</div>
                   <button type="button" class="gc-copy-btn" onclick="copyPaymentNumber('gcash')">📋 Copy</button>
                 </div>
-                <div class="bpay-send-name" id="gcMerchantName">Korte DOS</div>
+                <div class="bpay-send-name" id="gcMerchantName">Backyard Pickle</div>
               </div>
             </div>
             <div class="payment-guide">
@@ -3152,7 +3319,7 @@ body.host-mode .courts { padding-bottom:140px; }
                   <div class="gc-num" id="gtMerchantNumber" style="font-size:1rem;font-weight:800;margin:0">—</div>
                   <button type="button" class="gc-copy-btn" onclick="copyPaymentNumber('gotyme')">📋 Copy</button>
                 </div>
-                <div class="bpay-send-name" id="gtMerchantName">Korte DOS</div>
+                <div class="bpay-send-name" id="gtMerchantName">Backyard Pickle</div>
               </div>
             </div>
             <div class="payment-guide">
@@ -3200,7 +3367,7 @@ body.host-mode .courts { padding-bottom:140px; }
                   <div class="gc-num" id="pnMerchantNumber" style="font-size:1rem;font-weight:800;margin:0">—</div>
                   <button type="button" class="gc-copy-btn" onclick="copyPaymentNumber('pnb')">📋 Copy</button>
                 </div>
-                <div class="bpay-send-name" id="pnMerchantName">Korte DOS</div>
+                <div class="bpay-send-name" id="pnMerchantName">Backyard Pickle</div>
               </div>
             </div>
             <div class="payment-guide">
@@ -3311,14 +3478,14 @@ body.host-mode .courts { padding-bottom:140px; }
   <div class="ft-g">
     <div>
       <div class="logo">
-        <img class="logo-img" src="korte-dos-logo.png" alt="Korte DOS Logo" />
+        <img class="logo-img" src="backyardpicklelogo.jpg" alt="Backyard Pickle logo" />
         <span class="logo-tx">
-          <span class="logo-name">Korte DOS</span>
-          <span class="logo-sub">Bayabas, Cagayan de Oro</span>
+          <span class="logo-name">Backyard Pickle</span>
+          <span class="logo-sub">Your local pickleball court</span>
         </span>
       </div>
       <p class="ft-d">Your go-to platform for pickleball court reservations. Fast, simple, and reliable for all skill levels.</p>
-      <p class="ft-address">Location: GJ6Q+7G, Bayabas, Cagayan de Oro City, Misamis Oriental 9000. <a href="https://www.google.com/maps/search/?api=1&amp;query=GJ6Q%2B7G%2C%20Bayabas%2C%20Cagayan%20de%20Oro%20City%2C%20Misamis%20Oriental%209000" target="_blank" rel="noopener noreferrer">Open map</a></p>
+      <p class="ft-address">Location details will be published after confirmation by the Backyard Pickle court owner.</p>
     </div>
     <div class="ft-c">
       <h4>Quick Links</h4>
@@ -3328,21 +3495,27 @@ body.host-mode .courts { padding-bottom:140px; }
       </ul>
     </div>
     <div class="ft-c">
-      <h4>Support</h4>
-      <ul>
-        <li><a href="#">Contact Us</a></li>
-        <li><a href="#">FAQs</a></li>
-        <li><a href="#">Terms of Use</a></li>
-        <li style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)"><a href="host.html" style="color:var(--muted);font-size:.8rem">Open Play Host Portal</a></li>
-        <li style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)"><a href="login.html" style="color:var(--muted);font-size:.8rem">🔐 Staff Login</a></li>
+      <h4>Contact Backyard Pickle</h4>
+      <div class="ft-contact-list">
+        <a class="ft-contact-card" href="tel:+639153934597" aria-label="Call or text Backyard Pickle at 0915 393 4597">
+          <span class="ft-contact-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.4 3.5 9.7 8l-2.2 1.8c1.2 2.6 3.2 4.6 5.8 5.8l1.8-2.2 4.5 2.3-.9 3.1c-.2.7-.9 1.2-1.7 1.2C9.8 20 4 14.2 4 7c0-.8.5-1.5 1.2-1.7l2.2-.8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>
+          <span class="ft-contact-copy"><small>Call or text</small><strong>0915 393 4597</strong></span>
+        </a>
+        <a class="ft-contact-card" href="https://web.facebook.com/profile.php?id=61590034812771" target="_blank" rel="noopener noreferrer" aria-label="Open the official Backyard Pickle Facebook page">
+          <span class="ft-contact-icon fb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.7 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5H17V3.9c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3V10H7.5v3h2.8v8h3.4Z"/></svg></span>
+          <span class="ft-contact-copy"><small>Message us</small><strong>Facebook Page</strong></span>
+        </a>
+      </div>
+      <ul class="ft-support-links">
+        <li><a href="host.html">Open Play Host Portal</a></li>
+        <li><a href="login.html">🔐 Staff Login</a></li>
       </ul>
     </div>
   </div>
   <div class="ft-bot">
-    <span>© 2026 Korte DOS. All rights reserved.</span>
-    <span>Built for pickleball lovers</span>
-    <br>
-    <span> Dev: <a href="https://www.facebook.com/jelarjoychristian" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;text-underline-offset:3px;">Jelar</a></span>
+    <span>© 2026 Backyard Pickle. All rights reserved.</span>
+    <span>Play · Connect · Enjoy</span>
+    <span>Online booking by Jelar</span>
   </div>
 </footer>
 
@@ -4020,7 +4193,7 @@ function renderPublicHostSession(session) {
   $('hostSessionModal').dataset.sessionId = session.id;
   $('hsTitle').textContent = title;
   $('hsMeta').textContent = `${fmtDc(session.date)} · ${time}`;
-  $('hsSummary').textContent = `${session.hostName || 'Host'} is hosting Open Play at Korte DOS. Share this link with players so they can see the schedule and details.`;
+  $('hsSummary').textContent = `${session.hostName || 'Host'} is hosting Open Play at Backyard Pickle. Share this link with players so they can see the schedule and details.`;
   $('hsDetails').innerHTML = `
     <div><strong>Date:</strong> ${fmtD(session.date)}</div>
     <div><strong>Time:</strong> ${time}</div>
@@ -4467,17 +4640,17 @@ let gcashSettings = {
   checkoutEnabled: false,
   checkoutUrl: '',
   merchantNumber: '09XX XXX XXXX',
-  merchantName: 'Korte DOS',
+  merchantName: 'Backyard Pickle',
   platformQrImage: '',
   checkoutVisited: false,
 };
 let paymentReceiverSettings = {
-  gcash: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
-  bdopay: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
-  maya: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
-  bpi: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
-  gotyme: { number: '', name: 'Korte DOS', qrImage: '' },
-  pnb: { number: '', name: 'Korte DOS', qrImage: '' },
+  gcash: { number: '09XX XXX XXXX', name: 'Backyard Pickle', qrImage: '' },
+  bdopay: { number: '09XX XXX XXXX', name: 'Backyard Pickle', qrImage: '' },
+  maya: { number: '09XX XXX XXXX', name: 'Backyard Pickle', qrImage: '' },
+  bpi: { number: '09XX XXX XXXX', name: 'Backyard Pickle', qrImage: '' },
+  gotyme: { number: '', name: 'Backyard Pickle', qrImage: '' },
+  pnb: { number: '', name: 'Backyard Pickle', qrImage: '' },
 };
 let paymentMethods = { cash: true, gcash: true, bdopay: true, maya: true, bpi: true, gotyme: true, pnb: true };
 const DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'];
@@ -4808,32 +4981,32 @@ function applyPaymentSettings(settings) {
   paymentReceiverSettings = {
     gcash: {
       number: settings.gcash_merchant_number || '09XX XXX XXXX',
-      name: settings.gcash_merchant_name || 'Korte DOS',
+      name: settings.gcash_merchant_name || 'Backyard Pickle',
       qrImage: settings.gcash_qr_image || '',
     },
     bdopay: {
       number: settings.gcash_merchant_number || '09XX XXX XXXX',
-      name: settings.gcash_merchant_name || 'Korte DOS',
+      name: settings.gcash_merchant_name || 'Backyard Pickle',
       qrImage: settings.gcash_qr_image || '',
     },
     maya: {
       number: settings.gcash_merchant_number || '09XX XXX XXXX',
-      name: settings.gcash_merchant_name || 'Korte DOS',
+      name: settings.gcash_merchant_name || 'Backyard Pickle',
       qrImage: settings.gcash_qr_image || '',
     },
     bpi: {
       number: settings.gcash_merchant_number || '09XX XXX XXXX',
-      name: settings.gcash_merchant_name || 'Korte DOS',
+      name: settings.gcash_merchant_name || 'Backyard Pickle',
       qrImage: settings.gcash_qr_image || '',
     },
     gotyme: {
       number: settings.gotyme_merchant_number || '',
-      name: settings.gotyme_merchant_name || 'Korte DOS',
+      name: settings.gotyme_merchant_name || 'Backyard Pickle',
       qrImage: settings.gotyme_qr_image || '',
     },
     pnb: {
       number: settings.pnb_merchant_number || '',
-      name: settings.pnb_merchant_name || 'Korte DOS',
+      name: settings.pnb_merchant_name || 'Backyard Pickle',
       qrImage: settings.pnb_qr_image || '',
     },
   };
@@ -8018,15 +8191,20 @@ function animateStat(el, final) {
    ============================================= */
 function dismissSplash() {
   const sp = document.getElementById('splashScreen');
+  if (!sp || sp.classList.contains('dismissed')) return;
   sp.classList.add('dismissed');
   document.body.style.overflow = '';
   sp.addEventListener('transitionend', () => { sp.style.display = 'none'; }, { once: true });
 }
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && isSplashActive()) dismissSplash();
+});
 // Lock scroll while splash is showing
 document.body.style.overflow = 'hidden';
 
 document.addEventListener('DOMContentLoaded', async () => {
   initDark();
+  document.body.classList.toggle('pb-preview-mode', window.PB_USE_LOCAL_DATA && !window.PB_SUPABASE_CONFIGURED);
   if (!(await refreshHostBookingSession())) return;
   await DB.seedDefaultData();
   applyHostChrome();

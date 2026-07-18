@@ -19,11 +19,7 @@ if (-not $env:CLOUDFLARE_API_TOKEN -and $envMap["CLOUDFLARE_API_TOKEN"]) {
   $env:CLOUDFLARE_API_TOKEN = $envMap["CLOUDFLARE_API_TOKEN"]
 }
 
-if (-not $env:CLOUDFLARE_API_TOKEN) {
-  throw "Set CLOUDFLARE_API_TOKEN in the environment or .env.local."
-}
-
-$projectName = if ($envMap["CLOUDFLARE_PAGES_PROJECT"]) { $envMap["CLOUDFLARE_PAGES_PROJECT"] } else { "korte-dos-cdo-pickleball" }
+$projectName = if ($envMap["CLOUDFLARE_PAGES_PROJECT"]) { $envMap["CLOUDFLARE_PAGES_PROJECT"] } else { "backyard-pickle-pickleball" }
 $branchName = if ($envMap["CLOUDFLARE_PAGES_BRANCH"]) { $envMap["CLOUDFLARE_PAGES_BRANCH"] } else { "main" }
 
 $publicFiles = @(
@@ -34,19 +30,13 @@ $publicFiles = @(
   "ads.txt",
   "auth.js",
   "booking-balance.js",
-  "c737b56c-ac91-406b-af7d-7d06f2ac775c.jpg",
-  "CHANGELOG.md",
   "chart.min.js",
-  "court-splash.jpg",
-  "f6b5eb3c-a6b6-49ce-981e-d9b127b67ba3.jpg",
   "host.html",
   "index.html",
-  "korte-dos-logo.png",
-  "korte-dos-logo.svg",
+  "backyardpicklelogo.jpg",
+  "linkimage.jpg",
   "login.html",
   "script.js",
-  "setup-db.js",
-  "SETUP_NEW_SUPABASE.sql",
   "signature-view.html",
   "signature-view.png",
   "style.css",
@@ -54,14 +44,15 @@ $publicFiles = @(
   "supabase.min.js"
 )
 
-New-Item -ItemType Directory -Force ".cf-pages-deploy" | Out-Null
+$deployDir = Join-Path ".cf-pages-deploy" ("site-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force $deployDir | Out-Null
 foreach ($file in $publicFiles) {
   if (Test-Path $file) {
-    Copy-Item -LiteralPath $file -Destination ".cf-pages-deploy" -Force
+    Copy-Item -LiteralPath $file -Destination $deployDir -Force
   }
 }
 
-npx wrangler pages deploy ".cf-pages-deploy" --project-name $projectName --branch $branchName
+npx.cmd wrangler pages deploy $deployDir --project-name $projectName --branch $branchName
 if ($LASTEXITCODE -ne 0) {
   throw "Cloudflare Pages deploy failed with exit code $LASTEXITCODE."
 }

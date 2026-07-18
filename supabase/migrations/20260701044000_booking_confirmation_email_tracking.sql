@@ -1,4 +1,4 @@
--- Keep provider ids for customer confirmation emails so Resend logs can be
+-- Keep provider ids for customer confirmation emails so Maileroo logs can be
 -- matched back to booking rows exactly.
 
 alter table public.bookings

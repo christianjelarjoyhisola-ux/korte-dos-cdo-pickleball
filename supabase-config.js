@@ -3,8 +3,14 @@
 // Replace these with your actual project credentials.
 // Find them at: Supabase Dashboard → Project Settings → API
 // =============================================
-const SUPABASE_URL = 'https://zcuufcpkgidmaanxjufo.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjdXVmY3BrZ2lkbWFhbnhqdWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNjYyODMsImV4cCI6MjA5Nzk0MjI4M30.c_H2mUkyoc8xlA3BONq11t6HwvfaSZbXcs_smTKp2_o';
+// Use a new Supabase project dedicated to Backyard Pickle. Never point this
+// tenant at another court owner's database.
+const SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const PB_SUPABASE_CONFIGURED =
+  !SUPABASE_URL.includes('YOUR_PROJECT_REF') &&
+  !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON_KEY');
+window.PB_SUPABASE_CONFIGURED = PB_SUPABASE_CONFIGURED;
 
 const PB_REQUEST_TIMEOUT_MS = 45000;
 const PB_RECEIPT_TIMEOUT_MS = 90000;
@@ -39,7 +45,7 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 window._supabase = _sb;
 
 const PB_IS_LOCAL_HOST = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
-const PB_DATA_MODE_KEY = 'pb_data_mode';
+const PB_DATA_MODE_KEY = 'backyard_pickle_data_mode';
 
 if (PB_IS_LOCAL_HOST) {
   const params = new URLSearchParams(location.search);
@@ -51,7 +57,11 @@ if (PB_IS_LOCAL_HOST) {
   }
 }
 
-window.PB_USE_LOCAL_DATA = PB_IS_LOCAL_HOST && localStorage.getItem(PB_DATA_MODE_KEY) === 'local';
+// Until a dedicated Backyard Pickle project is connected, run the published
+// site as a browser-only preview. This keeps it isolated from every other
+// court's data and makes the static Cloudflare deployment fully usable.
+window.PB_USE_LOCAL_DATA = !PB_SUPABASE_CONFIGURED ||
+  (PB_IS_LOCAL_HOST && localStorage.getItem(PB_DATA_MODE_KEY) === 'local');
 
 const PB_FAST_CACHE_MS = {
   courts: 60000,
@@ -1866,13 +1876,13 @@ window.DB = {
 // =============================================
 // =============================================
 // LOCAL DATA MODE
-// Enable only on localhost with localStorage.setItem('pb_data_mode', 'local')
+// Enable only on localhost with localStorage.setItem('backyard_pickle_data_mode', 'local')
 // or by opening a local page with ?localData=1. Disable with ?remoteData=1.
 // =============================================
 (function installLocalDataMode() {
   if (!window.PB_USE_LOCAL_DATA) return;
 
-  const STORE_KEY = 'pb_local_db_v1';
+  const STORE_KEY = 'backyard_pickle_local_db_v1';
   const nowIso = () => new Date().toISOString();
   const localRef = prefix => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
 
@@ -1880,7 +1890,7 @@ window.DB = {
     const n = i + 1;
     return {
       id: `c${n}`,
-      name: n === 1 ? 'Korte DOS' : `Court ${n}`,
+      name: n === 1 ? 'Backyard Pickle Court 1' : `Court ${n}`,
       desc: 'Outdoor',
       rate: n <= 5 ? 60 : 90,
       blocked: false,
@@ -1929,7 +1939,7 @@ window.DB = {
       role: 'owner',
       status: 'active',
       fullName: 'System Owner',
-      email: 'owner@kortedos.local',
+      email: 'owner@backyard-pickle.local',
       createdAt: nowIso(),
     },
     {
@@ -1939,7 +1949,7 @@ window.DB = {
       role: 'host',
       status: 'active',
       fullName: 'Open Play Test Host',
-      email: 'host.test@kortedos.local',
+      email: 'host.test@backyard-pickle.local',
       createdAt: nowIso(),
     },
   ]);
@@ -1958,7 +1968,7 @@ window.DB = {
         groupRef,
         fullName: 'Open Play Test Host',
         contactNumber: '09171234567',
-        email: 'host.test@kortedos.local',
+        email: 'host.test@backyard-pickle.local',
         courtId,
         courtName,
         date,
@@ -1976,14 +1986,14 @@ window.DB = {
         hostBooking: true,
         hostUserId: 'host_test_001',
         hostName: 'Open Play Test Host',
-        hostEmail: 'host.test@kortedos.local',
+        hostEmail: 'host.test@backyard-pickle.local',
         paymentStatus,
         status,
         createdAt: new Date(Date.now() - createdDaysAgo * 86400000).toISOString(),
       };
     };
     return [
-      makeHostBooking({ ref: 'HOST-DEMO-001', courtId: 'c1', courtName: 'Korte DOS', date: '2026-07-12', slots: [14, 15], rate: 60, gcashRef: '1234567890123', createdDaysAgo: 1 }),
+      makeHostBooking({ ref: 'HOST-DEMO-001', courtId: 'c1', courtName: 'Backyard Pickle Court 1', date: '2026-07-12', slots: [14, 15], rate: 60, gcashRef: '1234567890123', createdDaysAgo: 1 }),
       makeHostBooking({ ref: 'HOST-DEMO-002', courtId: 'c2', courtName: 'Court 2', date: '2026-07-14', slots: [18, 19, 20], rate: 90, gcashRef: '9876543210123', createdDaysAgo: 2 }),
       makeHostBooking({ ref: 'HOST-DEMO-003', courtId: 'c3', courtName: 'Court 3', date: '2026-07-18', slots: [8, 9], rate: 60, method: 'cash', paymentStatus: 'unpaid', status: 'pending', createdDaysAgo: 0 }),
       makeHostBooking({ ref: 'HOST-DEMO-004', courtId: 'c4', courtName: 'Court 4', date: '2026-07-04', slots: [16, 17], rate: 60, gcashRef: '2223334445556', paymentStatus: 'paid', createdDaysAgo: 6 }),
@@ -2698,7 +2708,7 @@ window.DB = {
         ok: true,
         local: true,
         services: [
-          { id: 'email', label: 'Email confirmations', configured: false, required: ['RESEND_API_KEY'], missing: ['RESEND_API_KEY'], note: 'Local data mode' },
+          { id: 'email', label: 'Email confirmations (Maileroo)', configured: false, required: ['MAILEROO_API_KEY', 'EMAIL_FROM'], missing: ['MAILEROO_API_KEY', 'EMAIL_FROM'], note: 'Local data mode' },
           { id: 'telegram', label: 'Telegram admin alerts', configured: false, required: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'], missing: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'], note: 'Local data mode' },
           { id: 'payments', label: 'PayMongo checkout', configured: false, required: ['PAYMONGO_SECRET_KEY', 'PAYMENT_SUCCESS_URL', 'PAYMENT_CANCEL_URL'], missing: ['PAYMONGO_SECRET_KEY', 'PAYMENT_SUCCESS_URL', 'PAYMENT_CANCEL_URL'], note: 'Local data mode' },
           { id: 'ocr', label: 'Receipt OCR', configured: false, required: ['GOOGLE_VISION_API_KEY'], missing: ['GOOGLE_VISION_API_KEY'], note: 'Local data mode' },
@@ -2769,7 +2779,7 @@ window.DB = {
     return readDb();
   };
 
-  console.info('[Korte DOS] Local data mode enabled. Supabase writes are bypassed in this browser.');
+  console.info('[Backyard Pickle] Local data mode enabled. Supabase writes are bypassed in this browser.');
 })();
 
 window.Auth = {

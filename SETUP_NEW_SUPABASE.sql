@@ -1,5 +1,5 @@
 -- ============================================================
--- KORTE DOS - COMPLETE SUPABASE DATABASE SETUP
+-- BACKYARD PICKLE - COMPLETE SUPABASE DATABASE SETUP
 -- Use this on a fresh Supabase project:
 --   Supabase Dashboard -> SQL Editor -> New query -> Run
 --
@@ -1946,7 +1946,7 @@ on conflict (id) do nothing;
 
 insert into public.settings (key, value)
 values
-  ('venue_name', 'Korte DOS'),
+  ('venue_name', 'Backyard Pickle'),
   ('open_time', '6'),
   ('close_time', '22'),
   ('booking_fee', '5'),
