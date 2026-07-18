@@ -41,6 +41,21 @@ window._supabase = _sb;
 const PB_IS_LOCAL_HOST = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
 const PB_DATA_MODE_KEY = 'pb_data_mode';
 
+// Recovery guard: the Backyard Pickle preview was briefly served from the
+// Korte domain and could leave its browser-only demo database behind. Korte
+// must always use its dedicated Supabase data in production.
+const PB_IS_KORTE_PRODUCTION = ['kortedoscdo.club', 'www.kortedoscdo.club']
+  .includes(location.hostname.toLowerCase());
+
+if (PB_IS_KORTE_PRODUCTION) {
+  try {
+    localStorage.removeItem('backyard_pickle_data_mode');
+    localStorage.removeItem('backyard_pickle_local_db_v1');
+  } catch (_) {
+    // Storage can be unavailable in strict privacy modes; remote data still wins.
+  }
+}
+
 if (PB_IS_LOCAL_HOST) {
   const params = new URLSearchParams(location.search);
   if (['1', 'true', 'local'].includes((params.get('localData') || '').toLowerCase())) {
@@ -51,7 +66,9 @@ if (PB_IS_LOCAL_HOST) {
   }
 }
 
-window.PB_USE_LOCAL_DATA = PB_IS_LOCAL_HOST && localStorage.getItem(PB_DATA_MODE_KEY) === 'local';
+window.PB_USE_LOCAL_DATA = !PB_IS_KORTE_PRODUCTION &&
+  PB_IS_LOCAL_HOST &&
+  localStorage.getItem(PB_DATA_MODE_KEY) === 'local';
 
 const PB_FAST_CACHE_MS = {
   courts: 60000,
