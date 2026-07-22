@@ -24,6 +24,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import { calculateCourtPayment, chooseExpectedDue, closeMoney, roundMoney, toNumber } from "../_shared/booking-payment.ts";
 import { extractReceiptAmount } from "../_shared/receipt-amount.ts";
+import {
+  checkReceiverNumber,
+  extractBpiConfirmationNo,
+  extractBpiTransactionRefNo,
+  hasGcashGxiDestination,
+  hasSuccessfulBpiTransfer,
+  isBpiConfirmationNo,
+  isBpiReceipt,
+} from "../_shared/bpi-receipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,7 +41,7 @@ const corsHeaders = {
 
 // Payment must happen within this many minutes after the booking/session join
 // is started.
-const PAYMENT_WINDOW_MINUTES = 10;
+const PAYMENT_WINDOW_MINUTES = 15;
 // OCR usually reads only minute-level timestamps. A receipt paid during the
 // same minute as the hold can look a few seconds "before" the booking.
 const PAYMENT_EARLY_TOLERANCE_MINUTES = 2;
@@ -89,7 +98,7 @@ function publicReceiptMessage(
     flagSet.has("TIME_EXPIRED") || flagSet.has("TIME_FUTURE") ||
     flagSet.has("DATE_NOT_TODAY")
   ) {
-    return "Payment was sent outside the allowed 10-minute window. Please create a new booking.";
+    return `Payment was sent outside the allowed ${PAYMENT_WINDOW_MINUTES}-minute window. Please create a new booking.`;
   }
   if (flagSet.has("IMAGE_UNREADABLE") || flagSet.has("OCR_UNAVAILABLE")) {
     return "Receipt image is unreadable. Please upload a clearer screenshot.";
@@ -297,17 +306,8 @@ function isMayaReference(value: string): boolean {
   return /^[A-Z0-9]{12}$/.test(normalizeReferenceForProvider(value, "maya"));
 }
 
-function isBpiConfirmationNo(value: string): boolean {
-  return /^\d{10,20}$/.test(digitsOnly(value));
-}
-
 function flexibleDigitPattern(digits: string): RegExp {
   return new RegExp(digits.split("").join("[^0-9]*"));
-}
-
-function maskedDigitPattern(digits: string): RegExp {
-  const mask = "[\\s\\-.*xX#\\u2022\\u2023\\u25E6\\u2043\\u2219]*";
-  return new RegExp(digits.split("").join(mask));
 }
 
 // Extract candidate 13-digit GCash reference numbers from OCR text.
@@ -351,27 +351,6 @@ function extractGcashRef(text: string, typedRef = ""): string | null {
   return null;
 }
 
-function extractBpiConfirmationNo(text: string, typedRef = ""): string | null {
-  const normalizedTyped = digitsOnly(typedRef);
-  if (
-    isBpiConfirmationNo(normalizedTyped) &&
-    flexibleDigitPattern(normalizedTyped).test(text)
-  ) {
-    return normalizedTyped;
-  }
-
-  const patterns = [
-    /\bconfirmation\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{8,24}[0-9])\b/i,
-    /\bconfirm(?:ation)?\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{8,24}[0-9])\b/i,
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    const ref = match ? digitsOnly(match[1]) : "";
-    if (isBpiConfirmationNo(ref)) return ref;
-  }
-  return null;
-}
-
 function extractReference(
   text: string,
   provider: PaymentProvider,
@@ -400,7 +379,7 @@ function hasMayaIndicator(text: string): boolean {
 }
 
 function hasBpiIndicator(text: string): boolean {
-  return isBpiReceipt(text);
+  return hasSuccessfulBpiTransfer(text);
 }
 
 function hasInstapayQrphIndicator(text: string): boolean {
@@ -428,21 +407,6 @@ function isMayaReceipt(text: string): boolean {
       /\breference\s+id\b/i.test(t) ||
       /\binstapay\s+ref\b/i.test(t) ||
       /\bqrph\b|\bqr\s*ph\b/i.test(t));
-}
-
-function isBpiReceipt(text: string): boolean {
-  const t = text || "";
-  return /\bsent\s+via\s+bpi\b/i.test(t) ||
-    /\bbpi\b/i.test(t) ||
-    (/\btransfer\s+successful\b/i.test(t) &&
-      /\bconfirmation\s*(?:no|number|#)?\.?\b/i.test(t) &&
-      /\binsta\s*pay\b/i.test(t));
-}
-
-function hasGcashGxiDestination(text: string): boolean {
-  return /\bgcash\s*\/\s*g-?xchange\b/i.test(text) ||
-    /\bg-?xchange\b/i.test(text) ||
-    /\bgcash\b/i.test(text);
 }
 
 function isGcashToGcashReceipt(text: string): boolean {
@@ -505,19 +469,6 @@ function extractMayaInstapayRefNo(text: string): string | null {
   return null;
 }
 
-function extractBpiTransactionRefNo(text: string): string | null {
-  const patterns = [
-    /\btransaction\s*ref\.?\s*(?:no|number|#)?\.?\s*[:#]?\s*([0-9][0-9\s-]{3,20}[0-9])\b/i,
-    /\btransaction\s*(?:reference|ref)\s*[:#]?\s*([0-9][0-9\s-]{3,20}[0-9])\b/i,
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    const ref = match ? digitsOnly(match[1]) : "";
-    if (ref.length >= 4 && ref.length <= 20) return ref;
-  }
-  return null;
-}
-
 function extractAmount(text: string): number | null {
   // Legacy parser for non-Maya layouts. Require a complete money token so a
   // value such as P1,080.00 can never fall through as the suffix ,080.00.
@@ -530,16 +481,6 @@ function extractAmount(text: string): number | null {
   );
   return any ? parseFloat(any[1].replace(/,/g, "")) : null;
 }
-
-// Normalize a PH mobile number to its 10 significant digits (drop 0/63 prefix).
-function normalizeMobile(d: string): string {
-  let x = digitsOnly(d);
-  if (x.startsWith("63")) x = x.slice(2);
-  if (x.startsWith("0")) x = x.slice(1);
-  return x; // expect 10 digits: 9XXXXXXXXX
-}
-
-type NumberCheck = "match" | "wrong" | "unreadable";
 
 function normalizedProvider(raw: string): PaymentProvider {
   const provider = raw.toLowerCase();
@@ -581,8 +522,10 @@ function expectedMerchantForProvider(
   }
   if (provider === "bpi") {
     return {
-      number: settings.bpi_merchant_number || "",
-      name: settings.bpi_merchant_name || settings.payment_merchant_name ||
+      // BPI is used as the sending bank; the actual destination is the same
+      // GCash account displayed to customers in the booking flow.
+      number: settings.bpi_merchant_number || settings.gcash_merchant_number || "",
+      name: settings.bpi_merchant_name || settings.gcash_merchant_name || settings.payment_merchant_name ||
         "Korte DOS",
     };
   }
@@ -742,34 +685,6 @@ function bookingUpdateQuery(
   const groupRef = String(booking.booking_group_ref || "");
   const query = db.from("bookings").update(update);
   return groupRef ? query.eq("booking_group_ref", groupRef) : query.eq("ref", String(booking.ref || ""));
-}
-
-function checkReceiverNumber(text: string, expectedRaw: string): NumberCheck {
-  const expected = normalizeMobile(expectedRaw);
-  if (expected.length < 10) return "unreadable"; // no configured number to compare
-  const last4 = expected.slice(-4);
-
-  // Full mobile numbers in the receipt (handles +63 / 0 / 9 forms).
-  const fullMatches = text.match(/(?:\+?63|0)?9\d{2}[\s\-•*x.]*\d{2,3}[\s\-•*x.]*\d{2,4}/gi) ||
-    [];
-  let sawFull = false;
-  for (const fm of fullMatches) {
-    const norm = normalizeMobile(fm);
-    if (norm.length >= 10) {
-      sawFull = true;
-      if (norm === expected) return "match";
-    }
-  }
-  // Masked receipts often reveal only the last 4 digits.
-  if (maskedDigitPattern(last4).test(text)) return "match";
-  if (new RegExp(`(?:[•*xX#\\s\\-]{2,}|\\d)${last4}\\b`).test(text)) {
-    return "match";
-  }
-  if (text.includes(last4)) return "match";
-
-  // We positively saw a complete, different mobile number → confidently wrong.
-  if (sawFull) return "wrong";
-  return "unreadable";
 }
 
 // Loose masked-name match (e.g. "CO**TY**D P*CKL*B*LL" vs "KORTE DOS").
@@ -1485,17 +1400,24 @@ Deno.serve(async (req) => {
           flags.push("RECEIVER_NAME_UNREADABLE");
         }
       } else if (provider === "bpi") {
-        // BPI focused path: require BPI + InstaPay + GCash/G-Xchange destination,
-        // but do not run the GCash-to-GCash verifier.
+        // BPI focused path. Current BPI success receipts identify the sender as
+        // BPI and the destination as GCash/G-Xchange, but they do not print
+        // "InstaPay"/"QRPh" and they mask the receiver name. Verify the exact
+        // destination number instead of requiring those unavailable labels.
         if (!extractedRef) flags.push("BPI_CONFIRMATION_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) {
           flags.push("REF_MISMATCH");
         }
+        if (!extractedBpiTransactionRefNo) {
+          flags.push("BPI_TRANSACTION_UNREADABLE");
+        }
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-        else if (extractedAmount < expectedAmount - PESO_TOLERANCE) {
+        else if (extractedAmount < expectedAmount && !closeMoney(extractedAmount, expectedAmount)) {
           flags.push("AMOUNT_MISMATCH");
+        } else if (!closeMoney(extractedAmount, expectedAmount)) {
+          flags.push("AMOUNT_REVIEW");
         }
 
         if (!receiptDate) flags.push("DATE_UNREADABLE");
@@ -1512,14 +1434,13 @@ Deno.serve(async (req) => {
         }
 
         if (!hasBpiIndicator(ocrText)) flags.push("BPI_UNREADABLE");
-        if (!hasInstapayQrphIndicator(ocrText)) {
-          flags.push("INSTAPAY_QRPH_UNREADABLE");
-        }
         if (!hasGcashGxiDestination(ocrText)) {
           flags.push("GXI_DESTINATION_UNREADABLE");
         }
-        if (!hasExpectedReceiverName(ocrText, expectedName)) {
-          flags.push("RECEIVER_NAME_UNREADABLE");
+        const numCheck = checkReceiverNumber(ocrText, expectedNumber);
+        if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
+        else if (numCheck === "unreadable") {
+          flags.push("NUMBER_UNREADABLE");
         }
       } else {
         if (!extractedRef) flags.push("REF_UNREADABLE");
@@ -1677,8 +1598,8 @@ Deno.serve(async (req) => {
       ocrFallbackReason,
       ocrConfidence,
       ocrTextLength: ocrText.length,
-      expectedReceiverNumber: provider === "bdopay" || provider === "maya" || provider === "bpi" ? null : expectedNumber || null,
-      expectedReceiverName: expectedName || null,
+      expectedReceiverNumber: provider === "bdopay" || provider === "maya" ? null : expectedNumber || null,
+      expectedReceiverName: provider === "bpi" ? null : expectedName || null,
     };
 
     // ── persist outcome on the booking ──────────────────────────────────────

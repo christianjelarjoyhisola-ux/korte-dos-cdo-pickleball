@@ -6,6 +6,16 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-14] - Payment Window Alignment
+
+### Changed
+- **15-minute payment window** - receipt verification now accepts payments made within the same 15-minute window shown by the booking countdown, and admin receipt flags use the matching cutoff.
+- **BPI receipt auto-verification** - BPI payments now use the current transfer-success layout: confirmation number, transaction reference, exact amount, GCash/G-Xchange destination, configured GCash receiver number, timestamp, and duplicate checks. BPI receipts no longer require unavailable InstaPay/QRPh text or an unmasked receiver name.
+
+**Files affected:** `admin.html`, `index.html`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/functions/_shared/bpi-receipt.ts`, `supabase/functions/_shared/bpi-receipt_test.ts`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-13] - Accumulated Booking Fee Remittances
 
 ### Added

@@ -4043,9 +4043,10 @@ function shortDateTime(v){
   if (Number.isNaN(d.getTime())) return '<span style="color:var(--muted)">--</span>';
   return `${d.toLocaleDateString('en-PH',{month:'short',day:'numeric'})}<div style="font-size:.72rem;color:var(--muted);font-weight:600">${d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
 }
+const RECEIPT_PAYMENT_WINDOW_MINUTES = 15;
 const RECEIPT_FLAG_LABELS = {
   DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', WRONG_GCASH_NUMBER:'Wrong receiver number',
-  AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:'Paid after 15 min',
+  AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:`Paid after ${RECEIPT_PAYMENT_WINDOW_MINUTES} min`,
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
   EDITED_METADATA:'Edited image metadata', SUSPECTED_FAKE:'Not a receipt', REF_FORMAT_INVALID:'Bad reference format',
@@ -4085,7 +4086,9 @@ function receiptFlagsForDisplay(b){
 
   const age = Number(ex.receiptAgeMinutes);
   const earlyTolerance = Number(ex.allowedPaymentEarlyToleranceMinutes ?? 2);
-  const windowMinutes = Number(ex.allowedPaymentWindowMinutes ?? 10);
+  // Apply the current booking policy even to audits produced by an older
+  // verifier that saved a shorter payment window.
+  const windowMinutes = RECEIPT_PAYMENT_WINDOW_MINUTES;
   if (Number.isFinite(age) && age >= -earlyTolerance) {
     flags = removeReceiptFlags(flags, ['TIME_FUTURE']);
   }
@@ -4171,7 +4174,7 @@ function receiptDetailsHtml(b){
     ['Receipt Time', receiptTimeValue(ex)],
     ['Receipt Date', receiptDetailValue(ex.date)],
     ['Booking Started', receiptDetailValue(ex.bookingStartedAtPh12)],
-    ['Window', ex.allowedPaymentWindowMinutes ? `${esc(ex.allowedPaymentWindowMinutes)} min` : '--'],
+    ['Window', `${RECEIPT_PAYMENT_WINDOW_MINUTES} min`],
     ['OCR Engine', receiptOcrProviderLabel(ex.ocrProvider)],
     ['Receiver', receiptReceiverValue(ex), true],
     ...(ex.ocrFallbackReason ? [['OCR Fallback', receiptDetailValue(ex.ocrFallbackReason), true]] : []),
