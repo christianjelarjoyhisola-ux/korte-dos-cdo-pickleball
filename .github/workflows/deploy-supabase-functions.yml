@@ -1,0 +1,90 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-edge-functions-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy changed functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      - name: Select functions to deploy
+        id: functions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          all_functions=(
+            create-payment-session
+            payment-webhook
+            verify-gcash-receipt
+            host-application
+            manage-account
+            send-confirmation-email
+            process-host-balance-deadlines
+            send-reschedule-email
+            send-telegram-notification
+            integration-status
+          )
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            selected=("${all_functions[@]}")
+          else
+            mapfile -t changed_files < <(
+              git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- supabase/functions
+            )
+
+            if printf '%s\n' "${changed_files[@]}" | grep -q '^supabase/functions/_shared/'; then
+              selected=("${all_functions[@]}")
+            else
+              mapfile -t selected < <(
+                printf '%s\n' "${changed_files[@]}" |
+                  awk -F/ '/^supabase\/functions\/[^/]+\// && $3 != "_shared" { print $3 }' |
+                  sort -u
+              )
+            fi
+          fi
+
+          if [[ ${#selected[@]} -eq 0 ]]; then
+            echo "No deployable Edge Function changed."
+            echo "names=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          names="${selected[*]}"
+          echo "Deploying: $names"
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Edge Functions
+        if: steps.functions.outputs.names != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          for function_name in ${{ steps.functions.outputs.names }}; do
+            supabase functions deploy "$function_name" \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              --no-verify-jwt
+          done
