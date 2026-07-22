@@ -4144,6 +4144,7 @@ function receiptDetailValue(value, fallback = '--'){
   return esc(value);
 }
 function receiptAmountValue(value){
+  if (value === null || value === undefined || String(value).trim() === '') return '--';
   const n = Number(value);
   return Number.isFinite(n) ? fmt(n) : '--';
 }
@@ -4155,6 +4156,21 @@ function receiptOcrProviderLabel(value){
     'google_vision+ocr_space': 'Google Vision + OCR.space',
     none: 'None',
   })[v] || (value ? esc(value) : '--');
+}
+function receiptOcrAnalysisLabel(value){
+  const v = String(value || '').toLowerCase();
+  return ({
+    google_layout: 'Visual row reconstruction',
+    google_raw: 'Raw Google text order',
+    none: 'None',
+  })[v] || (value ? esc(value) : '--');
+}
+function receiptOcrDiagnosticValue(value){
+  const raw = String(value || '').trim();
+  if (!raw) return '--';
+  const missing = raw.match(/^google_missing_(.+)$/i);
+  if (missing) return `Missing fields: ${esc(missing[1].split('_').join(', '))}`;
+  return esc(raw.split('_').join(' '));
 }
 function receiptTimeValue(extracted){
   if (!extracted) return '--';
@@ -4176,6 +4192,8 @@ function receiptReceiverValue(extracted){
 }
 function receiptDetailsHtml(b){
   const ex = b.receiptExtracted || {};
+  const enteredRef = b?.gcashRef ?? b?.gcash_ref;
+  const hasEnteredRef = enteredRef !== null && enteredRef !== undefined && String(enteredRef).trim() !== '';
   const displayFlags = receiptFlagsForDisplay(b);
   const reason = displayFlags.length ? receiptReasonText(displayFlags) : 'All visible checks passed';
   const ocrConfidenceNumber = Number(ex.ocrConfidence);
@@ -4183,7 +4201,9 @@ function receiptDetailsHtml(b){
     ? `${Math.round(ocrConfidenceNumber * 100)}%`
     : '--';
   const amountParse = ex.amountReason === 'maribank_transfer_amount'
-    ? 'MariBank Transfer Amount'
+    ? ex.amountReliable === true
+      ? 'MariBank Transfer Amount'
+      : 'MariBank Transfer Amount not extracted'
     : ex.amountReason === 'legacy_parser'
       ? 'Legacy parser result'
       : ex.amountReliable === true
@@ -4194,15 +4214,17 @@ function receiptDetailsHtml(b){
             ? 'Uncertain — manual review'
             : '--';
   const rows = [
-    ['OCR Ref', receiptDetailValue(ex.ref || b.gcashRef)],
+    ['OCR Ref', receiptDetailValue(ex.ref)],
+    ...(hasEnteredRef ? [['Entered Ref', receiptDetailValue(enteredRef)]] : []),
     ['Amount Read', receiptAmountValue(ex.amount)],
     ['Receipt Time', receiptTimeValue(ex)],
     ['Receipt Date', receiptDetailValue(ex.date)],
     ['Booking Started', receiptDetailValue(ex.bookingStartedAtPh12)],
     ['Window', `${RECEIPT_PAYMENT_WINDOW_MINUTES} min`],
     ['OCR Engine', receiptOcrProviderLabel(ex.ocrProvider)],
+    ...(ex.ocrAnalysisSource ? [['OCR Layout', receiptOcrAnalysisLabel(ex.ocrAnalysisSource)]] : []),
     ['Receiver', receiptReceiverValue(ex), true],
-    ...(ex.ocrFallbackReason ? [['OCR Fallback', receiptDetailValue(ex.ocrFallbackReason), true]] : []),
+    ...(ex.ocrFallbackReason ? [['OCR Diagnostic', receiptOcrDiagnosticValue(ex.ocrFallbackReason), true]] : []),
     ...(ex.amountReliable !== undefined ? [['Amount Parse', receiptDetailValue(amountParse), true]] : []),
     ['Reason', receiptDetailValue(reason), true],
     ['OCR Confidence', receiptDetailValue(ocrConfidence)],

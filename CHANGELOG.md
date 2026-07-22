@@ -6,6 +6,17 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-23] - MariBank OCR Layout Reliability
+
+### Fixed
+- **Two-column MariBank receipts** - Google Vision word coordinates are reconstructed into visual rows before MariBank parsing, while incomplete geometry safely falls back to the complete raw OCR text.
+- **Conservative field recovery** - reference, amount, date/time, destination account, transfer method, status, and fee/total checks tolerate reconstructed or reversed row ordering, while conflicting or unpaired evidence remains in manual review.
+- **Truthful receipt diagnostics** - admin review separates the OCR-extracted reference from the customer-entered reference, shows unreadable amounts as unavailable instead of zero, and presents missing OCR fields as a diagnostic rather than a nonexistent fallback attempt.
+
+**Files affected:** `admin.html`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/functions/_shared/google-vision-layout.ts`, `supabase/functions/_shared/google-vision-layout_test.ts`, `supabase/functions/_shared/maribank-receipt.ts`, `supabase/functions/_shared/maribank-receipt_test.ts`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-22] - MariBank Receipt Auto-Verification
 
 ### Added

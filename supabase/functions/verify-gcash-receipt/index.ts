@@ -30,6 +30,7 @@ import {
   toNumber,
 } from "../_shared/booking-payment.ts";
 import { extractReceiptAmount } from "../_shared/receipt-amount.ts";
+import { reconstructGoogleVisionRows } from "../_shared/google-vision-layout.ts";
 import {
   checkReceiverNumber,
   extractBpiConfirmationNo,
@@ -47,6 +48,7 @@ import {
   extractMariBankSenderLast4,
   extractMariBankTotalAmount,
   extractMariBankTransferAmount,
+  extractMariBankTransferFee,
   hasSuccessfulMariBankTransfer,
   isMariBankReceipt,
   isMariBankReference,
@@ -98,9 +100,14 @@ type PaymentProvider =
   | "gotyme"
   | "pnb";
 type OcrProvider = "google_vision" | "none";
+type OcrAnalysisSource = "google_layout" | "google_raw" | "none";
 
 type OcrResult = {
+  // `text` is Google's unmodified OCR output and is retained in the immutable
+  // audit row. Parsers use `analysisText`, which may be reordered by geometry.
   text: string;
+  analysisText?: string;
+  analysisSource?: OcrAnalysisSource;
   confidence: number;
   provider: OcrProvider;
   primaryProvider?: OcrProvider;
@@ -861,7 +868,13 @@ function googleVisionConfidence(
 async function googleVisionOCR(
   apiKey: string,
   base64: string,
-): Promise<{ text: string; confidence: number }> {
+  provider: PaymentProvider,
+): Promise<{
+  text: string;
+  analysisText: string;
+  analysisSource: OcrAnalysisSource;
+  confidence: number;
+}> {
   const content = base64.startsWith("data:")
     ? base64.slice(base64.indexOf(",") + 1)
     : base64;
@@ -896,11 +909,25 @@ async function googleVisionOCR(
   if (!res.ok) throw new Error(`Vision error ${res.status}: ${errMsg(data)}`);
   const r = data?.responses?.[0];
   if (r?.error) throw new Error(`Vision: ${errMsg(r.error)}`);
-  const text: string = r?.fullTextAnnotation?.text ||
-    r?.textAnnotations?.[0]?.description || "";
+  const annotation = r?.fullTextAnnotation &&
+      typeof r.fullTextAnnotation === "object"
+    ? r.fullTextAnnotation as Record<string, unknown>
+    : null;
+  const text: string = String(
+    annotation?.text || r?.textAnnotations?.[0]?.description || "",
+  );
+  // Only MariBank currently needs visual row reconstruction for its two-column
+  // receipt. Keep every established provider on Google's raw reading order.
+  // The helper returns a layout only when every recognized word is positioned,
+  // so choosing it cannot discard an unpositioned failure/status marker.
+  const layoutText = provider === "maribank"
+    ? reconstructGoogleVisionRows(annotation)
+    : null;
   return {
     text,
-    confidence: googleVisionConfidence(r?.fullTextAnnotation || null, text),
+    analysisText: layoutText || text,
+    analysisSource: layoutText ? "google_layout" : text ? "google_raw" : "none",
+    confidence: googleVisionConfidence(annotation, text),
   };
 }
 
@@ -934,16 +961,17 @@ async function runOCR(
 ): Promise<OcrResult> {
   if (visionKey) {
     try {
-      const v = await googleVisionOCR(visionKey, base64);
-      const gaps = ocrCriticalGaps(v.text, provider, typedRef);
-      if (v.text && gaps.length === 0) {
+      const v = await googleVisionOCR(visionKey, base64, provider);
+      const analysisText = v.analysisText || v.text;
+      const gaps = ocrCriticalGaps(analysisText, provider, typedRef);
+      if (analysisText && gaps.length === 0) {
         return {
           ...v,
           provider: "google_vision",
           primaryProvider: "google_vision",
         };
       }
-      if (v.text) {
+      if (analysisText) {
         return {
           ...v,
           provider: "google_vision",
@@ -1351,7 +1379,9 @@ Deno.serve(async (req) => {
       provider,
     );
     let ocrText = "";
+    let ocrRawText = "";
     let ocrConfidence = 0;
+    let ocrAnalysisSource: OcrAnalysisSource = "none";
     let ocrProvider: OcrResult["provider"] = "none";
     let ocrPrimaryProvider: OcrResult["primaryProvider"] = "none";
     let ocrFallbackProvider: OcrResult["fallbackProvider"] | null = null;
@@ -1359,8 +1389,11 @@ Deno.serve(async (req) => {
     let ocrError: string | null = null;
     try {
       const ocr = await runOCR(visionKey, imageBase64, provider, typedRef);
-      ocrText = ocr.text;
+      ocrRawText = ocr.text;
+      ocrText = ocr.analysisText || ocr.text;
       ocrConfidence = ocr.confidence;
+      ocrAnalysisSource = ocr.analysisSource ||
+        (ocrText ? "google_raw" : "none");
       ocrProvider = ocr.provider;
       ocrPrimaryProvider = ocr.primaryProvider || ocr.provider;
       ocrFallbackProvider = ocr.fallbackProvider || null;
@@ -1402,6 +1435,9 @@ Deno.serve(async (req) => {
       : null;
     const extractedMariBankTotalAmount = provider === "maribank"
       ? extractMariBankTotalAmount(ocrText)
+      : null;
+    const extractedMariBankTransferFee = provider === "maribank"
+      ? extractMariBankTransferFee(ocrText)
       : null;
     const amountExtraction = provider === "maya"
       ? extractReceiptAmount(ocrText, { provider })
@@ -1621,6 +1657,23 @@ Deno.serve(async (req) => {
           flags.push("AMOUNT_REVIEW");
         }
 
+        // A MariBank receipt prints principal, fee, and total independently.
+        // All three must reconcile before automatic approval; missing or
+        // contradictory accounting evidence is uncertain, not proof of fraud.
+        if (
+          !pricingError && extractedAmount != null &&
+          (
+            extractedMariBankTotalAmount == null ||
+            extractedMariBankTransferFee == null ||
+            !closeMoney(
+              extractedMariBankTotalAmount,
+              extractedAmount + extractedMariBankTransferFee,
+            )
+          ) && !flags.includes("AMOUNT_REVIEW")
+        ) {
+          flags.push("AMOUNT_REVIEW");
+        }
+
         if (!receiptDate) flags.push("DATE_UNREADABLE");
         else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
           flags.push("DATE_NOT_TODAY");
@@ -1819,6 +1872,7 @@ Deno.serve(async (req) => {
       mariBankDestinationAccount: extractedMariBankAccount,
       mariBankSenderLast4: extractedMariBankSenderLast4,
       mariBankTotalAmount: extractedMariBankTotalAmount,
+      mariBankTransferFee: extractedMariBankTransferFee,
       amount: extractedAmount,
       amountReliable: amountExtraction?.reliable ?? (extractedAmount != null),
       amountAmbiguous: amountExtraction?.ambiguous ?? false,
@@ -1851,7 +1905,14 @@ Deno.serve(async (req) => {
       ocrFallbackProvider,
       ocrFallbackReason,
       ocrConfidence,
-      ocrTextLength: ocrText.length,
+      // Keep the established length tied to the raw audit text; expose the
+      // analysis provenance separately so layout-assisted decisions are clear.
+      ocrTextLength: ocrRawText.length,
+      ocrAnalysisTextLength: ocrText.length,
+      ocrAnalysisSource,
+      ocrAnalysisVersion: ocrAnalysisSource === "google_layout"
+        ? "google_visual_rows_v1"
+        : null,
       expectedReceiverNumber:
         provider === "bdopay" || provider === "maya" || provider === "maribank"
           ? null
@@ -1949,15 +2010,21 @@ Deno.serve(async (req) => {
     }
 
     // ── audit trail (immutable) ─────────────────────────────────────────────
+    // Keep the exact geometry-reordered decision input in the private audit
+    // table only. Booking metadata and public responses retain extracted
+    // fields, not the OCR text or its PII.
+    const auditExtracted = ocrAnalysisSource === "google_layout"
+      ? { ...extracted, ocrAnalysisText: ocrText }
+      : extracted;
     await db.from("receipt_verifications").insert({
       booking_ref: bookingRef,
       result,
       flags,
-      extracted,
+      extracted: auditExtracted,
       confidence,
       image_hash: imageHash,
       phash,
-      raw_ocr_text: ocrText || null,
+      raw_ocr_text: ocrRawText || null,
     });
 
     // ── alert admin on anything needing a human ─────────────────────────────
