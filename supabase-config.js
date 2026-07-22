@@ -367,7 +367,7 @@ function _telegramBookingPayload(b, extras = {}) {
 // ROW ↔ JS OBJECT MAPPING
 // SQL uses snake_case; JS objects use camelCase
 // =============================================
-const PB_DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'];
+const PB_DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'bpi', 'maribank', 'gotyme', 'pnb'];
 
 function normalizePaymentKey(value, fallback = '') {
   return String(value || fallback || '').toLowerCase().trim();
@@ -1929,10 +1929,12 @@ window.DB = {
     payment_method_bdopay: '1',
     payment_method_maya: '1',
     payment_method_bpi: '1',
+    payment_method_maribank: '1',
     payment_method_gotyme: '0',
     payment_method_pnb: '0',
     gcash_merchant_number: '09XXXXXXXXX',
     gcash_merchant_name: 'Court Owner Name',
+    gcash_qr_account_id: 'DWQM4TK496R3UA1BS',
     service_fee_rate: '15',
     maintenance_fee: '5',
     fee_type: 'per_hour',

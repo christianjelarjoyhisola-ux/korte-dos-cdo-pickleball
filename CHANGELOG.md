@@ -6,6 +6,19 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-22] - MariBank Receipt Auto-Verification
+
+### Added
+- **Dedicated MariBank verification** - MariBank-to-GCash InstaPay receipts can be checked against their six-digit reference, exact transfer amount, Korte DOS destination, GCash QR account ID, realtime status, and Philippine transaction timestamp, with duplicate transactions and mismatches routed through the existing receipt review safeguards.
+- **MariBank payment settings** - added an admin enable switch and an editable GCash QR Account ID used for destination verification.
+
+### DB
+- **MariBank payment method migration** - enables MariBank, seeds the current GCash QR Account ID, permits MariBank host-session registrations, and records MariBank transfers as received to GCash.
+
+**Files affected:** `admin.html`, `index.html`, `supabase-config.js`, `SETUP_NEW_SUPABASE.sql`, `supabase/migrations/20260722150000_add_maribank_payment_method.sql`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/functions/_shared/maribank-receipt.ts`, `supabase/functions/_shared/maribank-receipt_test.ts`, `supabase/functions/send-telegram-notification/index.ts`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-14] - Payment Window Alignment
 
 ### Changed

@@ -344,7 +344,7 @@ create table if not exists public.open_play_host_session_registrations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint open_play_host_session_registrations_payment_method_check
-    check (payment_method in ('gcash','bdopay','maya','bpi','gotyme','pnb','cash')),
+    check (payment_method in ('gcash','bdopay','maya','bpi','maribank','gotyme','pnb','cash')),
   constraint open_play_host_session_registrations_payment_status_check
     check (payment_status in ('pending','paid','rejected')),
   constraint open_play_host_session_registrations_receipt_status_check
@@ -643,7 +643,7 @@ alter table public.open_play_host_session_registrations
   drop constraint if exists open_play_host_session_registrations_payment_method_check;
 alter table public.open_play_host_session_registrations
   add constraint open_play_host_session_registrations_payment_method_check
-  check (payment_method in ('gcash','bdopay','maya','bpi','gotyme','pnb','cash'));
+  check (payment_method in ('gcash','bdopay','maya','bpi','maribank','gotyme','pnb','cash'));
 
 -- ============================================================
 -- 2. INDEXES
@@ -1952,7 +1952,9 @@ values
   ('booking_fee', '5'),
   ('open_play_fee', '100'),
   ('payment_method_maya', '1'),
-  ('payment_method_bpi', '1')
+  ('payment_method_bpi', '1'),
+  ('payment_method_maribank', '1'),
+  ('gcash_qr_account_id', 'DWQM4TK496R3UA1BS')
 on conflict (key) do nothing;
 
 notify pgrst, 'reload schema';

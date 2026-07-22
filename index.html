@@ -3070,6 +3070,11 @@ body.host-mode .courts { padding-bottom:140px; }
                 <div class="pay-lb">BPI</div>
                 <div class="pay-sub">InstaPay to GCash QR</div>
               </div>
+              <div class="pay-opt" id="payOptMaribank" data-m="maribank" onclick="pickPay('maribank')">
+                <div class="pay-ic">MB</div>
+                <div class="pay-lb">MariBank</div>
+                <div class="pay-sub">InstaPay to GCash QR</div>
+              </div>
               <div class="pay-opt" id="payOptGotyme" data-m="gotyme" onclick="pickPay('gotyme')">
                 <div class="pay-ic">🏦</div>
                 <div class="pay-lb">GoTyme</div>
@@ -3889,7 +3894,7 @@ function hostSessionPaymentHtml(session) {
     </div>
     <div class="fg">
       <label class="fl" for="hsPaymentRef">${_hostSessionPayMethod === 'bpi' ? 'BPI Confirmation No.' : `${label} Reference Number`}</label>
-      <input type="text" class="fi" id="hsPaymentRef" placeholder="${_hostSessionPayMethod === 'gcash' ? 'e.g. 1234567890123' : _hostSessionPayMethod === 'bdopay' ? 'e.g. BN-20260627-91811670' : _hostSessionPayMethod === 'maya' ? 'e.g. B6DC F633 F08C' : _hostSessionPayMethod === 'bpi' ? 'e.g. 1783397488347' : 'Enter payment reference number'}" maxlength="${paymentRefMaxLength(_hostSessionPayMethod)}" inputmode="${(_hostSessionPayMethod === 'bdopay' || _hostSessionPayMethod === 'maya') ? 'text' : 'numeric'}" oninput="syncHostSessionRef()" />
+      <input type="text" class="fi" id="hsPaymentRef" placeholder="${_hostSessionPayMethod === 'gcash' ? 'e.g. 1234567890123' : _hostSessionPayMethod === 'bdopay' ? 'e.g. BN-20260627-91811670' : _hostSessionPayMethod === 'maya' ? 'e.g. B6DC F633 F08C' : _hostSessionPayMethod === 'bpi' ? 'e.g. 1783397488347' : _hostSessionPayMethod === 'maribank' ? 'e.g. 012710' : 'Enter payment reference number'}" maxlength="${paymentRefMaxLength(_hostSessionPayMethod)}" inputmode="${(_hostSessionPayMethod === 'bdopay' || _hostSessionPayMethod === 'maya') ? 'text' : 'numeric'}" oninput="syncHostSessionRef()" />
       <div id="hsRefHelp" style="font-size:.7rem;color:var(--muted);margin-top:4px">${paymentRefHelpText(_hostSessionPayMethod)}</div>
     </div>
     <div class="fg">
@@ -3999,11 +4004,12 @@ async function submitHostSessionJoin() {
   const refInput = $('hsPaymentRef');
   const paymentRef = normalizePaymentRef(refInput?.value || '', _hostSessionPayMethod);
   if (amount > 0) {
-    if (!paymentRef) { toast(_hostSessionPayMethod === 'bpi' ? 'Enter your BPI Confirmation No.' : 'Enter your payment reference number.', 'err'); refInput?.focus(); return; }
+    if (!paymentRef) { toast(_hostSessionPayMethod === 'bpi' ? 'Enter your BPI Confirmation No.' : _hostSessionPayMethod === 'maribank' ? 'Enter your 6-digit MariBank Reference Number.' : 'Enter your payment reference number.', 'err'); refInput?.focus(); return; }
     if (_hostSessionPayMethod === 'gcash' && !isGcashRefValid(paymentRef)) { toast('GCash reference number must be exactly 13 digits.', 'err'); refInput?.focus(); return; }
     if (_hostSessionPayMethod === 'bdopay' && !isBdoPayRefValid(paymentRef)) { toast('BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'err'); refInput?.focus(); return; }
     if (_hostSessionPayMethod === 'maya' && !isMayaRefValid(paymentRef)) { toast('Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'err'); refInput?.focus(); return; }
     if (_hostSessionPayMethod === 'bpi' && !isBpiConfirmationValid(paymentRef)) { toast('Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'err'); refInput?.focus(); return; }
+    if (_hostSessionPayMethod === 'maribank' && !isMaribankReferenceValid(paymentRef)) { toast('MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'err'); refInput?.focus(); return; }
     if (!_hostSessionReceiptFile) { toast('Please upload your payment receipt screenshot.', 'err'); return; }
   }
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
@@ -4531,11 +4537,12 @@ let paymentReceiverSettings = {
   bdopay: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
   maya: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
   bpi: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
+  maribank: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
   gotyme: { number: '', name: 'Korte DOS', qrImage: '' },
   pnb: { number: '', name: 'Korte DOS', qrImage: '' },
 };
-let paymentMethods = { cash: true, gcash: true, bdopay: true, maya: true, bpi: true, gotyme: true, pnb: true };
-const DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'];
+let paymentMethods = { cash: true, gcash: true, bdopay: true, maya: true, bpi: true, maribank: true, gotyme: true, pnb: true };
+const DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'bpi', 'maribank', 'gotyme', 'pnb'];
 const ALL_PAYMENT_METHODS = [...DIGITAL_PAYMENT_METHODS, 'cash'];
 
 function isDigitalPayMethod(method) {
@@ -4543,11 +4550,11 @@ function isDigitalPayMethod(method) {
 }
 
 function paymentMethodName(method) {
-  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(method || '').toLowerCase()] || 'Payment');
+  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(method || '').toLowerCase()] || 'Payment');
 }
 
 function paymentReceiverKey(method) {
-  return method === 'bdopay' || method === 'maya' || method === 'bpi' ? 'gcash' : method;
+  return method === 'bdopay' || method === 'maya' || method === 'bpi' || method === 'maribank' ? 'gcash' : method;
 }
 let paymentWatch = { ref: null, timer: null, tries: 0 };
 
@@ -4881,6 +4888,11 @@ function applyPaymentSettings(settings) {
       name: settings.gcash_merchant_name || 'Korte DOS',
       qrImage: settings.gcash_qr_image || '',
     },
+    maribank: {
+      number: settings.gcash_merchant_number || '09XX XXX XXXX',
+      name: settings.gcash_merchant_name || 'Korte DOS',
+      qrImage: settings.gcash_qr_image || '',
+    },
     gotyme: {
       number: settings.gotyme_merchant_number || '',
       name: settings.gotyme_merchant_name || 'Korte DOS',
@@ -4912,6 +4924,7 @@ function applyPaymentSettings(settings) {
   paymentMethods.bdopay = settings.payment_method_bdopay !== '0';
   paymentMethods.maya = settings.payment_method_maya !== '0';
   paymentMethods.bpi = settings.payment_method_bpi !== '0';
+  paymentMethods.maribank = settings.payment_method_maribank !== '0';
   paymentMethods.gotyme = settings.payment_method_gotyme !== '0';
   paymentMethods.pnb = settings.payment_method_pnb !== '0';
   paymentAcceptanceMode = settings.payment_acceptance_mode || 'both';
@@ -4953,6 +4966,7 @@ function applyPaymentMethodVisibility() {
   if ($('payOptBdopay')) $('payOptBdopay').style.display = paymentMethods.bdopay ? '' : 'none';
   if ($('payOptMaya')) $('payOptMaya').style.display = paymentMethods.maya ? '' : 'none';
   if ($('payOptBpi')) $('payOptBpi').style.display = paymentMethods.bpi ? '' : 'none';
+  if ($('payOptMaribank')) $('payOptMaribank').style.display = paymentMethods.maribank ? '' : 'none';
   if ($('payOptGotyme')) $('payOptGotyme').style.display = paymentMethods.gotyme ? '' : 'none';
   if ($('payOptPnb')) $('payOptPnb').style.display = paymentMethods.pnb ? '' : 'none';
 
@@ -5070,6 +5084,7 @@ function receiptReasonFromFlags(flags) {
     DUPLICATE_INVOICE: 'Duplicate invoice number',
     DUPLICATE_INSTAPAY_REF: 'Duplicate InstaPay reference',
     DUPLICATE_BPI_TRANSACTION_REF: 'Duplicate BPI transaction reference',
+    DUPLICATE_MARIBANK_TRANSACTION: 'Duplicate MariBank transaction',
     DUPLICATE_IMAGE: 'Duplicate image',
     DUPLICATE_VISUAL_RECEIPT: 'Duplicate-looking receipt',
     AMOUNT_MISMATCH: 'Amount mismatch',
@@ -5087,10 +5102,15 @@ function receiptReasonFromFlags(flags) {
     BPI_UNREADABLE: 'BPI transfer-success text unreadable',
     BPI_CONFIRMATION_UNREADABLE: 'BPI Confirmation No. unreadable',
     BPI_TRANSACTION_UNREADABLE: 'BPI Transaction Ref. No. unreadable',
+    MARIBANK_UNREADABLE: 'MariBank transaction receipt unreadable',
+    MARIBANK_REFERENCE_UNREADABLE: 'MariBank Reference Number unreadable',
     INSTAPAY_QRPH_UNREADABLE: 'InstaPay/QRPh text unreadable',
     GXI_DESTINATION_UNREADABLE: 'GXI/GCash destination unreadable',
     RECEIVER_NAME_UNREADABLE: 'Receiver name unreadable',
     NUMBER_UNREADABLE: 'Receiver number unreadable',
+    WRONG_GCASH_ACCOUNT: 'Wrong GCash destination account',
+    ACCOUNT_UNREADABLE: 'GCash destination account unreadable',
+    ACCOUNT_UNCONFIGURED: 'GCash destination account is not configured',
     EDITED_METADATA: 'Edited image metadata',
     LOW_OCR_CONFIDENCE: 'Low OCR confidence',
     OCR_UNAVAILABLE: 'OCR unavailable',
@@ -6821,6 +6841,11 @@ function pickPay(m) {
         'Enter the BPI Confirmation No., not the Transaction Ref. No.',
         'Receipts from another payment method will not auto-approve.',
       ],
+      maribank: [
+        'MariBank to GCash/G-Xchange only.',
+        'Enter the exact 6-digit Reference Number, including any leading zero.',
+        'Upload the full MariBank transaction receipt for auto-verification.',
+      ],
       gotyme: 'Use GoTyme only. Receipts from another payment method will not auto-approve.',
       pnb: 'Use PNB only. Receipts from another payment method will not auto-approve.',
       cash: 'Cash bookings are paid at the front desk and are not auto-approved by receipt OCR.',
@@ -6836,7 +6861,7 @@ function pickPay(m) {
   ['gcPat100','gtPat100','pnPat100'].forEach(id => $(id)?.classList.toggle('on', payFull));
 
   syncGcashSharedPanel(m);
-  $('gcashBox').classList.toggle('show',  m === 'gcash' || m === 'bdopay' || m === 'maya' || m === 'bpi');
+  $('gcashBox').classList.toggle('show',  m === 'gcash' || m === 'bdopay' || m === 'maya' || m === 'bpi' || m === 'maribank');
   $('gotymeBox').classList.toggle('show', m === 'gotyme');
   $('pnbBox').classList.toggle('show',    m === 'pnb');
   const refWrap = $('gcashRefWrap');
@@ -6854,6 +6879,7 @@ function syncGcashSharedPanel(method) {
   const isBdo = method === 'bdopay';
   const isMaya = method === 'maya';
   const isBpi = method === 'bpi';
+  const isMaribank = method === 'maribank';
   const header = $('gcashBox')?.querySelector('.gc-header-lbl');
   if (header) header.textContent = isBdo ? 'BDO Pay / InstaPay' : isBpi ? 'BPI / InstaPay' : 'GCash Payment';
   const title = $('gcashBox')?.querySelector('.bpay-send-title');
@@ -6885,6 +6911,14 @@ function syncGcashSharedPanel(method) {
     $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-short').forEach((el, i) => { if (bpiGuide[i]) el.textContent = bpiGuide[i]; });
     if (receiptHelp) receiptHelp.innerHTML = 'BPI to GCash/G-Xchange only.<br>Enter the BPI Confirmation No., not the Transaction Ref. No.<br>Please choose the correct payment method before paying.';
   }
+  if (isMaribank) {
+    if (header) header.textContent = 'MariBank / InstaPay';
+    if (title) title.textContent = 'Send MariBank to GCash/G-Xchange QR';
+    const maribankGuide = ['Scan GCash QR in MariBank.', 'Pay exact amount via InstaPay.', 'Use the 6-digit Reference Number.', 'Upload full MariBank receipt.'];
+    $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-long').forEach((el, i) => { if (maribankGuide[i]) el.textContent = maribankGuide[i]; });
+    $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-short').forEach((el, i) => { if (maribankGuide[i]) el.textContent = maribankGuide[i]; });
+    if (receiptHelp) receiptHelp.innerHTML = 'MariBank to GCash/G-Xchange only.<br>Enter the exact 6-digit Reference Number, including any leading zero.<br>Upload the full transaction receipt showing the amount, recipient, reference, and date/time.';
+  }
 }
 
 function copyPaymentNumber(method = 'gcash') {
@@ -6893,6 +6927,7 @@ function copyPaymentNumber(method = 'gcash') {
     bdopay: { id: 'gcMerchantNumber', label: 'BDO Pay' },
     maya: { id: 'gcMerchantNumber', label: 'Maya' },
     bpi: { id: 'gcMerchantNumber', label: 'BPI' },
+    maribank: { id: 'gcMerchantNumber', label: 'MariBank' },
     gotyme: { id: 'gtMerchantNumber', label: 'GoTyme' },
     pnb: { id: 'pnMerchantNumber', label: 'PNB' },
   };
@@ -6921,7 +6956,7 @@ function copyMerchantNum() {
 }
 
 function paymentRefMaxLength(method) {
-  return method === 'gcash' ? 13 : method === 'bdopay' ? 32 : method === 'maya' ? 14 : method === 'bpi' ? 20 : 30;
+  return method === 'gcash' ? 13 : method === 'bdopay' ? 32 : method === 'maya' ? 14 : method === 'bpi' ? 20 : method === 'maribank' ? 6 : 30;
 }
 
 function normalizePaymentRef(value, method) {
@@ -6932,6 +6967,7 @@ function normalizePaymentRef(value, method) {
     return compact.match(/.{1,4}/g)?.join(' ') || '';
   }
   if (method === 'bpi') return raw.replace(/\D/g, '').slice(0, paymentRefMaxLength(method));
+  if (method === 'maribank') return raw.replace(/\D/g, '').slice(0, paymentRefMaxLength(method));
   return raw.replace(/\D/g, '').slice(0, paymentRefMaxLength(method));
 }
 
@@ -6951,11 +6987,16 @@ function isBpiConfirmationValid(ref) {
   return /^\d{10,20}$/.test(String(ref || '').replace(/\D/g, ''));
 }
 
+function isMaribankReferenceValid(ref) {
+  return /^\d{6}$/.test(String(ref || ''));
+}
+
 function paymentRefHelpText(method) {
   if (method === 'gcash') return 'GCash reference must be exactly 13 digits.';
   if (method === 'bdopay') return 'Enter the BDO Pay Reference no. in BN-YYYYMMDD-######## format, not the invoice number. We verify the invoice from the receipt.';
   if (method === 'maya') return 'Enter the Maya Reference ID, e.g. B6DC F633 F08C. Do not enter the InstaPay Ref. No.';
   if (method === 'bpi') return 'Enter the BPI Confirmation No., e.g. 1783397488347. Do not enter the Transaction Ref. No.';
+  if (method === 'maribank') return 'Enter the exact 6-digit Reference Number shown on the MariBank receipt, including any leading zero (e.g. 012710).';
   return 'Must match the reference number on the uploaded receipt.';
 }
 
@@ -6963,14 +7004,14 @@ function syncBookingRefUi(method = $('bPay')?.value || 'gcash') {
   const input = $('bGcashRef');
   if (input) {
     input.maxLength = paymentRefMaxLength(method);
-    input.placeholder = method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : 'Enter payment reference number';
+    input.placeholder = method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : method === 'maribank' ? 'e.g. 012710' : 'Enter payment reference number';
     input.inputMode = (method === 'bdopay' || method === 'maya') ? 'text' : 'numeric';
     const clean = normalizePaymentRef(input.value, method);
     if (input.value !== clean) input.value = clean;
   }
   const refLabel = document.querySelector('.bpay-ref-label');
   if (refLabel) {
-    refLabel.innerHTML = `${method === 'bpi' ? 'BPI Confirmation No.' : 'Reference #'} <span id="refMethodLabel" style="color:var(--muted);text-transform:none;font-size:.68rem;font-weight:500;letter-spacing:0">${method ? '&mdash; ' + paymentMethodName(method) : ''}</span>`;
+    refLabel.innerHTML = `${method === 'bpi' ? 'BPI Confirmation No.' : method === 'maribank' ? 'MariBank Reference Number' : 'Reference #'} <span id="refMethodLabel" style="color:var(--muted);text-transform:none;font-size:.68rem;font-weight:500;letter-spacing:0">${method ? '&mdash; ' + paymentMethodName(method) : ''}</span>`;
   }
   if ($('bRefHelp')) $('bRefHelp').textContent = paymentRefHelpText(method);
   updateRefCount();
@@ -7010,6 +7051,9 @@ function updateRefCount() {
   } else if (method === 'bpi') {
     el.textContent = `${len}/20 digits`;
     el.style.color = isBpiConfirmationValid(input?.value || '') ? 'var(--accent)' : 'var(--muted)';
+  } else if (method === 'maribank') {
+    el.textContent = `${len}/6 digits`;
+    el.style.color = isMaribankReferenceValid(input?.value || '') ? 'var(--accent)' : 'var(--muted)';
   } else {
     el.textContent = len + (len === 1 ? ' digit' : ' digits');
     el.style.color = len > 0 ? 'var(--accent)' : 'var(--muted)';
@@ -7116,11 +7160,12 @@ async function submitBookingLegacy(e) {
     [!payMethod, 'Please select a payment method.', 'payMethodBlock', 4],
     [!!payMethod && !paymentMethods[payMethod], 'Selected payment method is no longer available.', 'payMethodBlock', 4],
     [!$('bookingPolicyAgree')?.checked, 'Please agree to the booking and payment policy before confirming.', $('bookingPolicyAgree')?.closest('.booking-policy-check'), 5],
-    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
+    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number after paying.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
     [payMethod === 'gcash' && !isGcashRefValid(gcashRef), 'GCash reference number must be exactly 13 digits.', 'bGcashRef', 5],
     [payMethod === 'bdopay' && !isBdoPayRefValid(gcashRef), 'BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'bGcashRef', 5],
     [payMethod === 'maya' && !isMayaRefValid(gcashRef), 'Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'bGcashRef', 5],
     [payMethod === 'bpi' && !isBpiConfirmationValid(gcashRef), 'Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'bGcashRef', 5],
+    [payMethod === 'maribank' && !isMaribankReferenceValid(gcashRef), 'MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'bGcashRef', 5],
     [digitalPay && !_receiptFile, () => {
       // Scroll to and flash the upload zone so the user knows exactly what's missing.
       const drop = $('bReceiptDrop');
@@ -7374,11 +7419,12 @@ async function submitBooking(e) {
     [!payMethod, 'Please select a payment method.', 'payMethodBlock', 4],
     [!!payMethod && !paymentMethods[payMethod], 'Selected payment method is no longer available.', 'payMethodBlock', 4],
     [!$('bookingPolicyAgree')?.checked, 'Please agree to the booking and payment policy before confirming.', $('bookingPolicyAgree')?.closest('.booking-policy-check'), 5],
-    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
+    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number after paying.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
     [payMethod === 'gcash' && !isGcashRefValid(gcashRef), 'GCash reference number must be exactly 13 digits.', 'bGcashRef', 5],
     [payMethod === 'bdopay' && !isBdoPayRefValid(gcashRef), 'BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'bGcashRef', 5],
     [payMethod === 'maya' && !isMayaRefValid(gcashRef), 'Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'bGcashRef', 5],
     [payMethod === 'bpi' && !isBpiConfirmationValid(gcashRef), 'Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'bGcashRef', 5],
+    [payMethod === 'maribank' && !isMaribankReferenceValid(gcashRef), 'MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'bGcashRef', 5],
     [digitalPay && !_receiptFile, () => {
       const drop = $('bReceiptDrop');
       if (drop) markBookingInvalid(drop, 5);
@@ -8359,6 +8405,7 @@ async function openPlaySignup(courtId, date, h, courtName) {
     paymentMethods.gcash   ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'gcash' ? 'on' : ''}" data-m="gcash"   onclick="opPickPay('gcash')"><span class="po-ico">📱</span><span class="po-lbl">GCash</span><span class="po-sub">Scan QR · send ref #</span></div>` : '',
     paymentMethods.bdopay  ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'bdopay' ? 'on' : ''}" data-m="bdopay"  onclick="opPickPay('bdopay')"><span class="po-ico">🏦</span><span class="po-lbl">BDO Pay</span><span class="po-sub">InstaPay to GCash QR</span></div>` : '',
     paymentMethods.maya    ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'maya' ? 'on' : ''}" data-m="maya"    onclick="opPickPay('maya')"><span class="po-ico">M</span><span class="po-lbl">Maya</span><span class="po-sub">QRPh to GCash</span></div>` : '',
+    paymentMethods.maribank ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'maribank' ? 'on' : ''}" data-m="maribank" onclick="opPickPay('maribank')"><span class="po-ico">MB</span><span class="po-lbl">MariBank</span><span class="po-sub">6-digit Reference Number</span></div>` : '',
     paymentMethods.gotyme  ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'gotyme' ? 'on' : ''}" data-m="gotyme"  onclick="opPickPay('gotyme')"><span class="po-ico">🏦</span><span class="po-lbl">GoTyme</span><span class="po-sub">Scan QR · enter ref #</span></div>` : '',
     paymentMethods.pnb     ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'pnb' ? 'on' : ''}" data-m="pnb"     onclick="opPickPay('pnb')"><span class="po-ico">🏛️</span><span class="po-lbl">PNB</span><span class="po-sub">Scan QR · enter ref #</span></div>` : '',
     paymentMethods.cash    ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'cash' ? 'on' : ''}" data-m="cash"    onclick="opPickPay('cash')"><span class="po-ico">💵</span><span class="po-lbl">Cash</span><span class="po-sub">Pay at front desk</span></div>` : '',
@@ -8477,14 +8524,16 @@ function opPickPay(method) {
       ? `${cleanRef.replace(/[^A-Z0-9]/gi, '').length}/12 chars`
     : method === 'bpi'
       ? `${cleanRef.length}/20 digits`
+    : method === 'maribank'
+      ? `${cleanRef.length}/6 digits`
     : cleanRef.length + (cleanRef.length === 1 ? ' digit' : ' digits');
   const refHtml = `
     <div class="op-ref-block">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <label>${method === 'bpi' ? 'BPI Confirmation No. *' : 'Reference # (after sending) *'}</label>
+        <label>${method === 'bpi' ? 'BPI Confirmation No. *' : method === 'maribank' ? 'MariBank Reference Number *' : 'Reference # (after sending) *'}</label>
         <span id="opRefCount" style="font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap">${refCountText}</span>
       </div>
-      <input type="text" class="fi" id="opGcashRef" placeholder="${method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : 'Enter payment reference number'}" inputmode="${(method === 'bdopay' || method === 'maya') ? 'text' : 'numeric'}"
+      <input type="text" class="fi" id="opGcashRef" placeholder="${method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : method === 'maribank' ? 'e.g. 012710' : 'Enter payment reference number'}" inputmode="${(method === 'bdopay' || method === 'maya') ? 'text' : 'numeric'}"
         maxlength="${paymentRefMaxLength(method)}"
         style="margin:0;font-family:monospace;letter-spacing:1px"
         oninput="syncOpenPlayRefInput('${method}')"
@@ -8497,6 +8546,7 @@ function opPickPay(method) {
       bdopay: { icon: '🏦', label: 'BDO Pay', receiver: paymentReceiverSettings.gcash },
       maya: { icon: 'M', label: 'Maya', receiver: paymentReceiverSettings.gcash },
       bpi: { icon: 'BPI', label: 'BPI', receiver: paymentReceiverSettings.gcash },
+      maribank: { icon: 'MB', label: 'MariBank', receiver: paymentReceiverSettings.gcash },
       gotyme: { icon: '🏦', label: 'GoTyme', receiver: paymentReceiverSettings.gotyme },
       pnb: { icon: '🏛️', label: 'PNB', receiver: paymentReceiverSettings.pnb },
     }[method];
@@ -8507,6 +8557,8 @@ function opPickPay(method) {
         ? 'Maya to GCash only.<br>GCash/BDO Pay receipts will be rejected.<br>Please choose the correct payment method before paying.'
       : method === 'bpi'
         ? 'BPI to GCash/G-Xchange only.<br>Enter the BPI Confirmation No., not the Transaction Ref. No.<br>Upload the full success screen showing both reference numbers, receiver number, amount, and time.'
+      : method === 'maribank'
+        ? 'MariBank to GCash/G-Xchange only.<br>Enter the exact 6-digit Reference Number, including any leading zero.<br>Upload the full transaction receipt showing the amount, recipient, reference, and date/time.'
       : method === 'gcash'
         ? 'GCash to GCash only.<br>BDO Pay/InstaPay receipts will be rejected.<br>Please choose the correct payment method before paying.'
         : `Use ${meta.label} only. Receipts from another payment method will not auto-approve.`;
@@ -8598,7 +8650,9 @@ function syncOpenPlayRefInput(method = _opSignupData.payMethod || 'gcash') {
         ? `${clean.replace(/[^A-Z0-9]/gi, '').length}/12 chars`
       : method === 'bpi'
         ? `${clean.length}/20 digits`
-        : clean.length + (clean.length === 1 ? ' digit' : ' digits');
+      : method === 'maribank'
+        ? `${clean.length}/6 digits`
+      : clean.length + (clean.length === 1 ? ' digit' : ' digits');
     count.style.color = method === 'gcash' && clean.length === 13
       ? 'var(--accent)'
       : method === 'bdopay' && clean.length >= 10
@@ -8607,7 +8661,9 @@ function syncOpenPlayRefInput(method = _opSignupData.payMethod || 'gcash') {
         ? 'var(--accent)'
       : method === 'bpi' && isBpiConfirmationValid(clean)
         ? 'var(--accent)'
-      : clean.length > 0 && method !== 'gcash' && method !== 'bdopay' && method !== 'maya' && method !== 'bpi'
+      : method === 'maribank' && isMaribankReferenceValid(clean)
+        ? 'var(--accent)'
+      : clean.length > 0 && method !== 'gcash' && method !== 'bdopay' && method !== 'maya' && method !== 'bpi' && method !== 'maribank'
         ? 'var(--accent)'
         : 'var(--muted)';
   }
@@ -8709,7 +8765,7 @@ async function submitOpenPlay() {
   }
   if (needsRef && !_opSignupData.gcashRef) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
-    toast(payMethod === 'bpi' ? 'Please enter your BPI Confirmation No.' : 'Please enter your payment reference number.', 'err');
+    toast(payMethod === 'bpi' ? 'Please enter your BPI Confirmation No.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number.' : 'Please enter your payment reference number.', 'err');
     refEl?.focus();
     return;
   }
@@ -8734,6 +8790,12 @@ async function submitOpenPlay() {
   if (payMethod === 'bpi' && !isBpiConfirmationValid(_opSignupData.gcashRef)) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast('Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'err');
+    refEl?.focus();
+    return;
+  }
+  if (payMethod === 'maribank' && !isMaribankReferenceValid(_opSignupData.gcashRef)) {
+    if (refEl) refEl.style.borderColor = 'var(--red)';
+    toast('MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'err');
     refEl?.focus();
     return;
   }

@@ -71,6 +71,8 @@ function paymentMethodLabel(method?: string): string {
     gcash: "GCash",
     bdopay: "BDO Pay",
     maya: "Maya",
+    bpi: "BPI",
+    maribank: "MariBank",
     gotyme: "GoTyme",
     pnb: "PNB",
     cash: "Cash",

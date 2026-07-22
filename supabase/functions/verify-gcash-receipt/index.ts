@@ -1,6 +1,6 @@
 // verify-gcash-receipt
 // ----------------------------------------------------------------------------
-// Server-side GCash / BDO Pay / GoTyme / PNB receipt verification + fraud detection.
+// Server-side GCash / bank / e-wallet receipt verification + fraud detection.
 //
 // Actions (POST JSON):
 //   multipart { action: "verify", bookingRef, provider, receipt, contentType }
@@ -22,7 +22,13 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
-import { calculateCourtPayment, chooseExpectedDue, closeMoney, roundMoney, toNumber } from "../_shared/booking-payment.ts";
+import {
+  calculateCourtPayment,
+  chooseExpectedDue,
+  closeMoney,
+  roundMoney,
+  toNumber,
+} from "../_shared/booking-payment.ts";
 import { extractReceiptAmount } from "../_shared/receipt-amount.ts";
 import {
   checkReceiverNumber,
@@ -33,10 +39,24 @@ import {
   isBpiConfirmationNo,
   isBpiReceipt,
 } from "../_shared/bpi-receipt.ts";
+import {
+  buildMariBankTransactionKey,
+  checkMariBankDestinationAccount,
+  extractMariBankDestinationAccount,
+  extractMariBankReference,
+  extractMariBankSenderLast4,
+  extractMariBankTotalAmount,
+  extractMariBankTransferAmount,
+  hasSuccessfulMariBankTransfer,
+  isMariBankReceipt,
+  isMariBankReference,
+  parseMariBankDateTime,
+} from "../_shared/maribank-receipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 // Payment must happen within this many minutes after the booking/session join
@@ -59,6 +79,7 @@ const HARD_FLAGS = new Set([
   "DUPLICATE_INVOICE",
   "DUPLICATE_INSTAPAY_REF",
   "DUPLICATE_BPI_TRANSACTION_REF",
+  "DUPLICATE_MARIBANK_TRANSACTION",
   "METHOD_MISMATCH",
   "REF_MISMATCH",
   "DATE_NOT_TODAY",
@@ -68,7 +89,14 @@ const HARD_FLAGS = new Set([
   "AMOUNT_MISMATCH", // Only hard if significantly underpaid (>₱5)
 ]);
 
-type PaymentProvider = "gcash" | "bdopay" | "maya" | "bpi" | "gotyme" | "pnb";
+type PaymentProvider =
+  | "gcash"
+  | "bdopay"
+  | "maya"
+  | "bpi"
+  | "maribank"
+  | "gotyme"
+  | "pnb";
 type OcrProvider = "google_vision" | "none";
 
 type OcrResult = {
@@ -108,7 +136,8 @@ function publicReceiptMessage(
     flagSet.has("GCASH_RECEIPT_UNREADABLE") ||
     flagSet.has("BDO_PAY_UNREADABLE") ||
     flagSet.has("MAYA_UNREADABLE") ||
-    flagSet.has("BPI_UNREADABLE")
+    flagSet.has("BPI_UNREADABLE") ||
+    flagSet.has("MARIBANK_UNREADABLE")
   ) {
     return "Payment could not be verified. Please upload a valid receipt or contact admin.";
   }
@@ -141,7 +170,9 @@ function errMsg(err: unknown): string {
 function base64ToBytes(b64: string): Uint8Array {
   // Accept raw base64 or a data: URL.
   const comma = b64.indexOf(",");
-  const raw = b64.startsWith("data:") && comma !== -1 ? b64.slice(comma + 1) : b64;
+  const raw = b64.startsWith("data:") && comma !== -1
+    ? b64.slice(comma + 1)
+    : b64;
   const bin = atob(raw);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -253,14 +284,17 @@ function parseReceiptDateTime(
     .replace(/[|]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const datePattern = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?[\s,.\-]+(\d{4})\b/i;
+  const datePattern =
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?[\s,.\-]+(\d{4})\b/i;
   const dateOnly = normalized.match(datePattern);
   if (!dateOnly) return { date: null, shifted: null };
 
   const mon = MONTHS[dateOnly[1].toLowerCase().slice(0, 3)];
   const day = parseInt(dateOnly[2], 10);
   const year = parseInt(dateOnly[3], 10);
-  const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${
+    String(day).padStart(2, "0")
+  }`;
 
   const afterDate = normalized.slice(
     (dateOnly.index || 0) + dateOnly[0].length,
@@ -270,7 +304,8 @@ function parseReceiptDateTime(
     Math.max(0, (dateOnly.index || 0) - 40),
     dateOnly.index || 0,
   );
-  const timePattern = /\b(\d{1,2})\s*[:;.]\s*(\d{2})(?:\s*[:;.]\s*\d{2})?\s*([ap](?:\s*\.?\s*m\.?)?|[ap])\b/i;
+  const timePattern =
+    /\b(\d{1,2})\s*[:;.]\s*(\d{2})(?:\s*[:;.]\s*\d{2})?\s*([ap](?:\s*\.?\s*m\.?)?|[ap])\b/i;
   const time = afterDate.match(timePattern) || beforeDate.match(timePattern);
   if (time) {
     let hour = parseInt(time[1], 10);
@@ -283,6 +318,15 @@ function parseReceiptDateTime(
   }
 
   return { date: dateStr, shifted: null };
+}
+
+function parseReceiptDateTimeForProvider(
+  text: string,
+  provider: PaymentProvider,
+): { date: string | null; shifted: Date | null } {
+  return provider === "maribank"
+    ? parseMariBankDateTime(text)
+    : parseReceiptDateTime(text);
 }
 
 function digitsOnly(s: string): string {
@@ -325,7 +369,8 @@ function extractGcashRef(text: string, typedRef = ""): string | null {
   }
 
   // Prefer numbers immediately following receipt reference labels.
-  const labelPattern = /\b(?:ref(?:erence)?(?:\s*(?:no|number|#))?\.?)\s*[:#]?\s*([0-9][0-9\s-]{11,30}[0-9])/gi;
+  const labelPattern =
+    /\b(?:ref(?:erence)?(?:\s*(?:no|number|#))?\.?)\s*[:#]?\s*([0-9][0-9\s-]{11,30}[0-9])/gi;
   let labelMatch: RegExpExecArray | null;
   while ((labelMatch = labelPattern.exec(text)) !== null) {
     const d = digitsOnly(labelMatch[1]);
@@ -358,6 +403,9 @@ function extractReference(
 ): string | null {
   if (provider === "gcash") return extractGcashRef(text, typedRef);
   if (provider === "bpi") return extractBpiConfirmationNo(text, typedRef);
+  if (provider === "maribank") {
+    return extractMariBankReference(text, typedRef);
+  }
 
   // BDO Pay/GoTyme/PNB references are not guaranteed to be 13-digit GCash-style refs.
   // For those providers, trust the customer-entered reference only if OCR sees
@@ -380,6 +428,10 @@ function hasMayaIndicator(text: string): boolean {
 
 function hasBpiIndicator(text: string): boolean {
   return hasSuccessfulBpiTransfer(text);
+}
+
+function hasMariBankIndicator(text: string): boolean {
+  return hasSuccessfulMariBankTransfer(text);
 }
 
 function hasInstapayQrphIndicator(text: string): boolean {
@@ -411,7 +463,10 @@ function isMayaReceipt(text: string): boolean {
 
 function isGcashToGcashReceipt(text: string): boolean {
   const t = text || "";
-  if (isBdoPayReceipt(t) || isMayaReceipt(t) || isBpiReceipt(t)) return false;
+  if (
+    isBdoPayReceipt(t) || isMayaReceipt(t) || isBpiReceipt(t) ||
+    isMariBankReceipt(t)
+  ) return false;
   return /\bsent\s+via\s+gcash\b/i.test(t) ||
     /\bsent\s+through\s+gcash\b/i.test(t) ||
     /\bgcash\s+receipt\b/i.test(t) ||
@@ -425,11 +480,23 @@ function selectedMethodMismatch(
   const bdoReceipt = isBdoPayReceipt(text);
   const mayaReceipt = isMayaReceipt(text);
   const bpiReceipt = isBpiReceipt(text);
+  const mariBankReceipt = isMariBankReceipt(text);
   const gcashReceipt = isGcashToGcashReceipt(text);
-  if (provider === "gcash") return bdoReceipt || mayaReceipt || bpiReceipt;
-  if (provider === "bdopay") return gcashReceipt || mayaReceipt || bpiReceipt;
-  if (provider === "maya") return gcashReceipt || bdoReceipt || bpiReceipt;
-  if (provider === "bpi") return gcashReceipt || bdoReceipt || mayaReceipt;
+  if (provider === "gcash") {
+    return bdoReceipt || mayaReceipt || bpiReceipt || mariBankReceipt;
+  }
+  if (provider === "bdopay") {
+    return gcashReceipt || mayaReceipt || bpiReceipt || mariBankReceipt;
+  }
+  if (provider === "maya") {
+    return gcashReceipt || bdoReceipt || bpiReceipt || mariBankReceipt;
+  }
+  if (provider === "bpi") {
+    return gcashReceipt || bdoReceipt || mayaReceipt || mariBankReceipt;
+  }
+  if (provider === "maribank") {
+    return gcashReceipt || bdoReceipt || mayaReceipt || bpiReceipt;
+  }
   return false;
 }
 
@@ -486,6 +553,7 @@ function normalizedProvider(raw: string): PaymentProvider {
   const provider = raw.toLowerCase();
   if (
     provider === "bdopay" || provider === "maya" || provider === "bpi" ||
+    provider === "maribank" ||
     provider === "gotyme" || provider === "pnb"
   ) return provider;
   return "gcash";
@@ -495,7 +563,8 @@ function paymentMethodProvider(raw: unknown): PaymentProvider | null {
   const method = String(raw || "").toLowerCase();
   if (
     method === "gcash" || method === "bdopay" || method === "maya" ||
-    method === "bpi" || method === "gotyme" || method === "pnb"
+    method === "bpi" || method === "maribank" || method === "gotyme" ||
+    method === "pnb"
   ) {
     return method as PaymentProvider;
   }
@@ -524,8 +593,18 @@ function expectedMerchantForProvider(
     return {
       // BPI is used as the sending bank; the actual destination is the same
       // GCash account displayed to customers in the booking flow.
-      number: settings.bpi_merchant_number || settings.gcash_merchant_number || "",
-      name: settings.bpi_merchant_name || settings.gcash_merchant_name || settings.payment_merchant_name ||
+      number: settings.bpi_merchant_number || settings.gcash_merchant_number ||
+        "",
+      name: settings.bpi_merchant_name || settings.gcash_merchant_name ||
+        settings.payment_merchant_name ||
+        "Korte DOS",
+    };
+  }
+  if (provider === "maribank") {
+    return {
+      // MariBank is the sending bank; customers scan the configured GCash QR.
+      number: settings.gcash_merchant_number || "",
+      name: settings.gcash_merchant_name || settings.payment_merchant_name ||
         "Korte DOS",
     };
   }
@@ -553,7 +632,9 @@ function expectedOpenPlayAmounts(
 ): { total: number; due: number } {
   const cfg = (() => {
     try {
-      return settings.open_play_config ? JSON.parse(settings.open_play_config) : {};
+      return settings.open_play_config
+        ? JSON.parse(settings.open_play_config)
+        : {};
     } catch {
       return {};
     }
@@ -642,7 +723,9 @@ async function loadBookingGroup(
 }
 
 function bookingLogicalKey(row: Record<string, unknown>): string {
-  const slots = Array.isArray(row.slots) ? row.slots.map(Number).filter(Number.isFinite).sort((a, b) => a - b) : [];
+  const slots = Array.isArray(row.slots)
+    ? row.slots.map(Number).filter(Number.isFinite).sort((a, b) => a - b)
+    : [];
   return [
     String(row.court_id || row.courtId || ""),
     String(row.date || ""),
@@ -684,7 +767,9 @@ function bookingUpdateQuery(
 ) {
   const groupRef = String(booking.booking_group_ref || "");
   const query = db.from("bookings").update(update);
-  return groupRef ? query.eq("booking_group_ref", groupRef) : query.eq("ref", String(booking.ref || ""));
+  return groupRef
+    ? query.eq("booking_group_ref", groupRef)
+    : query.eq("ref", String(booking.ref || ""));
 }
 
 // Loose masked-name match (e.g. "CO**TY**D P*CKL*B*LL" vs "KORTE DOS").
@@ -719,7 +804,7 @@ function looksLikeGcashReceipt(text: string): boolean {
   let score = 0;
   if (/ref(?:erence)?\s*(no|number|#)/.test(t)) score++;
   if (
-    /gcash|bdo\s*pay|gotyme|maya|bpi|paymongo|qrph|insta\s*pay|pesonet|g-?xchange|gxi/
+    /gcash|bdo\s*pay|gotyme|maya|bpi|mari[\s-]*bank|paymongo|qrph|insta\s*pay|pesonet|g-?xchange|gxi/
       .test(t)
   ) score++;
   if (
@@ -744,7 +829,9 @@ function googleVisionConfidence(
   text: string,
 ): number {
   if (!annotation) return text.length > 40 ? 0.9 : text.length > 0 ? 0.5 : 0;
-  const pages = Array.isArray(annotation.pages) ? annotation.pages as Array<Record<string, unknown>> : [];
+  const pages = Array.isArray(annotation.pages)
+    ? annotation.pages as Array<Record<string, unknown>>
+    : [];
   if (
     pages.length && typeof pages[0].confidence === "number" &&
     pages[0].confidence > 0
@@ -775,7 +862,9 @@ async function googleVisionOCR(
   apiKey: string,
   base64: string,
 ): Promise<{ text: string; confidence: number }> {
-  const content = base64.startsWith("data:") ? base64.slice(base64.indexOf(",") + 1) : base64;
+  const content = base64.startsWith("data:")
+    ? base64.slice(base64.indexOf(",") + 1)
+    : base64;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   let res: Response;
@@ -796,7 +885,9 @@ async function googleVisionOCR(
       },
     );
   } catch (err) {
-    if (controller.signal.aborted) throw new Error("Google Vision request timed out");
+    if (controller.signal.aborted) {
+      throw new Error("Google Vision request timed out");
+    }
     throw err;
   } finally {
     clearTimeout(timer);
@@ -825,11 +916,13 @@ function ocrCriticalGaps(
   const mayaAmount = provider === "maya"
     ? extractReceiptAmount(text, { provider })
     : null;
-  const hasReliableAmount = mayaAmount
+  const hasReliableAmount = provider === "maribank"
+    ? extractMariBankTransferAmount(text) != null
+    : mayaAmount
     ? mayaAmount.amount != null && mayaAmount.reliable
     : extractAmount(text) != null;
   if (!hasReliableAmount) gaps.push("amount");
-  if (!parseReceiptDateTime(text).date) gaps.push("date");
+  if (!parseReceiptDateTimeForProvider(text, provider).date) gaps.push("date");
   return gaps;
 }
 
@@ -855,7 +948,9 @@ async function runOCR(
           ...v,
           provider: "google_vision",
           primaryProvider: "google_vision",
-          fallbackReason: gaps.length ? `google_missing_${gaps.join("_")}` : undefined,
+          fallbackReason: gaps.length
+            ? `google_missing_${gaps.join("_")}`
+            : undefined,
         };
       }
       console.error("Vision OCR returned no text:", gaps.join(","));
@@ -939,14 +1034,19 @@ Deno.serve(async (req) => {
         action: String(form.get("action") || "verify"),
         bookingRef: String(form.get("bookingRef") || ""),
         provider: String(form.get("provider") || "gcash"),
-        contentType: uploadedImage?.type || String(form.get("contentType") || "image/jpeg"),
+        contentType: uploadedImage?.type ||
+          String(form.get("contentType") || "image/jpeg"),
         ...(bookingData ? { bookingData } : {}),
       };
     } else {
       body = await req.json();
     }
   } catch {
-    return json({ error: requestContentType.toLowerCase().includes("multipart/form-data") ? "Invalid multipart body" : "Invalid JSON body" }, 400);
+    return json({
+      error: requestContentType.toLowerCase().includes("multipart/form-data")
+        ? "Invalid multipart body"
+        : "Invalid JSON body",
+    }, 400);
   }
   const action = (body.action as string) || "verify";
 
@@ -959,7 +1059,8 @@ Deno.serve(async (req) => {
     );
     if (!bookingRef && !openPlayRegistrationId && !hostSessionRegistrationId) {
       return json({
-        error: "bookingRef, openPlayRegistrationId, or hostSessionRegistrationId required",
+        error:
+          "bookingRef, openPlayRegistrationId, or hostSessionRegistrationId required",
       }, 400);
     }
 
@@ -1007,14 +1108,23 @@ Deno.serve(async (req) => {
     const bookingRef = String(body.bookingRef || "");
     let provider = normalizedProvider(String(body.provider || "gcash"));
     let imageBase64 = String(body.imageBase64 || "");
-    const rawContentType = String(uploadedImage?.type || body.contentType || "image/jpeg")
+    const rawContentType = String(
+      uploadedImage?.type || body.contentType || "image/jpeg",
+    )
       .toLowerCase().split(";", 1)[0].trim();
-    const contentType = rawContentType === "image/jpg" ? "image/jpeg" : rawContentType;
+    const contentType = rawContentType === "image/jpg"
+      ? "image/jpeg"
+      : rawContentType;
     // Optional inline data supports pre-save Open Play registration receipts.
     // A matching saved booking still takes precedence over every inline field.
-    const inlineBookingData = (body.bookingData && typeof body.bookingData === "object") ? body.bookingData as Record<string, unknown> : null;
+    const inlineBookingData =
+      (body.bookingData && typeof body.bookingData === "object")
+        ? body.bookingData as Record<string, unknown>
+        : null;
     if (!bookingRef) return json({ error: "bookingRef required" }, 400);
-    if (!imageBase64 && !uploadedImage) return json({ error: "receipt file or imageBase64 required" }, 400);
+    if (!imageBase64 && !uploadedImage) {
+      return json({ error: "receipt file or imageBase64 required" }, 400);
+    }
 
     const bytes = uploadedImage
       ? new Uint8Array(await uploadedImage.arrayBuffer())
@@ -1042,11 +1152,16 @@ Deno.serve(async (req) => {
       booking = { ...(persistedRow as Record<string, unknown>) };
       const persistedStatus = String(booking.status || "");
       const persistedPaymentStatus = String(booking.payment_status || "");
-      const terminal = ["confirmed", "cancelled", "completed"].includes(persistedStatus) ||
-        ["paid", "downpayment_paid", "rejected"].includes(persistedPaymentStatus);
+      const terminal =
+        ["confirmed", "cancelled", "completed"].includes(persistedStatus) ||
+        ["paid", "downpayment_paid", "rejected"].includes(
+          persistedPaymentStatus,
+        );
       if (terminal) {
         const storedReceiptStatus = String(booking.receipt_status || "");
-        const finalStatus = storedReceiptStatus === "rejected" || persistedStatus === "cancelled" || persistedPaymentStatus === "rejected"
+        const finalStatus = storedReceiptStatus === "rejected" ||
+            persistedStatus === "cancelled" ||
+            persistedPaymentStatus === "rejected"
           ? "rejected"
           : storedReceiptStatus === "manual_review"
           ? "manual_review"
@@ -1055,7 +1170,11 @@ Deno.serve(async (req) => {
           ok: true,
           status: finalStatus,
           flags: [],
-          publicReason: finalStatus === "rejected" ? "This booking was already rejected." : finalStatus === "manual_review" ? "This booking is already awaiting owner review." : "Payment was already verified.",
+          publicReason: finalStatus === "rejected"
+            ? "This booking was already rejected."
+            : finalStatus === "manual_review"
+            ? "This booking is already awaiting owner review."
+            : "Payment was already verified.",
           extracted: booking.receipt_extracted || null,
           confidence: booking.receipt_confidence ?? null,
           receiptImageUrl: booking.receipt_image_url || null,
@@ -1091,18 +1210,25 @@ Deno.serve(async (req) => {
         }, 400);
       }
       booking = inlineBookingData;
-      inlinePricingKind = booking.host_session_id ? "host_session" : "open_play";
+      inlinePricingKind = booking.host_session_id
+        ? "host_session"
+        : "open_play";
     }
-    provider = paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) ||
+    provider =
+      paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) ||
       provider;
 
     // Save the evidence before pricing, perceptual hashing, or OCR. Large
     // mobile screenshots can make those later steps slow or memory-heavy; a
     // disconnect there must never leave the owner without the paid receipt.
     const imageHash = await sha256Hex(bytes);
-    const ext = contentType.includes("png") ? "png" :
-      contentType.includes("webp") ? "webp" :
-      contentType.includes("heic") || contentType.includes("heif") ? "heic" : "jpg";
+    const ext = contentType.includes("png")
+      ? "png"
+      : contentType.includes("webp")
+      ? "webp"
+      : contentType.includes("heic") || contentType.includes("heif")
+      ? "heic"
+      : "jpg";
     const objectPath = `${bookingRef}/${imageHash}.${ext}`;
     console.log("receipt checkpoint: storing", {
       bookingRef,
@@ -1121,7 +1247,8 @@ Deno.serve(async (req) => {
     if (upErr) {
       console.error("receipt upload failed:", errMsg(upErr));
       return json({
-        error: "Receipt image could not be stored. Please upload the receipt again.",
+        error:
+          "Receipt image could not be stored. Please upload the receipt again.",
       }, 500);
     }
 
@@ -1141,10 +1268,13 @@ Deno.serve(async (req) => {
       if (safeStateErr || !safeRows?.length) {
         console.error(
           "receipt safe-state update failed:",
-          safeStateErr ? errMsg(safeStateErr) : "no active booking rows updated",
+          safeStateErr
+            ? errMsg(safeStateErr)
+            : "no active booking rows updated",
         );
         return json({
-          error: "Receipt was stored but could not be attached to the booking. Please contact the owner with your booking reference.",
+          error:
+            "Receipt was stored but could not be attached to the booking. Please contact the owner with your booking reference.",
         }, 500);
       }
       booking = {
@@ -1170,6 +1300,7 @@ Deno.serve(async (req) => {
     const expectedMerchant = expectedMerchantForProvider(settings, provider);
     const expectedNumber = expectedMerchant.number;
     const expectedName = expectedMerchant.name;
+    const expectedGcashQrAccountId = settings.gcash_qr_account_id || "";
     let pricingError = "";
     let expectedAmount = 0;
     let expectedTotal = 0;
@@ -1254,23 +1385,45 @@ Deno.serve(async (req) => {
 
     // ── field extraction ────────────────────────────────────────────────────
     const extractedRef = extractReference(ocrText, provider, typedRef);
-    const extractedInvoice = provider === "bdopay" ? extractBdoInvoiceNumber(ocrText) : null;
-    const extractedInstapayRefNo = provider === "maya" ? extractMayaInstapayRefNo(ocrText) : null;
-    const extractedBpiTransactionRefNo = provider === "bpi" ? extractBpiTransactionRefNo(ocrText) : null;
+    const extractedInvoice = provider === "bdopay"
+      ? extractBdoInvoiceNumber(ocrText)
+      : null;
+    const extractedInstapayRefNo = provider === "maya"
+      ? extractMayaInstapayRefNo(ocrText)
+      : null;
+    const extractedBpiTransactionRefNo = provider === "bpi"
+      ? extractBpiTransactionRefNo(ocrText)
+      : null;
+    const extractedMariBankAccount = provider === "maribank"
+      ? extractMariBankDestinationAccount(ocrText)
+      : null;
+    const extractedMariBankSenderLast4 = provider === "maribank"
+      ? extractMariBankSenderLast4(ocrText)
+      : null;
+    const extractedMariBankTotalAmount = provider === "maribank"
+      ? extractMariBankTotalAmount(ocrText)
+      : null;
     const amountExtraction = provider === "maya"
       ? extractReceiptAmount(ocrText, { provider })
       : null;
     // A weak or ambiguous Maya read is never evidence of underpayment. It is
     // stored for diagnostics but routed to manual review as unreadable.
-    const extractedAmount = amountExtraction
+    const extractedAmount = provider === "maribank"
+      ? extractMariBankTransferAmount(ocrText)
+      : amountExtraction
       ? (amountExtraction.reliable ? amountExtraction.amount : null)
       : extractAmount(ocrText);
-    const { date: receiptDate, shifted: receiptDateTime } = parseReceiptDateTime(ocrText);
+    const { date: receiptDate, shifted: receiptDateTime } =
+      parseReceiptDateTimeForProvider(ocrText, provider);
     const bookingStartedAt = toPhWallClockDate(
       booking.created_at || booking.createdAt,
     );
-    const bookingStartedDate = bookingStartedAt ? bookingStartedAt.toISOString().slice(0, 10) : null;
-    const receiptAgeMinutes = bookingStartedAt && receiptDateTime ? (receiptDateTime.getTime() - bookingStartedAt.getTime()) / 60000 : null;
+    const bookingStartedDate = bookingStartedAt
+      ? bookingStartedAt.toISOString().slice(0, 10)
+      : null;
+    const receiptAgeMinutes = bookingStartedAt && receiptDateTime
+      ? (receiptDateTime.getTime() - bookingStartedAt.getTime()) / 60000
+      : null;
     if (provider === "gcash" && typedRef.length !== 13) {
       flags.push("REF_FORMAT_INVALID");
     }
@@ -1281,6 +1434,9 @@ Deno.serve(async (req) => {
       flags.push("REF_FORMAT_INVALID");
     }
     if (provider === "bpi" && !isBpiConfirmationNo(typedRef)) {
+      flags.push("REF_FORMAT_INVALID");
+    }
+    if (provider === "maribank" && !isMariBankReference(typedRef)) {
       flags.push("REF_FORMAT_INVALID");
     }
 
@@ -1414,7 +1570,10 @@ Deno.serve(async (req) => {
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
         else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
-        else if (extractedAmount < expectedAmount && !closeMoney(extractedAmount, expectedAmount)) {
+        else if (
+          extractedAmount < expectedAmount &&
+          !closeMoney(extractedAmount, expectedAmount)
+        ) {
           flags.push("AMOUNT_MISMATCH");
         } else if (!closeMoney(extractedAmount, expectedAmount)) {
           flags.push("AMOUNT_REVIEW");
@@ -1442,6 +1601,64 @@ Deno.serve(async (req) => {
         else if (numCheck === "unreadable") {
           flags.push("NUMBER_UNREADABLE");
         }
+      } else if (provider === "maribank") {
+        // MariBank's generated receipt exposes the GCash QR account token,
+        // rather than the destination mobile number. Require that stable token
+        // plus the unmasked receiver name and completed Realtime InstaPay state.
+        if (!extractedRef) flags.push("MARIBANK_REFERENCE_UNREADABLE");
+        else if (typedRef && extractedRef !== typedRef) {
+          flags.push("REF_MISMATCH");
+        }
+
+        if (pricingError) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+        else if (
+          extractedAmount < expectedAmount &&
+          !closeMoney(extractedAmount, expectedAmount)
+        ) {
+          flags.push("AMOUNT_MISMATCH");
+        } else if (!closeMoney(extractedAmount, expectedAmount)) {
+          flags.push("AMOUNT_REVIEW");
+        }
+
+        if (!receiptDate) flags.push("DATE_UNREADABLE");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+          flags.push("DATE_NOT_TODAY");
+        }
+        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+        else if (
+          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+        ) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+          flags.push("TIME_EXPIRED");
+        }
+
+        if (!hasMariBankIndicator(ocrText)) {
+          flags.push("MARIBANK_UNREADABLE");
+        }
+        if (!hasGcashGxiDestination(ocrText)) {
+          flags.push("GXI_DESTINATION_UNREADABLE");
+        }
+        if (!hasExpectedReceiverName(ocrText, expectedName)) {
+          flags.push("RECEIVER_NAME_UNREADABLE");
+        }
+        const accountCheck = checkMariBankDestinationAccount(
+          ocrText,
+          expectedGcashQrAccountId,
+        );
+        if (accountCheck === "wrong") {
+          // Exact match is required for auto-approval, but a one-character OCR
+          // substitution in this long token is not enough evidence to cancel a
+          // paid booking. Keep it pending for the owner to inspect.
+          flags.push("WRONG_GCASH_ACCOUNT");
+        } else if (accountCheck === "unreadable") {
+          flags.push("ACCOUNT_UNREADABLE");
+        } else if (accountCheck === "unconfigured") {
+          // Missing destination configuration is not evidence of customer
+          // fraud, but it must prevent automatic approval.
+          flags.push("ACCOUNT_UNCONFIGURED");
+        }
       } else {
         if (!extractedRef) flags.push("REF_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) {
@@ -1466,9 +1683,15 @@ Deno.serve(async (req) => {
     // ── reference reuse / replay guard ──────────────────────────────────────
     // Use the OCR-extracted ref when available, else the customer-typed ref.
     // GCash refs are stored as digits only; other providers are namespaced so
-    // same-looking references from different banks do not collide.
+    // same-looking references from different banks do not collide. MariBank's
+    // six-digit value is too small for permanent global uniqueness, so it uses
+    // the composite transaction fingerprint below instead of a bare ref key.
     const rawRefForDedupe = extractedRef || typedRef || null;
-    const refForDedupe = rawRefForDedupe ? provider === "gcash" ? rawRefForDedupe : `${provider}:${rawRefForDedupe}` : null;
+    const refForDedupe = rawRefForDedupe && provider !== "maribank"
+      ? provider === "gcash"
+        ? rawRefForDedupe
+        : `${provider}:${rawRefForDedupe}`
+      : null;
     const dedupeKeys: Array<
       { key: string; providerKey: string; duplicateFlag: string }
     > = [];
@@ -1499,6 +1722,20 @@ Deno.serve(async (req) => {
         providerKey: "bpi_transaction",
         duplicateFlag: "DUPLICATE_BPI_TRANSACTION_REF",
       });
+    }
+    if (provider === "maribank" && rawRefForDedupe) {
+      const transactionKey = buildMariBankTransactionKey({
+        reference: rawRefForDedupe,
+        transactionDateTime: receiptDateTime,
+        amount: extractedAmount,
+      });
+      if (transactionKey) {
+        dedupeKeys.push({
+          key: transactionKey,
+          providerKey: "maribank_transaction",
+          duplicateFlag: "DUPLICATE_MARIBANK_TRANSACTION",
+        });
+      }
     }
 
     const alreadyClaimedByThisBooking = new Set<string>();
@@ -1550,18 +1787,27 @@ Deno.serve(async (req) => {
             .select("booking_ref")
             .eq("gcash_ref", item.key)
             .maybeSingle();
-          if (claimedRef && bookingGroupRefs.has(String(claimedRef.booking_ref || ""))) {
+          if (
+            claimedRef &&
+            bookingGroupRefs.has(String(claimedRef.booking_ref || ""))
+          ) {
             alreadyClaimedByThisBooking.add(item.key);
             continue;
           }
-          if (!flags.includes(item.duplicateFlag)) flags.push(item.duplicateFlag);
+          if (!flags.includes(item.duplicateFlag)) {
+            flags.push(item.duplicateFlag);
+          }
           result = "rejected";
           break;
         }
       }
     }
 
-    const confidence = result === "auto_approved" ? Math.max(0.9, ocrConfidence) : result === "manual_review" ? 0.5 : 0.1;
+    const confidence = result === "auto_approved"
+      ? Math.max(0.9, ocrConfidence)
+      : result === "manual_review"
+      ? 0.5
+      : 0.1;
 
     const extracted = {
       ref: extractedRef,
@@ -1569,10 +1815,16 @@ Deno.serve(async (req) => {
       instapayRefNo: extractedInstapayRefNo,
       bpiConfirmationNo: provider === "bpi" ? extractedRef : null,
       bpiTransactionRefNo: extractedBpiTransactionRefNo,
+      mariBankReferenceNumber: provider === "maribank" ? extractedRef : null,
+      mariBankDestinationAccount: extractedMariBankAccount,
+      mariBankSenderLast4: extractedMariBankSenderLast4,
+      mariBankTotalAmount: extractedMariBankTotalAmount,
       amount: extractedAmount,
       amountReliable: amountExtraction?.reliable ?? (extractedAmount != null),
       amountAmbiguous: amountExtraction?.ambiguous ?? false,
-      amountReason: amountExtraction?.reason || "legacy_parser",
+      amountReason: provider === "maribank"
+        ? "maribank_transfer_amount"
+        : amountExtraction?.reason || "legacy_parser",
       amountEvidence: amountExtraction?.evidence || [],
       amountCandidates: amountExtraction?.candidates.map((candidate) => ({
         amount: candidate.amount,
@@ -1584,7 +1836,9 @@ Deno.serve(async (req) => {
       date: receiptDate,
       time: receiptDateTime ? receiptDateTime.toISOString() : null,
       timePh12: formatPhDateTime12(receiptDateTime),
-      bookingStartedAt: bookingStartedAt ? bookingStartedAt.toISOString() : null,
+      bookingStartedAt: bookingStartedAt
+        ? bookingStartedAt.toISOString()
+        : null,
       bookingStartedAtPh12: formatPhDateTime12(bookingStartedAt),
       bookingStartedDate,
       receiptAgeMinutes,
@@ -1598,8 +1852,14 @@ Deno.serve(async (req) => {
       ocrFallbackReason,
       ocrConfidence,
       ocrTextLength: ocrText.length,
-      expectedReceiverNumber: provider === "bdopay" || provider === "maya" ? null : expectedNumber || null,
+      expectedReceiverNumber:
+        provider === "bdopay" || provider === "maya" || provider === "maribank"
+          ? null
+          : expectedNumber || null,
       expectedReceiverName: provider === "bpi" ? null : expectedName || null,
+      expectedReceiverAccountId: provider === "maribank"
+        ? expectedGcashQrAccountId || null
+        : null,
     };
 
     // ── persist outcome on the booking ──────────────────────────────────────
@@ -1659,7 +1919,8 @@ Deno.serve(async (req) => {
           .maybeSingle();
         const currentStatus = String(currentRow?.status || "");
         const currentPayment = String(currentRow?.payment_status || "");
-        const concurrentlyFinalized = ["confirmed", "cancelled", "completed"].includes(currentStatus) ||
+        const concurrentlyFinalized =
+          ["confirmed", "cancelled", "completed"].includes(currentStatus) ||
           ["paid", "downpayment_paid", "rejected"].includes(currentPayment);
         if (!concurrentlyFinalized) {
           finalUpdateError = `No non-terminal row matched ref=${bookingRef}`;
@@ -1671,10 +1932,11 @@ Deno.serve(async (req) => {
       // more with just the cancel field. The slot MUST be freed on a rejected
       // receipt — no exceptions.
       if (finalUpdateError && result === "rejected") {
-        const { data: fallbackRows, error: fallbackErr } = await bookingUpdateQuery(db, booking, {
-          status: "cancelled",
-          payment_status: "rejected",
-        }).in("status", ["verifying", "pending"]).select("ref");
+        const { data: fallbackRows, error: fallbackErr } =
+          await bookingUpdateQuery(db, booking, {
+            status: "cancelled",
+            payment_status: "rejected",
+          }).in("status", ["verifying", "pending"]).select("ref");
         if (fallbackErr || !fallbackRows || fallbackRows.length === 0) {
           console.error("FALLBACK cancel also failed:", errMsg(fallbackErr));
         } else {
@@ -1701,17 +1963,23 @@ Deno.serve(async (req) => {
     // ── alert admin on anything needing a human ─────────────────────────────
     if (result !== "auto_approved") {
       const icon = result === "rejected" ? "❌" : "⚠️";
-      const head = result === "rejected" ? "RECEIPT REJECTED — BOOKING CANCELLED" : "RECEIPT NEEDS REVIEW";
+      const head = result === "rejected"
+        ? "RECEIPT REJECTED — BOOKING CANCELLED"
+        : "RECEIPT NEEDS REVIEW";
       await sendTelegram(
         `${icon} <b>${head}</b>\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
           `📋 Ref: <code>${bookingRef}</code>\n` +
           `👤 ${booking.full_name || "—"}\n` +
           `💰 Expected: ₱${expectedAmount.toFixed(2)}` +
-          (extractedAmount != null ? ` · Seen: ₱${extractedAmount.toFixed(2)}` : "") +
+          (extractedAmount != null
+            ? ` · Seen: ₱${extractedAmount.toFixed(2)}`
+            : "") +
           `\n` +
           `🚩 Flags: <code>${flags.join(", ") || "none"}</code>\n` +
-          (result === "rejected" ? `🗑 Booking auto-cancelled. Slot is now free.` : `👉 Open admin panel to review the receipt.`),
+          (result === "rejected"
+            ? `🗑 Booking auto-cancelled. Slot is now free.`
+            : `👉 Open admin panel to review the receipt.`),
       );
     }
 
@@ -1726,8 +1994,14 @@ Deno.serve(async (req) => {
       receiptImageHash: imageHash,
       receiptPhash: phash,
       receiptVerifiedAt: metadataUpdate.receipt_verified_at,
-      ...(finalUpdateError ? { warning: `booking update failed: ${finalUpdateError}` } : {}),
-      message: result === "auto_approved" ? "Payment verified." : result === "manual_review" ? "Received — the owner will verify your payment shortly." : "Your receipt could not be verified. Your booking has been cancelled — please try again with a valid receipt.",
+      ...(finalUpdateError
+        ? { warning: `booking update failed: ${finalUpdateError}` }
+        : {}),
+      message: result === "auto_approved"
+        ? "Payment verified."
+        : result === "manual_review"
+        ? "Received — the owner will verify your payment shortly."
+        : "Your receipt could not be verified. Your booking has been cancelled — please try again with a valid receipt.",
     });
   } catch (err) {
     console.error("verify-gcash-receipt error:", errMsg(err));

@@ -2436,7 +2436,7 @@ tr:hover td { background: var(--bg2); }
           <div id="rpReceivedChart"><p class="rp-empty">No data.</p></div>
           <details class="rp-panel-note">
             <summary>Accounting view</summary>
-            <div>Digital rails such as BDO Pay, Maya, GoTyme, and PNB are recorded as received to GCash unless a booking has an explicit receiving account.</div>
+            <div>Digital rails such as BDO Pay, Maya, BPI, MariBank, GoTyme, and PNB are recorded as received to GCash unless a booking has an explicit receiving account.</div>
           </details>
         </div>
         <div class="rp-breakdown-view" data-rp-panel="trend">
@@ -3070,6 +3070,9 @@ tr:hover td { background: var(--bg2); }
               <input type="checkbox" id="payMethodBpiOn" /> BPI
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
+              <input type="checkbox" id="payMethodMaribankOn" /> MariBank
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
               <input type="checkbox" id="payMethodGotymeOn" /> GoTyme
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
@@ -3090,6 +3093,11 @@ tr:hover td { background: var(--bg2); }
               <label class="fl">Account Name</label>
               <input type="text" class="fi" id="gcashNameInput" placeholder="e.g. Korte DOS Bayabas" />
             </div>
+          </div>
+          <div class="fg" style="margin:0 0 10px">
+            <label class="fl">GCash QR Account ID</label>
+            <input type="text" class="fi" id="gcashQrAccountIdInput" placeholder="DWQM4TK496R3UA1BS" maxlength="24" autocomplete="off" spellcheck="false" />
+            <div style="font-size:.72rem;color:var(--muted);margin-top:4px">The alphanumeric Acct No. shown on InstaPay receipts. MariBank uses this server-side value to verify the payment destination.</div>
           </div>
           <div class="fg" style="margin:0">
             <label class="fl">GCash QR Code Image</label>
@@ -3751,8 +3759,19 @@ function bookingGroupKey(b) {
 }
 function normalizedPaymentRefKey(b) {
   const method = String(b?.paymentMethod || '').toLowerCase();
-  if (!['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'].includes(method)) return '';
+  if (!['gcash', 'bdopay', 'maya', 'bpi', 'maribank', 'gotyme', 'pnb'].includes(method)) return '';
   const ref = String(b?.gcashRef || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (method === 'maribank') {
+    // MariBank's visible reference is only six digits and may repeat on a
+    // different day. Match the verifier's composite transaction identity so
+    // the admin duplicate badge does not flag unrelated transfers.
+    const extracted = b?.receiptExtracted || b?.receipt_extracted || {};
+    const time = String(extracted.time || '').slice(0, 16);
+    const amount = Number(extracted.amount);
+    return ref && time && Number.isFinite(amount)
+      ? `maribank_transaction:${time}:${ref}:${amount.toFixed(2)}`
+      : '';
+  }
   return ref ? `${method}:${ref}` : '';
 }
 function commonBookingPrefix(refs = []) {
@@ -4045,15 +4064,15 @@ function shortDateTime(v){
 }
 const RECEIPT_PAYMENT_WINDOW_MINUTES = 15;
 const RECEIPT_FLAG_LABELS = {
-  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', WRONG_GCASH_NUMBER:'Wrong receiver number',
+  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', DUPLICATE_MARIBANK_TRANSACTION:'MariBank transaction already used', WRONG_GCASH_NUMBER:'Wrong receiver number', WRONG_GCASH_ACCOUNT:'Wrong GCash QR account',
   AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:`Paid after ${RECEIPT_PAYMENT_WINDOW_MINUTES} min`,
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
   EDITED_METADATA:'Edited image metadata', SUSPECTED_FAKE:'Not a receipt', REF_FORMAT_INVALID:'Bad reference format',
-  REF_UNREADABLE:'Reference unreadable', INVOICE_UNREADABLE:'Invoice unreadable', LOW_OCR_CONFIDENCE:'Blurry / low OCR', OCR_UNAVAILABLE:'OCR unavailable', AMOUNT_UNREADABLE:'Amount unreadable',
+  REF_UNREADABLE:'Reference unreadable', MARIBANK_REFERENCE_UNREADABLE:'MariBank reference unreadable', INVOICE_UNREADABLE:'Invoice unreadable', LOW_OCR_CONFIDENCE:'Blurry / low OCR', OCR_UNAVAILABLE:'OCR unavailable', AMOUNT_UNREADABLE:'Amount unreadable',
   AMOUNT_REVIEW:'Amount needs owner review',
   DATE_UNREADABLE:'Date unreadable', TIME_UNREADABLE:'Time unreadable', NUMBER_UNREADABLE:'Receiver number unreadable',
-  BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', BPI_UNREADABLE:'BPI success unreadable', BPI_CONFIRMATION_UNREADABLE:'BPI confirmation unreadable', BPI_TRANSACTION_UNREADABLE:'BPI transaction ref unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable',
+  BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', BPI_UNREADABLE:'BPI success unreadable', BPI_CONFIRMATION_UNREADABLE:'BPI confirmation unreadable', BPI_TRANSACTION_UNREADABLE:'BPI transaction ref unreadable', MARIBANK_UNREADABLE:'MariBank receipt status unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable', ACCOUNT_UNREADABLE:'GCash QR account unreadable', ACCOUNT_UNCONFIGURED:'GCash QR account not configured',
 };
 function receiptReasonText(flags){
   if (!flags || !flags.length) return 'No specific reason saved';
@@ -4148,7 +4167,11 @@ function receiptTimeValue(extracted){
 }
 function receiptReceiverValue(extracted){
   if (!extracted) return '--';
-  const parts = [extracted.expectedReceiverName, extracted.expectedReceiverNumber].filter(Boolean);
+  const parts = [
+    extracted.expectedReceiverName,
+    extracted.expectedReceiverNumber,
+    extracted.expectedReceiverAccountId,
+  ].filter(Boolean);
   return parts.length ? esc(parts.join(' / ')) : '--';
 }
 function receiptDetailsHtml(b){
@@ -4159,15 +4182,17 @@ function receiptDetailsHtml(b){
   const ocrConfidence = ex.ocrConfidence != null && Number.isFinite(ocrConfidenceNumber)
     ? `${Math.round(ocrConfidenceNumber * 100)}%`
     : '--';
-  const amountParse = ex.amountReason === 'legacy_parser'
-    ? 'Legacy parser result'
-    : ex.amountReliable === true
-      ? 'Anchored Maya amount'
-      : ex.amountAmbiguous === true
-        ? 'Ambiguous — manual review'
-        : ex.amountReliable === false
-          ? 'Uncertain — manual review'
-          : '--';
+  const amountParse = ex.amountReason === 'maribank_transfer_amount'
+    ? 'MariBank Transfer Amount'
+    : ex.amountReason === 'legacy_parser'
+      ? 'Legacy parser result'
+      : ex.amountReliable === true
+        ? 'Anchored Maya amount'
+        : ex.amountAmbiguous === true
+          ? 'Ambiguous — manual review'
+          : ex.amountReliable === false
+            ? 'Uncertain — manual review'
+            : '--';
   const rows = [
     ['OCR Ref', receiptDetailValue(ex.ref || b.gcashRef)],
     ['Amount Read', receiptAmountValue(ex.amount)],
@@ -4231,7 +4256,7 @@ function currentBookingActorFields(){
 }
 function bookingDetailsButton(b){
   if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
-  if (!['gcash','bdopay','maya','bpi','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
+  if (!['gcash','bdopay','maya','bpi','maribank','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`;
 }
 function bookingActionsHtml(b, canDelete){
@@ -5069,11 +5094,11 @@ async function restoreDeletedBooking(id, ref) {
 
 /* ── CALENDAR VIEW ── */
 function paymentMethodLabel(m) {
-  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(m || '').toLowerCase()] || (m || 'Cash'));
+  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(m || '').toLowerCase()] || (m || 'Cash'));
 }
 
 function isDigitalPayment(m) {
-  return ['gcash', 'bdopay', 'maya', 'bpi', 'gotyme', 'pnb'].includes(String(m || '').toLowerCase());
+  return ['gcash', 'bdopay', 'maya', 'bpi', 'maribank', 'gotyme', 'pnb'].includes(String(m || '').toLowerCase());
 }
 
 function receivedAccountKey(b) {
@@ -7354,6 +7379,7 @@ async function renderPaymentSettings() {
   const bdopayOn = settings.payment_method_bdopay !== '0';
   const mayaOn = settings.payment_method_maya !== '0';
   const bpiOn = settings.payment_method_bpi !== '0';
+  const maribankOn = settings.payment_method_maribank !== '0';
   const gotymeOn = settings.payment_method_gotyme !== '0';
   const pnbOn = settings.payment_method_pnb !== '0';
   const paymentAcceptanceMode = settings.payment_acceptance_mode || 'both';
@@ -7364,11 +7390,13 @@ async function renderPaymentSettings() {
   if ($('payMethodBdopayOn')) $('payMethodBdopayOn').checked = bdopayOn;
   if ($('payMethodMayaOn')) $('payMethodMayaOn').checked = mayaOn;
   if ($('payMethodBpiOn')) $('payMethodBpiOn').checked = bpiOn;
+  if ($('payMethodMaribankOn')) $('payMethodMaribankOn').checked = maribankOn;
   $('payMethodGotymeOn').checked = gotymeOn;
   $('payMethodPnbOn').checked = pnbOn;
 
   if ($('gcashNumInput')) $('gcashNumInput').value = settings.gcash_merchant_number || '';
   if ($('gcashNameInput')) $('gcashNameInput').value = settings.gcash_merchant_name || '';
+  if ($('gcashQrAccountIdInput')) $('gcashQrAccountIdInput').value = settings.gcash_qr_account_id || '';
   if ($('gotymeNumInput')) $('gotymeNumInput').value = settings.gotyme_merchant_number || '';
   if ($('gotymeNameInput')) $('gotymeNameInput').value = settings.gotyme_merchant_name || '';
   if ($('pnbNumInput')) $('pnbNumInput').value = settings.pnb_merchant_number || '';
@@ -7397,7 +7425,21 @@ async function renderPaymentSettings() {
     $('pnbQrPreviewWrap').style.display = '';
   }
 
-  const summaryParts = [`Methods: ${(cashOn?'Cash ':'')}${(gcashOn?'GCash ':'')}${(bdopayOn?'BDO Pay ':'')}${(mayaOn?'Maya ':'')}${(bpiOn?'BPI ':'')}${(gotymeOn?'GoTyme ':'')}${(pnbOn?'PNB':'')}`.trim() || 'none'];
+  const gcashQrAccountId = String(settings.gcash_qr_account_id || '').trim();
+  const enabledMethods = [
+    cashOn && 'Cash',
+    gcashOn && 'GCash',
+    bdopayOn && 'BDO Pay',
+    mayaOn && 'Maya',
+    bpiOn && 'BPI',
+    maribankOn && 'MariBank',
+    gotymeOn && 'GoTyme',
+    pnbOn && 'PNB',
+  ].filter(Boolean);
+  const summaryParts = [
+    `Methods: ${enabledMethods.join(', ') || 'none'}`,
+    `GCash QR ID: ${gcashQrAccountId || 'not configured'}`,
+  ];
   $('paySettingsSummary').textContent = summaryParts.join(' • ');
 
   // Platform remittance summary
@@ -8426,11 +8468,18 @@ async function savePaymentSettings() {
   const bdopayOn = $('payMethodBdopayOn')?.checked || false;
   const mayaOn = $('payMethodMayaOn')?.checked || false;
   const bpiOn = $('payMethodBpiOn')?.checked || false;
+  const maribankOn = $('payMethodMaribankOn')?.checked || false;
   const gotymeOn = $('payMethodGotymeOn').checked;
   const pnbOn = $('payMethodPnbOn').checked;
 
-  if (!cashOn && !gcashOn && !bdopayOn && !mayaOn && !bpiOn && !gotymeOn && !pnbOn) {
+  if (!cashOn && !gcashOn && !bdopayOn && !mayaOn && !bpiOn && !maribankOn && !gotymeOn && !pnbOn) {
     toast('Enable at least one payment method.', 'err');
+    return;
+  }
+  const gcashQrAccountId = ($('gcashQrAccountIdInput')?.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (maribankOn && !/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{12,24}$/.test(gcashQrAccountId)) {
+    toast('Enter the valid GCash QR Account ID shown as Acct No. on the MariBank receipt.', 'err');
+    $('gcashQrAccountIdInput')?.focus();
     return;
   }
 
@@ -8442,6 +8491,7 @@ async function savePaymentSettings() {
     await DB.saveSetting('payment_method_bdopay', bdopayOn ? '1' : '0');
     await DB.saveSetting('payment_method_maya', mayaOn ? '1' : '0');
     await DB.saveSetting('payment_method_bpi', bpiOn ? '1' : '0');
+    await DB.saveSetting('payment_method_maribank', maribankOn ? '1' : '0');
     await DB.saveSetting('payment_method_gotyme', gotymeOn ? '1' : '0');
     await DB.saveSetting('payment_method_pnb', pnbOn ? '1' : '0');
     await DB.saveSetting('payment_acceptance_mode', paymentAcceptanceMode);
@@ -8454,6 +8504,7 @@ async function savePaymentSettings() {
     const pnbName = $('pnbNameInput')?.value.trim() || '';
     await DB.saveSetting('gcash_merchant_number', gcashNum);
     await DB.saveSetting('gcash_merchant_name', gcashName);
+    await DB.saveSetting('gcash_qr_account_id', gcashQrAccountId);
     await DB.saveSetting('gotyme_merchant_number', gotymeNum);
     await DB.saveSetting('gotyme_merchant_name', gotymeName);
     await DB.saveSetting('pnb_merchant_number', pnbNum);
@@ -9624,7 +9675,7 @@ async function openOpVerifyModal(id) {
   const regs = await DB.getOpenPlayRegistrations();
   const r = regs.find(x => String(x.id) === String(id));
   if (!r) { toast('Registration not found.', 'err'); return; }
-  const methodLabel = { gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' };
+  const methodLabel = { gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' };
   $('ovMethod').textContent  = methodLabel[r.payment_method] || r.payment_method || 'GCash';
   $('ovGcashRef').textContent = r.gcash_ref || '—';
   $('ovName').textContent    = r.full_name;
