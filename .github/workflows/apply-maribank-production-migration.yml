@@ -1,0 +1,204 @@
+name: Apply MariBank Production Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-maribank-production-migration.yml"
+      - "supabase/migrations/20260722150000_add_maribank_payment_method.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply and verify migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260722150000_add_maribank_payment_method.sql
+      MIGRATION_SHA256: fc142498e58a576732a26dafdef4544f84c496d039904f75c906a594907c6e05
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260722150000',
+          'add_maribank_payment_method',
+          array[
+            $migration_statement$-- Add MariBank / InstaPay-to-GCash as a supported payment method.
+
+        insert into public.settings (key, value)
+        values
+          ('payment_method_maribank', '1'),
+          ('gcash_qr_account_id', 'DWQM4TK496R3UA1BS')
+        on conflict (key) do nothing$migration_statement$,
+            $migration_statement$alter table if exists public.open_play_host_session_registrations
+          drop constraint if exists open_play_host_session_registrations_payment_method_check$migration_statement$,
+            $migration_statement$alter table if exists public.open_play_host_session_registrations
+          add constraint open_play_host_session_registrations_payment_method_check
+          check (payment_method in ('gcash', 'bdopay', 'maya', 'bpi', 'maribank', 'gotyme', 'pnb', 'cash'))$migration_statement$,
+            $migration_statement$update public.bookings
+        set received_account = 'gcash'
+        where lower(coalesce(payment_method, '')) = 'maribank'
+          and (
+            received_account is null
+            or btrim(received_account) = ''
+            or lower(btrim(received_account)) = 'maribank'
+          )$migration_statement$
+          ]::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          payment_method_constraint text;
+        begin
+          if not exists (
+            select 1
+            from public.settings
+            where key = 'payment_method_maribank'
+              and value = '1'
+          ) then
+            raise exception 'payment_method_maribank is not enabled';
+          end if;
+
+          if not exists (
+            select 1
+            from public.settings
+            where key = 'gcash_qr_account_id'
+              and value = 'DWQM4TK496R3UA1BS'
+          ) then
+            raise exception 'gcash_qr_account_id does not match the approved MariBank receipt account';
+          end if;
+
+          select pg_get_constraintdef(constraint_record.oid)
+          into payment_method_constraint
+          from pg_constraint as constraint_record
+          join pg_class as table_record
+            on table_record.oid = constraint_record.conrelid
+          join pg_namespace as schema_record
+            on schema_record.oid = table_record.relnamespace
+          where schema_record.nspname = 'public'
+            and table_record.relname = 'open_play_host_session_registrations'
+            and constraint_record.conname = 'open_play_host_session_registrations_payment_method_check'
+            and constraint_record.convalidated
+          limit 1;
+
+          if payment_method_constraint is null
+             or position('maribank' in lower(payment_method_constraint)) = 0 then
+            raise exception 'host-session payment method constraint does not allow maribank';
+          end if;
+
+          if exists (
+            select 1
+            from public.bookings
+            where lower(coalesce(payment_method, '')) = 'maribank'
+              and (
+                received_account is null
+                or btrim(received_account) = ''
+                or lower(btrim(received_account)) = 'maribank'
+              )
+          ) then
+            raise exception 'one or more MariBank bookings still have an invalid received_account';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260722150000'
+              and name = 'add_maribank_payment_method'
+              and cardinality(statements) = 4
+          ) then
+            raise exception 'MariBank migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply migration through the Supabase Management API
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" | sha256sum --check --strict -
+
+          payload_file="$RUNNER_TEMP/maribank-migration.json"
+          response_file="$RUNNER_TEMP/maribank-migration-response.json"
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Supabase migration request failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          payload_file="$RUNNER_TEMP/maribank-verification.json"
+          response_file="$RUNNER_TEMP/maribank-verification-response.json"
+
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::MariBank database verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "MariBank production migration verified."
