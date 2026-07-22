@@ -6,6 +6,15 @@ on:
     paths:
       - "supabase/functions/**"
   workflow_dispatch:
+    inputs:
+      function:
+        description: Edge Function to deploy
+        required: true
+        default: verify-gcash-receipt
+        type: choice
+        options:
+          - verify-gcash-receipt
+          - all
 
 permissions:
   contents: read
@@ -51,7 +60,11 @@ jobs:
           )
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            selected=("${all_functions[@]}")
+            if [[ "${{ inputs.function }}" == "all" ]]; then
+              selected=("${all_functions[@]}")
+            else
+              selected=("${{ inputs.function }}")
+            fi
           else
             mapfile -t changed_files < <(
               git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- supabase/functions
