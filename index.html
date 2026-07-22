@@ -827,6 +827,52 @@ body.dark .shared-date-display {
 #slotCountdown .scd-timer { font-size:.94rem; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:.3px; flex-shrink:0; }
 #slotCountdown.urgent { background:rgba(220,38,38,.13); border-color:rgba(220,38,38,.3); color:#f87171; }
 #slotCountdown.urgent .scd-timer { animation: pulse-yellow .7s ease-in-out infinite; }
+#slotCountdown.timer-landed { animation:timerBannerLanded .8s cubic-bezier(.2,.8,.2,1); }
+@keyframes timerBannerLanded {
+  0%   { box-shadow:inset 0 0 0 2px rgba(251,191,36,0); background:rgba(202,138,4,.13); }
+  35%  { box-shadow:inset 0 0 0 2px rgba(251,191,36,.75),0 0 22px rgba(251,191,36,.28); background:rgba(202,138,4,.28); }
+  100% { box-shadow:inset 0 0 0 2px rgba(251,191,36,0); background:rgba(202,138,4,.13); }
+}
+.reservation-timer-intro {
+  position:fixed; inset:0; z-index:6;
+  display:flex; align-items:center; justify-content:center; padding:20px;
+  background:rgba(2,8,23,.56); backdrop-filter:blur(2px);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .18s ease,visibility 0s linear .18s;
+}
+.reservation-timer-intro.show {
+  opacity:1; visibility:visible; transition:opacity .18s ease;
+}
+.reservation-timer-card {
+  width:min(390px,calc(100vw - 40px));
+  padding:26px 24px 24px; text-align:center;
+  color:var(--text); background:var(--card);
+  border:1px solid rgba(251,191,36,.48); border-radius:18px;
+  box-shadow:0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(251,191,36,.13);
+  transform-origin:center;
+}
+.reservation-timer-intro.show .reservation-timer-card { animation:reservationTimerPop .42s cubic-bezier(.2,1.25,.3,1); }
+.reservation-timer-icon {
+  width:48px; height:48px; margin:0 auto 12px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:1.5rem;
+  background:rgba(202,138,4,.16); border:1px solid rgba(251,191,36,.38);
+}
+.reservation-timer-kicker { color:#fbbf24; font-size:.67rem; font-weight:900; letter-spacing:1.25px; text-transform:uppercase; }
+.reservation-timer-title { margin-top:6px; font-size:1.08rem; font-weight:800; line-height:1.32; }
+.reservation-timer-time {
+  margin:12px 0 8px; color:#fbbf24; font-size:2.55rem; line-height:1;
+  font-weight:900; letter-spacing:1px; font-variant-numeric:tabular-nums;
+}
+.reservation-timer-hint { color:var(--muted); font-size:.76rem; line-height:1.4; }
+@keyframes reservationTimerPop {
+  from { opacity:0; transform:scale(.82) translateY(14px); }
+  to   { opacity:1; transform:scale(1) translateY(0); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .reservation-timer-intro,
+  .reservation-timer-intro.show .reservation-timer-card { animation:none; transition:none; }
+  #slotCountdown.timer-landed { animation:none; }
+}
 .bk-modal-ft {
   padding:14px 22px; border-top:1px solid var(--border); flex-shrink:0;
   display:flex; gap:10px; background:var(--card); border-radius:0 0 18px 18px;
@@ -2931,6 +2977,15 @@ body.host-mode .courts { padding-bottom:140px; }
 
 <!-- BOOKING MODAL — 5-step wizard -->
 <div class="bk-modal-overlay" id="bookModal">
+  <div class="reservation-timer-intro" id="reservationTimerIntro" aria-hidden="true">
+    <div class="reservation-timer-card" id="reservationTimerCard">
+      <div class="reservation-timer-icon" aria-hidden="true">⏳</div>
+      <div class="reservation-timer-kicker">Your slot is reserved</div>
+      <div class="reservation-timer-title">Complete your booking within 15 minutes</div>
+      <div class="reservation-timer-time" id="reservationIntroTime" aria-hidden="true">15:00</div>
+      <div class="reservation-timer-hint">Keep an eye on the timer at the top of the booking form.</div>
+    </div>
+  </div>
   <div class="bk-modal">
 
     <!-- Slot reservation countdown -->
@@ -5741,7 +5796,7 @@ async function proceedToBookLegacy(courtId) {
   hideHostInvite({ restoreScroll: false });
   const _mb1 = $('mobileBookBar'); if (_mb1) _mb1.style.display = 'none';
   wizGoTo(3);
-  startSlotCountdown();
+  startSlotCountdown(null, true);
 }
 
 async function proceedToBook(courtId = null) {
@@ -5857,7 +5912,7 @@ async function proceedToBook(courtId = null) {
   const mobileBar = $('mobileBookBar');
   if (mobileBar) mobileBar.style.display = 'none';
   wizGoTo(3);
-  startSlotCountdown();
+  startSlotCountdown(null, true);
 }
 
 function closeBookModal() {
@@ -5871,11 +5926,88 @@ function closeBookModal() {
   else clearSelectedBookingUi();
 }
 
-function startSlotCountdown(initialSeconds = null) {
+let _reservationIntroDelay = null;
+let _reservationIntroAnimation = null;
+let _reservationIntroBackdropAnimation = null;
+
+function clearReservationTimerIntro() {
+  if (_reservationIntroDelay) { clearTimeout(_reservationIntroDelay); _reservationIntroDelay = null; }
+  const intro = $('reservationTimerIntro');
+  const card = $('reservationTimerCard');
+  // Match the animation's invisible end state before cancelling its `forwards`
+  // fill. Otherwise the underlying visible styles can flash for one frame.
+  if (intro) {
+    intro.style.opacity = '0';
+    intro.classList.remove('show');
+    intro.setAttribute('aria-hidden', 'true');
+  }
+  if (card) card.style.opacity = '0';
+  if (_reservationIntroAnimation) { _reservationIntroAnimation.cancel(); _reservationIntroAnimation = null; }
+  if (_reservationIntroBackdropAnimation) { _reservationIntroBackdropAnimation.cancel(); _reservationIntroBackdropAnimation = null; }
+  if (intro) intro.style.opacity = '';
+  if (card) { card.style.opacity = ''; card.style.transform = ''; }
+}
+
+function showReservationTimerIntro() {
+  const intro = $('reservationTimerIntro');
+  const card = $('reservationTimerCard');
+  const banner = $('slotCountdown');
+  if (!intro || !card || !banner) return;
+
+  clearReservationTimerIntro();
+  intro.classList.add('show');
+  intro.setAttribute('aria-hidden', 'false');
+
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  _reservationIntroDelay = setTimeout(() => {
+    _reservationIntroDelay = null;
+    if (!intro.classList.contains('show') || !$('bookModal')?.classList.contains('active')) return;
+
+    if (reducedMotion || typeof card.animate !== 'function') {
+      clearReservationTimerIntro();
+      banner.classList.add('timer-landed');
+      setTimeout(() => banner.classList.remove('timer-landed'), 850);
+      return;
+    }
+
+    const cardRect = card.getBoundingClientRect();
+    const bannerRect = banner.getBoundingClientRect();
+    const moveX = (bannerRect.left + bannerRect.width / 2) - (cardRect.left + cardRect.width / 2);
+    const moveY = (bannerRect.top + bannerRect.height / 2) - (cardRect.top + cardRect.height / 2);
+
+    _reservationIntroBackdropAnimation = intro.animate([
+      { opacity:1, offset:0 },
+      { opacity:1, offset:.55 },
+      { opacity:0, offset:1 }
+    ], {
+      duration:850, easing:'ease-out', fill:'forwards'
+    });
+    _reservationIntroAnimation = card.animate([
+      { transform:'translate(0,0) scale(1)', opacity:1, offset:0 },
+      { transform:'translate(0,0) scale(1)', opacity:1, offset:.16 },
+      { transform:`translate(${moveX}px,${moveY}px) scale(.28)`, opacity:.86, offset:.84 },
+      { transform:`translate(${moveX}px,${moveY}px) scale(.2)`, opacity:0, offset:1 }
+    ], { duration:850, easing:'cubic-bezier(.4,0,.2,1)', fill:'forwards' });
+
+    _reservationIntroAnimation.onfinish = () => {
+      // Keep the finished animation reference until cleanup cancels it. A
+      // finished `forwards` animation left attached can override the next
+      // popup and make it disappear, reappear, then disappear again.
+      clearReservationTimerIntro();
+      banner.classList.remove('timer-landed');
+      void banner.offsetWidth;
+      banner.classList.add('timer-landed');
+      setTimeout(() => banner.classList.remove('timer-landed'), 850);
+    };
+  }, 1900);
+}
+
+function startSlotCountdown(initialSeconds = null, introduce = false) {
   stopSlotCountdown();
   const banner = $('slotCountdown');
   const timeEl = $('scdTime');
   const bigEl  = $('scdTimerBig');
+  const introTimeEl = $('reservationIntroTime');
   if (!banner) return;
   banner.style.display = 'flex';
   banner.classList.remove('urgent');
@@ -5892,6 +6024,7 @@ function startSlotCountdown(initialSeconds = null) {
     const t = fmt(secsLeft);
     if (timeEl) timeEl.textContent = t;
     if (bigEl)  bigEl.textContent  = t;
+    if (introTimeEl) introTimeEl.textContent = t;
     if (secsLeft <= 60) banner.classList.add('urgent');
     if (secsLeft <= 0) {
       stopSlotCountdown();
@@ -5905,10 +6038,12 @@ function startSlotCountdown(initialSeconds = null) {
   }
   tick();
   _countdownInterval = setInterval(tick, 1000);
+  if (introduce) showReservationTimerIntro();
 }
 
 function stopSlotCountdown() {
   if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+  clearReservationTimerIntro();
   const banner = $('slotCountdown');
   if (banner) banner.style.display = 'none';
 }
