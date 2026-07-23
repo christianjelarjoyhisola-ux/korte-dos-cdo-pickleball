@@ -756,12 +756,14 @@ function rowToOpenPlayHostSessionRegistration(r) {
     amount: Number(r.amount || 0),
     receiptImageUrl: r.receipt_image_url || null,
     receiptImageHash: r.receipt_image_hash || null,
+    receiptVerificationId: r.receipt_verification_id ?? null,
     receiptPhash: r.receipt_phash || null,
     receiptStatus: r.receipt_status || 'none',
     receiptFlags: r.receipt_flags || [],
     receiptExtracted: r.receipt_extracted || null,
     receiptConfidence: r.receipt_confidence != null ? Number(r.receipt_confidence) : null,
     receiptVerifiedAt: r.receipt_verified_at || null,
+    capacityException: Boolean(r.capacity_exception),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -957,7 +959,40 @@ window.DB = {
   },
 
   async addOpenPlayRegistration(reg) {
-    const { error } = await _sb.from('open_play_registrations').insert({
+    const method = normalizePaymentKey(reg.paymentMethod, 'cash');
+    if (PB_DIGITAL_PAYMENT_METHODS.includes(method)) {
+      const receiptVerificationId = Number(reg.receiptVerificationId);
+      if (!Number.isSafeInteger(receiptVerificationId) || receiptVerificationId <= 0) {
+        throw new Error('The receipt verification expired or is incomplete. Please upload the receipt again.');
+      }
+      const result = await _invokeEdgeFunction('verify-gcash-receipt', {
+        action: 'persist_open_play_registration',
+        registration: {
+          fullName: reg.fullName,
+          courtId: String(reg.courtId),
+          courtName: reg.courtName,
+          date: reg.date,
+          hour: reg.hour,
+          timeLabel: reg.timeLabel,
+          paymentType: reg.paymentType,
+          paymentMethod: method,
+          gcashRef: reg.gcashRef || null,
+          amount: reg.amount,
+          receiptVerificationId,
+          receiptImageUrl: reg.receiptImageUrl || null,
+          receiptImageHash: reg.receiptImageHash || null,
+        },
+      }, { preferDirect: true });
+      const saved = result?.registration || result?.data ||
+        (result?.id ? result : null);
+      if (!result?.ok || !saved?.id) {
+        throw new Error(result?.error || 'Open Play registration was not saved.');
+      }
+      _pbClearFastCache(['openPlayRegistrations', 'openPlayCount', 'openPlayCounts']);
+      return saved;
+    }
+
+    const { data, error } = await _sb.from('open_play_registrations').insert({
       full_name: reg.fullName,
       court_id: String(reg.courtId),
       court_name: reg.courtName,
@@ -978,9 +1013,10 @@ window.DB = {
       receipt_confidence: reg.receiptConfidence ?? null,
       receipt_verified_at: reg.receiptVerifiedAt || null,
       created_at: new Date().toISOString(),
-    });
+    }).select('id,court_id,date,payment_status').single();
     if (error) { console.error('addOpenPlayRegistration:', error); throw error; }
     _pbClearFastCache(['openPlayRegistrations', 'openPlayCount', 'openPlayCounts']);
+    return data;
   },
 
   async updateOpenPlayRegistration(id, updates) {
@@ -1003,7 +1039,7 @@ window.DB = {
   async getOpenPlayCountForDate(date, courtId = null) {
     return _pbCached('openPlayCount', { date, courtId: courtId || '' }, PB_FAST_CACHE_MS.openPlay, async () => {
       let query = _sb.from('open_play_registrations')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('date', date)
         .or('payment_status.is.null,payment_status.neq.rejected');
       if (courtId) query = query.eq('court_id', String(courtId));
@@ -1163,11 +1199,43 @@ window.DB = {
   },
 
   async addOpenPlayHostSessionRegistration(reg) {
-    const { data, error } = await _sb.from('open_play_host_session_registrations').insert({
+    const method = normalizePaymentKey(reg.paymentMethod, 'gcash');
+    const digital = PB_DIGITAL_PAYMENT_METHODS.includes(method) && Number(reg.amount || 0) > 0;
+    const receiptVerificationId = Number(reg.receiptVerificationId);
+    if (
+      digital &&
+      (!Number.isSafeInteger(receiptVerificationId) || receiptVerificationId <= 0)
+    ) {
+      throw new Error('The receipt verification expired or is incomplete. Please upload the receipt again.');
+    }
+    if (digital) {
+      const result = await _invokeEdgeFunction('verify-gcash-receipt', {
+        action: 'persist_host_session_registration',
+        registration: {
+          sessionId: reg.sessionId,
+          fullName: reg.fullName,
+          contactNumber: reg.contactNumber || null,
+          paymentMethod: method,
+          gcashRef: reg.gcashRef || null,
+          amount: reg.amount || 0,
+          receiptVerificationId,
+          receiptImageUrl: reg.receiptImageUrl || null,
+          receiptImageHash: reg.receiptImageHash || null,
+        },
+      }, { preferDirect: true });
+      const saved = result?.registration || result?.data ||
+        (result?.id ? result : null);
+      if (!result?.ok || !saved?.id) {
+        throw new Error(result?.error || 'Host-session registration was not saved.');
+      }
+      return rowToOpenPlayHostSessionRegistration(saved);
+    }
+
+    const insertRow = {
       session_id: reg.sessionId,
       full_name: reg.fullName,
       contact_number: reg.contactNumber || null,
-      payment_method: reg.paymentMethod || 'gcash',
+      payment_method: method,
       gcash_ref: reg.gcashRef || null,
       payment_status: reg.paymentStatus || 'pending',
       amount: reg.amount || 0,
@@ -1179,9 +1247,14 @@ window.DB = {
       receipt_extracted: reg.receiptExtracted || null,
       receipt_confidence: reg.receiptConfidence ?? null,
       receipt_verified_at: reg.receiptVerifiedAt || null,
-    }).select('*').single();
-    if (error) { console.error('addOpenPlayHostSessionRegistration:', error); throw error; }
-    return rowToOpenPlayHostSessionRegistration(data);
+    };
+    const { data, error } = await _sb.from('open_play_host_session_registrations')
+      .insert(insertRow);
+    if (error) {
+      console.error('addOpenPlayHostSessionRegistration:', error);
+      throw error;
+    }
+    return rowToOpenPlayHostSessionRegistration(data?.[0] || insertRow);
   },
 
   // ---- OPEN PLAY GAME MANAGER ----
@@ -1367,6 +1440,21 @@ window.DB = {
     _pbClearFastCache(['settings']);
   },
 
+  async getPaymentReviewNotificationSettings() {
+    return _invokeEdgeFunction('manage-payment-review-notification', { action: 'get' });
+  },
+
+  async savePaymentReviewNotificationEmail(email) {
+    return _invokeEdgeFunction('manage-payment-review-notification', {
+      action: 'save',
+      email: String(email || ''),
+    });
+  },
+
+  async sendPaymentReviewNotificationTest() {
+    return _invokeEdgeFunction('manage-payment-review-notification', { action: 'test' });
+  },
+
   clearCache(scopes = []) {
     _pbClearFastCache(scopes);
   },
@@ -1419,6 +1507,63 @@ window.DB = {
   async notifyBookingUpdate(booking, event, note = '') {
     if (window.PB_USE_LOCAL_DATA) return { ok: true, skipped: true, reason: 'Local data mode' };
     return this.sendTelegramNotification(_telegramBookingPayload(booking, { type: 'booking_update', event, note }), { allowFailure: true });
+  },
+
+  async reviewPaymentReceipt(bookingRef, decision, reason = '') {
+    const normalizedDecision = String(decision || '').trim().toLowerCase();
+    if (!['approve', 'reject'].includes(normalizedDecision)) {
+      throw new Error('Choose a valid payment-review decision.');
+    }
+    const result = await _invokeEdgeFunction('review-payment-receipt', {
+      bookingRef: String(bookingRef || '').trim(),
+      decision: normalizedDecision,
+      reason: String(reason || '').trim(),
+    });
+    if (result?.ok) _pbClearFastCache(['bookings']);
+    return result;
+  },
+
+  async reviewOpenPlayPaymentReceipt(registrationId, decision, reason = '') {
+    const id = Number(registrationId);
+    const normalizedDecision = String(decision || '').trim().toLowerCase();
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error('Choose a valid Open Play registration.');
+    }
+    if (!['approve', 'reject'].includes(normalizedDecision)) {
+      throw new Error('Choose a valid payment-review decision.');
+    }
+    const result = await _invokeEdgeFunction('review-payment-receipt', {
+      contextType: 'open_play',
+      registrationId: id,
+      decision: normalizedDecision,
+      reason: String(reason || '').trim(),
+    });
+    if (result?.ok) {
+      _pbClearFastCache([
+        'openPlayRegistrations',
+        'openPlayCount',
+        'openPlayCounts',
+      ]);
+    }
+    return result;
+  },
+
+  async reviewHostSessionPaymentReceipt(registrationId, decision, reason = '') {
+    const id = String(registrationId || '').trim().toLowerCase();
+    const normalizedDecision = String(decision || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) {
+      throw new Error('Choose a valid host-session registration.');
+    }
+    if (!['approve', 'reject'].includes(normalizedDecision)) {
+      throw new Error('Choose a valid payment-review decision.');
+    }
+    const result = await _invokeEdgeFunction('review-payment-receipt', {
+      contextType: 'host_session',
+      registrationId: id,
+      decision: normalizedDecision,
+      reason: String(reason || '').trim(),
+    });
+    return result;
   },
 
   async getIntegrationStatus() {
@@ -1932,6 +2077,7 @@ window.DB = {
     payment_method_maribank: '1',
     payment_method_gotyme: '0',
     payment_method_pnb: '0',
+    payment_review_notification_email: '',
     gcash_merchant_number: '09XXXXXXXXX',
     gcash_merchant_name: 'Court Owner Name',
     gcash_qr_account_id: 'DWQM4TK496R3UA1BS',
@@ -2254,7 +2400,32 @@ window.DB = {
     },
     async addOpenPlayRegistration(reg) {
       const db = readDb();
-      db.openPlayRegistrations.push({
+      const method = normalizePaymentKey(reg.paymentMethod, 'cash');
+      const digital = PB_DIGITAL_PAYMENT_METHODS.includes(method);
+      const receiptVerificationId = Number(reg.receiptVerificationId);
+      if (
+        digital &&
+        (
+          !Number.isSafeInteger(receiptVerificationId) ||
+          receiptVerificationId <= 0 ||
+          !String(reg.receiptImageUrl || '').trim() ||
+          !String(reg.receiptImageHash || '').trim()
+        )
+      ) {
+        throw new Error('The receipt verification expired or is incomplete. Please upload the receipt again.');
+      }
+      if (digital) {
+        const recovered = db.openPlayRegistrations.find(row =>
+          Number(row.receipt_verification_id) === receiptVerificationId ||
+          (
+            String(row.receipt_image_hash || '').toLowerCase() ===
+              String(reg.receiptImageHash || '').toLowerCase() &&
+            String(row.receipt_image_url || '') === String(reg.receiptImageUrl || '')
+          )
+        );
+        if (recovered) return recovered;
+      }
+      const row = {
         id: localRef('op'),
         full_name: reg.fullName,
         court_id: String(reg.courtId),
@@ -2263,10 +2434,11 @@ window.DB = {
         hour: reg.hour,
         time_label: reg.timeLabel,
         payment_type: reg.paymentType,
-        payment_method: reg.paymentMethod || 'cash',
+        payment_method: method,
         gcash_ref: reg.gcashRef || null,
         payment_status: reg.paymentStatus || 'pending',
         amount: reg.amount,
+        receipt_verification_id: digital ? receiptVerificationId : null,
         receipt_image_url: reg.receiptImageUrl || null,
         receipt_image_hash: reg.receiptImageHash || null,
         receipt_phash: reg.receiptPhash || null,
@@ -2276,8 +2448,10 @@ window.DB = {
         receipt_confidence: reg.receiptConfidence ?? null,
         receipt_verified_at: reg.receiptVerifiedAt || null,
         created_at: nowIso(),
-      });
+      };
+      db.openPlayRegistrations.push(row);
       writeDb(db);
+      return row;
     },
     async updateOpenPlayRegistration(id, updates) {
       const db = readDb();
@@ -2473,6 +2647,34 @@ window.DB = {
     async addOpenPlayHostSessionRegistration(reg) {
       const db = readDb();
       if (!Array.isArray(db.openPlayHostSessionRegistrations)) db.openPlayHostSessionRegistrations = [];
+      const digital = PB_DIGITAL_PAYMENT_METHODS.includes(
+        normalizePaymentKey(reg.paymentMethod, 'gcash')
+      ) && Number(reg.amount || 0) > 0;
+      const receiptVerificationId = Number(reg.receiptVerificationId);
+      if (
+        digital &&
+        (
+          !Number.isSafeInteger(receiptVerificationId) ||
+          receiptVerificationId <= 0 ||
+          !String(reg.receiptImageUrl || '').trim() ||
+          !String(reg.receiptImageHash || '').trim()
+        )
+      ) {
+        throw new Error('The receipt verification expired or is incomplete. Please upload the receipt again.');
+      }
+      if (digital) {
+        const recovered = db.openPlayHostSessionRegistrations.find(row =>
+          Number(row.receiptVerificationId ?? row.receipt_verification_id) ===
+            receiptVerificationId ||
+          (
+            String(row.receiptImageHash ?? row.receipt_image_hash ?? '').toLowerCase() ===
+              String(reg.receiptImageHash || '').toLowerCase() &&
+            String(row.receiptImageUrl ?? row.receipt_image_url ?? '') ===
+              String(reg.receiptImageUrl || '')
+          )
+        );
+        if (recovered) return recovered;
+      }
       const row = {
         id: localRef('hostreg'),
         sessionId: reg.sessionId,
@@ -2482,6 +2684,7 @@ window.DB = {
         gcashRef: reg.gcashRef || null,
         paymentStatus: reg.paymentStatus || 'pending',
         amount: reg.amount || 0,
+        receiptVerificationId: digital ? receiptVerificationId : null,
         receiptImageUrl: reg.receiptImageUrl || null,
         receiptImageHash: reg.receiptImageHash || null,
         receiptPhash: reg.receiptPhash || null,
@@ -2701,6 +2904,22 @@ window.DB = {
       db.settings[key] = value;
       writeDb(db);
     },
+    async getPaymentReviewNotificationSettings() {
+      const email = String(readDb().settings.payment_review_notification_email || '').trim().toLowerCase();
+      return { ok: true, email, configured: Boolean(email) };
+    },
+    async savePaymentReviewNotificationEmail(email) {
+      const normalized = String(email || '').trim().toLowerCase();
+      const db = readDb();
+      db.settings.payment_review_notification_email = normalized;
+      writeDb(db);
+      return { ok: true, email: normalized, configured: Boolean(normalized) };
+    },
+    async sendPaymentReviewNotificationTest() {
+      const email = String(readDb().settings.payment_review_notification_email || '').trim().toLowerCase();
+      if (!email) return { ok: false, sent: false, error: 'Save a notification email before sending a test.' };
+      return { ok: true, sent: true, skipped: true };
+    },
     clearCache() {},
 
     async createPaymentSession() { throw new Error('Online checkout is disabled in local data mode.'); },
@@ -2712,6 +2931,142 @@ window.DB = {
     async sendTelegramNotification() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingSubmitted() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingUpdate() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async reviewPaymentReceipt(bookingRef, decision, reason = '') {
+      const normalizedDecision = String(decision || '').trim().toLowerCase();
+      const normalizedReason = String(reason || '').trim();
+      if (!['approve', 'reject'].includes(normalizedDecision)) throw new Error('Choose a valid payment-review decision.');
+      if (normalizedDecision === 'reject' && normalizedReason.length < 3) {
+        throw new Error('Enter a rejection reason of at least 3 characters.');
+      }
+
+      const db = readDb();
+      const primary = db.bookings.find(b =>
+        String(b.ref) === String(bookingRef) || String(b.groupRef || '') === String(bookingRef)
+      );
+      if (!primary) throw new Error('Booking not found.');
+      const rows = primary.groupRef
+        ? db.bookings.filter(b => String(b.groupRef || '') === String(primary.groupRef))
+        : [primary];
+      if (rows.some(b => b.status !== 'pending' || b.paymentStatus !== 'for_verification')) {
+        throw new Error('This payment is no longer awaiting review. Refresh the dashboard to see its latest status.');
+      }
+      if (rows.some(b => !String(b.receiptImageUrl || '').trim())) {
+        throw new Error('Cannot review this digital payment because no receipt image is stored.');
+      }
+
+      const total = rows.reduce((sum, b) => sum + Number(b.total || 0), 0);
+      const collected = rows.reduce((sum, b) => sum + Number(b.downpayment || 0), 0);
+      const status = normalizedDecision === 'approve' ? 'confirmed' : 'cancelled';
+      const paymentStatus = normalizedDecision === 'approve'
+        ? (collected >= total - 0.01 ? 'paid' : 'downpayment_paid')
+        : 'rejected';
+      const refs = new Set(rows.map(b => String(b.ref)));
+      db.bookings = db.bookings.map(b => refs.has(String(b.ref)) ? { ...b, status, paymentStatus } : b);
+      writeDb(db);
+      return {
+        ok: true,
+        local: true,
+        decision: normalizedDecision,
+        bookingRef: primary.groupRef || primary.ref,
+        refs: [...refs],
+        status,
+        paymentStatus,
+      };
+    },
+    async reviewOpenPlayPaymentReceipt(registrationId, decision, reason = '') {
+      const id = String(registrationId || '');
+      const normalizedDecision = String(decision || '').trim().toLowerCase();
+      const normalizedReason = String(reason || '').trim();
+      if (!['approve', 'reject'].includes(normalizedDecision)) {
+        throw new Error('Choose a valid payment-review decision.');
+      }
+      if (normalizedDecision === 'reject' && normalizedReason.length < 3) {
+        throw new Error('Enter a rejection reason of at least 3 characters.');
+      }
+      const db = readDb();
+      const index = db.openPlayRegistrations.findIndex(row =>
+        String(row.id) === id
+      );
+      if (index < 0) throw new Error('Open Play registration not found.');
+      const row = db.openPlayRegistrations[index];
+      if (
+        row.payment_status !== 'pending' ||
+        !PB_DIGITAL_PAYMENT_METHODS.includes(
+          normalizePaymentKey(row.payment_method)
+        )
+      ) {
+        throw new Error('This Open Play payment is no longer awaiting review.');
+      }
+      if (
+        !String(row.receipt_image_url || '').trim() ||
+        !String(row.receipt_image_hash || '').trim() ||
+        !row.receipt_verification_id
+      ) {
+        throw new Error('Cannot review this payment because no verified receipt image is stored.');
+      }
+      const paymentStatus = normalizedDecision === 'approve'
+        ? 'paid'
+        : 'rejected';
+      db.openPlayRegistrations[index] = {
+        ...row,
+        payment_status: paymentStatus,
+      };
+      writeDb(db);
+      return {
+        ok: true,
+        local: true,
+        contextType: 'open_play',
+        registrationId: row.id,
+        decision: normalizedDecision,
+        paymentStatus,
+      };
+    },
+    async reviewHostSessionPaymentReceipt(registrationId, decision, reason = '') {
+      const id = String(registrationId || '').trim().toLowerCase();
+      const normalizedDecision = String(decision || '').trim().toLowerCase();
+      const normalizedReason = String(reason || '').trim();
+      if (!['approve', 'reject'].includes(normalizedDecision)) {
+        throw new Error('Choose a valid payment-review decision.');
+      }
+      if (normalizedDecision === 'reject' && normalizedReason.length < 3) {
+        throw new Error('Enter a rejection reason of at least 3 characters.');
+      }
+      const db = readDb();
+      const rows = db.openPlayHostSessionRegistrations || [];
+      const index = rows.findIndex(row => String(row.id).toLowerCase() === id);
+      if (index < 0) throw new Error('Host-session registration not found.');
+      const row = rows[index];
+      const paymentStatus = String(row.paymentStatus || row.payment_status || '');
+      const paymentMethod = normalizePaymentKey(row.paymentMethod || row.payment_method);
+      if (
+        paymentStatus !== 'pending' ||
+        !PB_DIGITAL_PAYMENT_METHODS.includes(paymentMethod)
+      ) {
+        throw new Error('This host-session payment is no longer awaiting review.');
+      }
+      const receiptUrl = row.receiptImageUrl || row.receipt_image_url;
+      const receiptHash = row.receiptImageHash || row.receipt_image_hash;
+      const verificationId = row.receiptVerificationId || row.receipt_verification_id;
+      if (!String(receiptUrl || '').trim() || !String(receiptHash || '').trim() || !verificationId) {
+        throw new Error('Cannot review this payment because no verified receipt image is stored.');
+      }
+      const nextPaymentStatus = normalizedDecision === 'approve' ? 'paid' : 'rejected';
+      rows[index] = {
+        ...row,
+        paymentStatus: nextPaymentStatus,
+        payment_status: nextPaymentStatus,
+      };
+      db.openPlayHostSessionRegistrations = rows;
+      writeDb(db);
+      return {
+        ok: true,
+        local: true,
+        contextType: 'host_session',
+        registrationId: row.id,
+        decision: normalizedDecision,
+        paymentStatus: nextPaymentStatus,
+      };
+    },
     async getIntegrationStatus() {
       return {
         ok: true,
@@ -2725,11 +3080,100 @@ window.DB = {
         ],
       };
     },
-    async verifyGcashReceipt() {
-      return { ok: true, status: 'manual_review', flags: ['local_data_mode'], extracted: {}, confidence: 0, message: 'Local data mode: receipt OCR is not sent to Supabase.' };
+    async verifyGcashReceipt(payload = {}) {
+      const bookingRef = String(payload.bookingRef || '').trim();
+      if (!bookingRef) throw new Error('A booking reference is required.');
+      const receiptFile = await _pbPrepareReceiptImage(payload.imageFile);
+      const receiptImageUrl = await _pbFileToDataUrl(receiptFile);
+      const receiptVerifiedAt = nowIso();
+      const receiptVerificationId =
+        Date.now() * 1000 + Math.floor(Math.random() * 1000);
+      let localHashBytes;
+      if (globalThis.crypto?.subtle?.digest && typeof receiptFile.arrayBuffer === 'function') {
+        localHashBytes = new Uint8Array(
+          await globalThis.crypto.subtle.digest('SHA-256', await receiptFile.arrayBuffer())
+        );
+      } else {
+        localHashBytes = new Uint8Array(32);
+        if (globalThis.crypto?.getRandomValues) {
+          globalThis.crypto.getRandomValues(localHashBytes);
+        }
+        for (let i = 0; i < localHashBytes.length; i += 1) {
+          if (!localHashBytes[i]) localHashBytes[i] = Math.floor(Math.random() * 256);
+        }
+      }
+      const receiptImageHash = Array.from(
+        localHashBytes,
+        byte => byte.toString(16).padStart(2, '0')
+      ).join('');
+      const flags = ['local_data_mode'];
+      const extracted = {
+        provider: String(payload.provider || 'gcash').toLowerCase(),
+        localDataMode: true,
+      };
+      const db = readDb();
+      const primary = db.bookings.find(b =>
+        String(b.ref) === bookingRef || String(b.groupRef || '') === bookingRef
+      );
+      if (primary) {
+        const refs = new Set((primary.groupRef
+          ? db.bookings.filter(b => String(b.groupRef || '') === String(primary.groupRef))
+          : [primary]).map(b => String(b.ref)));
+        db.bookings = db.bookings.map(b => refs.has(String(b.ref)) ? {
+          ...b,
+          status: 'pending',
+          paymentStatus: 'for_verification',
+          receiptImageUrl,
+          receiptImageHash,
+          receiptVerificationId,
+          receiptStatus: 'manual_review',
+          receiptFlags: flags,
+          receiptExtracted: extracted,
+          receiptConfidence: 0,
+          receiptVerifiedAt,
+        } : b);
+        writeDb(db);
+      }
+      return {
+        ok: true,
+        status: 'manual_review',
+        flags,
+        extracted,
+        confidence: 0,
+        receiptImageUrl,
+        receiptImageHash,
+        receiptVerificationId,
+        receiptVerifiedAt,
+        message: 'Local data mode: receipt stored for manual review; OCR was not sent to Supabase.',
+      };
     },
-    async getReceiptSignedUrl() { throw new Error('No stored receipt in local data mode.'); },
-    async getOpenPlayReceiptSignedUrl() { throw new Error('No stored receipt in local data mode.'); },
+    async getReceiptSignedUrl(bookingRef) {
+      const ref = String(bookingRef || '').trim();
+      const booking = readDb().bookings.find(b =>
+        String(b.ref) === ref || String(b.groupRef || '') === ref
+      );
+      if (!String(booking?.receiptImageUrl || '').trim()) throw new Error('No stored receipt in local data mode.');
+      return booking.receiptImageUrl;
+    },
+    async getOpenPlayReceiptSignedUrl(registrationId) {
+      const row = readDb().openPlayRegistrations.find(item =>
+        String(item.id) === String(registrationId)
+      );
+      if (!String(row?.receipt_image_url || '').trim()) {
+        throw new Error('No stored receipt in local data mode.');
+      }
+      return row.receipt_image_url;
+    },
+    async getHostSessionReceiptSignedUrl(registrationId) {
+      const row = (readDb().openPlayHostSessionRegistrations || []).find(item =>
+        String(item.id) === String(registrationId)
+      );
+      const receiptUrl = row?.receiptImageUrl || row?.receipt_image_url || '';
+      if (!String(receiptUrl).trim()) {
+        throw new Error('No stored receipt in local data mode.');
+      }
+      return receiptUrl;
+    },
 
     async seedDefaultData() { readDb(); },
     async getAgreement(userId, version = 1) {

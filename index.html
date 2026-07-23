@@ -3814,14 +3814,32 @@ async function submitHostApplication() {
   }
 }
 
-function closeHostSessionModal() {
-  $('hostSessionModal')?.classList.remove('show');
-}
-
 let _hostSessionCurrent = null;
 let _hostSessionReceiptFile = null;
 let _hostSessionPayMethod = 'gcash';
 let _hostSessionStartedAt = null;
+let _hostSessionSubmissionInFlight = false;
+let _hostSessionModalToken = 0;
+
+function setHostSessionSubmissionLocked(locked) {
+  _hostSessionSubmissionInFlight = Boolean(locked);
+  const modal = $('hostSessionModal');
+  if (!modal) return;
+  modal.setAttribute('aria-busy', locked ? 'true' : 'false');
+  modal.querySelectorAll('button, input').forEach(control => {
+    control.disabled = Boolean(locked);
+  });
+}
+
+function closeHostSessionModal(options = {}) {
+  if (_hostSessionSubmissionInFlight && !options.force) {
+    toast('Please wait while your host-session registration is being saved.', 'inf');
+    return false;
+  }
+  _hostSessionModalToken += 1;
+  $('hostSessionModal')?.classList.remove('show');
+  return true;
+}
 
 function hostSessionShareUrl(id) {
   const url = new URL(location.href);
@@ -3853,6 +3871,7 @@ function hostSessionReceiver(method) {
 }
 
 function setHostSessionPayMethod(method) {
+  if (_hostSessionSubmissionInFlight) return;
   if (!paymentMethods[method]) return;
   _hostSessionPayMethod = method;
   if ($('hsPaymentBox') && _hostSessionCurrent) renderHostSessionPayment(_hostSessionCurrent);
@@ -3923,6 +3942,7 @@ function renderHostSessionPayment(session) {
 }
 
 function syncHostSessionRef() {
+  if (_hostSessionSubmissionInFlight) return;
   const input = $('hsPaymentRef');
   if (!input) return;
   const clean = normalizePaymentRef(input.value, _hostSessionPayMethod);
@@ -3937,6 +3957,11 @@ function copyHostSessionPaymentNumber() {
 }
 
 function onHostSessionReceiptPicked(e) {
+  if (_hostSessionSubmissionInFlight) {
+    e.target.value = '';
+    toast('Please wait while your host-session registration is being saved.', 'inf');
+    return;
+  }
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   if (!f.type.startsWith('image/')) { toast('Please choose an image file.', 'err'); e.target.value = ''; return; }
@@ -3953,30 +3978,46 @@ function syncHostSessionReceiptPreview() {
   if ($('hsReceiptDrop')) $('hsReceiptDrop').style.display = 'none';
 }
 
-function clearHostSessionReceipt() {
+function clearHostSessionReceipt(options = {}) {
+  if (_hostSessionSubmissionInFlight && !options.force) {
+    toast('Please wait while your host-session registration is being saved.', 'inf');
+    return false;
+  }
   _hostSessionReceiptFile = null;
   if ($('hsReceiptImg')) $('hsReceiptImg').value = '';
   if ($('hsReceiptPreviewWrap')) $('hsReceiptPreviewWrap').style.display = 'none';
   if ($('hsReceiptDrop')) $('hsReceiptDrop').style.display = '';
   if ($('hsReceiptStatus')) $('hsReceiptStatus').style.display = 'none';
+  return true;
 }
 
-async function verifyHostSessionReceipt(ref, method, inlineData) {
+async function verifyHostSessionReceipt(
+  ref,
+  method,
+  inlineData,
+  receiptFile = _hostSessionReceiptFile,
+) {
   const st = $('hsReceiptStatus');
   if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = 'Verifying your receipt...'; }
+  if (!receiptFile) throw new Error('Receipt screenshot is required.');
   const res = await DB.verifyGcashReceipt({
     bookingRef: ref,
     provider: method,
-    imageFile: _hostSessionReceiptFile,
-    contentType: _hostSessionReceiptFile.type || 'image/jpeg',
+    imageFile: receiptFile,
+    contentType: receiptFile.type || 'image/jpeg',
     bookingData: inlineData,
   });
-  const status = res?.status || 'manual_review';
+  const receiptImageUrl = res?.receiptImageUrl || null;
+  const status = !receiptImageUrl
+    ? 'incomplete'
+    : res?.status === 'auto_approved'
+    ? 'auto_approved'
+    : 'manual_review';
   const msg = res?.publicReason || res?.message || 'Receipt received.';
   if (st) {
     if (status === 'auto_approved') { st.style.background = 'rgba(var(--ac),.12)'; st.style.color = 'var(--accent)'; st.textContent = 'Payment verified. Your spot is confirmed.'; }
-    else if (status === 'rejected') { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt rejected: ' + msg; }
-    else { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = 'Receipt needs review. Your spot is pending.'; }
+    else if (status === 'manual_review') { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = 'Receipt needs review. Your spot is pending.'; }
+    else { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt upload incomplete. Please retry.'; }
   }
   return {
     status,
@@ -3984,96 +4025,156 @@ async function verifyHostSessionReceipt(ref, method, inlineData) {
     flags: res?.flags || [],
     extracted: res?.extracted || null,
     confidence: res?.confidence ?? null,
-    receiptImageUrl: res?.receiptImageUrl || null,
+    receiptImageUrl,
     receiptImageHash: res?.receiptImageHash || null,
     receiptPhash: res?.receiptPhash || null,
+    receiptVerificationId: res?.receiptVerificationId || null,
     receiptVerifiedAt: res?.receiptVerifiedAt || new Date().toISOString(),
+    registration: res?.registration || null,
   };
 }
 
 async function submitHostSessionJoin() {
+  if (_hostSessionSubmissionInFlight) return;
   const session = _hostSessionCurrent;
   if (!session) return;
   const btn = $('hsJoinBtn');
   const name = $('hsJoinName')?.value?.trim() || '';
   const phone = $('hsJoinPhone')?.value?.trim() || '';
   const amount = Number(session.feePerPlayer || 0);
+  const paymentMethod = amount > 0 ? _hostSessionPayMethod : 'cash';
+  const receiptFile = amount > 0 ? _hostSessionReceiptFile : null;
   if (!name) { toast('Enter your full name.', 'err'); $('hsJoinName')?.focus(); return; }
   if (phone && !/^(09|\+639)\d{9}$/.test(phone.replace(/\s|-/g,''))) { toast('Enter a valid PH contact number.', 'err'); $('hsJoinPhone')?.focus(); return; }
   if (amount > 0 && !hostSessionDigitalMethods().length) { toast('Digital payment is not available right now.', 'err'); return; }
   const refInput = $('hsPaymentRef');
-  const paymentRef = normalizePaymentRef(refInput?.value || '', _hostSessionPayMethod);
+  const paymentRef = normalizePaymentRef(refInput?.value || '', paymentMethod);
   if (amount > 0) {
-    if (!paymentRef) { toast(_hostSessionPayMethod === 'bpi' ? 'Enter your BPI Confirmation No.' : _hostSessionPayMethod === 'maribank' ? 'Enter your 6-digit MariBank Reference Number.' : 'Enter your payment reference number.', 'err'); refInput?.focus(); return; }
-    if (_hostSessionPayMethod === 'gcash' && !isGcashRefValid(paymentRef)) { toast('GCash reference number must be exactly 13 digits.', 'err'); refInput?.focus(); return; }
-    if (_hostSessionPayMethod === 'bdopay' && !isBdoPayRefValid(paymentRef)) { toast('BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'err'); refInput?.focus(); return; }
-    if (_hostSessionPayMethod === 'maya' && !isMayaRefValid(paymentRef)) { toast('Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'err'); refInput?.focus(); return; }
-    if (_hostSessionPayMethod === 'bpi' && !isBpiConfirmationValid(paymentRef)) { toast('Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'err'); refInput?.focus(); return; }
-    if (_hostSessionPayMethod === 'maribank' && !isMaribankReferenceValid(paymentRef)) { toast('MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'err'); refInput?.focus(); return; }
-    if (!_hostSessionReceiptFile) { toast('Please upload your payment receipt screenshot.', 'err'); return; }
+    if (!paymentRef) { toast(paymentMethod === 'bpi' ? 'Enter your BPI Confirmation No.' : paymentMethod === 'maribank' ? 'Enter your 6-digit MariBank Reference Number.' : 'Enter your payment reference number.', 'err'); refInput?.focus(); return; }
+    if (paymentMethod === 'gcash' && !isGcashRefValid(paymentRef)) { toast('GCash reference number must be exactly 13 digits.', 'err'); refInput?.focus(); return; }
+    if (paymentMethod === 'bdopay' && !isBdoPayRefValid(paymentRef)) { toast('BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'err'); refInput?.focus(); return; }
+    if (paymentMethod === 'maya' && !isMayaRefValid(paymentRef)) { toast('Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'err'); refInput?.focus(); return; }
+    if (paymentMethod === 'bpi' && !isBpiConfirmationValid(paymentRef)) { toast('Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'err'); refInput?.focus(); return; }
+    if (paymentMethod === 'maribank' && !isMaribankReferenceValid(paymentRef)) { toast('MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'err'); refInput?.focus(); return; }
+    if (!receiptFile) { toast('Please upload your payment receipt screenshot.', 'err'); return; }
   }
-  if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+  const submission = Object.freeze({
+    modalToken: _hostSessionModalToken,
+    verificationRef: 'HS-' + Date.now().toString(36).toUpperCase(),
+    sessionId: session.id,
+    sessionDate: session.date,
+    maxPlayers: Number(session.maxPlayers || 0),
+    fullName: name,
+    contactNumber: phone,
+    paymentMethod,
+    paymentReference: paymentRef || null,
+    amount,
+    startedAt: _hostSessionStartedAt || new Date().toISOString(),
+  });
+  const assertCurrentSubmission = () => {
+    if (
+      submission.modalToken !== _hostSessionModalToken ||
+      !$('hostSessionModal')?.classList.contains('show') ||
+      String(_hostSessionCurrent?.id || '') !== String(submission.sessionId)
+    ) {
+      const cancelled = new Error('Host-session submission was cancelled.');
+      cancelled.code = 'HOST_SESSION_SUBMISSION_CANCELLED';
+      throw cancelled;
+    }
+  };
+  setHostSessionSubmissionLocked(true);
+  if (btn) btn.textContent = 'Submitting...';
   try {
-    const currentCount = await DB.getOpenPlayHostSessionRegistrationCount(session.id);
-    if (currentCount >= Number(session.maxPlayers || 0)) {
+    const currentCount = await DB.getOpenPlayHostSessionRegistrationCount(submission.sessionId);
+    assertCurrentSubmission();
+    if (currentCount >= submission.maxPlayers) {
       toast('This host session is already full.', 'err');
       return;
     }
-    const joinRef = 'HS-' + Date.now().toString(36).toUpperCase();
     let receiptResult = null;
-    let paymentStatus = amount > 0 ? 'pending' : 'paid';
-    if (amount > 0) {
-      receiptResult = await verifyHostSessionReceipt(joinRef, _hostSessionPayMethod, {
-        ref: joinRef,
-        host_session_id: session.id,
-        total: amount,
-        downpayment: amount,
-        gcash_ref: paymentRef,
-        date: session.date,
-        full_name: name,
-        created_at: _hostSessionStartedAt || new Date().toISOString(),
+    let paymentStatus = submission.amount > 0 ? 'pending' : 'paid';
+    if (submission.amount > 0) {
+      receiptResult = await verifyHostSessionReceipt(
+        submission.verificationRef,
+        submission.paymentMethod,
+        {
+          ref: submission.verificationRef,
+          host_session_id: submission.sessionId,
+          total: submission.amount,
+          downpayment: submission.amount,
+          gcash_ref: submission.paymentReference,
+          date: submission.sessionDate,
+          full_name: submission.fullName,
+          contact_number: submission.contactNumber,
+          registration_persistence_version: 1,
+          created_at: submission.startedAt,
+        },
+        receiptFile,
+      );
+      assertCurrentSubmission();
+      if (
+        !receiptResult.receiptImageUrl ||
+        !Number.isSafeInteger(Number(receiptResult.receiptVerificationId)) ||
+        Number(receiptResult.receiptVerificationId) <= 0
+      ) {
+        toast('Receipt upload is incomplete. Please attach the screenshot and retry.', 'err');
+        return;
+      }
+      paymentStatus = receiptResult.status === 'auto_approved' ? 'paid' : 'pending';
+    }
+    assertCurrentSubmission();
+    const savedRegistration = receiptResult?.registration ||
+      await DB.addOpenPlayHostSessionRegistration({
+        sessionId: submission.sessionId,
+        fullName: submission.fullName,
+        contactNumber: submission.contactNumber,
+        paymentMethod: submission.paymentMethod,
+        gcashRef: submission.paymentReference,
+        paymentStatus,
+        amount: submission.amount,
+        receiptImageUrl: receiptResult?.receiptImageUrl || null,
+        receiptImageHash: receiptResult?.receiptImageHash || null,
+        receiptPhash: receiptResult?.receiptPhash || null,
+        receiptVerificationId: receiptResult?.receiptVerificationId || null,
+        receiptStatus: receiptResult?.status || 'none',
+        receiptFlags: receiptResult?.flags || [],
+        receiptExtracted: receiptResult?.extracted || null,
+        receiptConfidence: receiptResult?.confidence ?? null,
+        receiptVerifiedAt: receiptResult?.receiptVerifiedAt || null,
       });
-      if (receiptResult.status === 'rejected') paymentStatus = 'rejected';
-      else paymentStatus = receiptResult.status === 'auto_approved' ? 'paid' : 'pending';
-    }
-    await DB.addOpenPlayHostSessionRegistration({
-      sessionId: session.id,
-      fullName: name,
-      contactNumber: phone,
-      paymentMethod: amount > 0 ? _hostSessionPayMethod : 'cash',
-      gcashRef: paymentRef || null,
-      paymentStatus,
-      amount,
-      receiptImageUrl: receiptResult?.receiptImageUrl || null,
-      receiptImageHash: receiptResult?.receiptImageHash || null,
-      receiptPhash: receiptResult?.receiptPhash || null,
-      receiptStatus: receiptResult?.status || 'none',
-      receiptFlags: receiptResult?.flags || [],
-      receiptExtracted: receiptResult?.extracted || null,
-      receiptConfidence: receiptResult?.confidence ?? null,
-      receiptVerifiedAt: receiptResult?.receiptVerifiedAt || null,
-    });
-    if (paymentStatus === 'rejected') {
-      toast('Receipt rejected. Please try again with a valid receipt.', 'err');
-      return;
-    }
+    assertCurrentSubmission();
+    const authoritativePaymentStatus = String(
+      savedRegistration?.paymentStatus ??
+      savedRegistration?.payment_status ??
+      paymentStatus
+    ).trim().toLowerCase();
+    const isPaid = authoritativePaymentStatus === 'paid';
+    const isRejected = authoritativePaymentStatus === 'rejected';
     $('hsJoinBox').innerHTML = `
       <div style="text-align:center;padding:12px 4px">
         <div style="font-size:2rem;margin-bottom:8px">🏓</div>
-        <div style="font-weight:900;color:var(--text);margin-bottom:5px">${paymentStatus === 'paid' ? 'You are confirmed!' : 'You are pending review.'}</div>
-        <div style="font-size:.82rem;color:var(--muted);line-height:1.55">${paymentStatus === 'paid' ? 'Your payment was auto-verified.' : 'Your receipt was received and needs owner review.'}</div>
+        <div style="font-weight:900;color:var(--text);margin-bottom:5px">${isPaid ? 'You are confirmed!' : isRejected ? 'Your payment was not accepted.' : 'You are pending review.'}</div>
+        <div style="font-size:.82rem;color:var(--muted);line-height:1.55">${isPaid ? 'Your payment was verified.' : isRejected ? 'This registration was already reviewed. Please contact the court owner if you need help.' : 'Your receipt was received and needs owner review.'}</div>
       </div>`;
     if (btn) btn.style.display = 'none';
   } catch (err) {
-    toast('Could not join host session: ' + extractErrMsg(err), 'err');
+    if (err?.code !== 'HOST_SESSION_SUBMISSION_CANCELLED') {
+      toast('Could not join host session: ' + extractErrMsg(err), 'err');
+    }
   } finally {
+    setHostSessionSubmissionLocked(false);
     if (btn && btn.style.display !== 'none') { btn.disabled = false; btn.textContent = 'Join Session'; }
   }
 }
 
 function renderPublicHostSession(session) {
+  if (_hostSessionSubmissionInFlight) {
+    toast('Please wait while your host-session registration is being saved.', 'inf');
+    return false;
+  }
   const title = session.title || 'Open Play Session';
   const time = `${fmtT(session.startHour)} - ${fmtT(session.endHour)}`;
+  _hostSessionModalToken += 1;
   _hostSessionCurrent = session;
   _hostSessionReceiptFile = null;
   _hostSessionStartedAt = new Date().toISOString();
@@ -4095,6 +4196,7 @@ function renderPublicHostSession(session) {
   if ($('hsJoinBtn')) { $('hsJoinBtn').style.display = ''; $('hsJoinBtn').disabled = false; $('hsJoinBtn').textContent = 'Join Session'; }
   renderHostSessionPayment(session);
   $('hostSessionModal').classList.add('show');
+  return true;
 }
 
 async function maybeOpenHostSessionLink() {
@@ -5450,6 +5552,7 @@ let _reservedRef = null;
 let _reservedRefs = [];
 let _reservationStartedAt = null;
 let _countdownInterval = null;
+let _bookingSubmissionInFlight = false;
 const RESERVATION_MINUTES = 15;
 const GUEST_RESUME_KEY = 'pb_guest_booking_resume_v1';
 
@@ -5462,6 +5565,24 @@ function clearReservationState() {
   _reservedRefs = [];
   _reservationStartedAt = null;
   clearGuestBookingResume();
+}
+
+async function releaseIncompleteReservation(ref) {
+  if (!ref) return;
+  // The receipt verifier stores evidence before OCR and moves the booking to
+  // pending. Never let a close/expiry cleanup cancel a booking once that
+  // evidence exists or after another actor has already finalized it.
+  const current = await DB.getBookingByRef(ref).catch(() => null);
+  if (!current || current.status !== 'verifying') return;
+  if (current.receiptImageUrl) {
+    // Only the server verifier may promote a digital hold to manual review.
+    // Evidence is present, so leave this row untouched for server/admin recovery.
+    return;
+  }
+  await DB.updateBooking(ref, {
+    status: 'cancelled',
+    paymentStatus: 'failed',
+  });
 }
 
 function reservationSecondsLeft(startedAt = _reservationStartedAt) {
@@ -5573,7 +5694,7 @@ async function maybeResumeGuestBooking() {
 
   if (reservationSecondsLeft(resume.startedAt) <= 0) {
     await Promise.allSettled(resume.refs.map(ref =>
-      DB.updateBooking(ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {})
+      releaseIncompleteReservation(ref)
     ));
     clearGuestBookingResume();
     return;
@@ -5625,7 +5746,7 @@ function cancelReservedBookings(refs = reservedRefs()) {
   const uniqueRefs = [...new Set((refs || []).filter(Boolean))];
   clearReservationState();
   return Promise.allSettled(uniqueRefs.map(ref =>
-    DB.updateBooking(ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {})
+    releaseIncompleteReservation(ref)
   ));
 }
 
@@ -5935,7 +6056,11 @@ async function proceedToBook(courtId = null) {
   startSlotCountdown(null, true);
 }
 
-function closeBookModal() {
+function closeBookModal(options = {}) {
+  if (_bookingSubmissionInFlight && !options.force) {
+    toast('Please wait while your receipt is being saved.', 'inf');
+    return false;
+  }
   const itemsToRelease = activeBookingItems();
   $('bookModal').classList.remove('active');
   document.body.style.overflow = '';
@@ -5944,6 +6069,7 @@ function closeBookModal() {
   // the affected grids so temporary "Processing..." slots become available.
   if (reservedRefs().length) releaseReservedBookingViews(itemsToRelease).catch(() => {});
   else clearSelectedBookingUi();
+  return true;
 }
 
 let _reservationIntroDelay = null;
@@ -6051,7 +6177,7 @@ function startSlotCountdown(initialSeconds = null, introduce = false) {
       banner.style.display = 'none';
       // Time expired — cancel reservation and close modal.
       toast('⏰ Time expired! Your slot reservation was released.', 'err');
-      closeBookModal();
+      closeBookModal({ force: true });
       return;
     }
     secsLeft--;
@@ -6186,6 +6312,10 @@ async function wizNext() {
 }
 
 function wizBack() {
+  if (_bookingSubmissionInFlight) {
+    toast('Please wait while your receipt is being saved.', 'inf');
+    return;
+  }
   if (wizStep <= wizStartStep) { closeBookModal(); return; }
   wizGoTo(wizStep - 1);
 }
@@ -6823,17 +6953,17 @@ function pickPay(m) {
     const notes = {
       gcash: [
         'GCash to GCash only.',
-        'BDO Pay/InstaPay receipts will be rejected.',
+        'BDO Pay/InstaPay receipts will require manual review.',
         'Please choose the correct payment method before paying.',
       ],
       bdopay: [
         'BDO Pay to GCash only.',
-        'GCash-to-GCash receipts will be rejected.',
+        'GCash-to-GCash receipts will require manual review.',
         'Please choose the correct payment method before paying.',
       ],
       maya: [
         'Maya to GCash only.',
-        'GCash/BDO Pay receipts will be rejected.',
+        'GCash/BDO Pay receipts will require manual review.',
         'Please choose the correct payment method before paying.',
       ],
       bpi: [
@@ -6892,8 +7022,8 @@ function syncGcashSharedPanel(method) {
   const receiptHelp = $('bReceiptRequired');
   if (receiptHelp) {
     receiptHelp.innerHTML = isBdo
-      ? 'BDO Pay to GCash only.<br>GCash-to-GCash receipts will be rejected.<br>Please choose the correct payment method before paying.'
-      : 'GCash to GCash only.<br>BDO Pay/InstaPay receipts will be rejected.<br>Please choose the correct payment method before paying.';
+      ? 'BDO Pay to GCash only.<br>GCash-to-GCash receipts will require manual review.<br>Please choose the correct payment method before paying.'
+      : 'GCash to GCash only.<br>BDO Pay/InstaPay receipts will require manual review.<br>Please choose the correct payment method before paying.';
   }
   if (isMaya) {
     if (header) header.textContent = 'Maya / QRPh';
@@ -6901,7 +7031,7 @@ function syncGcashSharedPanel(method) {
     const mayaGuide = ['Scan GCash QR in Maya.', 'Pay exact amount via QRPh.', 'Use Reference ID, not InstaPay Ref. No.', 'Upload Maya receipt.'];
     $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-long').forEach((el, i) => { if (mayaGuide[i]) el.textContent = mayaGuide[i]; });
     $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-short').forEach((el, i) => { if (mayaGuide[i]) el.textContent = mayaGuide[i]; });
-    if (receiptHelp) receiptHelp.innerHTML = 'Maya to GCash only.<br>GCash/BDO Pay receipts will be rejected.<br>Please choose the correct payment method before paying.';
+    if (receiptHelp) receiptHelp.innerHTML = 'Maya to GCash only.<br>GCash/BDO Pay receipts will require manual review.<br>Please choose the correct payment method before paying.';
   }
   if (isBpi) {
     if (header) header.textContent = 'BPI / InstaPay';
@@ -7128,7 +7258,7 @@ function setPayAmount(mode) {
 async function submitBookingLegacy(e) {
   if (e) e.preventDefault();
   const submitBtn = $('wizNextBtn');
-  if (submitBtn?.disabled) return;
+  if (submitBtn?.disabled || _bookingSubmissionInFlight) return;
   // Rate limiting: 30-second cooldown between submission attempts
   const now = Date.now();
   const cooldown = 30000;
@@ -7145,6 +7275,7 @@ async function submitBookingLegacy(e) {
   const gcashRef  = $('bGcashRef')?.value?.trim() || '';
   const hasPaymentMethod = ALL_PAYMENT_METHODS.some(m => paymentMethods[m]);
   const digitalPay = isDigitalPayMethod(payMethod);
+  const receiptFile = digitalPay ? _receiptFile : null;
   const gcashNeedsCheckout = false; // Manual QR flow: customer pays via QR and enters ref number
   const checks = [
     [!court, 'Please select a court.', 'courtDisp', 1],
@@ -7166,7 +7297,7 @@ async function submitBookingLegacy(e) {
     [payMethod === 'maya' && !isMayaRefValid(gcashRef), 'Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'bGcashRef', 5],
     [payMethod === 'bpi' && !isBpiConfirmationValid(gcashRef), 'Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'bGcashRef', 5],
     [payMethod === 'maribank' && !isMaribankReferenceValid(gcashRef), 'MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'bGcashRef', 5],
-    [digitalPay && !_receiptFile, () => {
+    [digitalPay && !receiptFile, () => {
       // Scroll to and flash the upload zone so the user knows exactly what's missing.
       const drop = $('bReceiptDrop');
       if (drop) {
@@ -7229,6 +7360,7 @@ async function submitBookingLegacy(e) {
 
   let bookingSaved = false;
   let checkoutOpened = false;
+  _bookingSubmissionInFlight = true;
   try {
     if (_reservedRef) {
       // Slot was already reserved at Book Now — just fill in the details.
@@ -7249,15 +7381,19 @@ async function submitBookingLegacy(e) {
         createdByRole: booking.createdByRole,
         createdByName: booking.createdByName,
         createdByEmail: booking.createdByEmail,
-        paymentStatus: booking.paymentStatus,
-        status:        booking.status,
+        // The placeholder is already verifying. Do not let an upload retry
+        // overwrite a delayed verifier/admin outcome with client-side state.
+        paymentStatus: digitalPay ? undefined : booking.paymentStatus,
+        status:        digitalPay ? undefined : booking.status,
         createdAt:     booking.createdAt,
       });
-      _reservedRef = null;
-      _reservationStartedAt = null;
     } else {
       // Fallback: no prior reservation (e.g. wizard flow) — insert fresh.
       await DB.addBooking(booking);
+      _reservedRef = booking.ref;
+      _reservedRefs = [booking.ref];
+      _reservationStartedAt = booking.createdAt;
+      saveGuestBookingResume();
     }
     bookingSaved = true;
 
@@ -7265,64 +7401,40 @@ async function submitBookingLegacy(e) {
     DB.notifyBookingSubmitted(booking).catch(() => {});
 
     // ── Run OCR against the saved booking ────────────────────────────────
-    if (_receiptFile && digitalPay) {
+    if (digitalPay) {
       try {
         if (submitBtn) submitBtn.textContent = 'Uploading receipt...';
-        booking._receiptResult = await verifyUploadedReceipt(booking.ref, payMethod);
+        booking._receiptResult = await verifyUploadedReceipt(
+          booking.ref,
+          payMethod,
+          null,
+          receiptFile,
+        );
       } catch(err) {
-        // A client timeout does not prove the server failed; it may still be
-        // storing or verifying the receipt. Never cancel a paid booking on an
-        // uncertain network result. Keep the server row as verifying and give
-        // the customer their reference for manual follow-up.
-        booking.status = 'pending';
-        booking.paymentStatus = 'for_verification';
-        DB.notifyBookingUpdate(booking, 'payment_review_needed', `Receipt request uncertain: ${extractErrMsg(err)}`).catch(() => {});
-        showInvoice(booking);
-        resetForm();
-        toast(`Booking saved as ${booking.ref}. Receipt verification is still pending; please do not pay again.`, 'inf');
-        await renderCourts();
-        onCardDate(booking.courtId, booking.date).catch(() => {});
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '🎾 Confirm Booking'; }
-        return;
+        // A timeout can happen after Storage succeeds. Proceed only when the
+        // saved row proves that the evidence was attached; otherwise keep the
+        // same booking form and reservation available for an upload retry.
+        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref);
+        if (!booking._receiptResult) {
+          keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
+          return;
+        }
       }
       if (!booking._receiptResult?.receiptImageUrl) {
-        booking.status = 'pending';
-        booking.paymentStatus = 'for_verification';
-        DB.notifyBookingUpdate(booking, 'payment_review_needed', 'Receipt verification returned without a stored image path.').catch(() => {});
-        showInvoice(booking);
-        resetForm();
-        toast(`Booking saved as ${booking.ref}. The receipt needs manual review; please do not pay again.`, 'inf');
-        await renderCourts();
-        onCardDate(booking.courtId, booking.date).catch(() => {});
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '🎾 Confirm Booking'; }
+        keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
         return;
       }
       const ocrStatus = booking._receiptResult?.status;
-      if (ocrStatus === 'rejected') {
-        // Edge fn already set status=cancelled on the booking. Show rejection
-        // screen then refresh the grid so the slot turns free immediately.
-        booking.status = 'cancelled';
-        booking.paymentStatus = 'rejected';
-        DB.notifyBookingUpdate(booking, 'payment_rejected', receiptReasonFromFlags(booking._receiptResult?.flags || [])).catch(() => {});
-        showInvoice(booking);
-        resetForm();
-        // Refresh both the card grid (today) AND the specific date-picker view
-        // for the rejected booking's date so the slot turns free right away.
-        await renderCourts();
-        onCardDate(booking.courtId, booking.date).catch(() => {});
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '🎾 Confirm Booking'; }
-        return;
-      } else if (ocrStatus === 'auto_approved') {
+      if (ocrStatus === 'auto_approved') {
         booking.status = 'confirmed';
         booking.paymentStatus = (booking.downpayment >= booking.total - 1) ? 'paid' : 'downpayment_paid';
         DB.notifyBookingUpdate(booking, 'payment_verified', 'Receipt auto-verified.').catch(() => {});
         sendCustomerConfirmationEmail(booking);
       } else {
-        // manual_review or OCR error — downgrade from verifying to pending so
-        // slot shows as taken (red) while admin reviews it, not yellow forever.
+        // Any stored non-pass remains attached to a pending booking for an
+        // owner to review. The Edge Function is authoritative for DB state.
         booking.status = 'pending';
         booking.paymentStatus = 'for_verification';
-        await DB.updateBooking(booking.ref, { status: 'pending', paymentStatus: 'for_verification' }).catch(() => {});
         DB.notifyBookingUpdate(booking, 'payment_review_needed', receiptReasonFromFlags(booking._receiptResult?.flags || []) || 'Receipt needs owner review.').catch(() => {});
         onCardDate(booking.courtId, booking.date).catch(() => {});
       }
@@ -7372,6 +7484,7 @@ async function submitBookingLegacy(e) {
       toast(`Failed to save booking: ${extractErrMsg(err)}`, 'err');
     }
   } finally {
+    _bookingSubmissionInFlight = false;
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = '🎾 Confirm Booking';
@@ -7382,7 +7495,7 @@ async function submitBookingLegacy(e) {
 async function submitBooking(e) {
   if (e) e.preventDefault();
   const submitBtn = $('wizNextBtn');
-  if (submitBtn?.disabled) return;
+  if (submitBtn?.disabled || _bookingSubmissionInFlight) return;
 
   const now = Date.now();
   const cooldown = 30000;
@@ -7403,6 +7516,7 @@ async function submitBooking(e) {
   const gcashRef  = $('bGcashRef')?.value?.trim() || '';
   const hasPaymentMethod = ALL_PAYMENT_METHODS.some(m => paymentMethods[m]);
   const digitalPay = isDigitalPayMethod(payMethod);
+  const receiptFile = digitalPay ? _receiptFile : null;
   const repairItem = items.find(item => getCourtRepair(item.courtName, item.date));
 
   const checks = [
@@ -7425,7 +7539,7 @@ async function submitBooking(e) {
     [payMethod === 'maya' && !isMayaRefValid(gcashRef), 'Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'bGcashRef', 5],
     [payMethod === 'bpi' && !isBpiConfirmationValid(gcashRef), 'Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'bGcashRef', 5],
     [payMethod === 'maribank' && !isMaribankReferenceValid(gcashRef), 'MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'bGcashRef', 5],
-    [digitalPay && !_receiptFile, () => {
+    [digitalPay && !receiptFile, () => {
       const drop = $('bReceiptDrop');
       if (drop) markBookingInvalid(drop, 5);
       return 'Please upload your receipt screenshot before confirming.';
@@ -7495,6 +7609,7 @@ async function submitBooking(e) {
   stopSlotCountdown();
 
   let bookingSaved = false;
+  _bookingSubmissionInFlight = true;
   try {
     for (const row of itemBookings) {
       if (heldRefs.has(row.ref)) {
@@ -7515,58 +7630,43 @@ async function submitBooking(e) {
           createdByRole: row.createdByRole,
           createdByName: row.createdByName,
           createdByEmail: row.createdByEmail,
-          paymentStatus: row.paymentStatus,
-          status:        row.status,
+          paymentStatus: digitalPay ? undefined : row.paymentStatus,
+          status:        digitalPay ? undefined : row.status,
           createdAt:     row.createdAt,
         });
       } else {
         await DB.addBooking(row);
       }
     }
-    clearReservationState();
+    _reservedRefs = itemBookings.map(row => row.ref);
+    _reservedRef = _reservedRefs[0] || null;
+    _reservationStartedAt = createdAt;
+    saveGuestBookingResume();
     bookingSaved = true;
 
     DB.notifyBookingSubmitted(booking).catch(() => {});
 
-    if (_receiptFile && digitalPay) {
+    if (digitalPay) {
       try {
         if (submitBtn) submitBtn.textContent = 'Uploading receipt...';
-        booking._receiptResult = await verifyUploadedReceipt(booking.ref, payMethod);
+        booking._receiptResult = await verifyUploadedReceipt(
+          booking.ref,
+          payMethod,
+          null,
+          receiptFile,
+        );
       } catch(err) {
-        // Do not overwrite server state after a timeout/network error: the
-        // Edge Function may finish successfully after the WebView disconnects.
-        booking.status = 'pending';
-        booking.paymentStatus = 'for_verification';
-        itemBookings.forEach(row => { row.status = 'pending'; row.paymentStatus = 'for_verification'; });
-        DB.notifyBookingUpdate(booking, 'payment_review_needed', `Receipt request uncertain: ${extractErrMsg(err)}`).catch(() => {});
-        showInvoice(booking);
-        resetForm();
-        toast(`Booking saved as ${booking.ref}. Receipt verification is still pending; please do not pay again.`, 'inf');
-        await refreshBookingItemViews(itemBookings);
-        return;
+        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref);
+        if (!booking._receiptResult) {
+          keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
+          return;
+        }
       }
       if (!booking._receiptResult?.receiptImageUrl) {
-        booking.status = 'pending';
-        booking.paymentStatus = 'for_verification';
-        itemBookings.forEach(row => { row.status = 'pending'; row.paymentStatus = 'for_verification'; });
-        DB.notifyBookingUpdate(booking, 'payment_review_needed', 'Receipt verification returned without a stored image path.').catch(() => {});
-        showInvoice(booking);
-        resetForm();
-        toast(`Booking saved as ${booking.ref}. The receipt needs manual review; please do not pay again.`, 'inf');
-        await refreshBookingItemViews(itemBookings);
+        keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
         return;
       }
       const ocrStatus = booking._receiptResult?.status;
-      if (ocrStatus === 'rejected') {
-        booking.status = 'cancelled';
-        booking.paymentStatus = 'rejected';
-        itemBookings.forEach(row => { row.status = 'cancelled'; row.paymentStatus = 'rejected'; });
-        DB.notifyBookingUpdate(booking, 'payment_rejected', receiptReasonFromFlags(booking._receiptResult?.flags || [])).catch(() => {});
-        showInvoice(booking);
-        resetForm();
-        await refreshBookingItemViews(itemBookings);
-        return;
-      }
       if (ocrStatus === 'auto_approved') {
         booking.status = 'confirmed';
         booking.paymentStatus = (booking.downpayment >= booking.total - 1) ? 'paid' : 'downpayment_paid';
@@ -7580,9 +7680,6 @@ async function submitBooking(e) {
         booking.status = 'pending';
         booking.paymentStatus = 'for_verification';
         itemBookings.forEach(row => { row.status = 'pending'; row.paymentStatus = 'for_verification'; });
-        await Promise.allSettled(itemBookings.map(row =>
-          DB.updateBooking(row.ref, { status: 'pending', paymentStatus: 'for_verification' })
-        ));
         DB.notifyBookingUpdate(booking, 'payment_review_needed', receiptReasonFromFlags(booking._receiptResult?.flags || []) || 'Receipt needs owner review.').catch(() => {});
         await refreshBookingItemViews(itemBookings);
       }
@@ -7595,6 +7692,7 @@ async function submitBooking(e) {
     if (bookingSaved) toast(`Booking saved, but post-processing failed: ${extractErrMsg(err)}`, 'err');
     else toast(`Failed to save booking: ${extractErrMsg(err)}`, 'err');
   } finally {
+    _bookingSubmissionInFlight = false;
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Confirm Booking';
@@ -7606,6 +7704,43 @@ async function submitBooking(e) {
    RECEIPT UPLOAD + AUTO-VERIFICATION
    ============================================= */
 let _receiptFile = null;
+
+function keepReceiptUploadForRetry(message = 'Receipt upload was not completed. Please attach the screenshot and try again.') {
+  const st = $('bReceiptStatus');
+  if (st) {
+    st.style.display = '';
+    st.style.background = 'rgba(229,57,53,.1)';
+    st.style.color = '#e53935';
+    st.textContent = message;
+  }
+  wizGoTo(5);
+  _lastSubmitAt = 0;
+  saveGuestBookingResume({ receiptUploadIncomplete: true });
+  startSlotCountdown(reservationSecondsLeft());
+  toast(message, 'err');
+}
+
+async function recoverStoredBookingReceipt(bookingRef) {
+  const stored = await DB.getBookingByRef(bookingRef).catch(() => null);
+  if (!stored?.receiptImageUrl) return null;
+  const confirmed = stored.status === 'confirmed' &&
+    ['paid', 'downpayment_paid'].includes(stored.paymentStatus);
+  return {
+    status: stored.receiptStatus === 'auto_approved' || confirmed
+      ? 'auto_approved'
+      : 'manual_review',
+    message: confirmed
+      ? 'Payment verified.'
+      : 'Received — the owner will verify your payment shortly.',
+    flags: stored.receiptFlags || [],
+    extracted: stored.receiptExtracted || null,
+    confidence: stored.receiptConfidence ?? null,
+    receiptImageUrl: stored.receiptImageUrl,
+    receiptImageHash: stored.receiptImageHash || null,
+    receiptPhash: stored.receiptPhash || null,
+    receiptVerifiedAt: stored.receiptVerifiedAt || null,
+  };
+}
 
 function onReceiptPicked(e) {
   const f = e.target.files && e.target.files[0];
@@ -7623,33 +7758,48 @@ function onReceiptPicked(e) {
   }
 }
 
-function clearReceipt() {
+function clearReceipt(options = {}) {
+  if (_bookingSubmissionInFlight && !options.force) {
+    toast('Please wait while your receipt is being saved.', 'inf');
+    return false;
+  }
   _receiptFile = null;
   if ($('bReceiptImg')) $('bReceiptImg').value = '';
   if ($('bReceiptPreviewWrap')) $('bReceiptPreviewWrap').style.display = 'none';
   const drop = $('bReceiptDrop'); if (drop) drop.style.display = '';
   const st = $('bReceiptStatus'); if (st) st.style.display = 'none';
+  return true;
 }
 
-async function verifyUploadedReceipt(bookingRef, method, inlineData = null) {
+async function verifyUploadedReceipt(
+  bookingRef,
+  method,
+  inlineData = null,
+  receiptFile = _receiptFile,
+) {
   const st = $('bReceiptStatus');
   if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = '🔎 Verifying your receipt…'; }
   try {
-    if (!_receiptFile) throw new Error('Receipt screenshot is required.');
+    if (!receiptFile) throw new Error('Receipt screenshot is required.');
     const payload = {
       bookingRef,
       provider: method,
-      imageFile: _receiptFile,
-      contentType: _receiptFile.type || 'image/jpeg',
+      imageFile: receiptFile,
+      contentType: receiptFile.type || 'image/jpeg',
     };
     if (inlineData) payload.bookingData = inlineData;
     const res = await DB.verifyGcashReceipt(payload);
-    const status = res?.status || 'manual_review';
+    const receiptImageUrl = res?.receiptImageUrl || null;
+    const status = !receiptImageUrl
+      ? 'incomplete'
+      : res?.status === 'auto_approved'
+      ? 'auto_approved'
+      : 'manual_review';
     const msg = res?.publicReason || res?.message || 'Receipt received.';
     if (st) {
       if (status === 'auto_approved') { st.style.background = 'rgba(var(--ac),.12)'; st.style.color = 'var(--accent)'; st.textContent = '✅ ' + msg; }
-      else if (status === 'rejected') { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = '⚠️ ' + msg; }
-      else { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = '🕓 ' + msg; }
+      else if (status === 'manual_review') { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = '🕓 ' + msg; }
+      else { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt upload incomplete. Please retry.'; }
     }
     return {
       status,
@@ -7657,7 +7807,7 @@ async function verifyUploadedReceipt(bookingRef, method, inlineData = null) {
       flags: res?.flags || [],
       extracted: res?.extracted || null,
       confidence: res?.confidence ?? null,
-      receiptImageUrl: res?.receiptImageUrl || null,
+      receiptImageUrl,
       receiptImageHash: res?.receiptImageHash || null,
       receiptPhash: res?.receiptPhash || null,
       receiptVerifiedAt: res?.receiptVerifiedAt || new Date().toISOString(),
@@ -7676,7 +7826,7 @@ function sendCustomerConfirmationEmail(booking) {
 function resetForm() {
   clearAllBookingInvalids();
   $('bookForm').reset();
-  clearReceipt();
+  clearReceipt({ force: true });
   stopSlotCountdown();
   clearReservationState();
   court = null;
@@ -7708,7 +7858,7 @@ function resetForm() {
   if ($('bookingPolicyAgree')) $('bookingPolicyAgree').checked = false;
   gcashSettings.checkoutVisited = false;
   document.querySelectorAll('.pay-opt').forEach(el => el.classList.remove('on'));
-  closeBookModal();
+  closeBookModal({ force: true });
   updatePrice();
   wizGoTo(1);
   renderCourts();
@@ -7720,8 +7870,10 @@ function resetForm() {
 function showInvoice(b) {
   const set = (id, value) => { const el = $(id); if (el) el.textContent = value; };
   const isConfirmed = b.status === 'confirmed';
-  const receiptStatus = b._receiptResult?.status || b.receiptStatus || '';
-  const isRejected = b.status === 'cancelled' || b.paymentStatus === 'rejected' || receiptStatus === 'rejected';
+  // The automated receipt verdict is preserved for the owner's audit, but it
+  // never cancels a booking. Only the actual booking/payment lifecycle can
+  // produce a rejected customer invoice.
+  const isRejected = b.status === 'cancelled' || b.paymentStatus === 'rejected';
   const isDigitalPay = isDigitalPayMethod(b.paymentMethod);
   const isFullPay = b.downpayment >= b.total;
   const hostDeadline = b.hostBooking && !isFullPay
@@ -7779,7 +7931,7 @@ function showInvoice(b) {
     const flags = b._receiptResult.flags || [];
     const noteEl = $('iDownNote');
 
-    if (s === 'rejected') {
+    if (isRejected) {
       // Red hero
       if (heroEl) heroEl.classList.add('inv-hero--rejected');
       if (checkIconEl) checkIconEl.textContent = '✕';
@@ -7791,7 +7943,7 @@ function showInvoice(b) {
       }
       if (noteEl) {
         const flagText = flags.length ? ' Reason: ' + flags.map(f => f.replace(/_/g,' ')).join(', ') + '.' : '';
-        noteEl.textContent = '❌ Your booking has been cancelled. Please make a new booking and upload a valid GCash receipt.' + flagText;
+        noteEl.textContent = '❌ Your booking has been cancelled. Please make a new booking and upload a valid payment receipt.' + flagText;
       }
     } else if (s === 'auto_approved') {
       if (heroEl) heroEl.classList.add('inv-hero--approved');
@@ -8233,10 +8385,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initScrollReveal();
 });
 
-// Release abandoned placeholder holds, but preserve completed customer
-// submissions for manual review. A WebView can disconnect while the receipt
-// Edge Function continues processing, so stale verifying must not discard a
-// booking that already contains payment details.
+// Release incomplete holds, but preserve any booking whose receipt image was
+// stored. Customer details alone are not payment evidence.
 async function expireStaleVerifyingBookings() {
   try {
     const all = await DB.getBookings();
@@ -8245,15 +8395,10 @@ async function expireStaleVerifyingBookings() {
       b.status === 'verifying' &&
       b.createdAt && new Date(b.createdAt).getTime() < cutoff
     );
-    const abandoned = stale.filter(b =>
-      !b.gcashRef || b.email === 'reserve@hold.internal' || /^Reserving/i.test(String(b.fullName || ''))
-    );
-    const submitted = stale.filter(b => !abandoned.includes(b));
-    await Promise.all(abandoned.map(b =>
-      DB.updateBooking(b.ref, { status: 'cancelled', paymentStatus: 'rejected' }).catch(() => {})
-    ));
-    await Promise.all(submitted.map(b =>
-      DB.updateBooking(b.ref, { status: 'pending', paymentStatus: 'for_verification' }).catch(() => {})
+    // Re-read each row before changing it so a stale browser cache cannot
+    // cancel evidence that the Edge Function attached moments earlier.
+    await Promise.all(stale.map(b =>
+      releaseIncompleteReservation(b.ref).catch(() => {})
     ));
   } catch(_) {}
 }
@@ -8349,12 +8494,20 @@ function closeGrandSplash() {
    OPEN PLAY SIGN-UP
    ============================================= */
 let _opSignupData = { courtId: null, courtName: '', date: '', hour: 0, sessionEnd: 0, sessionLabel: '', fullPay: false, payMethod: 'gcash', gcashRef: '', startedAt: null };
+let _openPlaySubmissionInFlight = false;
+let _openPlayModalToken = 0;
+let _openPlayReceiptAttestationCache = null;
 
 function firstEnabledPaymentMethod() {
   return ALL_PAYMENT_METHODS.find(m => paymentMethods[m]) || '';
 }
 
 async function openPlaySignup(courtId, date, h, courtName) {
+  if (_openPlaySubmissionInFlight) {
+    toast('Please wait while your Open Play registration is being saved.', 'inf');
+    return;
+  }
+  const modalToken = ++_openPlayModalToken;
   const defaultPayMethod = firstEnabledPaymentMethod();
   const session = getOpenPlaySessionForDate(date, courtId) || { start: h, end: h + 1, label: `${fmtT(h)} – ${fmtT(h + 1)}` };
   if (getOpenPlaySessionState(date, session, 1) === 'ended') {
@@ -8363,6 +8516,7 @@ async function openPlaySignup(courtId, date, h, courtName) {
   }
   _opSignupData = { courtId, courtName, date, hour: session.start, sessionEnd: session.end, sessionLabel: session.label, fullPay: false, payMethod: defaultPayMethod, gcashRef: '', startedAt: new Date().toISOString() };
   _opReceiptFile = null;
+  _openPlayReceiptAttestationCache = null;
   const sysFee = _serviceFeeRate;
   const opTotal = openPlayFee + sysFee;
   const half = opTotal / 2;
@@ -8375,6 +8529,10 @@ async function openPlaySignup(courtId, date, h, courtName) {
 
   // Check capacity
   const count = await DB.getOpenPlayCountForDate(date, courtId);
+  if (
+    modalToken !== _openPlayModalToken ||
+    !$('opModal')?.classList.contains('active')
+  ) return;
   if (count >= openPlayMaxPlayers) {
     if ($('opSpotsBadge')) $('opSpotsBadge').textContent = `0/${openPlayMaxPlayers} spots`;
     $('opModalBody').innerHTML = `
@@ -8507,6 +8665,7 @@ function openPlayDpControlsHtml(opTotal) {
 }
 
 function opPickPay(method) {
+  if (_openPlaySubmissionInFlight) return;
   if (!paymentMethods[method]) return;
   _opSignupData.payMethod = method;
   document.querySelectorAll('#opPayOpts .pay-opt').forEach(el => el.classList.toggle('on', el.dataset.m === method));
@@ -8552,15 +8711,15 @@ function opPickPay(method) {
     }[method];
     const receiver = meta.receiver;
     const methodWarning = method === 'bdopay'
-      ? 'BDO Pay to GCash only.<br>GCash-to-GCash receipts will be rejected.<br>Please choose the correct payment method before paying.'
+      ? 'BDO Pay to GCash only.<br>GCash-to-GCash receipts will require manual review.<br>Please choose the correct payment method before paying.'
       : method === 'maya'
-        ? 'Maya to GCash only.<br>GCash/BDO Pay receipts will be rejected.<br>Please choose the correct payment method before paying.'
+        ? 'Maya to GCash only.<br>GCash/BDO Pay receipts will require manual review.<br>Please choose the correct payment method before paying.'
       : method === 'bpi'
         ? 'BPI to GCash/G-Xchange only.<br>Enter the BPI Confirmation No., not the Transaction Ref. No.<br>Upload the full success screen showing both reference numbers, receiver number, amount, and time.'
       : method === 'maribank'
         ? 'MariBank to GCash/G-Xchange only.<br>Enter the exact 6-digit Reference Number, including any leading zero.<br>Upload the full transaction receipt showing the amount, recipient, reference, and date/time.'
       : method === 'gcash'
-        ? 'GCash to GCash only.<br>BDO Pay/InstaPay receipts will be rejected.<br>Please choose the correct payment method before paying.'
+        ? 'GCash to GCash only.<br>BDO Pay/InstaPay receipts will require manual review.<br>Please choose the correct payment method before paying.'
         : `Use ${meta.label} only. Receipts from another payment method will not auto-approve.`;
     const displayReceiverName = method === 'gcash'
       ? (maskGcashOwnerName(receiver.name) || 'Court owner account')
@@ -8634,6 +8793,7 @@ function opPickPay(method) {
 }
 
 function syncOpenPlayRefInput(method = _opSignupData.payMethod || 'gcash') {
+  if (_openPlaySubmissionInFlight) return;
   const input = $('opGcashRef');
   if (!input) return;
   const clean = normalizePaymentRef(input.value, method);
@@ -8670,6 +8830,7 @@ function syncOpenPlayRefInput(method = _opSignupData.payMethod || 'gcash') {
 }
 
 function opSetDP(full) {
+  if (_openPlaySubmissionInFlight) return;
   _opSignupData.fullPay = full;
   $('opDp50')?.classList.toggle('on', !full);
   $('opDp100')?.classList.toggle('on', full);
@@ -8678,20 +8839,32 @@ function opSetDP(full) {
   opPickPay(_opSignupData.payMethod);
 }
 
-function closeOpModal() {
+function closeOpModal(options = {}) {
+  if (_openPlaySubmissionInFlight && !options.force) {
+    toast('Please wait while your Open Play registration is being saved.', 'inf');
+    return false;
+  }
+  _openPlayModalToken += 1;
   $('opModal').classList.remove('active');
-  clearOpReceipt();
+  clearOpReceipt({ force: true });
+  return true;
 }
 
 /* ── Open Play receipt upload + auto-verification ──────────────────────── */
 let _opReceiptFile = null;
 
 function onOpReceiptPicked(e) {
+  if (_openPlaySubmissionInFlight) {
+    e.target.value = '';
+    toast('Please wait while your Open Play registration is being saved.', 'inf');
+    return;
+  }
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   if (!f.type.startsWith('image/')) { toast('Please choose an image file.', 'err'); e.target.value = ''; return; }
   if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'err'); e.target.value = ''; return; }
   _opReceiptFile = f;
+  _openPlayReceiptAttestationCache = null;
   syncOpReceiptPreview();
 }
 
@@ -8703,31 +8876,48 @@ function syncOpReceiptPreview() {
   const drop = $('opReceiptDrop'); if (drop) drop.style.display = 'none';
 }
 
-function clearOpReceipt() {
+function clearOpReceipt(options = {}) {
+  if (_openPlaySubmissionInFlight && !options.force) {
+    toast('Please wait while your Open Play registration is being saved.', 'inf');
+    return false;
+  }
   _opReceiptFile = null;
+  _openPlayReceiptAttestationCache = null;
   if ($('opReceiptImg')) $('opReceiptImg').value = '';
   if ($('opReceiptPreviewWrap')) $('opReceiptPreviewWrap').style.display = 'none';
   const drop = $('opReceiptDrop'); if (drop) drop.style.display = '';
   const st = $('opReceiptStatus'); if (st) st.style.display = 'none';
+  return true;
 }
 
-async function verifyOpReceipt(ref, method, inlineData) {
+async function verifyOpReceipt(
+  ref,
+  method,
+  inlineData,
+  receiptFile = _opReceiptFile,
+) {
   const st = $('opReceiptStatus');
   if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = '🔎 Verifying your receipt…'; }
   try {
+    if (!receiptFile) throw new Error('Receipt screenshot is required.');
     const res = await DB.verifyGcashReceipt({
       bookingRef: ref,
       provider: method,
-      imageFile: _opReceiptFile,
-      contentType: _opReceiptFile.type || 'image/jpeg',
+      imageFile: receiptFile,
+      contentType: receiptFile.type || 'image/jpeg',
       bookingData: inlineData,
     });
-    const status = res?.status || 'manual_review';
+    const receiptImageUrl = res?.receiptImageUrl || null;
+    const status = !receiptImageUrl
+      ? 'incomplete'
+      : res?.status === 'auto_approved'
+      ? 'auto_approved'
+      : 'manual_review';
     const msg = res?.publicReason || res?.message || 'Receipt received.';
     if (st) {
       if (status === 'auto_approved') { st.style.background = 'rgba(var(--ac),.12)'; st.style.color = 'var(--accent)'; st.textContent = '✅ ' + msg; }
-      else if (status === 'rejected') { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = '⚠️ ' + msg; }
-      else { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = '🕓 ' + msg; }
+      else if (status === 'manual_review') { st.style.background = 'rgba(184,126,0,.12)'; st.style.color = '#b87e00'; st.textContent = '🕓 ' + msg; }
+      else { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt upload incomplete. Please retry.'; }
     }
     return {
       status,
@@ -8735,10 +8925,12 @@ async function verifyOpReceipt(ref, method, inlineData) {
       flags: res?.flags || [],
       extracted: res?.extracted || null,
       confidence: res?.confidence ?? null,
-      receiptImageUrl: res?.receiptImageUrl || null,
+      receiptImageUrl,
       receiptImageHash: res?.receiptImageHash || null,
       receiptPhash: res?.receiptPhash || null,
+      receiptVerificationId: res?.receiptVerificationId || null,
       receiptVerifiedAt: res?.receiptVerifiedAt || new Date().toISOString(),
+      registration: res?.registration || null,
     };
   } catch (err) {
     if (st) { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt upload failed. Please attach the screenshot again and retry.'; }
@@ -8747,6 +8939,7 @@ async function verifyOpReceipt(ref, method, inlineData) {
 }
 
 async function submitOpenPlay() {
+  if (_openPlaySubmissionInFlight) return;
   const nameEl = $('opFullName');
   const name = (nameEl?.value || '').trim();
   if (!name) {
@@ -8763,43 +8956,45 @@ async function submitOpenPlay() {
     _opSignupData.gcashRef = normalizePaymentRef(refEl.value, payMethod);
     refEl.value = _opSignupData.gcashRef;
   }
-  if (needsRef && !_opSignupData.gcashRef) {
+  const paymentRef = _opSignupData.gcashRef;
+  const receiptFile = needsRef ? _opReceiptFile : null;
+  if (needsRef && !paymentRef) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast(payMethod === 'bpi' ? 'Please enter your BPI Confirmation No.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number.' : 'Please enter your payment reference number.', 'err');
     refEl?.focus();
     return;
   }
-  if (payMethod === 'gcash' && !isGcashRefValid(_opSignupData.gcashRef)) {
+  if (payMethod === 'gcash' && !isGcashRefValid(paymentRef)) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast('GCash reference number must be exactly 13 digits.', 'err');
     refEl?.focus();
     return;
   }
-  if (payMethod === 'bdopay' && !isBdoPayRefValid(_opSignupData.gcashRef)) {
+  if (payMethod === 'bdopay' && !isBdoPayRefValid(paymentRef)) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast('BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'err');
     refEl?.focus();
     return;
   }
-  if (payMethod === 'maya' && !isMayaRefValid(_opSignupData.gcashRef)) {
+  if (payMethod === 'maya' && !isMayaRefValid(paymentRef)) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast('Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'err');
     refEl?.focus();
     return;
   }
-  if (payMethod === 'bpi' && !isBpiConfirmationValid(_opSignupData.gcashRef)) {
+  if (payMethod === 'bpi' && !isBpiConfirmationValid(paymentRef)) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast('Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'err');
     refEl?.focus();
     return;
   }
-  if (payMethod === 'maribank' && !isMaribankReferenceValid(_opSignupData.gcashRef)) {
+  if (payMethod === 'maribank' && !isMaribankReferenceValid(paymentRef)) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast('MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'err');
     refEl?.focus();
     return;
   }
-  if (needsRef && !_opReceiptFile) {
+  if (needsRef && !receiptFile) {
     const drop = $('opReceiptDrop'); if (drop) drop.style.borderColor = 'var(--red)';
     toast('Please upload your payment receipt screenshot.', 'err');
     return;
@@ -8813,11 +9008,63 @@ async function submitOpenPlay() {
   const opTotal = openPlayFee + _serviceFeeRate;
   const amt = _opSignupData.fullPay ? opTotal : opTotal / 2;
   const payType = _opSignupData.fullPay ? '100%' : '50%';
+  const modalToken = _openPlayModalToken;
+  const attestationKey = needsRef ? JSON.stringify({
+    fullName: name,
+    courtId: String(_opSignupData.courtId || ''),
+    courtName: _opSignupData.courtName,
+    date: _opSignupData.date,
+    hour: Number(_opSignupData.hour),
+    timeLabel: _opSignupData.sessionLabel,
+    paymentType: payType,
+    paymentMethod: payMethod,
+    paymentReference: paymentRef,
+    amount: Number(amt),
+    total: Number(opTotal),
+    fileName: receiptFile?.name || '',
+    fileSize: Number(receiptFile?.size || 0),
+    fileType: receiptFile?.type || '',
+    fileLastModified: Number(receiptFile?.lastModified || 0),
+  }) : '';
+  const cachedAttestation = needsRef &&
+    _openPlayReceiptAttestationCache?.key === attestationKey
+    ? _openPlayReceiptAttestationCache
+    : null;
+  const submission = Object.freeze({
+    modalToken,
+    verificationRef: cachedAttestation?.verificationRef ||
+      ('OP-' + Date.now().toString(36).toUpperCase()),
+    attestationKey,
+    fullName: name,
+    courtId: _opSignupData.courtId,
+    courtName: _opSignupData.courtName,
+    date: _opSignupData.date,
+    hour: _opSignupData.hour,
+    timeLabel: _opSignupData.sessionLabel || `${fmtT(_opSignupData.hour)} – ${fmtT(_opSignupData.hour + 1)}`,
+    paymentType: payType,
+    paymentMethod: payMethod,
+    paymentReference: paymentRef || null,
+    amount: amt,
+    total: opTotal,
+    startedAt: _opSignupData.startedAt,
+  });
+  const assertCurrentSubmission = () => {
+    if (
+      submission.modalToken !== _openPlayModalToken ||
+      !$('opModal')?.classList.contains('active')
+    ) {
+      const cancelled = new Error('Open Play submission was cancelled.');
+      cancelled.code = 'OPEN_PLAY_SUBMISSION_CANCELLED';
+      throw cancelled;
+    }
+  };
   const btn = $('opSubmitBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+  _openPlaySubmissionInFlight = true;
   try {
     // Re-check capacity at submit time to prevent race conditions
-    const currentCount = await DB.getOpenPlayCountForDate(_opSignupData.date, _opSignupData.courtId);
+    const currentCount = await DB.getOpenPlayCountForDate(submission.date, submission.courtId);
+    assertCurrentSubmission();
     if (currentCount >= openPlayMaxPlayers) {
       $('opModalBody').innerHTML = `
         <div style="text-align:center;padding:28px 0">
@@ -8834,105 +9081,119 @@ async function submitOpenPlay() {
     // Inline bookingData makes the edge function verify-only (no bookings write).
     let regPayStatus = 'pending';
     let receiptResult = null;
-    if (needsRef && _opReceiptFile) {
-      const opRef = 'OP-' + Date.now().toString(36).toUpperCase();
-      receiptResult = await verifyOpReceipt(opRef, payMethod, {
-        ref: opRef,
-        total: opTotal,
-        downpayment: amt,
-        gcash_ref: _opSignupData.gcashRef,
-        date: _opSignupData.date,
-        full_name: name,
-        created_at: _opSignupData.startedAt,
-      });
-      if (receiptResult.status === 'rejected') {
-        const timeLabel = _opSignupData.sessionLabel || `${fmtT(_opSignupData.hour)} – ${fmtT(_opSignupData.hour + 1)}`;
-        await DB.addOpenPlayRegistration({
-          fullName: name,
-          courtId: _opSignupData.courtId,
-          courtName: _opSignupData.courtName,
-          date: _opSignupData.date,
-          hour: _opSignupData.hour,
-          timeLabel,
-          paymentType: payType,
-          paymentMethod: _opSignupData.payMethod,
-          gcashRef: _opSignupData.gcashRef || null,
-          paymentStatus: 'rejected',
-          amount: amt,
-          receiptImageUrl: receiptResult.receiptImageUrl,
-          receiptImageHash: receiptResult.receiptImageHash,
-          receiptPhash: receiptResult.receiptPhash,
-          receiptStatus: 'rejected',
-          receiptFlags: receiptResult.flags || [],
-          receiptExtracted: receiptResult.extracted || null,
-          receiptConfidence: receiptResult.confidence,
-          receiptVerifiedAt: receiptResult.receiptVerifiedAt,
-        });
-        toast('Receipt could not be verified: ' + receiptResult.message, 'err');
-        if (btn) { btn.disabled = false; btn.textContent = '🏓 Join Open Play'; }
+    if (needsRef) {
+      receiptResult = cachedAttestation?.result || await verifyOpReceipt(
+        submission.verificationRef,
+        submission.paymentMethod,
+        {
+          ref: submission.verificationRef,
+          total: submission.total,
+          downpayment: submission.amount,
+          gcash_ref: submission.paymentReference,
+          date: submission.date,
+          full_name: submission.fullName,
+          created_at: submission.startedAt,
+          court_id: submission.courtId,
+          court_name: submission.courtName,
+          hour: submission.hour,
+          time_label: submission.timeLabel,
+          payment_type: submission.paymentType,
+          registration_persistence_version: 1,
+        },
+        receiptFile,
+      );
+      assertCurrentSubmission();
+      if (
+        !receiptResult.receiptImageUrl ||
+        !Number.isSafeInteger(Number(receiptResult.receiptVerificationId)) ||
+        Number(receiptResult.receiptVerificationId) <= 0
+      ) {
+        toast('Receipt upload is incomplete. Please attach the screenshot and retry.', 'err');
         return;
       }
+      _openPlayReceiptAttestationCache = {
+        key: submission.attestationKey,
+        verificationRef: submission.verificationRef,
+        result: receiptResult,
+      };
       regPayStatus = receiptResult.status === 'auto_approved' ? 'paid' : 'pending';
     }
-    const timeLabel = _opSignupData.sessionLabel || `${fmtT(_opSignupData.hour)} – ${fmtT(_opSignupData.hour + 1)}`;
-    await DB.addOpenPlayRegistration({
-      fullName: name,
-      courtId: _opSignupData.courtId,
-      courtName: _opSignupData.courtName,
-      date: _opSignupData.date,
-      hour: _opSignupData.hour,
-      timeLabel,
-      paymentType: payType,
-      paymentMethod: _opSignupData.payMethod,
-      gcashRef: _opSignupData.gcashRef || null,
-      paymentStatus: regPayStatus,
-      amount: amt,
-      receiptImageUrl: receiptResult?.receiptImageUrl || null,
-      receiptImageHash: receiptResult?.receiptImageHash || null,
-      receiptPhash: receiptResult?.receiptPhash || null,
-      receiptStatus: receiptResult?.status || 'none',
-      receiptFlags: receiptResult?.flags || [],
-      receiptExtracted: receiptResult?.extracted || null,
-      receiptConfidence: receiptResult?.confidence ?? null,
-      receiptVerifiedAt: receiptResult?.receiptVerifiedAt || null,
-    });
+    assertCurrentSubmission();
+    const savedRegistration = receiptResult?.registration ||
+      await DB.addOpenPlayRegistration({
+        fullName: submission.fullName,
+        courtId: submission.courtId,
+        courtName: submission.courtName,
+        date: submission.date,
+        hour: submission.hour,
+        timeLabel: submission.timeLabel,
+        paymentType: submission.paymentType,
+        paymentMethod: submission.paymentMethod,
+        gcashRef: submission.paymentReference,
+        paymentStatus: regPayStatus,
+        amount: submission.amount,
+        receiptImageUrl: receiptResult?.receiptImageUrl || null,
+        receiptImageHash: receiptResult?.receiptImageHash || null,
+        receiptPhash: receiptResult?.receiptPhash || null,
+        receiptVerificationId: receiptResult?.receiptVerificationId || null,
+        receiptStatus: receiptResult?.status || 'none',
+        receiptFlags: receiptResult?.flags || [],
+        receiptExtracted: receiptResult?.extracted || null,
+        receiptConfidence: receiptResult?.confidence ?? null,
+        receiptVerifiedAt: receiptResult?.receiptVerifiedAt || null,
+      });
+    assertCurrentSubmission();
+    regPayStatus = String(
+      savedRegistration?.paymentStatus ??
+      savedRegistration?.payment_status ??
+      regPayStatus
+    ).trim().toLowerCase();
 
     // Fire-and-forget Telegram notification.
     DB.sendTelegramNotification({
       type: 'open_play',
-      fullName: name,
-      courtName: _opSignupData.courtName,
-      date: _opSignupData.date,
-      timeLabel,
-      paymentType: payType,
-      amount: amt,
+      fullName: submission.fullName,
+      courtName: submission.courtName,
+      date: submission.date,
+      timeLabel: submission.timeLabel,
+      paymentType: submission.paymentType,
+      amount: submission.amount,
     }, { allowFailure: true }).catch(() => {});
 
     $('opModalBody').innerHTML = `
       <div style="text-align:center;padding:28px 0">
         <div style="font-size:3rem;margin-bottom:12px">🏓</div>
-        <div style="font-size:1.2rem;font-weight:700;margin-bottom:8px">You're in!</div>
+        <div style="font-size:1.2rem;font-weight:700;margin-bottom:8px">${regPayStatus === 'rejected' ? 'Your payment was not accepted.' : regPayStatus === 'paid' || submission.paymentMethod === 'cash' ? "You're in!" : 'Your registration is pending review.'}</div>
         <div style="color:var(--muted);font-size:.88rem;line-height:1.65">
-          Thanks, <strong>${name}</strong>!<br/>
-          ${_opSignupData.payMethod === 'cash'
-            ? `Pay <strong>${fmt(amt)}</strong> at the front desk upon arrival.`
+          Thanks, <strong>${esc(submission.fullName)}</strong>!<br/>
+          ${submission.paymentMethod === 'cash'
+            ? `Pay <strong>${fmt(submission.amount)}</strong> at the front desk upon arrival.`
             : regPayStatus === 'paid'
-              ? `✅ Your <strong>${fmt(amt)}</strong> payment was verified. Your spot is confirmed — see you on the court!`
-              : `We received your <strong>${fmt(amt)}</strong> receipt. The owner will verify it shortly — just show your receipt at the front desk.`
+              ? `✅ Your <strong>${fmt(submission.amount)}</strong> payment was verified. Your spot is confirmed — see you on the court!`
+              : regPayStatus === 'rejected'
+                ? `This payment was already reviewed and was not accepted. Please contact the court owner if you need help.`
+                : `We received your <strong>${fmt(submission.amount)}</strong> receipt. The owner will verify it shortly — just show your receipt at the front desk.`
           }
         </div>
       </div>`;
     $('opModalFt').innerHTML = `<button class="btn btn-g" style="width:100%;justify-content:center" onclick="closeOpModal()">Done ✓</button>`;
   } catch(err) {
-    const msg = err instanceof Error ? err.message : JSON.stringify(err);
-    console.error('submitOpenPlay error:', err);
-    toast('Error: ' + msg, 'err');
-    if (btn) { btn.disabled = false; btn.textContent = '🏓 Join Open Play'; }
+    if (err?.code !== 'OPEN_PLAY_SUBMISSION_CANCELLED') {
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      console.error('submitOpenPlay error:', err);
+      if ($('opModal')?.classList.contains('active')) toast('Error: ' + msg, 'err');
+    }
+  } finally {
+    _openPlaySubmissionInFlight = false;
+    if (btn?.isConnected) {
+      btn.disabled = false;
+      btn.textContent = '🏓 Join Open Play';
+    }
   }
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260718-korte-recovery-v1"></script>
+<script src="supabase-config.js?v=20260723-payment-review-v1"></script>
 
 <!-- MOBILE STICKY BOOK NOW BAR -->
 <div id="mobileBookBar" class="mobile-book-bar" style="display:none">
