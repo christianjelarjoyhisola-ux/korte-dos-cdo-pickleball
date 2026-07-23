@@ -3011,10 +3011,41 @@ Deno.serve(async (req) => {
         date: cleanIsoDate(booking.date, "Host-session date"),
       }
       : undefined;
+    // Older pages verify first and insert the registration in a second request.
+    // Preserve every immutable field those pages submit so the short-lived
+    // migration compatibility trigger can bind the later insert to this exact
+    // audit without trusting browser-supplied receipt metadata.
+    const legacyRegistrationContext = !atomicInlineRegistrationRequested &&
+        verificationContext === "open_play"
+      ? {
+        fullName: cleanBoundText(
+          booking.full_name ?? booking.fullName,
+          160,
+          "Open Play full name",
+        ),
+        date: cleanIsoDate(booking.date, "Open Play date"),
+      }
+      : !atomicInlineRegistrationRequested &&
+          verificationContext === "host_session"
+      ? {
+        fullName: cleanBoundText(
+          booking.full_name ?? booking.fullName,
+          160,
+          "Host-session full name",
+        ),
+        hostSessionId: cleanBoundText(
+          booking.host_session_id ?? booking.hostSessionId,
+          80,
+          "Host session",
+        ),
+        date: cleanIsoDate(booking.date, "Host-session date"),
+      }
+      : undefined;
     const auditExtracted = {
       ...extracted,
       verificationContext,
       ...(registrationContext ? { registrationContext } : {}),
+      ...(legacyRegistrationContext ? { legacyRegistrationContext } : {}),
       submittedReference: typedRef,
       expectedAmount,
       expectedTotal,
