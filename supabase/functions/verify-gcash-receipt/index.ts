@@ -1404,6 +1404,34 @@ async function findExistingRegistration(
   return matchingRows[0] || null;
 }
 
+async function findExistingLegacyRegistration(
+  db: any,
+  table: "open_play_registrations" | "open_play_host_session_registrations",
+  imageHash: string,
+  receiptPath: string,
+  matches: (row: Record<string, unknown>) => boolean,
+): Promise<Record<string, unknown> | null> {
+  const selection = table === "open_play_registrations"
+    ? "id,full_name,court_id,court_name,date,hour,time_label,payment_type,payment_method,gcash_ref,payment_status,amount,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,created_at"
+    : "id,session_id,full_name,contact_number,payment_method,gcash_ref,payment_status,amount,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,created_at";
+  const result = await db.from(table).select(selection)
+    .eq("receipt_image_hash", imageHash)
+    .eq("receipt_image_url", receiptPath)
+    .order("created_at", { ascending: true })
+    .limit(5);
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  const matchingRows = rows.filter(matches);
+  if (rows.length > 0 && matchingRows.length !== rows.length) {
+    throw new Error(
+      "Stored receipt evidence is already attached to another registration",
+    );
+  }
+  // Exact duplicates can only be legacy response-loss retries. Return the
+  // oldest canonical row and never create another one.
+  return matchingRows[0] || null;
+}
+
 function persistenceErrorStatus(error: unknown): number {
   const item = error && typeof error === "object"
     ? error as Record<string, unknown>
@@ -1428,16 +1456,23 @@ function isMissingReceiptAttestationContract(error: unknown): boolean {
 async function receiptAttestationContractReady(
   db: any,
   context: Exclude<VerificationContext, "court_booking">,
+  options: { retryMissing?: boolean } = {},
 ): Promise<boolean> {
   const table = context === "host_session"
     ? "open_play_host_session_registrations"
     : "open_play_registrations";
-  const { error } = await db.from(table)
-    .select("receipt_verification_id")
-    .limit(1);
-  if (!error) return true;
-  if (isMissingReceiptAttestationContract(error)) return false;
-  throw error;
+  const attempts = options.retryMissing ? 6 : 1;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const { error } = await db.from(table)
+      .select("receipt_verification_id")
+      .limit(1);
+    if (!error) return true;
+    if (!isMissingReceiptAttestationContract(error)) throw error;
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  return false;
 }
 
 async function persistOpenPlayRegistration(
@@ -1556,17 +1591,30 @@ async function persistOpenPlayRegistration(
     };
     const matches = (row: Record<string, unknown>) =>
       registrationMatchesOpenPlay(row, normalized);
-    let saved = await findExistingRegistration(
+    const contractReady = await receiptAttestationContractReady(
       db,
-      "open_play_registrations",
-      receiptVerificationId,
-      auditHash,
-      matches,
+      "open_play",
+      { retryMissing: true },
     );
+    let saved = contractReady
+      ? await findExistingRegistration(
+        db,
+        "open_play_registrations",
+        receiptVerificationId,
+        auditHash,
+        matches,
+      )
+      : await findExistingLegacyRegistration(
+        db,
+        "open_play_registrations",
+        auditHash,
+        suppliedPath,
+        matches,
+      );
     let recovered = Boolean(saved);
 
     if (!saved) {
-      const { data, error } = await db.from("open_play_registrations").insert({
+      const insertRow: Record<string, unknown> = {
         full_name: fullName,
         court_id: courtId,
         court_name: courtName,
@@ -1578,24 +1626,51 @@ async function persistOpenPlayRegistration(
         payment_method: paymentMethod,
         gcash_ref: gcashRef,
         payment_status: audit.result === "auto_approved" ? "paid" : "pending",
-        receipt_verification_id: receiptVerificationId,
         receipt_image_url: suppliedPath,
         receipt_image_hash: auditHash,
         receipt_status: audit.result === "auto_approved"
           ? "auto_approved"
           : "manual_review",
-      }).select(
-        "id,full_name,court_id,court_name,date,hour,time_label,payment_type,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at",
-      ).single();
+      };
+      if (contractReady) {
+        insertRow.receipt_verification_id = receiptVerificationId;
+      } else {
+        insertRow.receipt_phash = audit.phash || null;
+        insertRow.receipt_flags = Array.isArray(audit.flags) ? audit.flags : [];
+        insertRow.receipt_extracted = receiptPublicExtracted(auditExtracted);
+        insertRow.receipt_confidence = audit.confidence;
+        insertRow.receipt_verified_at = audit.created_at;
+      }
+      const selection = contractReady
+        ? "id,full_name,court_id,court_name,date,hour,time_label,payment_type,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at"
+        : "id,full_name,court_id,court_name,date,hour,time_label,payment_type,payment_method,gcash_ref,payment_status,amount,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,created_at";
+      const { data, error } = await db.from("open_play_registrations")
+        .insert(insertRow).select(selection).single();
       if (error) {
+        if (
+          !contractReady &&
+          await receiptAttestationContractReady(db, "open_play", {
+            retryMissing: true,
+          })
+        ) {
+          return await persistOpenPlayRegistration(db, value);
+        }
         if (!isUniqueViolation(error)) throw error;
-        saved = await findExistingRegistration(
-          db,
-          "open_play_registrations",
-          receiptVerificationId,
-          auditHash,
-          matches,
-        );
+        saved = contractReady
+          ? await findExistingRegistration(
+            db,
+            "open_play_registrations",
+            receiptVerificationId,
+            auditHash,
+            matches,
+          )
+          : await findExistingLegacyRegistration(
+            db,
+            "open_play_registrations",
+            auditHash,
+            suppliedPath,
+            matches,
+          );
         recovered = Boolean(saved);
         if (!saved) throw error;
       } else {
@@ -1779,43 +1854,83 @@ async function persistHostSessionRegistration(
     };
     const matches = (row: Record<string, unknown>) =>
       registrationMatchesHostSession(row, normalized);
-    let saved = await findExistingRegistration(
+    const contractReady = await receiptAttestationContractReady(
       db,
-      "open_play_host_session_registrations",
-      receiptVerificationId,
-      auditHash,
-      matches,
+      "host_session",
+      { retryMissing: true },
     );
+    let saved = contractReady
+      ? await findExistingRegistration(
+        db,
+        "open_play_host_session_registrations",
+        receiptVerificationId,
+        auditHash,
+        matches,
+      )
+      : await findExistingLegacyRegistration(
+        db,
+        "open_play_host_session_registrations",
+        auditHash,
+        suppliedPath,
+        matches,
+      );
     let recovered = Boolean(saved);
 
     if (!saved) {
+      const insertRow: Record<string, unknown> = {
+        session_id: sessionId,
+        full_name: fullName,
+        contact_number: contactNumber || null,
+        payment_method: paymentMethod,
+        gcash_ref: gcashRef,
+        payment_status: audit.result === "auto_approved" ? "paid" : "pending",
+        amount,
+        receipt_image_url: suppliedPath,
+        receipt_image_hash: auditHash,
+        receipt_status: audit.result === "auto_approved"
+          ? "auto_approved"
+          : "manual_review",
+      };
+      if (contractReady) {
+        insertRow.receipt_verification_id = receiptVerificationId;
+      } else {
+        insertRow.receipt_phash = audit.phash || null;
+        insertRow.receipt_flags = Array.isArray(audit.flags) ? audit.flags : [];
+        insertRow.receipt_extracted = receiptPublicExtracted(auditExtracted);
+        insertRow.receipt_confidence = audit.confidence;
+        insertRow.receipt_verified_at = audit.created_at;
+      }
+      const selection = contractReady
+        ? "id,session_id,full_name,contact_number,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at"
+        : "id,session_id,full_name,contact_number,payment_method,gcash_ref,payment_status,amount,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,created_at";
       const { data, error } = await db
-        .from("open_play_host_session_registrations").insert({
-          session_id: sessionId,
-          full_name: fullName,
-          contact_number: contactNumber || null,
-          payment_method: paymentMethod,
-          gcash_ref: gcashRef,
-          payment_status: audit.result === "auto_approved" ? "paid" : "pending",
-          amount,
-          receipt_verification_id: receiptVerificationId,
-          receipt_image_url: suppliedPath,
-          receipt_image_hash: auditHash,
-          receipt_status: audit.result === "auto_approved"
-            ? "auto_approved"
-            : "manual_review",
-        }).select(
-          "id,session_id,full_name,contact_number,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at",
-        ).single();
+        .from("open_play_host_session_registrations")
+        .insert(insertRow).select(selection).single();
       if (error) {
+        if (
+          !contractReady &&
+          await receiptAttestationContractReady(db, "host_session", {
+            retryMissing: true,
+          })
+        ) {
+          return await persistHostSessionRegistration(db, value);
+        }
         if (!isUniqueViolation(error)) throw error;
-        saved = await findExistingRegistration(
-          db,
-          "open_play_host_session_registrations",
-          receiptVerificationId,
-          auditHash,
-          matches,
-        );
+        saved = contractReady
+          ? await findExistingRegistration(
+            db,
+            "open_play_host_session_registrations",
+            receiptVerificationId,
+            auditHash,
+            matches,
+          )
+          : await findExistingLegacyRegistration(
+            db,
+            "open_play_host_session_registrations",
+            auditHash,
+            suppliedPath,
+            matches,
+          );
         recovered = Boolean(saved);
         if (!saved) throw error;
       } else {
@@ -2062,6 +2177,11 @@ Deno.serve(async (req) => {
     let booking: Record<string, unknown>;
     let inlinePricingKind: "open_play" | "host_session" | null = null;
     const hasPersistedBooking = !!persistedRow;
+    const atomicInlineRegistrationRequested = Number(
+      inlineBookingData?.registration_persistence_version ??
+        inlineBookingData?.registrationPersistenceVersion ??
+        0,
+    ) === 1;
     if (persistedRow) {
       booking = { ...(persistedRow as Record<string, unknown>) };
       const persistedStatus = String(booking.status || "");
@@ -2125,7 +2245,10 @@ Deno.serve(async (req) => {
         inlinePricingKind === "open_play" &&
         (
           String(booking.host_session_id || "").trim() ||
-          !String(booking.court_id || booking.courtId || "").trim()
+          (
+            atomicInlineRegistrationRequested &&
+            !String(booking.court_id || booking.courtId || "").trim()
+          )
         )
       ) {
         return json(
@@ -2835,7 +2958,8 @@ Deno.serve(async (req) => {
       : inlinePricingKind === "host_session"
       ? "host_session"
       : "open_play";
-    const registrationContext = verificationContext === "open_play"
+    const registrationContext = atomicInlineRegistrationRequested &&
+        verificationContext === "open_play"
       ? {
         fullName: cleanBoundText(
           booking.full_name ?? booking.fullName,
@@ -2865,7 +2989,8 @@ Deno.serve(async (req) => {
           "Open Play payment type",
         ).toUpperCase(),
       }
-      : verificationContext === "host_session"
+      : atomicInlineRegistrationRequested &&
+          verificationContext === "host_session"
       ? {
         fullName: cleanBoundText(
           booking.full_name ?? booking.fullName,
@@ -2935,7 +3060,7 @@ Deno.serve(async (req) => {
     if (
       !hasPersistedBooking &&
       verificationContext !== "court_booking" &&
-      await receiptAttestationContractReady(db, verificationContext)
+      atomicInlineRegistrationRequested
     ) {
       const receiptVerificationId = Number(auditRow.id);
       const persistenceResponse = verificationContext === "host_session"
