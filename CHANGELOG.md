@@ -6,6 +6,33 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-23] - Owner Payment Review Alerts
+
+### Changed
+- **Pending instead of auto-cancelled** - every successfully stored receipt that does not pass automatic verification now keeps the booking pending for a human decision; automation can confirm a booking but cannot cancel it.
+- **Private owner email alerts** - owners can enter one payment-review notification address in Payment Settings, send a safe test email, and receive one deduplicated alert with a protected deep link to the exact review record. No address is assumed or used as a fallback; leaving the saved field blank keeps email alerts off.
+- **Audited review decisions** - receipt approvals and rejections now use an authenticated, atomic server workflow with stored evidence checks, duplicate-reference protection, group locking, and an immutable decision trail.
+
+### Fixed
+- **No-receipt pending bookings** - incomplete uploads retain the booking form and hold for retry, while stale digital holds without stored evidence expire as incomplete instead of entering Payment Review.
+- **Review safeguards** - missing or unavailable receipt images disable confirmation, resolved payments cannot be decided twice, and booking-table dropdowns cannot bypass the protected review workflow.
+- **Open Play and host-session review delivery** - digital receipt verification, registration persistence, and pending-review notification now complete through one server-controlled request, so a page close after submission cannot silently skip the registration or owner alert.
+- **Stored-receipt recovery** - paid Open Play and host-session uploads create a server audit and pending registration before OCR begins; automatic passes finalize payment references in one transaction, while processing failures remain reviewable instead of becoming orphaned uploads.
+- **Durable email retries** - a private five-minute worker retries failed owner alerts with atomic leases, bounded batches, delivery backoff, and recipient-safe idempotency. It always uses the address saved in Payment Settings, and a blank setting disables delivery without a fallback.
+- **Last-spot payment safety** - if a paid Open Play or host-session receipt loses a simultaneous last-spot race, it is retained as a clearly flagged pending capacity review; the owner is alerted, the player is not auto-cancelled, and approval remains blocked until a spot is actually free.
+- **Race-safe receipt dialogs** - rapidly opening or closing different payment reviews cannot attach one player’s receipt state or decision controls to another record.
+- **Safe rollout for already-open pages** - older booking tabs can bind one recent, exact receipt audit during a short grace period; these registrations are always forced to owner review and never auto-approved.
+
+### Security
+- **Private notification data** - the manually entered court-owner email, email delivery outbox, and review audit are isolated from public settings and restricted by active account role.
+- **Protected receipt access** - signed receipt images and raw OCR verification audits are limited to active owner, court-owner, and staff reviewers.
+- **Server-attested registration proof** - Open Play and paid host-session registrations must match a recent server verification record, stored receipt path and hash, provider, reference, amount, and registration details before they can be saved; payment replay keys are claimed transactionally.
+- **Atomic session capacity review** - Open Play and host-session inserts and approvals lock the session, reserve ordinary pending spots, isolate paid capacity exceptions, and prevent an owner from over-confirming a full session.
+
+**Files affected:** `admin.html`, `host.html`, `index.html`, `login.html`, `supabase-config.js`, `SETUP_NEW_SUPABASE.sql`, `deploy-edge-functions.ps1`, `.github/workflows/deploy-supabase-functions.yml`, `.github/workflows/apply-payment-review-production-migration.yml`, `supabase/migrations/20260723153000_payment_review_notifications.sql`, `supabase/functions/verify-gcash-receipt/`, `supabase/functions/manage-payment-review-notification/`, `supabase/functions/process-payment-review-notifications/`, `supabase/functions/review-payment-receipt/`, `supabase/functions/_shared/payment-review-email.ts`, `supabase/functions/_shared/payment-review-worker.ts`, `supabase/functions/_shared/receipt-review-policy.ts`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-23] - MariBank OCR Layout Reliability
 
 ### Fixed

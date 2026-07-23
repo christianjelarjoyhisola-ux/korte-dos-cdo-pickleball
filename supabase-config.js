@@ -1038,13 +1038,28 @@ window.DB = {
 
   async getOpenPlayCountForDate(date, courtId = null) {
     return _pbCached('openPlayCount', { date, courtId: courtId || '' }, PB_FAST_CACHE_MS.openPlay, async () => {
+      const { data: securedCount, error: securedCountError } = await _sb.rpc(
+        'count_open_play_registrations',
+        {
+          p_date: date,
+          p_court_id: courtId ? String(courtId) : null,
+        }
+      );
+      if (!securedCountError) return Number(securedCount || 0);
+
+      // Keep the pre-migration site working while the secured count RPC rolls
+      // out. Once available, the RPC also serves logged-in hosts without
+      // exposing player or payment columns.
       let query = _sb.from('open_play_registrations')
         .select('id', { count: 'exact', head: true })
         .eq('date', date)
         .or('payment_status.is.null,payment_status.neq.rejected');
       if (courtId) query = query.eq('court_id', String(courtId));
       const { count, error } = await query;
-      if (error) { console.error('getOpenPlayCountForDate:', error); return 0; }
+      if (error) {
+        console.error('getOpenPlayCountForDate:', securedCountError, error);
+        return 0;
+      }
       return count || 0;
     });
   },

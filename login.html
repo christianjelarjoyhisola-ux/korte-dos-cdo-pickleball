@@ -111,6 +111,19 @@ const dark = localStorage.getItem('pb_template_theme') === 'dark';
 document.body.classList.toggle('dark', dark);
 document.body.classList.toggle('light', !dark);
 
+function allowedAdminNext(value) {
+  if (!value) return null;
+  try {
+    const target = new URL(String(value), window.location.href);
+    const adminPath = new URL('admin.html', window.location.href).pathname;
+    if (target.origin !== window.location.origin || target.pathname !== adminPath) return null;
+    if (target.username || target.password) return null;
+    return `admin.html${target.search}${target.hash}`;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function doLogin(e) {
   e.preventDefault();
   const u = document.getElementById('uname').value.trim();
@@ -122,7 +135,7 @@ async function doLogin(e) {
   const r = await Auth.login(u, p, remember);
   if (r.ok) {
     const params = new URLSearchParams(window.location.search);
-    window.location.href = params.get('next') || 'admin.html';
+    window.location.href = allowedAdminNext(params.get('next')) || 'admin.html';
   } else {
     document.getElementById('errBox').textContent = r.msg || 'Invalid email or password.';
     document.getElementById('errBox').classList.add('show');
@@ -134,7 +147,7 @@ async function doLogin(e) {
 // Redirect if already logged in (skip if we were sent here from admin — avoids redirect loop)
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
-  const comingFromAdmin = !!params.get('next');
+  const comingFromAdmin = Boolean(allowedAdminNext(params.get('next')));
   if (!comingFromAdmin && Auth.getSession()) window.location.href = 'admin.html';
   // Check if redirected here from a password reset email
   const hash = window.location.hash;
@@ -184,6 +197,6 @@ async function doSetPassword() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260718-korte-recovery-v1"></script>
+<script src="supabase-config.js?v=20260723-payment-review-v1"></script>
 </body>
 </html>
