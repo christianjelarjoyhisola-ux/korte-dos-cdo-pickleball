@@ -32,7 +32,6 @@ import {
 import { extractReceiptAmount } from "../_shared/receipt-amount.ts";
 import { reconstructGoogleVisionRows } from "../_shared/google-vision-layout.ts";
 import {
-  checkReceiverNumber,
   extractBpiConfirmationNo,
   extractBpiTransactionRefNo,
   hasGcashGxiDestination,
@@ -40,6 +39,10 @@ import {
   isBpiConfirmationNo,
   isBpiReceipt,
 } from "../_shared/bpi-receipt.ts";
+import {
+  checkBpiReceiverNumber,
+  checkGcashReceiverNumber,
+} from "../_shared/receiver-number.ts";
 import {
   buildMariBankTransactionKey,
   checkMariBankDestinationAccount,
@@ -67,6 +70,7 @@ const PAYMENT_WINDOW_MINUTES = 15;
 // OCR usually reads only minute-level timestamps. A receipt paid during the
 // same minute as the hold can look a few seconds "before" the booking.
 const PAYMENT_EARLY_TOLERANCE_MINUTES = 2;
+const MIN_OCR_CONFIDENCE = 0.55;
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
@@ -1515,7 +1519,9 @@ Deno.serve(async (req) => {
           flags.push("GCASH_RECEIPT_UNREADABLE");
         }
 
-        const numCheck = checkReceiverNumber(ocrText, expectedNumber);
+        const numCheck = checkGcashReceiverNumber(ocrText, expectedNumber, {
+          allowHardWrong: ocrConfidence >= MIN_OCR_CONFIDENCE,
+        });
         if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
         else if (numCheck === "unreadable" && expectedNumber) {
           flags.push("NUMBER_UNREADABLE");
@@ -1632,7 +1638,9 @@ Deno.serve(async (req) => {
         if (!hasGcashGxiDestination(ocrText)) {
           flags.push("GXI_DESTINATION_UNREADABLE");
         }
-        const numCheck = checkReceiverNumber(ocrText, expectedNumber);
+        const numCheck = checkBpiReceiverNumber(ocrText, expectedNumber, {
+          allowHardWrong: ocrConfidence >= MIN_OCR_CONFIDENCE,
+        });
         if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
         else if (numCheck === "unreadable") {
           flags.push("NUMBER_UNREADABLE");
@@ -1731,7 +1739,9 @@ Deno.serve(async (req) => {
     if (editedBySoftware(bytes)) flags.push("EDITED_METADATA");
 
     // Low OCR confidence → soft review signal.
-    if (ocrText && ocrConfidence < 0.55) flags.push("LOW_OCR_CONFIDENCE");
+    if (ocrText && ocrConfidence < MIN_OCR_CONFIDENCE) {
+      flags.push("LOW_OCR_CONFIDENCE");
+    }
 
     // ── reference reuse / replay guard ──────────────────────────────────────
     // Use the OCR-extracted ref when available, else the customer-typed ref.

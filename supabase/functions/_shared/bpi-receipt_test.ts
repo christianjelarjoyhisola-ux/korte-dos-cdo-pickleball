@@ -1,11 +1,11 @@
 import {
-  checkReceiverNumber,
   extractBpiConfirmationNo,
   extractBpiTransactionRefNo,
   hasGcashGxiDestination,
   hasSuccessfulBpiTransfer,
   isBpiReceipt,
 } from "./bpi-receipt.ts";
+import { checkBpiReceiverNumber } from "./receiver-number.ts";
 
 const sample = `
 Transfer successful!
@@ -45,14 +45,14 @@ Deno.test("extracts both BPI references from the current layout", () => {
 });
 
 Deno.test("matches the configured GCash receiver number on a BPI receipt", () => {
-  const result = checkReceiverNumber(sample, "0945 398 4516");
+  const result = checkBpiReceiverNumber(sample, "0945 398 4516");
   if (result !== "match") {
     throw new Error(`Expected receiver match, got ${result}`);
   }
 });
 
 Deno.test("rejects a clearly different receiver number", () => {
-  const result = checkReceiverNumber(sample, "0917 111 2222");
+  const result = checkBpiReceiverNumber(sample, "0917 111 2222");
   if (result !== "wrong") {
     throw new Error(`Expected wrong receiver, got ${result}`);
   }
@@ -60,7 +60,7 @@ Deno.test("rejects a clearly different receiver number", () => {
 
 Deno.test("a wrong full mobile number cannot be overridden by other matching digits", () => {
   const receipt = `${sample}\nUnrelated audit value 4516`;
-  const result = checkReceiverNumber(receipt, "0917 111 4516");
+  const result = checkBpiReceiverNumber(receipt, "0917 111 4516");
   if (result !== "wrong") {
     throw new Error(`Expected wrong receiver, got ${result}`);
   }
