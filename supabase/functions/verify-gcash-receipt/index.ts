@@ -1461,7 +1461,7 @@ async function receiptAttestationContractReady(
   const table = context === "host_session"
     ? "open_play_host_session_registrations"
     : "open_play_registrations";
-  const attempts = options.retryMissing ? 6 : 1;
+  const attempts = options.retryMissing ? 20 : 1;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const { error } = await db.from(table)
       .select("receipt_verification_id")
@@ -1594,7 +1594,6 @@ async function persistOpenPlayRegistration(
     const contractReady = await receiptAttestationContractReady(
       db,
       "open_play",
-      { retryMissing: true },
     );
     let saved = contractReady
       ? await findExistingRegistration(
@@ -1857,7 +1856,6 @@ async function persistHostSessionRegistration(
     const contractReady = await receiptAttestationContractReady(
       db,
       "host_session",
-      { retryMissing: true },
     );
     let saved = contractReady
       ? await findExistingRegistration(
