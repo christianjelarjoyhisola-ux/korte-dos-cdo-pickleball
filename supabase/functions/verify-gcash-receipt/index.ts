@@ -10,14 +10,17 @@
 //        payment_status on auto-approve, and alerts admin on review/reject.
 //   { action: "sign", bookingRef }    (admin-only, requires a user JWT)
 //     -> returns a short-lived signed URL to view the stored receipt image.
+//   { action: "persist_open_play_registration", registration }
+//   { action: "persist_host_session_registration", registration }
+//     -> consumes a recent, context-bound receipt audit exactly once.
 //
 // Decision lanes:
 //   auto_approved : zero hard flags, zero soft flags, OCR confident
 //   manual_review : soft flag(s) or unreadable fields or low confidence
-//   rejected      : any hard flag (duplicate / wrong number / underpay / stale)
+//   rejected      : an internal audit verdict for hard fraud/mismatch flags
 //
-// Rejections auto-cancel the booking and release its slot. Uncertain OCR fields
-// must therefore route to manual review instead of becoming hard flags.
+// Automation may confirm a booking, but it never cancels one. Every stored
+// receipt that is not auto-approved remains pending for the court owner.
 // ----------------------------------------------------------------------------
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -43,6 +46,11 @@ import {
   checkBpiReceiverNumber,
   checkGcashReceiverNumber,
 } from "../_shared/receiver-number.ts";
+import {
+  bookingOutcomeForReceipt,
+  customerStatusForProcessedBooking,
+} from "../_shared/receipt-review-policy.ts";
+import { deliverPaymentReviewNotification } from "../_shared/payment-review-email.ts";
 import {
   buildMariBankTransactionKey,
   checkMariBankDestinationAccount,
@@ -76,7 +84,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const PESO_TOLERANCE = 5; // allow ±₱5 rounding; underpay beyond this is a hard flag
 
-// Hard flags force a rejection; soft flags force manual review.
+// Hard flags produce a rejected automated verdict for the audit trail; both
+// hard and soft failures still require an owner's decision.
 const HARD_FLAGS = new Set([
   "REF_FORMAT_INVALID",
   "SUSPECTED_FAKE", // OCR ran and image has zero receipt-like content
@@ -120,39 +129,48 @@ type OcrResult = {
   error?: string;
 };
 
+type VerificationContext =
+  | "court_booking"
+  | "open_play"
+  | "host_session";
+
+type ReceiptDedupeKey = {
+  key: string;
+  providerKey: string;
+  duplicateFlag: string;
+};
+
+type ReceiptAuditRow = {
+  id: number;
+  booking_ref: string;
+  result: "auto_approved" | "manual_review" | "rejected";
+  flags: string[] | null;
+  extracted: Record<string, unknown> | null;
+  confidence: number | null;
+  image_hash: string | null;
+  phash: string | null;
+  created_at: string;
+};
+
+const DIGITAL_PAYMENT_METHODS = new Set<PaymentProvider>([
+  "gcash",
+  "bdopay",
+  "maya",
+  "bpi",
+  "maribank",
+  "gotyme",
+  "pnb",
+]);
+
 function publicReceiptMessage(
   result: "auto_approved" | "manual_review" | "rejected",
-  flags: string[],
+  _flags: string[],
 ): string {
   if (result === "auto_approved") return "Payment verified.";
-  if (result === "manual_review") {
-    return "Received - the owner will verify your payment shortly.";
+  if (result === "rejected") {
+    return "This payment was already reviewed and was not accepted. Please contact the court owner if you need help.";
   }
-
-  const flagSet = new Set(flags);
-  if (flagSet.has("AMOUNT_MISMATCH")) {
-    return "Payment amount is lower than required. Please upload the correct payment receipt.";
-  }
-  if (
-    flagSet.has("TIME_EXPIRED") || flagSet.has("TIME_FUTURE") ||
-    flagSet.has("DATE_NOT_TODAY")
-  ) {
-    return `Payment was sent outside the allowed ${PAYMENT_WINDOW_MINUTES}-minute window. Please create a new booking.`;
-  }
-  if (flagSet.has("IMAGE_UNREADABLE") || flagSet.has("OCR_UNAVAILABLE")) {
-    return "Receipt image is unreadable. Please upload a clearer screenshot.";
-  }
-  if (
-    flagSet.has("SUSPECTED_FAKE") ||
-    flagSet.has("GCASH_RECEIPT_UNREADABLE") ||
-    flagSet.has("BDO_PAY_UNREADABLE") ||
-    flagSet.has("MAYA_UNREADABLE") ||
-    flagSet.has("BPI_UNREADABLE") ||
-    flagSet.has("MARIBANK_UNREADABLE")
-  ) {
-    return "Payment could not be verified. Please upload a valid receipt or contact admin.";
-  }
-  return "Payment details do not match this booking. Please check your receipt and try again, or contact admin.";
+  return "Receipt received. Your booking is pending while the court owner reviews the payment.";
 }
 
 function json(body: unknown, status = 200) {
@@ -174,6 +192,80 @@ function errMsg(err: unknown): string {
   } catch {
     return "Unknown error";
   }
+}
+
+function cleanBoundText(
+  value: unknown,
+  maxLength: number,
+  field: string,
+  required = true,
+): string {
+  const raw = String(value ?? "");
+  if (/[\u0000-\u001f\u007f]/.test(raw)) {
+    throw new Error(`${field} contains invalid control characters`);
+  }
+  const clean = raw.trim().replace(/\s+/g, " ").normalize("NFC");
+  if (required && !clean) throw new Error(`${field} is required`);
+  if (clean.length > maxLength) throw new Error(`${field} is too long`);
+  return clean;
+}
+
+function cleanIsoDate(value: unknown, field = "date"): string {
+  const date = cleanBoundText(value, 10, field);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`${field} must use YYYY-MM-DD`);
+  }
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== date
+  ) {
+    throw new Error(`${field} is invalid`);
+  }
+  return date;
+}
+
+function cleanOpenPlayHour(value: unknown): number {
+  const hour = Number(value);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    throw new Error("Open Play hour must be a whole number from 0 to 23");
+  }
+  return hour;
+}
+
+function closeBoundMoney(left: unknown, right: unknown): boolean {
+  const a = Number(left);
+  const b = Number(right);
+  return Number.isFinite(a) && Number.isFinite(b) &&
+    Math.abs(roundMoney(a) - roundMoney(b)) <= 0.01;
+}
+
+function receiptPublicExtracted(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const publicExtracted = {
+    ...(value as Record<string, unknown>),
+  };
+  for (
+    const key of [
+      "verificationContext",
+      "registrationContext",
+      "submittedReference",
+      "expectedAmount",
+      "expectedTotal",
+      "dedupeKeys",
+      "ocrAnalysisText",
+    ]
+  ) {
+    delete publicExtracted[key];
+  }
+  return publicExtracted;
+}
+
+function isUniqueViolation(error: any): boolean {
+  return String(error?.code || "") === "23505" ||
+    /duplicate key|unique constraint/i.test(String(error?.message || ""));
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -725,7 +817,7 @@ async function loadBookingGroup(
   const { data, error } = await db
     .from("bookings")
     .select(
-      "ref, booking_group_ref, court_id, slots, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at",
+      "ref, booking_group_ref, court_id, court_name, slots, start_time, end_time, duration, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at",
     )
     .eq("booking_group_ref", groupRef)
     .neq("status", "cancelled");
@@ -742,6 +834,32 @@ function bookingLogicalKey(row: Record<string, unknown>): string {
     String(row.date || ""),
     slots.join(","),
   ].join("|");
+}
+
+function paymentReviewCourtLabel(
+  rows: Array<Record<string, unknown>>,
+): string {
+  return [
+    ...new Set(
+      rows.map((row) => String(row.court_name || "").trim()).filter(Boolean),
+    ),
+  ].join(", ");
+}
+
+function paymentReviewScheduleLabel(
+  rows: Array<Record<string, unknown>>,
+): string {
+  return [
+    ...new Set(
+      rows.map((row) => {
+        const date = String(row.date || "").trim();
+        const start = String(row.start_time || "").trim();
+        const end = String(row.end_time || "").trim();
+        const time = start && end ? `${start}–${end}` : start || end;
+        return [date, time].filter(Boolean).join(" · ");
+      }).filter(Boolean),
+    ),
+  ].join(" | ");
 }
 
 function uniqueBookingRows(
@@ -1025,7 +1143,749 @@ async function sendTelegram(message: string) {
   );
 }
 
+async function alertStoredPendingReceiptAfterFailure(
+  db: any,
+  bookingRef: string,
+  provider: PaymentProvider,
+) {
+  try {
+    const { data: row, error } = await db
+      .from("bookings")
+      .select(
+        "ref,booking_group_ref,court_id,court_name,slots,start_time,end_time,duration,total,downpayment,gcash_ref,payment_method,date,payment_status,status,full_name,created_at,receipt_image_url,receipt_image_hash",
+      )
+      .eq("ref", bookingRef)
+      .maybeSingle();
+    if (
+      error || !row || row.status !== "pending" ||
+      row.payment_status !== "for_verification" ||
+      !String(row.receipt_image_url || "").trim() ||
+      !/^[a-f0-9]{64}$/i.test(String(row.receipt_image_hash || ""))
+    ) {
+      return;
+    }
+
+    const booking = row as Record<string, unknown>;
+    const group = await loadBookingGroup(db, booking);
+    const expectedAmount = group.reduce(
+      (sum, item) => sum + toNumber(item.downpayment),
+      0,
+    );
+    await deliverPaymentReviewNotification({
+      db,
+      resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+      fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+      adminUrl: Deno.env.get("PAYMENT_REVIEW_ADMIN_URL") ||
+        "https://kortedoscdo.club/admin.html",
+      notification: {
+        bookingRef,
+        bookingGroupRef: String(booking.booking_group_ref || "") || undefined,
+        contextType: "court_booking",
+        fullName: String(booking.full_name || "") || undefined,
+        provider,
+        paymentReference: String(booking.gcash_ref || "") || undefined,
+        imageHash: String(booking.receipt_image_hash).toLowerCase(),
+        flags: ["VERIFICATION_PROCESSING_ERROR"],
+        expectedAmount,
+        courtLabel: paymentReviewCourtLabel(group) || undefined,
+        scheduleLabel: paymentReviewScheduleLabel(group) || undefined,
+      },
+    });
+    await sendTelegram(
+      `⚠️ <b>RECEIPT NEEDS OWNER REVIEW</b>\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `📋 Ref: <code>${bookingRef}</code>\n` +
+        `⏳ Receipt evidence is stored, but automatic verification did not finish.`,
+    );
+  } catch (notificationError) {
+    console.error(
+      "failed to alert owner after receipt processing error:",
+      errMsg(notificationError),
+    );
+  }
+}
+
 // ── handler ─────────────────────────────────────────────────────────────────
+
+function positiveReceiptVerificationId(value: unknown): number {
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new Error("A valid receipt verification is required");
+  }
+  return id;
+}
+
+function boundMoney(value: unknown, field: string): number {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000) {
+    throw new Error(`${field} is invalid`);
+  }
+  return roundMoney(amount);
+}
+
+function boundDigitalProvider(value: unknown): PaymentProvider {
+  const provider = paymentMethodProvider(value);
+  if (!provider || !DIGITAL_PAYMENT_METHODS.has(provider)) {
+    throw new Error("A supported digital payment method is required");
+  }
+  return provider;
+}
+
+function privateAuditObject(
+  value: unknown,
+  field: string,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${field} is missing from receipt verification`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizedStoredReference(
+  value: unknown,
+  provider: PaymentProvider,
+): string {
+  const reference = normalizeReferenceForProvider(
+    cleanBoundText(value, 160, "Payment reference"),
+    provider,
+  );
+  if (!reference) throw new Error("Payment reference is required");
+  return reference;
+}
+
+function receiptPathMatches(
+  path: string,
+  bookingRef: string,
+  imageHash: string,
+): boolean {
+  return ["jpg", "png", "webp", "heic"].some(
+    (extension) => path === `${bookingRef}/${imageHash}.${extension}`,
+  );
+}
+
+function auditIsRecent(createdAt: unknown): boolean {
+  const timestamp = new Date(String(createdAt || "")).getTime();
+  if (!Number.isFinite(timestamp)) return false;
+  const age = Date.now() - timestamp;
+  return age >= -5 * 60_000 && age <= 30 * 60_000;
+}
+
+async function loadBoundReceiptAudit(
+  db: any,
+  receiptVerificationId: number,
+  context: Exclude<VerificationContext, "court_booking">,
+): Promise<ReceiptAuditRow> {
+  const { data, error } = await db
+    .from("receipt_verifications")
+    .select(
+      "id,booking_ref,result,flags,extracted,confidence,image_hash,phash,created_at",
+    )
+    .eq("id", receiptVerificationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Receipt verification was not found");
+
+  const audit = data as ReceiptAuditRow;
+  const expectedRefPattern = context === "open_play"
+    ? /^OP-[A-Z0-9]{6,40}$/
+    : /^HS-[A-Z0-9]{6,40}$/;
+  const extracted = privateAuditObject(
+    audit.extracted,
+    "Receipt verification details",
+  );
+  if (
+    !auditIsRecent(audit.created_at) ||
+    !expectedRefPattern.test(String(audit.booking_ref || "")) ||
+    extracted.verificationContext !== context ||
+    !["auto_approved", "manual_review", "rejected"].includes(
+      String(audit.result || ""),
+    ) ||
+    !/^[a-f0-9]{64}$/.test(String(audit.image_hash || "").toLowerCase())
+  ) {
+    throw new Error(
+      "Receipt verification expired or does not match this registration",
+    );
+  }
+  return audit;
+}
+
+function registrationMatchesOpenPlay(
+  row: Record<string, unknown>,
+  registration: {
+    fullName: string;
+    courtId: string;
+    courtName: string;
+    date: string;
+    hour: number;
+    timeLabel: string;
+    paymentType: string;
+    paymentMethod: PaymentProvider;
+    gcashRef: string;
+    amount: number;
+    imageHash: string;
+  },
+): boolean {
+  return String(row.full_name || "").trim() === registration.fullName &&
+    String(row.court_id || "").trim() === registration.courtId &&
+    String(row.court_name || "").trim() === registration.courtName &&
+    String(row.date || "").slice(0, 10) === registration.date &&
+    Number(row.hour) === registration.hour &&
+    String(row.time_label || "").trim() === registration.timeLabel &&
+    String(row.payment_type || "").trim().toLowerCase() ===
+      registration.paymentType.toLowerCase() &&
+    String(row.payment_method || "").trim().toLowerCase() ===
+      registration.paymentMethod &&
+    String(row.gcash_ref || "").trim().toUpperCase() ===
+      registration.gcashRef.toUpperCase() &&
+    closeBoundMoney(row.amount, registration.amount) &&
+    String(row.receipt_image_hash || "").trim().toLowerCase() ===
+      registration.imageHash;
+}
+
+function registrationMatchesHostSession(
+  row: Record<string, unknown>,
+  registration: {
+    sessionId: string;
+    fullName: string;
+    contactNumber: string;
+    paymentMethod: PaymentProvider;
+    gcashRef: string;
+    amount: number;
+    imageHash: string;
+  },
+): boolean {
+  return String(row.session_id || "").trim() === registration.sessionId &&
+    String(row.full_name || "").trim() === registration.fullName &&
+    String(row.contact_number || "").trim() === registration.contactNumber &&
+    String(row.payment_method || "").trim().toLowerCase() ===
+      registration.paymentMethod &&
+    String(row.gcash_ref || "").trim().toUpperCase() ===
+      registration.gcashRef.toUpperCase() &&
+    closeBoundMoney(row.amount, registration.amount) &&
+    String(row.receipt_image_hash || "").trim().toLowerCase() ===
+      registration.imageHash;
+}
+
+async function findExistingRegistration(
+  db: any,
+  table: "open_play_registrations" | "open_play_host_session_registrations",
+  receiptVerificationId: number,
+  imageHash: string,
+  matches: (row: Record<string, unknown>) => boolean,
+): Promise<Record<string, unknown> | null> {
+  const selection = table === "open_play_registrations"
+    ? "id,full_name,court_id,court_name,date,hour,time_label,payment_type,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at"
+    : "id,session_id,full_name,contact_number,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at";
+
+  const byAudit = await db.from(table).select(selection)
+    .eq("receipt_verification_id", receiptVerificationId).maybeSingle();
+  if (byAudit.error) throw byAudit.error;
+  if (byAudit.data) {
+    if (!matches(byAudit.data as Record<string, unknown>)) {
+      throw new Error(
+        "Receipt verification is already attached to another registration",
+      );
+    }
+    return byAudit.data as Record<string, unknown>;
+  }
+
+  // A retry after a lost response can create a fresh audit for the same stored
+  // image. Recover the already-committed registration only when every bound
+  // business field still matches.
+  const byHash = await db.from(table).select(selection)
+    .eq("receipt_image_hash", imageHash).limit(2);
+  if (byHash.error) throw byHash.error;
+  const matchingRows = (byHash.data || []).filter(
+    (row: Record<string, unknown>) => matches(row),
+  );
+  if (matchingRows.length > 1) {
+    throw new Error("Receipt recovery found conflicting registrations");
+  }
+  return matchingRows[0] || null;
+}
+
+function persistenceErrorStatus(error: unknown): number {
+  const item = error && typeof error === "object"
+    ? error as Record<string, unknown>
+    : {};
+  const code = String(item.code || "");
+  const message = errMsg(error);
+  if (code === "23505" || code === "23514" || code === "P0001") return 409;
+  if (code === "42501") return 403;
+  if (
+    /required|invalid|expired|does not match|not found|not supported|missing/i
+      .test(message)
+  ) return 400;
+  return 500;
+}
+
+function isMissingReceiptAttestationContract(error: unknown): boolean {
+  const message = errMsg(error);
+  return /receipt_verification_id/i.test(message) &&
+    /(column|schema cache|does not exist|could not find)/i.test(message);
+}
+
+async function receiptAttestationContractReady(
+  db: any,
+  context: Exclude<VerificationContext, "court_booking">,
+): Promise<boolean> {
+  const table = context === "host_session"
+    ? "open_play_host_session_registrations"
+    : "open_play_registrations";
+  const { error } = await db.from(table)
+    .select("receipt_verification_id")
+    .limit(1);
+  if (!error) return true;
+  if (isMissingReceiptAttestationContract(error)) return false;
+  throw error;
+}
+
+async function persistOpenPlayRegistration(
+  db: any,
+  value: unknown,
+): Promise<Response> {
+  try {
+    const source = privateAuditObject(value, "registration");
+    const receiptVerificationId = positiveReceiptVerificationId(
+      source.receiptVerificationId,
+    );
+    const fullName = cleanBoundText(source.fullName, 160, "Full name");
+    const courtId = cleanBoundText(source.courtId, 80, "Court");
+    const courtName = cleanBoundText(source.courtName, 160, "Court name");
+    const date = cleanIsoDate(source.date);
+    const hour = cleanOpenPlayHour(source.hour);
+    const timeLabel = cleanBoundText(source.timeLabel, 80, "Time");
+    const paymentType = cleanBoundText(
+      source.paymentType,
+      16,
+      "Payment type",
+    ).toUpperCase();
+    if (!["50%", "100%"].includes(paymentType)) {
+      throw new Error("Payment type must be 50% or 100%");
+    }
+    const paymentMethod = boundDigitalProvider(source.paymentMethod);
+    const gcashRef = normalizedStoredReference(
+      source.gcashRef,
+      paymentMethod,
+    );
+    const amount = boundMoney(source.amount, "Payment amount");
+    const suppliedPath = cleanBoundText(
+      source.receiptImageUrl,
+      500,
+      "Receipt image",
+    );
+    const suppliedHash = cleanBoundText(
+      source.receiptImageHash,
+      64,
+      "Receipt hash",
+    ).toLowerCase();
+
+    const audit = await loadBoundReceiptAudit(
+      db,
+      receiptVerificationId,
+      "open_play",
+    );
+    const auditExtracted = privateAuditObject(
+      audit.extracted,
+      "Receipt verification details",
+    );
+    const context = privateAuditObject(
+      auditExtracted.registrationContext,
+      "Open Play registration context",
+    );
+    const auditProvider = boundDigitalProvider(auditExtracted.provider);
+    const auditReference = normalizedStoredReference(
+      auditExtracted.submittedReference,
+      auditProvider,
+    );
+    const auditAmount = boundMoney(
+      auditExtracted.expectedAmount,
+      "Verified payment amount",
+    );
+    const auditTotal = boundMoney(
+      auditExtracted.expectedTotal,
+      "Verified total",
+    );
+    const auditHash = String(audit.image_hash || "").toLowerCase();
+
+    if (
+      cleanBoundText(context.fullName, 160, "Verified full name") !==
+        fullName ||
+      cleanBoundText(context.courtId, 80, "Verified court") !== courtId ||
+      cleanBoundText(context.courtName, 160, "Verified court name") !==
+        courtName ||
+      cleanIsoDate(context.date, "Verified date") !== date ||
+      cleanOpenPlayHour(context.hour) !== hour ||
+      cleanBoundText(context.timeLabel, 80, "Verified time") !== timeLabel ||
+      cleanBoundText(
+          context.paymentType,
+          16,
+          "Verified payment type",
+        ).toUpperCase() !== paymentType ||
+      auditProvider !== paymentMethod ||
+      auditReference !== gcashRef ||
+      !closeBoundMoney(auditAmount, amount) ||
+      suppliedHash !== auditHash ||
+      !receiptPathMatches(suppliedPath, audit.booking_ref, auditHash) ||
+      (
+        paymentType === "100%" &&
+        !closeBoundMoney(auditAmount, auditTotal)
+      ) ||
+      (
+        paymentType === "50%" &&
+        !closeBoundMoney(auditAmount, roundMoney(auditTotal / 2))
+      )
+    ) {
+      throw new Error(
+        "Registration details do not match the verified receipt",
+      );
+    }
+
+    const normalized = {
+      fullName,
+      courtId,
+      courtName,
+      date,
+      hour,
+      timeLabel,
+      paymentType,
+      paymentMethod,
+      gcashRef,
+      amount,
+      imageHash: auditHash,
+    };
+    const matches = (row: Record<string, unknown>) =>
+      registrationMatchesOpenPlay(row, normalized);
+    let saved = await findExistingRegistration(
+      db,
+      "open_play_registrations",
+      receiptVerificationId,
+      auditHash,
+      matches,
+    );
+    let recovered = Boolean(saved);
+
+    if (!saved) {
+      const { data, error } = await db.from("open_play_registrations").insert({
+        full_name: fullName,
+        court_id: courtId,
+        court_name: courtName,
+        date,
+        hour,
+        time_label: timeLabel,
+        payment_type: paymentType,
+        amount,
+        payment_method: paymentMethod,
+        gcash_ref: gcashRef,
+        payment_status: audit.result === "auto_approved" ? "paid" : "pending",
+        receipt_verification_id: receiptVerificationId,
+        receipt_image_url: suppliedPath,
+        receipt_image_hash: auditHash,
+        receipt_status: audit.result === "auto_approved"
+          ? "auto_approved"
+          : "manual_review",
+      }).select(
+        "id,full_name,court_id,court_name,date,hour,time_label,payment_type,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at",
+      ).single();
+      if (error) {
+        if (!isUniqueViolation(error)) throw error;
+        saved = await findExistingRegistration(
+          db,
+          "open_play_registrations",
+          receiptVerificationId,
+          auditHash,
+          matches,
+        );
+        recovered = Boolean(saved);
+        if (!saved) throw error;
+      } else {
+        saved = data as Record<string, unknown>;
+      }
+    }
+
+    let notification: Record<string, unknown> | undefined;
+    if (String(saved.payment_status || "").toLowerCase() === "pending") {
+      const delivery = await deliverPaymentReviewNotification({
+        db,
+        resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+        fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+        adminUrl: Deno.env.get("PAYMENT_REVIEW_ADMIN_URL") ||
+          "https://kortedoscdo.club/admin.html",
+        notification: {
+          bookingRef: `OPR-${String(saved.id)}`,
+          contextType: "open_play",
+          receiptVerificationId,
+          fullName,
+          provider: paymentMethod,
+          paymentReference: gcashRef,
+          imageHash: auditHash,
+          flags: Array.isArray(saved.receipt_flags)
+            ? saved.receipt_flags
+            : Array.isArray(audit.flags)
+            ? audit.flags
+            : [],
+          expectedAmount: auditAmount,
+          extractedAmount: Number(
+            receiptPublicExtracted(auditExtracted)?.amount,
+          ) || undefined,
+          courtLabel: courtName,
+          scheduleLabel: `${date} · ${timeLabel}`,
+        },
+      });
+      notification = {
+        sent: delivery.sent,
+        skipped: delivery.skipped,
+        ...(delivery.reason ? { reason: delivery.reason } : {}),
+      };
+    }
+
+    return json({
+      ok: true,
+      registration: saved,
+      recovered,
+      ...(notification ? { notification } : {}),
+    });
+  } catch (error) {
+    console.error("persist_open_play_registration:", errMsg(error));
+    return json(
+      { error: errMsg(error) },
+      persistenceErrorStatus(error),
+    );
+  }
+}
+
+async function persistHostSessionRegistration(
+  db: any,
+  value: unknown,
+): Promise<Response> {
+  try {
+    const source = privateAuditObject(value, "registration");
+    const receiptVerificationId = positiveReceiptVerificationId(
+      source.receiptVerificationId,
+    );
+    const sessionId = cleanBoundText(source.sessionId, 80, "Host session");
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(sessionId)
+    ) {
+      throw new Error("Host session is invalid");
+    }
+    const fullName = cleanBoundText(source.fullName, 160, "Full name");
+    const contactNumber = cleanBoundText(
+      source.contactNumber,
+      80,
+      "Contact number",
+      false,
+    );
+    const paymentMethod = boundDigitalProvider(source.paymentMethod);
+    const gcashRef = normalizedStoredReference(
+      source.gcashRef,
+      paymentMethod,
+    );
+    const amount = boundMoney(source.amount, "Payment amount");
+    const suppliedPath = cleanBoundText(
+      source.receiptImageUrl,
+      500,
+      "Receipt image",
+    );
+    const suppliedHash = cleanBoundText(
+      source.receiptImageHash,
+      64,
+      "Receipt hash",
+    ).toLowerCase();
+
+    const audit = await loadBoundReceiptAudit(
+      db,
+      receiptVerificationId,
+      "host_session",
+    );
+    const auditExtracted = privateAuditObject(
+      audit.extracted,
+      "Receipt verification details",
+    );
+    const context = privateAuditObject(
+      auditExtracted.registrationContext,
+      "Host-session registration context",
+    );
+    const auditProvider = boundDigitalProvider(auditExtracted.provider);
+    const auditReference = normalizedStoredReference(
+      auditExtracted.submittedReference,
+      auditProvider,
+    );
+    const auditAmount = boundMoney(
+      auditExtracted.expectedAmount,
+      "Verified payment amount",
+    );
+    const auditTotal = boundMoney(
+      auditExtracted.expectedTotal,
+      "Verified total",
+    );
+    const auditHash = String(audit.image_hash || "").toLowerCase();
+    const verifiedDate = cleanIsoDate(context.date, "Verified date");
+
+    if (
+      cleanBoundText(context.fullName, 160, "Verified full name") !==
+        fullName ||
+      cleanBoundText(
+          context.contactNumber,
+          80,
+          "Verified contact number",
+          false,
+        ) !== contactNumber ||
+      cleanBoundText(
+          context.hostSessionId,
+          80,
+          "Verified host session",
+        ) !== sessionId ||
+      auditProvider !== paymentMethod ||
+      auditReference !== gcashRef ||
+      !closeBoundMoney(auditAmount, amount) ||
+      !closeBoundMoney(auditAmount, auditTotal) ||
+      suppliedHash !== auditHash ||
+      !receiptPathMatches(suppliedPath, audit.booking_ref, auditHash)
+    ) {
+      throw new Error(
+        "Registration details do not match the verified receipt",
+      );
+    }
+
+    const { data: session, error: sessionError } = await db
+      .from("open_play_host_sessions")
+      .select(
+        "id,title,date,start_hour,end_hour,court_names,fee_per_player,status",
+      )
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (sessionError) throw sessionError;
+    if (
+      !session || session.status !== "published" ||
+      String(session.date || "").slice(0, 10) !== verifiedDate ||
+      !closeBoundMoney(session.fee_per_player, amount) ||
+      amount <= 0
+    ) {
+      throw new Error(
+        "Host session is unavailable or its fee no longer matches",
+      );
+    }
+
+    const normalized = {
+      sessionId,
+      fullName,
+      contactNumber,
+      paymentMethod,
+      gcashRef,
+      amount,
+      imageHash: auditHash,
+    };
+    const matches = (row: Record<string, unknown>) =>
+      registrationMatchesHostSession(row, normalized);
+    let saved = await findExistingRegistration(
+      db,
+      "open_play_host_session_registrations",
+      receiptVerificationId,
+      auditHash,
+      matches,
+    );
+    let recovered = Boolean(saved);
+
+    if (!saved) {
+      const { data, error } = await db
+        .from("open_play_host_session_registrations").insert({
+          session_id: sessionId,
+          full_name: fullName,
+          contact_number: contactNumber || null,
+          payment_method: paymentMethod,
+          gcash_ref: gcashRef,
+          payment_status: audit.result === "auto_approved" ? "paid" : "pending",
+          amount,
+          receipt_verification_id: receiptVerificationId,
+          receipt_image_url: suppliedPath,
+          receipt_image_hash: auditHash,
+          receipt_status: audit.result === "auto_approved"
+            ? "auto_approved"
+            : "manual_review",
+        }).select(
+          "id,session_id,full_name,contact_number,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at",
+        ).single();
+      if (error) {
+        if (!isUniqueViolation(error)) throw error;
+        saved = await findExistingRegistration(
+          db,
+          "open_play_host_session_registrations",
+          receiptVerificationId,
+          auditHash,
+          matches,
+        );
+        recovered = Boolean(saved);
+        if (!saved) throw error;
+      } else {
+        saved = data as Record<string, unknown>;
+      }
+    }
+
+    let notification: Record<string, unknown> | undefined;
+    if (String(saved.payment_status || "").toLowerCase() === "pending") {
+      const courts = Array.isArray(session.court_names)
+        ? session.court_names.map((item: unknown) => String(item).trim())
+          .filter(Boolean).join(", ")
+        : "";
+      const startHour = Number(session.start_hour);
+      const endHour = Number(session.end_hour);
+      const timeRange = Number.isInteger(startHour) && Number.isInteger(endHour)
+        ? `${String(startHour).padStart(2, "0")}:00–${
+          String(endHour).padStart(2, "0")
+        }:00`
+        : "Host session";
+      const delivery = await deliverPaymentReviewNotification({
+        db,
+        resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+        fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+        adminUrl: Deno.env.get("PAYMENT_REVIEW_ADMIN_URL") ||
+          "https://kortedoscdo.club/admin.html",
+        notification: {
+          bookingRef: `HSR-${String(saved.id)}`,
+          contextType: "host_session",
+          receiptVerificationId,
+          fullName,
+          provider: paymentMethod,
+          paymentReference: gcashRef,
+          imageHash: auditHash,
+          flags: Array.isArray(saved.receipt_flags)
+            ? saved.receipt_flags
+            : Array.isArray(audit.flags)
+            ? audit.flags
+            : [],
+          expectedAmount: auditAmount,
+          extractedAmount: Number(
+            receiptPublicExtracted(auditExtracted)?.amount,
+          ) || undefined,
+          courtLabel: courts ||
+            cleanBoundText(session.title, 160, "Host-session title", false) ||
+            "Host session",
+          scheduleLabel: `${verifiedDate} · ${timeRange}`,
+        },
+      });
+      notification = {
+        sent: delivery.sent,
+        skipped: delivery.skipped,
+        ...(delivery.reason ? { reason: delivery.reason } : {}),
+      };
+    }
+
+    return json({
+      ok: true,
+      registration: saved,
+      recovered,
+      ...(notification ? { notification } : {}),
+    });
+  } catch (error) {
+    console.error("persist_host_session_registration:", errMsg(error));
+    return json(
+      { error: errMsg(error) },
+      persistenceErrorStatus(error),
+    );
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -1082,6 +1942,13 @@ Deno.serve(async (req) => {
   }
   const action = (body.action as string) || "verify";
 
+  if (action === "persist_open_play_registration") {
+    return await persistOpenPlayRegistration(db, body.registration);
+  }
+  if (action === "persist_host_session_registration") {
+    return await persistHostSessionRegistration(db, body.registration);
+  }
+
   // ── admin-only: mint a signed URL to view a stored receipt ────────────────
   if (action === "sign") {
     const bookingRef = String(body.bookingRef || "");
@@ -1105,6 +1972,17 @@ Deno.serve(async (req) => {
     });
     const { data: userData } = await userClient.auth.getUser();
     if (!userData?.user) return json({ error: "Unauthorized" }, 401);
+    const { data: account } = await db
+      .from("accounts")
+      .select("role,status")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+    if (
+      account?.status !== "active" ||
+      !["owner", "court_owner", "staff"].includes(String(account?.role || ""))
+    ) {
+      return json({ error: "Payment review permission required" }, 403);
+    }
 
     let path: string | null = null;
     if (hostSessionRegistrationId) {
@@ -1136,9 +2014,13 @@ Deno.serve(async (req) => {
   }
 
   // ── verify a freshly-uploaded receipt ─────────────────────────────────────
+  let recoveryBookingRef = "";
+  let recoveryProvider: PaymentProvider = "gcash";
   try {
     const bookingRef = String(body.bookingRef || "");
     let provider = normalizedProvider(String(body.provider || "gcash"));
+    recoveryBookingRef = bookingRef;
+    recoveryProvider = provider;
     let imageBase64 = String(body.imageBase64 || "");
     const rawContentType = String(
       uploadedImage?.type || body.contentType || "image/jpeg",
@@ -1171,7 +2053,7 @@ Deno.serve(async (req) => {
     const { data: persistedRow, error: bookingErr } = await db
       .from("bookings")
       .select(
-        "ref, booking_group_ref, court_id, slots, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at, receipt_image_url, receipt_image_hash, receipt_phash, receipt_status, receipt_flags, receipt_extracted, receipt_confidence, receipt_verified_at",
+        "ref, booking_group_ref, court_id, court_name, slots, start_time, end_time, duration, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at, receipt_image_url, receipt_image_hash, receipt_phash, receipt_status, receipt_flags, receipt_extracted, receipt_confidence, receipt_verified_at",
       )
       .eq("ref", bookingRef)
       .maybeSingle();
@@ -1191,13 +2073,11 @@ Deno.serve(async (req) => {
         );
       if (terminal) {
         const storedReceiptStatus = String(booking.receipt_status || "");
-        const finalStatus = storedReceiptStatus === "rejected" ||
-            persistedStatus === "cancelled" ||
-            persistedPaymentStatus === "rejected"
-          ? "rejected"
-          : storedReceiptStatus === "manual_review"
-          ? "manual_review"
-          : "auto_approved";
+        const finalStatus = customerStatusForProcessedBooking(
+          storedReceiptStatus,
+          persistedStatus,
+          persistedPaymentStatus,
+        );
         return json({
           ok: true,
           status: finalStatus,
@@ -1226,29 +2106,38 @@ Deno.serve(async (req) => {
       }
     } else {
       if (!inlineBookingData) return json({ error: "Booking not found" }, 404);
-      const hasCourtShape = !!(
-        inlineBookingData.court_id ||
-        inlineBookingData.courtId ||
-        inlineBookingData.booking_group_ref ||
-        inlineBookingData.groupRef ||
-        (Array.isArray(inlineBookingData.slots) &&
-          inlineBookingData.slots.length > 0) ||
-        inlineBookingData.host_booking === true ||
-        inlineBookingData.hostBooking === true
-      );
-      if (hasCourtShape) {
+      const isOpenPlayReference = /^OP-[A-Z0-9]{6,40}$/.test(bookingRef);
+      const isHostSessionReference = /^HS-[A-Z0-9]{6,40}$/.test(bookingRef);
+      if (!isOpenPlayReference && !isHostSessionReference) {
         return json({
           error: "Court booking must be saved before receipt verification",
         }, 400);
       }
       booking = inlineBookingData;
-      inlinePricingKind = booking.host_session_id
-        ? "host_session"
-        : "open_play";
+      inlinePricingKind = isHostSessionReference ? "host_session" : "open_play";
+      if (
+        inlinePricingKind === "host_session" &&
+        !String(booking.host_session_id || "").trim()
+      ) {
+        return json({ error: "Host session id is required" }, 400);
+      }
+      if (
+        inlinePricingKind === "open_play" &&
+        (
+          String(booking.host_session_id || "").trim() ||
+          !String(booking.court_id || booking.courtId || "").trim()
+        )
+      ) {
+        return json(
+          { error: "Open Play registration details are invalid" },
+          400,
+        );
+      }
     }
     provider =
       paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) ||
       provider;
+    recoveryProvider = provider;
 
     // Save the evidence before pricing, perceptual hashing, or OCR. Large
     // mobile screenshots can make those later steps slow or memory-heavy; a
@@ -1831,7 +2720,11 @@ Deno.serve(async (req) => {
 
     // Race-safe claim of payment ledger keys. The table's primary key on
     // gcash_ref is the source of truth if another request claims the same key.
-    if (result === "auto_approved") {
+    // Persisted court bookings can claim immediately. Inline Open Play and
+    // host-session receipts are claimed atomically by their database insert
+    // trigger, so a verification response can never consume a payment key
+    // before the corresponding registration exists.
+    if (result === "auto_approved" && hasPersistedBooking) {
       for (const item of dedupeKeys) {
         if (alreadyClaimedByThisBooking.has(item.key)) continue;
         const { error: claimErr } = await db
@@ -1934,23 +2827,176 @@ Deno.serve(async (req) => {
     };
 
     // ── persist outcome on the booking ──────────────────────────────────────
-    const statusUpdate: Record<string, unknown> = {};
-    if (result === "auto_approved") {
-      const fullyPaid = expectedAmount >= expectedTotal - PESO_TOLERANCE;
-      statusUpdate.payment_status = fullyPaid ? "paid" : "downpayment_paid";
-      if (booking.status !== "completed" && booking.status !== "cancelled") {
-        statusUpdate.status = "confirmed";
+    // Write the immutable audit before any final booking transition. If the
+    // audit cannot be stored, the already attached receipt remains pending and
+    // retryable instead of being confirmed without review evidence.
+    const verificationContext: VerificationContext = hasPersistedBooking
+      ? "court_booking"
+      : inlinePricingKind === "host_session"
+      ? "host_session"
+      : "open_play";
+    const registrationContext = verificationContext === "open_play"
+      ? {
+        fullName: cleanBoundText(
+          booking.full_name ?? booking.fullName,
+          160,
+          "Open Play full name",
+        ),
+        courtId: cleanBoundText(
+          booking.court_id ?? booking.courtId,
+          80,
+          "Open Play court",
+        ),
+        courtName: cleanBoundText(
+          booking.court_name ?? booking.courtName,
+          160,
+          "Open Play court name",
+        ),
+        date: cleanIsoDate(booking.date, "Open Play date"),
+        hour: cleanOpenPlayHour(booking.hour),
+        timeLabel: cleanBoundText(
+          booking.time_label ?? booking.timeLabel,
+          80,
+          "Open Play time",
+        ),
+        paymentType: cleanBoundText(
+          booking.payment_type ?? booking.paymentType,
+          16,
+          "Open Play payment type",
+        ).toUpperCase(),
       }
-    } else if (result === "manual_review") {
-      statusUpdate.payment_status = "for_verification";
-      if (booking.status !== "completed" && booking.status !== "cancelled") {
-        statusUpdate.status = "pending";
+      : verificationContext === "host_session"
+      ? {
+        fullName: cleanBoundText(
+          booking.full_name ?? booking.fullName,
+          160,
+          "Host-session full name",
+        ),
+        contactNumber: cleanBoundText(
+          booking.contact_number ?? booking.contactNumber,
+          80,
+          "Host-session contact number",
+          false,
+        ),
+        hostSessionId: cleanBoundText(
+          booking.host_session_id ?? booking.hostSessionId,
+          80,
+          "Host session",
+        ),
+        date: cleanIsoDate(booking.date, "Host-session date"),
       }
-    } else if (result === "rejected") {
-      // Cancel the booking immediately — invalid/fake receipt → slot must be freed.
-      statusUpdate.status = "cancelled";
-      statusUpdate.payment_status = "rejected";
+      : undefined;
+    const auditExtracted = {
+      ...extracted,
+      verificationContext,
+      ...(registrationContext ? { registrationContext } : {}),
+      submittedReference: typedRef,
+      expectedAmount,
+      expectedTotal,
+      dedupeKeys: dedupeKeys.map(({ key, providerKey }) => ({
+        key,
+        providerKey,
+      })),
+      ...(ocrAnalysisSource === "google_layout"
+        ? { ocrAnalysisText: ocrText }
+        : {}),
+    };
+    const { data: auditRow, error: auditError } = await db
+      .from("receipt_verifications")
+      .insert({
+        booking_ref: bookingRef,
+        result,
+        flags,
+        extracted: auditExtracted,
+        confidence,
+        image_hash: imageHash,
+        phash,
+        raw_ocr_text: ocrRawText || null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (auditError || !auditRow?.id) {
+      console.error(
+        "receipt verification audit insert failed:",
+        errMsg(auditError || "audit id was not returned"),
+      );
+      throw new Error(
+        "Receipt verification could not be finalized. Please upload the receipt again.",
+      );
     }
+
+    // Inline Open Play and host-session submissions are completed in this same
+    // request. Once the receipt has been stored and audited, the server creates
+    // the pending/paid registration and sends any configured review notice
+    // before replying. This prevents a closed tab or a lost second request from
+    // orphaning a player's payment evidence.
+    let inlinePersistenceResult: Record<string, unknown> | null = null;
+    let inlineRegistration: Record<string, unknown> | null = null;
+    if (
+      !hasPersistedBooking &&
+      verificationContext !== "court_booking" &&
+      await receiptAttestationContractReady(db, verificationContext)
+    ) {
+      const receiptVerificationId = Number(auditRow.id);
+      const persistenceResponse = verificationContext === "host_session"
+        ? await persistHostSessionRegistration(db, {
+          sessionId: booking.host_session_id ?? booking.hostSessionId,
+          fullName: booking.full_name ?? booking.fullName,
+          contactNumber: booking.contact_number ?? booking.contactNumber,
+          paymentMethod: provider,
+          gcashRef: typedRef,
+          amount: expectedAmount,
+          receiptVerificationId,
+          receiptImageUrl: objectPath,
+          receiptImageHash: imageHash,
+        })
+        : await persistOpenPlayRegistration(db, {
+          fullName: booking.full_name ?? booking.fullName,
+          courtId: booking.court_id ?? booking.courtId,
+          courtName: booking.court_name ?? booking.courtName,
+          date: booking.date,
+          hour: booking.hour,
+          timeLabel: booking.time_label ?? booking.timeLabel,
+          paymentType: booking.payment_type ?? booking.paymentType,
+          paymentMethod: provider,
+          gcashRef: typedRef,
+          amount: expectedAmount,
+          receiptVerificationId,
+          receiptImageUrl: objectPath,
+          receiptImageHash: imageHash,
+        });
+      const persistencePayload = await persistenceResponse.json().catch(() =>
+        null
+      ) as Record<string, unknown> | null;
+      if (
+        !persistenceResponse.ok ||
+        persistencePayload?.ok !== true ||
+        !persistencePayload.registration
+      ) {
+        throw new Error(
+          String(
+            persistencePayload?.error ||
+              "Receipt was stored but the registration could not be completed. Please retry.",
+          ),
+        );
+      }
+      inlinePersistenceResult = persistencePayload;
+      inlineRegistration = privateAuditObject(
+        persistencePayload.registration,
+        "Saved registration",
+      );
+    }
+
+    const bookingOutcome = bookingOutcomeForReceipt(
+      result,
+      expectedAmount,
+      expectedTotal,
+      PESO_TOLERANCE,
+    );
+    const statusUpdate: Record<string, unknown> = {
+      payment_status: bookingOutcome.paymentStatus,
+      status: bookingOutcome.status,
+    };
 
     const metadataUpdate: Record<string, unknown> = {
       receipt_image_url: objectPath,
@@ -1998,53 +3044,69 @@ Deno.serve(async (req) => {
           console.error(finalUpdateError);
         }
       }
-
-      // Last-resort fallback: if a rejected receipt's atomic update failed, try
-      // more with just the cancel field. The slot MUST be freed on a rejected
-      // receipt — no exceptions.
-      if (finalUpdateError && result === "rejected") {
-        const { data: fallbackRows, error: fallbackErr } =
-          await bookingUpdateQuery(db, booking, {
-            status: "cancelled",
-            payment_status: "rejected",
-          }).in("status", ["verifying", "pending"]).select("ref");
-        if (fallbackErr || !fallbackRows || fallbackRows.length === 0) {
-          console.error("FALLBACK cancel also failed:", errMsg(fallbackErr));
-        } else {
-          console.error(
-            "FALLBACK cancel succeeded after status update failure",
-          );
-          finalUpdateError = null;
-        }
-      }
     }
 
     // ── audit trail (immutable) ─────────────────────────────────────────────
-    // Keep the exact geometry-reordered decision input in the private audit
-    // table only. Booking metadata and public responses retain extracted
-    // fields, not the OCR text or its PII.
-    const auditExtracted = ocrAnalysisSource === "google_layout"
-      ? { ...extracted, ocrAnalysisText: ocrText }
-      : extracted;
-    await db.from("receipt_verifications").insert({
-      booking_ref: bookingRef,
-      result,
-      flags,
-      extracted: auditExtracted,
-      confidence,
-      image_hash: imageHash,
-      phash,
-      raw_ocr_text: ocrRawText || null,
-    });
+    const needsOwnerReview = bookingOutcome.needsOwnerReview ||
+      Boolean(finalUpdateError);
+    let customerStatus: "auto_approved" | "manual_review" | "rejected" =
+      needsOwnerReview ? "manual_review" as const : "auto_approved" as const;
+    if (inlineRegistration) {
+      const authoritativePaymentStatus = String(
+        inlineRegistration.payment_status || "",
+      ).toLowerCase();
+      customerStatus = authoritativePaymentStatus === "paid"
+        ? "auto_approved"
+        : authoritativePaymentStatus === "rejected"
+        ? "rejected"
+        : "manual_review";
+    }
+
+    if (hasPersistedBooking && needsOwnerReview) {
+      const notificationFlags = finalUpdateError &&
+          !flags.includes("BOOKING_UPDATE_FAILED")
+        ? [...flags, "BOOKING_UPDATE_FAILED"]
+        : flags;
+      const delivery = deliverPaymentReviewNotification({
+        db,
+        resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+        fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+        adminUrl: Deno.env.get("PAYMENT_REVIEW_ADMIN_URL") ||
+          "https://kortedoscdo.club/admin.html",
+        notification: {
+          bookingRef,
+          bookingGroupRef: String(booking.booking_group_ref || "") || undefined,
+          contextType: "court_booking",
+          receiptVerificationId: Number(auditRow?.id) || undefined,
+          fullName: String(booking.full_name || "") || undefined,
+          provider,
+          paymentReference: String(booking.gcash_ref || "") || undefined,
+          imageHash,
+          flags: notificationFlags,
+          expectedAmount,
+          extractedAmount: extractedAmount ?? undefined,
+          courtLabel: paymentReviewCourtLabel(bookingGroup) || undefined,
+          scheduleLabel: paymentReviewScheduleLabel(bookingGroup) || undefined,
+        },
+      }).then((deliveryResult) => {
+        if (!deliveryResult.ok && !deliveryResult.skipped) {
+          console.error("payment-review email delivery failed", {
+            bookingRef,
+            reason: deliveryResult.reason,
+          });
+        }
+      });
+      const edgeRuntime = (globalThis as typeof globalThis & {
+        EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void };
+      }).EdgeRuntime;
+      if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(delivery);
+      else await delivery;
+    }
 
     // ── alert admin on anything needing a human ─────────────────────────────
-    if (result !== "auto_approved") {
-      const icon = result === "rejected" ? "❌" : "⚠️";
-      const head = result === "rejected"
-        ? "RECEIPT REJECTED — BOOKING CANCELLED"
-        : "RECEIPT NEEDS REVIEW";
+    if (hasPersistedBooking && needsOwnerReview) {
       await sendTelegram(
-        `${icon} <b>${head}</b>\n` +
+        `⚠️ <b>RECEIPT NEEDS OWNER REVIEW</b>\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
           `📋 Ref: <code>${bookingRef}</code>\n` +
           `👤 ${booking.full_name || "—"}\n` +
@@ -2054,34 +3116,45 @@ Deno.serve(async (req) => {
             : "") +
           `\n` +
           `🚩 Flags: <code>${flags.join(", ") || "none"}</code>\n` +
-          (result === "rejected"
-            ? `🗑 Booking auto-cancelled. Slot is now free.`
-            : `👉 Open admin panel to review the receipt.`),
+          `⏳ Booking remains pending. Open the admin panel to review it.`,
       );
     }
 
     return json({
       ok: true,
-      status: result,
+      status: customerStatus,
+      receiptStatus: result,
       flags: [],
-      publicReason: publicReceiptMessage(result, flags),
+      publicReason: publicReceiptMessage(customerStatus, flags),
       extracted,
       confidence,
       receiptImageUrl: objectPath,
       receiptImageHash: imageHash,
       receiptPhash: phash,
+      receiptVerificationId: Number(auditRow?.id) || null,
       receiptVerifiedAt: metadataUpdate.receipt_verified_at,
+      ...(inlineRegistration ? { registration: inlineRegistration } : {}),
+      ...(inlinePersistenceResult?.notification
+        ? { notification: inlinePersistenceResult.notification }
+        : {}),
       ...(finalUpdateError
         ? { warning: `booking update failed: ${finalUpdateError}` }
         : {}),
-      message: result === "auto_approved"
+      message: customerStatus === "auto_approved"
         ? "Payment verified."
-        : result === "manual_review"
-        ? "Received — the owner will verify your payment shortly."
-        : "Your receipt could not be verified. Your booking has been cancelled — please try again with a valid receipt.",
+        : customerStatus === "rejected"
+        ? "This payment was already reviewed and was not accepted. Please contact the court owner if you need help."
+        : "Receipt received. Your booking is pending while the court owner reviews the payment.",
     });
   } catch (err) {
     console.error("verify-gcash-receipt error:", errMsg(err));
+    if (recoveryBookingRef) {
+      await alertStoredPendingReceiptAfterFailure(
+        db,
+        recoveryBookingRef,
+        recoveryProvider,
+      );
+    }
     return json({ error: errMsg(err) }, 500);
   }
 });
