@@ -14,13 +14,16 @@ on:
         type: choice
         options:
           - verify-gcash-receipt
+          - manage-payment-review-notification
+          - process-payment-review-notifications
+          - review-payment-receipt
           - all
 
 permissions:
   contents: read
 
 concurrency:
-  group: supabase-edge-functions-production
+  group: supabase-production-deploy
   cancel-in-progress: false
 
 jobs:
@@ -52,6 +55,9 @@ jobs:
             verify-gcash-receipt
             host-application
             manage-account
+            manage-payment-review-notification
+            process-payment-review-notifications
+            review-payment-receipt
             send-confirmation-email
             process-host-balance-deadlines
             send-reschedule-email
@@ -70,12 +76,42 @@ jobs:
               git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- supabase/functions
             )
 
-            if printf '%s\n' "${changed_files[@]}" | grep -q '^supabase/functions/_shared/'; then
-              selected=("${all_functions[@]}")
+            shared_changed=false
+            for changed_file in "${changed_files[@]}"; do
+              if [[ "$changed_file" == supabase/functions/_shared/* ]]; then
+                shared_changed=true
+                break
+              fi
+            done
+
+            if [[ "$shared_changed" == "true" ]]; then
+              # The payment-review migration workflow owns these four
+              # schema-dependent functions and deploys them only after verifying
+              # the production schema. This workflow may deploy the others.
+              selected=(
+                create-payment-session
+                payment-webhook
+                host-application
+                manage-account
+                send-confirmation-email
+                process-host-balance-deadlines
+                send-reschedule-email
+                send-telegram-notification
+                integration-status
+              )
             else
               mapfile -t selected < <(
                 printf '%s\n' "${changed_files[@]}" |
-                  awk -F/ '/^supabase\/functions\/[^/]+\// && $3 != "_shared" { print $3 }' |
+                  awk -F/ '
+                    /^supabase\/functions\/[^/]+\// &&
+                    $3 != "_shared" &&
+                    $3 != "verify-gcash-receipt" &&
+                    $3 != "manage-payment-review-notification" &&
+                    $3 != "process-payment-review-notifications" &&
+                    $3 != "review-payment-receipt" {
+                      print $3
+                    }
+                  ' |
                   sort -u
               )
             fi

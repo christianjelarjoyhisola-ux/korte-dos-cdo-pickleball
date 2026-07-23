@@ -152,6 +152,24 @@ type ReceiptAuditRow = {
   created_at: string;
 };
 
+type PreparedInlineRegistration = {
+  context: Exclude<VerificationContext, "court_booking">;
+  bookingRef: string;
+  provider: PaymentProvider;
+  typedRef: string;
+  expectedAmount: number;
+  expectedTotal: number;
+  registrationContext: Record<string, unknown>;
+  registration: Record<string, unknown>;
+  settings: Record<string, string>;
+};
+
+type InlineReceiptRecoveryState = PreparedInlineRegistration & {
+  objectPath: string;
+  imageHash: string;
+  auditId: number | null;
+};
+
 const DIGITAL_PAYMENT_METHODS = new Set<PaymentProvider>([
   "gcash",
   "bdopay",
@@ -256,6 +274,8 @@ function receiptPublicExtracted(
       "expectedTotal",
       "dedupeKeys",
       "ocrAnalysisText",
+      "processingCheckpoint",
+      "processingFailure",
     ]
   ) {
     delete publicExtracted[key];
@@ -1478,6 +1498,7 @@ async function receiptAttestationContractReady(
 async function persistOpenPlayRegistration(
   db: any,
   value: unknown,
+  options: { notifyPending?: boolean } = {},
 ): Promise<Response> {
   try {
     const source = privateAuditObject(value, "registration");
@@ -1652,7 +1673,7 @@ async function persistOpenPlayRegistration(
             retryMissing: true,
           })
         ) {
-          return await persistOpenPlayRegistration(db, value);
+          return await persistOpenPlayRegistration(db, value, options);
         }
         if (!isUniqueViolation(error)) throw error;
         saved = contractReady
@@ -1678,7 +1699,10 @@ async function persistOpenPlayRegistration(
     }
 
     let notification: Record<string, unknown> | undefined;
-    if (String(saved.payment_status || "").toLowerCase() === "pending") {
+    if (
+      options.notifyPending !== false &&
+      String(saved.payment_status || "").toLowerCase() === "pending"
+    ) {
       const delivery = await deliverPaymentReviewNotification({
         db,
         resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
@@ -1731,6 +1755,7 @@ async function persistOpenPlayRegistration(
 async function persistHostSessionRegistration(
   db: any,
   value: unknown,
+  options: { notifyPending?: boolean } = {},
 ): Promise<Response> {
   try {
     const source = privateAuditObject(value, "registration");
@@ -1911,7 +1936,7 @@ async function persistHostSessionRegistration(
             retryMissing: true,
           })
         ) {
-          return await persistHostSessionRegistration(db, value);
+          return await persistHostSessionRegistration(db, value, options);
         }
         if (!isUniqueViolation(error)) throw error;
         saved = contractReady
@@ -1937,7 +1962,10 @@ async function persistHostSessionRegistration(
     }
 
     let notification: Record<string, unknown> | undefined;
-    if (String(saved.payment_status || "").toLowerCase() === "pending") {
+    if (
+      options.notifyPending !== false &&
+      String(saved.payment_status || "").toLowerCase() === "pending"
+    ) {
       const courts = Array.isArray(session.court_names)
         ? session.court_names.map((item: unknown) => String(item).trim())
           .filter(Boolean).join(", ")
@@ -1998,6 +2026,349 @@ async function persistHostSessionRegistration(
       persistenceErrorStatus(error),
     );
   }
+}
+
+function inlineRecoveryAuditExtracted(
+  state: PreparedInlineRegistration,
+): Record<string, unknown> {
+  return {
+    provider: state.provider,
+    verificationContext: state.context,
+    registrationContext: state.registrationContext,
+    submittedReference: state.typedRef,
+    expectedAmount: state.expectedAmount,
+    expectedTotal: state.expectedTotal,
+    processingCheckpoint: "receipt_stored",
+  };
+}
+
+function inlineRecoveryAuditMatches(
+  row: Record<string, unknown>,
+  state: PreparedInlineRegistration & { imageHash: string },
+): boolean {
+  try {
+    if (
+      !auditIsRecent(row.created_at) ||
+      String(row.booking_ref || "") !== state.bookingRef ||
+      String(row.image_hash || "").toLowerCase() !== state.imageHash ||
+      !["auto_approved", "manual_review", "rejected"].includes(
+        String(row.result || ""),
+      )
+    ) {
+      return false;
+    }
+    const extracted = privateAuditObject(
+      row.extracted,
+      "Receipt verification details",
+    );
+    const context = privateAuditObject(
+      extracted.registrationContext,
+      "Registration context",
+    );
+    if (
+      extracted.verificationContext !== state.context ||
+      boundDigitalProvider(extracted.provider) !== state.provider ||
+      normalizedStoredReference(
+          extracted.submittedReference,
+          state.provider,
+        ) !==
+        state.typedRef ||
+      !closeBoundMoney(extracted.expectedAmount, state.expectedAmount) ||
+      !closeBoundMoney(extracted.expectedTotal, state.expectedTotal)
+    ) {
+      return false;
+    }
+    if (state.context === "open_play") {
+      const expected = state.registrationContext;
+      return cleanBoundText(context.fullName, 160, "Verified full name") ===
+          expected.fullName &&
+        cleanBoundText(context.courtId, 80, "Verified court") ===
+          expected.courtId &&
+        cleanBoundText(context.courtName, 160, "Verified court name") ===
+          expected.courtName &&
+        cleanIsoDate(context.date, "Verified date") === expected.date &&
+        cleanOpenPlayHour(context.hour) === expected.hour &&
+        cleanBoundText(context.timeLabel, 80, "Verified time") ===
+          expected.timeLabel &&
+        cleanBoundText(context.paymentType, 16, "Verified payment type")
+            .toUpperCase() === expected.paymentType;
+    }
+    const expected = state.registrationContext;
+    return cleanBoundText(context.fullName, 160, "Verified full name") ===
+        expected.fullName &&
+      cleanBoundText(
+          context.contactNumber,
+          80,
+          "Verified contact number",
+          false,
+        ) === expected.contactNumber &&
+      cleanBoundText(context.hostSessionId, 80, "Verified host session") ===
+        expected.hostSessionId &&
+      cleanIsoDate(context.date, "Verified date") === expected.date;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureInlineReceiptAuditCheckpoint(
+  db: any,
+  state: PreparedInlineRegistration & {
+    imageHash: string;
+  },
+): Promise<number> {
+  let lastError: unknown = new Error(
+    "Receipt verification checkpoint was not stored",
+  );
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const existing = await db.from("receipt_verifications")
+      .select(
+        "id,booking_ref,result,flags,extracted,confidence,image_hash,phash,created_at",
+      )
+      .eq("booking_ref", state.bookingRef)
+      .eq("image_hash", state.imageHash)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (!existing.error) {
+      const matching = (existing.data || []).find(
+        (row: Record<string, unknown>) =>
+          inlineRecoveryAuditMatches(row, state),
+      );
+      if (matching?.id) return positiveReceiptVerificationId(matching.id);
+    } else {
+      lastError = existing.error;
+    }
+
+    const inserted = await db.from("receipt_verifications")
+      .insert({
+        booking_ref: state.bookingRef,
+        result: "manual_review",
+        flags: ["VERIFICATION_PROCESSING_INCOMPLETE"],
+        extracted: inlineRecoveryAuditExtracted(state),
+        confidence: 0,
+        image_hash: state.imageHash,
+        phash: null,
+        raw_ocr_text: null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (!inserted.error && inserted.data?.id) {
+      return positiveReceiptVerificationId(inserted.data.id);
+    }
+    lastError = inserted.error ||
+      new Error("Receipt verification checkpoint id was not returned");
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 150));
+    }
+  }
+  throw lastError;
+}
+
+async function persistPreparedInlineRegistration(
+  db: any,
+  state: InlineReceiptRecoveryState,
+  options: { notifyPending?: boolean } = {},
+): Promise<{
+  response: Response;
+  payload: Record<string, unknown> | null;
+}> {
+  const registration = {
+    ...state.registration,
+    receiptVerificationId: positiveReceiptVerificationId(state.auditId),
+    receiptImageUrl: state.objectPath,
+    receiptImageHash: state.imageHash,
+  };
+  const response = state.context === "host_session"
+    ? await persistHostSessionRegistration(db, registration, options)
+    : await persistOpenPlayRegistration(db, registration, options);
+  const payload = await response.json().catch(() => null) as
+    | Record<string, unknown>
+    | null;
+  return { response, payload };
+}
+
+async function finalizeInlineCheckpointRegistration(
+  db: any,
+  state: InlineReceiptRecoveryState,
+  registration: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const table = state.context === "host_session"
+    ? "open_play_host_session_registrations"
+    : "open_play_registrations";
+  const registrationId = registration.id;
+  if (
+    registrationId == null ||
+    (state.context === "open_play" &&
+      (!Number.isSafeInteger(Number(registrationId)) ||
+        Number(registrationId) <= 0))
+  ) {
+    throw new Error("Receipt checkpoint registration id is invalid");
+  }
+  const finalized = await db.rpc("finalize_inline_receipt_registration", {
+    p_context: state.context,
+    p_registration_id: String(registrationId),
+    p_receipt_verification_id: positiveReceiptVerificationId(state.auditId),
+  });
+  if (finalized.error) throw finalized.error;
+
+  const selection = state.context === "host_session"
+    ? "id,session_id,full_name,contact_number,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at"
+    : "id,full_name,court_id,court_name,date,hour,time_label,payment_type,payment_method,gcash_ref,payment_status,amount,receipt_verification_id,receipt_image_url,receipt_image_hash,receipt_status,receipt_flags,capacity_exception,created_at";
+  const current = await db.from(table).select(selection)
+    .eq("id", registrationId)
+    .eq("receipt_verification_id", positiveReceiptVerificationId(state.auditId))
+    .maybeSingle();
+  if (
+    current.error ||
+    !current.data ||
+    String(current.data.receipt_image_hash || "").toLowerCase() !==
+      state.imageHash
+  ) {
+    throw current.error ||
+      new Error("Receipt checkpoint registration could not be finalized");
+  }
+  return current.data as Record<string, unknown>;
+}
+
+async function recoverInlineReceiptAfterFailure(
+  db: any,
+  state: InlineReceiptRecoveryState,
+): Promise<Record<string, unknown> | null> {
+  if (!state.auditId) {
+    state.auditId = await ensureInlineReceiptAuditCheckpoint(db, state);
+  }
+
+  const firstAttempt = await persistPreparedInlineRegistration(db, state);
+  const firstRegistration = firstAttempt.response.ok &&
+      firstAttempt.payload?.ok === true &&
+      firstAttempt.payload.registration
+    ? privateAuditObject(
+      firstAttempt.payload.registration,
+      "Recovered receipt registration",
+    )
+    : null;
+
+  const currentAudit = await db.from("receipt_verifications")
+    .select("result,flags,extracted")
+    .eq("id", state.auditId)
+    .eq("booking_ref", state.bookingRef)
+    .eq("image_hash", state.imageHash)
+    .maybeSingle();
+  if (currentAudit.error || !currentAudit.data) {
+    throw currentAudit.error ||
+      new Error("Receipt recovery audit could not be loaded");
+  }
+  const firstPaymentStatus = String(
+    firstRegistration?.payment_status || "",
+  ).toLowerCase();
+  // Preserve a completed automatic pass (or an owner's concurrent decision).
+  // An auto-approved audit paired with a non-capacity pending row is not a
+  // completed pass; it must be downgraded below instead of being returned as if
+  // finalization had succeeded.
+  if (["paid", "rejected"].includes(firstPaymentStatus)) {
+    return firstAttempt.payload;
+  }
+  if (
+    firstPaymentStatus === "pending" &&
+    currentAudit.data.result === "auto_approved" &&
+    firstRegistration?.capacity_exception === true
+  ) {
+    await finalizeInlineCheckpointRegistration(db, state, firstRegistration);
+    const capacityReview = await persistPreparedInlineRegistration(db, state);
+    if (
+      capacityReview.response.ok &&
+      capacityReview.payload?.ok === true &&
+      capacityReview.payload.registration
+    ) {
+      return capacityReview.payload;
+    }
+    return firstAttempt.payload;
+  }
+
+  const currentFlags = Array.isArray(currentAudit.data?.flags)
+    ? currentAudit.data.flags.map((flag: unknown) => String(flag))
+    : [];
+  const recoveryFlags = [
+    ...new Set([...currentFlags, "VERIFICATION_PROCESSING_ERROR"]),
+  ];
+  const currentExtracted = currentAudit.data?.extracted &&
+      typeof currentAudit.data.extracted === "object" &&
+      !Array.isArray(currentAudit.data.extracted)
+    ? currentAudit.data.extracted as Record<string, unknown>
+    : {};
+  const manualAudit = await db.from("receipt_verifications")
+    .update({
+      result: "manual_review",
+      flags: recoveryFlags,
+      extracted: {
+        ...currentExtracted,
+        ...inlineRecoveryAuditExtracted(state),
+        processingFailure:
+          "Automatic receipt processing or registration persistence did not complete.",
+      },
+      confidence: 0,
+    })
+    .eq("id", state.auditId)
+    .eq("booking_ref", state.bookingRef)
+    .eq("image_hash", state.imageHash)
+    .select("id")
+    .maybeSingle();
+  if (manualAudit.error || !manualAudit.data?.id) {
+    console.error(
+      "inline receipt recovery audit update failed:",
+      errMsg(manualAudit.error || "checkpoint row was not updated"),
+    );
+  } else {
+    if (firstRegistration) {
+      await finalizeInlineCheckpointRegistration(
+        db,
+        state,
+        firstRegistration,
+      );
+    }
+    const pendingAttempt = await persistPreparedInlineRegistration(db, state);
+    if (
+      pendingAttempt.response.ok &&
+      pendingAttempt.payload?.ok === true &&
+      pendingAttempt.payload.registration
+    ) {
+      return pendingAttempt.payload;
+    }
+  }
+
+  // Even if a database constraint changed underneath this request, alert the
+  // configured owner about the stored evidence and its immutable audit.
+  const context = state.registrationContext;
+  const delivery = await deliverPaymentReviewNotification({
+    db,
+    resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+    fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+    adminUrl: Deno.env.get("PAYMENT_REVIEW_ADMIN_URL") ||
+      "https://kortedoscdo.club/admin.html",
+    notification: {
+      bookingRef: state.bookingRef,
+      contextType: state.context,
+      receiptVerificationId: state.auditId,
+      fullName: String(context.fullName || "") || undefined,
+      provider: state.provider,
+      paymentReference: state.typedRef,
+      imageHash: state.imageHash,
+      flags: recoveryFlags,
+      expectedAmount: state.expectedAmount,
+      courtLabel: state.context === "open_play"
+        ? String(context.courtName || "") || undefined
+        : "Host session",
+      scheduleLabel: state.context === "open_play"
+        ? `${String(context.date || "")} · ${String(context.timeLabel || "")}`
+        : String(context.date || "") || undefined,
+    },
+  });
+  if (!delivery.ok && !delivery.skipped) {
+    console.error(
+      "inline receipt recovery notification failed:",
+      delivery.reason,
+    );
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -2129,6 +2500,7 @@ Deno.serve(async (req) => {
   // ── verify a freshly-uploaded receipt ─────────────────────────────────────
   let recoveryBookingRef = "";
   let recoveryProvider: PaymentProvider = "gcash";
+  let inlineRecoveryState: InlineReceiptRecoveryState | null = null;
   try {
     const bookingRef = String(body.bookingRef || "");
     let provider = normalizedProvider(String(body.provider || "gcash"));
@@ -2259,6 +2631,192 @@ Deno.serve(async (req) => {
       paymentMethodProvider(booking.payment_method ?? booking.paymentMethod) ||
       provider;
     recoveryProvider = provider;
+    const typedRef = normalizeReferenceForProvider(
+      String(booking.gcash_ref ?? booking.gcashRef ?? ""),
+      provider,
+    );
+    let preparedInline: PreparedInlineRegistration | null = null;
+
+    // Validate every deterministic field needed to recover a paid inline
+    // registration before storing its image. Once Storage succeeds, the
+    // recovery path must never need to trust a partial or zero-priced payload.
+    if (
+      !hasPersistedBooking &&
+      atomicInlineRegistrationRequested &&
+      inlinePricingKind
+    ) {
+      const verifiedProvider = boundDigitalProvider(provider);
+      const verifiedReference = normalizedStoredReference(
+        booking.gcash_ref ?? booking.gcashRef,
+        verifiedProvider,
+      );
+      const settingsResult = await db.from("settings").select("key,value");
+      if (settingsResult.error) {
+        throw new Error("Payment settings could not be loaded");
+      }
+      const preparedSettings: Record<string, string> = {};
+      (settingsResult.data || []).forEach(
+        (row: { key: string; value: string }) => {
+          preparedSettings[row.key] = row.value;
+        },
+      );
+
+      if (inlinePricingKind === "open_play") {
+        const fullName = cleanBoundText(
+          booking.full_name ?? booking.fullName,
+          160,
+          "Open Play full name",
+        );
+        const courtId = cleanBoundText(
+          booking.court_id ?? booking.courtId,
+          80,
+          "Open Play court",
+        );
+        const courtName = cleanBoundText(
+          booking.court_name ?? booking.courtName,
+          160,
+          "Open Play court name",
+        );
+        const date = cleanIsoDate(booking.date, "Open Play date");
+        const hour = cleanOpenPlayHour(booking.hour);
+        const timeLabel = cleanBoundText(
+          booking.time_label ?? booking.timeLabel,
+          80,
+          "Open Play time",
+        );
+        const paymentType = cleanBoundText(
+          booking.payment_type ?? booking.paymentType,
+          16,
+          "Open Play payment type",
+        ).toUpperCase();
+        if (!["50%", "100%"].includes(paymentType)) {
+          throw new Error("Payment type must be 50% or 100%");
+        }
+        const amounts = expectedOpenPlayAmounts(booking, preparedSettings);
+        const expectedTotal = boundMoney(
+          amounts.total,
+          "Open Play total amount",
+        );
+        const expectedAmount = boundMoney(
+          amounts.due,
+          "Open Play payment amount",
+        );
+        if (
+          expectedAmount <= 0 ||
+          (paymentType === "100%" &&
+            !closeBoundMoney(expectedAmount, expectedTotal)) ||
+          (paymentType === "50%" &&
+            !closeBoundMoney(expectedAmount, roundMoney(expectedTotal / 2)))
+        ) {
+          throw new Error(
+            "Open Play payment amount does not match the selected payment type",
+          );
+        }
+        const registrationContext = {
+          fullName,
+          courtId,
+          courtName,
+          date,
+          hour,
+          timeLabel,
+          paymentType,
+        };
+        preparedInline = {
+          context: "open_play",
+          bookingRef,
+          provider: verifiedProvider,
+          typedRef: verifiedReference,
+          expectedAmount,
+          expectedTotal,
+          registrationContext,
+          registration: {
+            fullName,
+            courtId,
+            courtName,
+            date,
+            hour,
+            timeLabel,
+            paymentType,
+            paymentMethod: verifiedProvider,
+            gcashRef: verifiedReference,
+            amount: expectedAmount,
+          },
+          settings: preparedSettings,
+        };
+      } else {
+        const sessionId = cleanBoundText(
+          booking.host_session_id ?? booking.hostSessionId,
+          80,
+          "Host session",
+        );
+        if (
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+            .test(sessionId)
+        ) {
+          throw new Error("Host session is invalid");
+        }
+        const fullName = cleanBoundText(
+          booking.full_name ?? booking.fullName,
+          160,
+          "Host-session full name",
+        );
+        const contactNumber = cleanBoundText(
+          booking.contact_number ?? booking.contactNumber,
+          80,
+          "Host-session contact number",
+          false,
+        );
+        const date = cleanIsoDate(booking.date, "Host-session date");
+        const sessionResult = await db.from("open_play_host_sessions")
+          .select("id,date,fee_per_player,status")
+          .eq("id", sessionId)
+          .maybeSingle();
+        if (
+          sessionResult.error ||
+          !sessionResult.data ||
+          sessionResult.data.status !== "published" ||
+          String(sessionResult.data.date || "").slice(0, 10) !== date
+        ) {
+          throw new Error("Host session is unavailable");
+        }
+        const expectedAmount = boundMoney(
+          sessionResult.data.fee_per_player,
+          "Host-session payment amount",
+        );
+        if (
+          expectedAmount <= 0 ||
+          !closeBoundMoney(booking.downpayment, expectedAmount)
+        ) {
+          throw new Error(
+            "Host session payment amount does not match the configured fee",
+          );
+        }
+        const registrationContext = {
+          fullName,
+          contactNumber,
+          hostSessionId: sessionId,
+          date,
+        };
+        preparedInline = {
+          context: "host_session",
+          bookingRef,
+          provider: verifiedProvider,
+          typedRef: verifiedReference,
+          expectedAmount,
+          expectedTotal: expectedAmount,
+          registrationContext,
+          registration: {
+            sessionId,
+            fullName,
+            contactNumber,
+            paymentMethod: verifiedProvider,
+            gcashRef: verifiedReference,
+            amount: expectedAmount,
+          },
+          settings: preparedSettings,
+        };
+      }
+    }
 
     // Save the evidence before pricing, perceptual hashing, or OCR. Large
     // mobile screenshots can make those later steps slow or memory-heavy; a
@@ -2292,6 +2850,58 @@ Deno.serve(async (req) => {
         error:
           "Receipt image could not be stored. Please upload the receipt again.",
       }, 500);
+    }
+
+    if (preparedInline) {
+      inlineRecoveryState = {
+        ...preparedInline,
+        objectPath,
+        imageHash,
+        auditId: null,
+      };
+      inlineRecoveryState.auditId = await ensureInlineReceiptAuditCheckpoint(
+        db,
+        inlineRecoveryState,
+      );
+      console.log("inline receipt checkpoint: audited", {
+        bookingRef,
+        receiptVerificationId: inlineRecoveryState.auditId,
+        context: inlineRecoveryState.context,
+      });
+      const checkpointPersistence = await persistPreparedInlineRegistration(
+        db,
+        inlineRecoveryState,
+        { notifyPending: false },
+      );
+      if (
+        !checkpointPersistence.response.ok ||
+        checkpointPersistence.payload?.ok !== true ||
+        !checkpointPersistence.payload.registration
+      ) {
+        throw new Error(
+          String(
+            checkpointPersistence.payload?.error ||
+              "Stored receipt checkpoint registration could not be created",
+          ),
+        );
+      }
+      const checkpointRegistration = privateAuditObject(
+        checkpointPersistence.payload.registration,
+        "Receipt checkpoint registration",
+      );
+      if (
+        String(checkpointRegistration.payment_status || "").toLowerCase() !==
+          "pending"
+      ) {
+        throw new Error(
+          "Stored receipt checkpoint registration is not awaiting review",
+        );
+      }
+      console.log("inline receipt checkpoint: registration pending", {
+        bookingRef,
+        registrationId: checkpointRegistration.id,
+        context: inlineRecoveryState.context,
+      });
     }
 
     if (hasPersistedBooking) {
@@ -2334,11 +2944,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const settingsRows = await db.from("settings").select("key,value");
-    const settings: Record<string, string> = {};
-    (settingsRows.data || []).forEach((r: { key: string; value: string }) => {
-      settings[r.key] = r.value;
-    });
+    const settings: Record<string, string> = preparedInline
+      ? preparedInline.settings
+      : {};
+    if (!preparedInline) {
+      const settingsRows = await db.from("settings").select("key,value");
+      (settingsRows.data || []).forEach((r: { key: string; value: string }) => {
+        settings[r.key] = r.value;
+      });
+    }
     const expectedMerchant = expectedMerchantForProvider(settings, provider);
     const expectedNumber = expectedMerchant.number;
     const expectedName = expectedMerchant.name;
@@ -2348,7 +2962,10 @@ Deno.serve(async (req) => {
     let expectedTotal = 0;
     let bookingGroup: Array<Record<string, unknown>> = [booking];
     try {
-      if (inlinePricingKind === "host_session") {
+      if (preparedInline) {
+        expectedTotal = preparedInline.expectedTotal;
+        expectedAmount = preparedInline.expectedAmount;
+      } else if (inlinePricingKind === "host_session") {
         const amounts = await expectedHostSessionAmounts(db, booking);
         expectedTotal = amounts.total;
         expectedAmount = amounts.due;
@@ -2388,10 +3005,6 @@ Deno.serve(async (req) => {
 
     // ── OCR ─────────────────────────────────────────────────────────────────
     const visionKey = Deno.env.get("GOOGLE_VISION_API_KEY") || "";
-    const typedRef = normalizeReferenceForProvider(
-      String(booking.gcash_ref || ""),
-      provider,
-    );
     let ocrText = "";
     let ocrRawText = "";
     let ocrConfidence = 0;
@@ -2956,59 +3569,7 @@ Deno.serve(async (req) => {
       : inlinePricingKind === "host_session"
       ? "host_session"
       : "open_play";
-    const registrationContext = atomicInlineRegistrationRequested &&
-        verificationContext === "open_play"
-      ? {
-        fullName: cleanBoundText(
-          booking.full_name ?? booking.fullName,
-          160,
-          "Open Play full name",
-        ),
-        courtId: cleanBoundText(
-          booking.court_id ?? booking.courtId,
-          80,
-          "Open Play court",
-        ),
-        courtName: cleanBoundText(
-          booking.court_name ?? booking.courtName,
-          160,
-          "Open Play court name",
-        ),
-        date: cleanIsoDate(booking.date, "Open Play date"),
-        hour: cleanOpenPlayHour(booking.hour),
-        timeLabel: cleanBoundText(
-          booking.time_label ?? booking.timeLabel,
-          80,
-          "Open Play time",
-        ),
-        paymentType: cleanBoundText(
-          booking.payment_type ?? booking.paymentType,
-          16,
-          "Open Play payment type",
-        ).toUpperCase(),
-      }
-      : atomicInlineRegistrationRequested &&
-          verificationContext === "host_session"
-      ? {
-        fullName: cleanBoundText(
-          booking.full_name ?? booking.fullName,
-          160,
-          "Host-session full name",
-        ),
-        contactNumber: cleanBoundText(
-          booking.contact_number ?? booking.contactNumber,
-          80,
-          "Host-session contact number",
-          false,
-        ),
-        hostSessionId: cleanBoundText(
-          booking.host_session_id ?? booking.hostSessionId,
-          80,
-          "Host session",
-        ),
-        date: cleanIsoDate(booking.date, "Host-session date"),
-      }
-      : undefined;
+    const registrationContext = preparedInline?.registrationContext;
     // Older pages verify first and insert the registration in a second request.
     // Preserve every immutable field those pages submit so the short-lived
     // migration compatibility trigger can bind the later insert to this exact
@@ -3055,20 +3616,35 @@ Deno.serve(async (req) => {
         ? { ocrAnalysisText: ocrText }
         : {}),
     };
-    const { data: auditRow, error: auditError } = await db
-      .from("receipt_verifications")
-      .insert({
-        booking_ref: bookingRef,
-        result,
-        flags,
-        extracted: auditExtracted,
-        confidence,
-        image_hash: imageHash,
-        phash,
-        raw_ocr_text: ocrRawText || null,
-      })
-      .select("id")
-      .maybeSingle();
+    const auditWrite = inlineRecoveryState?.auditId
+      ? await db.from("receipt_verifications")
+        .update({
+          result,
+          flags,
+          extracted: auditExtracted,
+          confidence,
+          phash,
+          raw_ocr_text: ocrRawText || null,
+        })
+        .eq("id", inlineRecoveryState.auditId)
+        .eq("booking_ref", bookingRef)
+        .eq("image_hash", imageHash)
+        .select("id")
+        .maybeSingle()
+      : await db.from("receipt_verifications")
+        .insert({
+          booking_ref: bookingRef,
+          result,
+          flags,
+          extracted: auditExtracted,
+          confidence,
+          image_hash: imageHash,
+          phash,
+          raw_ocr_text: ocrRawText || null,
+        })
+        .select("id")
+        .maybeSingle();
+    const { data: auditRow, error: auditError } = auditWrite;
     if (auditError || !auditRow?.id) {
       console.error(
         "receipt verification audit insert failed:",
@@ -3079,51 +3655,54 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Inline Open Play and host-session submissions are completed in this same
-    // request. Once the receipt has been stored and audited, the server creates
-    // the pending/paid registration and sends any configured review notice
-    // before replying. This prevents a closed tab or a lost second request from
-    // orphaning a player's payment evidence.
+    // The inline registration already exists in a safe pending state from the
+    // pre-OCR checkpoint. Finalize its verified metadata and outcome, then send
+    // a review notice only when it remains pending.
     let inlinePersistenceResult: Record<string, unknown> | null = null;
     let inlineRegistration: Record<string, unknown> | null = null;
+    const receiptVerifiedAt = new Date().toISOString();
     if (
       !hasPersistedBooking &&
       verificationContext !== "court_booking" &&
       atomicInlineRegistrationRequested
     ) {
-      const receiptVerificationId = Number(auditRow.id);
-      const persistenceResponse = verificationContext === "host_session"
-        ? await persistHostSessionRegistration(db, {
-          sessionId: booking.host_session_id ?? booking.hostSessionId,
-          fullName: booking.full_name ?? booking.fullName,
-          contactNumber: booking.contact_number ?? booking.contactNumber,
-          paymentMethod: provider,
-          gcashRef: typedRef,
-          amount: expectedAmount,
-          receiptVerificationId,
-          receiptImageUrl: objectPath,
-          receiptImageHash: imageHash,
-        })
-        : await persistOpenPlayRegistration(db, {
-          fullName: booking.full_name ?? booking.fullName,
-          courtId: booking.court_id ?? booking.courtId,
-          courtName: booking.court_name ?? booking.courtName,
-          date: booking.date,
-          hour: booking.hour,
-          timeLabel: booking.time_label ?? booking.timeLabel,
-          paymentType: booking.payment_type ?? booking.paymentType,
-          paymentMethod: provider,
-          gcashRef: typedRef,
-          amount: expectedAmount,
-          receiptVerificationId,
-          receiptImageUrl: objectPath,
-          receiptImageHash: imageHash,
-        });
-      const persistencePayload = await persistenceResponse.json().catch(() =>
-        null
-      ) as Record<string, unknown> | null;
+      if (!inlineRecoveryState || !preparedInline) {
+        throw new Error("Inline receipt recovery checkpoint is missing");
+      }
+      inlineRecoveryState.auditId = positiveReceiptVerificationId(auditRow.id);
+      const checkpointLookup = await persistPreparedInlineRegistration(
+        db,
+        inlineRecoveryState,
+        { notifyPending: false },
+      );
       if (
-        !persistenceResponse.ok ||
+        !checkpointLookup.response.ok ||
+        checkpointLookup.payload?.ok !== true ||
+        !checkpointLookup.payload.registration
+      ) {
+        throw new Error(
+          String(
+            checkpointLookup.payload?.error ||
+              "Receipt checkpoint registration could not be loaded",
+          ),
+        );
+      }
+      const checkpointRegistration = privateAuditObject(
+        checkpointLookup.payload.registration,
+        "Receipt checkpoint registration",
+      );
+      await finalizeInlineCheckpointRegistration(
+        db,
+        inlineRecoveryState,
+        checkpointRegistration,
+      );
+      const persistence = await persistPreparedInlineRegistration(
+        db,
+        inlineRecoveryState,
+      );
+      const persistencePayload = persistence.payload;
+      if (
+        !persistence.response.ok ||
         persistencePayload?.ok !== true ||
         !persistencePayload.registration
       ) {
@@ -3160,7 +3739,7 @@ Deno.serve(async (req) => {
       receipt_flags: flags,
       receipt_extracted: extracted,
       receipt_confidence: confidence,
-      receipt_verified_at: new Date().toISOString(),
+      receipt_verified_at: receiptVerifiedAt,
     };
 
     let finalUpdateError: string | null = null;
@@ -3302,6 +3881,55 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("verify-gcash-receipt error:", errMsg(err));
+    if (inlineRecoveryState) {
+      try {
+        const recovered = await recoverInlineReceiptAfterFailure(
+          db,
+          inlineRecoveryState,
+        );
+        if (recovered?.registration) {
+          const registration = privateAuditObject(
+            recovered.registration,
+            "Recovered registration",
+          );
+          const recoveredStatus =
+            String(registration.payment_status || "").toLowerCase() === "paid"
+              ? "auto_approved"
+              : "manual_review";
+          return json({
+            ok: true,
+            status: recoveredStatus,
+            receiptStatus: recoveredStatus,
+            flags: [],
+            publicReason: publicReceiptMessage(recoveredStatus, []),
+            receiptImageUrl: inlineRecoveryState.objectPath,
+            receiptImageHash: inlineRecoveryState.imageHash,
+            receiptVerificationId: inlineRecoveryState.auditId,
+            registration,
+            ...(recovered.notification
+              ? { notification: recovered.notification }
+              : {}),
+            warning: recoveredStatus === "manual_review"
+              ? "Automatic processing did not finish; the stored receipt is pending owner review."
+              : "Payment was verified and the registration was recovered.",
+            message: recoveredStatus === "auto_approved"
+              ? "Payment verified."
+              : "Receipt received. Your booking is pending while the court owner reviews the payment.",
+          });
+        }
+        return json({
+          error:
+            "Receipt evidence was stored and the court owner was alerted, but the registration needs support to complete.",
+          receiptStored: true,
+          receiptVerificationId: inlineRecoveryState.auditId,
+        }, 500);
+      } catch (recoveryError) {
+        console.error(
+          "inline receipt recovery failed:",
+          errMsg(recoveryError),
+        );
+      }
+    }
     if (recoveryBookingRef) {
       await alertStoredPendingReceiptAfterFailure(
         db,

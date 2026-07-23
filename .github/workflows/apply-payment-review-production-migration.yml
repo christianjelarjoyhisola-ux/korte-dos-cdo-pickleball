@@ -1,0 +1,806 @@
+name: Apply Payment Review Production Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-payment-review-production-migration.yml"
+      - "supabase/migrations/20260723153000_payment_review_notifications.sql"
+      - "supabase/functions/_shared/**"
+      - "supabase/functions/verify-gcash-receipt/**"
+      - "supabase/functions/manage-payment-review-notification/**"
+      - "supabase/functions/process-payment-review-notifications/**"
+      - "supabase/functions/review-payment-receipt/**"
+      - "deno.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply and verify payment-review migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260723153000_payment_review_notifications.sql
+      MIGRATION_SHA256: ccd3331ec98c5b66652d44bd71786f8b64654e8fbbebcabe7f3b4cc31a8c89a1
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260723153000',
+          'payment_review_notifications',
+          array['sha256:ccd3331ec98c5b66652d44bd71786f8b64654e8fbbebcabe7f3b4cc31a8c89a1']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          review_function regprocedure :=
+            to_regprocedure('public.apply_payment_review_decision(text,text,uuid,text,text)');
+          open_play_review_function regprocedure :=
+            to_regprocedure('public.apply_open_play_payment_review_decision(bigint,text,uuid,text,text)');
+          host_review_function regprocedure :=
+            to_regprocedure('public.apply_host_session_payment_review_decision(uuid,text,uuid,text,text)');
+          open_play_count_function regprocedure :=
+            to_regprocedure('public.count_open_play_registrations(date,text)');
+          host_count_function regprocedure :=
+            to_regprocedure('public.count_open_play_host_session_registrations(uuid)');
+          notification_claim_function regprocedure :=
+            to_regprocedure('public.claim_due_payment_review_notifications(integer)');
+          inline_finalizer_function regprocedure :=
+            to_regprocedure('public.finalize_inline_receipt_registration(text,text,bigint)');
+          review_guard_function regprocedure :=
+            to_regprocedure('public.guard_payment_review_transition()');
+          review_delete_guard_function regprocedure :=
+            to_regprocedure('public.guard_payment_review_delete()');
+          open_play_insert_guard_function regprocedure :=
+            to_regprocedure('public.guard_open_play_registration_insert()');
+          open_play_update_guard_function regprocedure :=
+            to_regprocedure('public.guard_open_play_payment_review_transition()');
+          open_play_delete_guard_function regprocedure :=
+            to_regprocedure('public.guard_open_play_payment_review_delete()');
+          host_insert_guard_function regprocedure :=
+            to_regprocedure('public.guard_host_session_registration_insert()');
+          host_update_guard_function regprocedure :=
+            to_regprocedure('public.guard_host_session_payment_review_transition()');
+          host_parent_guard_function regprocedure :=
+            to_regprocedure('public.guard_host_session_pending_payment_reviews()');
+          host_audit_match_function regprocedure :=
+            to_regprocedure(
+              'public.host_session_receipt_audit_matches(jsonb,uuid,date,text,text,text,text,numeric)'
+            );
+          insert_check text;
+          update_check text;
+          open_play_insert_check text;
+          open_play_select_qual text;
+        begin
+          if to_regclass('public.private_settings') is null
+             or to_regclass('public.payment_review_notifications') is null
+             or to_regclass('public.payment_review_decisions') is null then
+            raise exception 'one or more payment-review tables are missing';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_class table_record
+            join pg_namespace schema_record
+              on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and table_record.relname in (
+                'private_settings',
+                'payment_review_notifications',
+                'payment_review_decisions'
+              )
+              and table_record.relrowsecurity
+            group by schema_record.nspname
+            having count(*) = 3
+          ) then
+            raise exception 'payment-review RLS is not enabled on all private tables';
+          end if;
+
+          if has_table_privilege('anon', 'public.private_settings', 'select')
+             or has_table_privilege('authenticated', 'public.private_settings', 'select')
+             or has_table_privilege('anon', 'public.payment_review_notifications', 'select')
+             or has_table_privilege('authenticated', 'public.payment_review_notifications', 'select')
+             or has_table_privilege('anon', 'public.payment_review_notifications', 'insert')
+             or has_table_privilege('authenticated', 'public.payment_review_notifications', 'insert')
+             or has_table_privilege('anon', 'public.payment_review_decisions', 'insert')
+             or has_table_privilege('authenticated', 'public.payment_review_decisions', 'insert') then
+            raise exception 'browser roles have unsafe payment-review table privileges';
+          end if;
+
+          if not exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'payment_review_notifications'
+              and column_name = 'payment_reference_masked'
+          ) then
+            raise exception 'masked payment reference delivery column is missing';
+          end if;
+
+          if review_function is null
+             or open_play_review_function is null
+             or host_review_function is null
+             or open_play_count_function is null
+             or host_count_function is null
+             or notification_claim_function is null
+             or inline_finalizer_function is null then
+            raise exception 'one or more atomic payment-review decision functions are missing';
+          end if;
+
+          if review_guard_function is null
+             or review_delete_guard_function is null
+             or open_play_insert_guard_function is null
+             or open_play_update_guard_function is null
+             or open_play_delete_guard_function is null
+             or host_insert_guard_function is null
+             or host_update_guard_function is null
+             or host_parent_guard_function is null
+             or host_audit_match_function is null then
+            raise exception 'one or more receipt enforcement guard functions are missing';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = review_function
+              and function_record.prosecdef
+          ) or not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = open_play_review_function
+              and function_record.prosecdef
+          ) or not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = host_review_function
+              and function_record.prosecdef
+          ) or not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = open_play_count_function
+              and function_record.prosecdef
+          ) or not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = host_count_function
+              and function_record.prosecdef
+          ) or not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = notification_claim_function
+              and function_record.prosecdef
+          ) or not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = inline_finalizer_function
+              and function_record.prosecdef
+          ) or not exists (
+            select 1
+            from pg_proc function_record
+            where function_record.oid = host_parent_guard_function
+              and function_record.prosecdef
+          ) then
+            raise exception 'a payment-review or secured capacity function is not SECURITY DEFINER';
+          end if;
+
+          if not has_function_privilege(
+            'service_role',
+            'public.apply_payment_review_decision(text,text,uuid,text,text)',
+            'execute'
+          )
+             or has_function_privilege(
+               'anon',
+               'public.apply_payment_review_decision(text,text,uuid,text,text)',
+               'execute'
+             )
+             or has_function_privilege(
+               'authenticated',
+               'public.apply_payment_review_decision(text,text,uuid,text,text)',
+               'execute'
+             )
+             or not has_function_privilege(
+               'service_role',
+               'public.apply_open_play_payment_review_decision(bigint,text,uuid,text,text)',
+               'execute'
+             )
+             or has_function_privilege(
+               'anon',
+               'public.apply_open_play_payment_review_decision(bigint,text,uuid,text,text)',
+               'execute'
+             )
+             or has_function_privilege(
+               'authenticated',
+               'public.apply_open_play_payment_review_decision(bigint,text,uuid,text,text)',
+               'execute'
+             )
+             or not has_function_privilege(
+               'service_role',
+               'public.apply_host_session_payment_review_decision(uuid,text,uuid,text,text)',
+               'execute'
+             )
+             or has_function_privilege(
+               'anon',
+               'public.apply_host_session_payment_review_decision(uuid,text,uuid,text,text)',
+               'execute'
+             )
+             or has_function_privilege(
+               'authenticated',
+               'public.apply_host_session_payment_review_decision(uuid,text,uuid,text,text)',
+               'execute'
+             )
+             or not has_function_privilege(
+               'service_role',
+               'public.claim_due_payment_review_notifications(integer)',
+               'execute'
+             )
+             or has_function_privilege(
+               'anon',
+               'public.claim_due_payment_review_notifications(integer)',
+               'execute'
+             )
+              or has_function_privilege(
+                'authenticated',
+                'public.claim_due_payment_review_notifications(integer)',
+                'execute'
+              )
+             or not has_function_privilege(
+               'service_role',
+               'public.finalize_inline_receipt_registration(text,text,bigint)',
+               'execute'
+             )
+             or has_function_privilege(
+               'anon',
+               'public.finalize_inline_receipt_registration(text,text,bigint)',
+               'execute'
+             )
+             or has_function_privilege(
+               'authenticated',
+               'public.finalize_inline_receipt_registration(text,text,bigint)',
+               'execute'
+              ) then
+            raise exception 'payment-review decision function grants are unsafe';
+          end if;
+
+          if pg_get_functiondef(notification_claim_function)
+               not ilike '%for update skip locked%'
+             or pg_get_functiondef(notification_claim_function)
+               not ilike '%interval ''10 minutes''%'
+             or pg_get_functiondef(notification_claim_function)
+               not ilike '%attempt_count%+ 1%' then
+            raise exception 'durable notification claiming is incomplete';
+          end if;
+
+          if pg_get_functiondef(inline_finalizer_function)
+               not ilike '%payment_review_ledger_keys%'
+             or pg_get_functiondef(inline_finalizer_function)
+               not ilike '%for share%'
+             or pg_get_functiondef(inline_finalizer_function)
+               not ilike '%for update%'
+             or pg_get_functiondef(inline_finalizer_function)
+               not ilike '%then ''paid''%' then
+            raise exception 'atomic inline receipt finalization is incomplete';
+          end if;
+
+          if not exists (
+            select 1
+            from public.private_settings
+            where key = 'payment_review_notification_worker_secret'
+              and value ~ '^[a-f0-9]{64}$'
+          ) then
+            raise exception 'payment-review worker secret is missing';
+          end if;
+
+          if not exists (
+            select 1
+            from cron.job
+            where jobname = 'process-payment-review-notifications'
+              and schedule = '*/5 * * * *'
+              and command ilike '%process-payment-review-notifications%'
+              and command ilike '%X-Payment-Review-Worker-Secret%'
+              and command ilike '%payment_review_notification_worker_secret%'
+              and command ilike '%timeout_milliseconds := 5000%'
+          ) then
+            raise exception 'secure payment-review retry cron is missing';
+          end if;
+
+          if pg_get_functiondef(host_insert_guard_function) not ilike '%pg_advisory_xact_lock%'
+             or pg_get_functiondef(host_insert_guard_function) not ilike '%max_players%'
+             or pg_get_functiondef(host_insert_guard_function)
+               not ilike '%host_session_receipt_audit_matches%'
+             or pg_get_functiondef(host_audit_match_function) not ilike '%contactNumber%'
+             or pg_get_functiondef(host_insert_guard_function) not ilike '%capacity_exception%'
+             or pg_get_functiondef(host_insert_guard_function) not ilike '%legacyRegistrationContext%'
+             or pg_get_functiondef(host_insert_guard_function) not ilike '%LEGACY_CLIENT_REVIEW%'
+             or pg_get_functiondef(open_play_insert_guard_function) not ilike '%pg_advisory_xact_lock%'
+             or pg_get_functiondef(open_play_insert_guard_function) not ilike '%capacity_exception%'
+             or pg_get_functiondef(open_play_insert_guard_function) not ilike '%legacyRegistrationContext%'
+             or pg_get_functiondef(open_play_insert_guard_function) not ilike '%LEGACY_CLIENT_REVIEW%'
+             or pg_get_functiondef(open_play_count_function) not ilike '%capacity_exception%'
+             or pg_get_functiondef(host_count_function) not ilike '%capacity_exception%'
+             or pg_get_functiondef(open_play_review_function) not ilike '%LEGACY_CLIENT_REVIEW%'
+             or pg_get_functiondef(host_review_function) not ilike '%LEGACY_CLIENT_REVIEW%'
+             or pg_get_functiondef(host_parent_guard_function) not ilike '%Resolve pending payment reviews%' then
+            raise exception 'Open Play capacity or receipt-context enforcement is incomplete';
+          end if;
+
+          if not has_function_privilege(
+               'anon',
+               'public.count_open_play_registrations(date,text)',
+               'execute'
+             )
+             or not has_function_privilege(
+               'authenticated',
+               'public.count_open_play_registrations(date,text)',
+               'execute'
+             )
+             or not has_function_privilege(
+               'anon',
+               'public.count_open_play_host_session_registrations(uuid)',
+               'execute'
+             )
+             or not has_function_privilege(
+               'authenticated',
+               'public.count_open_play_host_session_registrations(uuid)',
+               'execute'
+             ) then
+            raise exception 'secured capacity count grants are incomplete';
+          end if;
+
+          if has_function_privilege(
+            'anon',
+            'public.guard_payment_review_transition()',
+            'execute'
+          )
+             or has_function_privilege(
+               'authenticated',
+               'public.guard_payment_review_transition()',
+               'execute'
+             )
+             or has_function_privilege(
+               'anon',
+               'public.guard_host_session_pending_payment_reviews()',
+               'execute'
+             )
+             or has_function_privilege(
+               'authenticated',
+               'public.guard_host_session_pending_payment_reviews()',
+               'execute'
+             ) then
+            raise exception 'payment-review transition guard grants are unsafe';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_trigger trigger_record
+            join pg_class table_record
+              on table_record.oid = trigger_record.tgrelid
+            join pg_namespace schema_record
+              on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and table_record.relname = 'bookings'
+              and trigger_record.tgname = 'trg_guard_payment_review_transition'
+              and trigger_record.tgfoid = review_guard_function
+              and not trigger_record.tgisinternal
+              and trigger_record.tgenabled <> 'D'
+          ) then
+            raise exception 'payment-review transition guard trigger is missing or disabled';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_trigger trigger_record
+            join pg_class table_record
+              on table_record.oid = trigger_record.tgrelid
+            join pg_namespace schema_record
+              on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and table_record.relname = 'bookings'
+              and trigger_record.tgname = 'trg_guard_payment_review_delete'
+              and trigger_record.tgfoid = review_delete_guard_function
+              and not trigger_record.tgisinternal
+              and trigger_record.tgenabled <> 'D'
+          ) then
+            raise exception 'payment-review delete guard trigger is missing or disabled';
+          end if;
+
+          if (
+            select count(*)
+            from pg_trigger trigger_record
+            join pg_class table_record
+              on table_record.oid = trigger_record.tgrelid
+            join pg_namespace schema_record
+              on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and not trigger_record.tgisinternal
+              and trigger_record.tgenabled <> 'D'
+              and (
+                (
+                  table_record.relname = 'open_play_registrations'
+                  and trigger_record.tgname in (
+                    'trg_guard_open_play_registration_insert',
+                    'trg_guard_open_play_payment_review_transition',
+                    'trg_guard_open_play_payment_review_delete'
+                  )
+                )
+                or (
+                  table_record.relname = 'open_play_host_session_registrations'
+                  and trigger_record.tgname in (
+                    'trg_guard_host_session_registration_insert',
+                    'trg_guard_host_session_payment_review_transition'
+                  )
+                )
+                or (
+                  table_record.relname = 'open_play_host_sessions'
+                  and trigger_record.tgname in (
+                    'trg_guard_host_session_review_update',
+                    'trg_guard_host_session_review_delete'
+                  )
+                  and trigger_record.tgfoid = host_parent_guard_function
+                )
+              )
+          ) <> 7 then
+            raise exception 'one or more Open Play or host receipt guard triggers are missing or disabled';
+          end if;
+
+          if not exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'open_play_registrations'
+              and column_name = 'receipt_verification_id'
+          ) or not exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'open_play_host_session_registrations'
+              and column_name = 'receipt_verification_id'
+          ) then
+            raise exception 'one or more receipt attestation columns are missing';
+          end if;
+
+          if (
+            select count(*)
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name in (
+                'open_play_registrations',
+                'open_play_host_session_registrations'
+              )
+              and column_name = 'capacity_exception'
+              and data_type = 'boolean'
+              and is_nullable = 'NO'
+          ) <> 2 then
+            raise exception 'one or more non-counting capacity-exception columns are missing';
+          end if;
+
+          if (
+            select count(*)
+            from pg_constraint constraint_record
+            join pg_class table_record
+              on table_record.oid = constraint_record.conrelid
+            join pg_namespace schema_record
+              on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and constraint_record.conname in (
+                'open_play_registration_capacity_exception_check',
+                'host_registration_capacity_exception_check'
+              )
+              and constraint_record.contype = 'c'
+              and constraint_record.convalidated
+          ) <> 2 then
+            raise exception 'one or more capacity-exception constraints are missing';
+          end if;
+
+          if (
+            select count(*)
+            from pg_indexes
+            where schemaname = 'public'
+              and indexname in (
+                'uniq_open_play_receipt_verification_id',
+                'uniq_open_play_receipt_image_hash_secured',
+                'uniq_open_play_receipt_image_url_secured',
+                'uniq_host_session_registration_receipt_verification_id',
+                'uniq_host_session_registration_receipt_image_hash',
+                'uniq_host_session_registration_receipt_image_url'
+              )
+          ) <> 6 then
+            raise exception 'one or more receipt attestation uniqueness indexes are missing';
+          end if;
+
+          if has_column_privilege(
+               'anon',
+               'public.open_play_registrations',
+               'full_name',
+               'select'
+             )
+             or has_column_privilege(
+               'anon',
+               'public.open_play_registrations',
+               'gcash_ref',
+               'select'
+             )
+             or has_column_privilege(
+               'anon',
+               'public.open_play_registrations',
+               'receipt_extracted',
+               'select'
+             )
+             or not has_column_privilege(
+               'anon',
+               'public.open_play_registrations',
+               'id',
+               'select'
+             )
+             or not has_column_privilege(
+               'anon',
+               'public.open_play_registrations',
+               'court_id',
+               'select'
+             )
+             or not has_column_privilege(
+               'anon',
+               'public.open_play_registrations',
+               'date',
+               'select'
+             )
+             or not has_column_privilege(
+               'anon',
+               'public.open_play_registrations',
+               'payment_status',
+               'select'
+             ) then
+            raise exception 'anonymous Open Play column privileges are unsafe';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_policies
+            where schemaname = 'public'
+              and tablename = 'receipt_verifications'
+              and policyname = 'receipt_verifications_select_admin'
+              and cmd = 'SELECT'
+              and qual ilike '%status%active%'
+              and qual ilike '%court_owner%'
+              and qual not ilike '%host%'
+          ) then
+            raise exception 'receipt verification read policy is not role scoped';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_policies
+            where schemaname = 'public'
+              and tablename = 'open_play_host_session_registrations'
+              and policyname = 'open_play_host_session_registrations_select_host_roles'
+              and cmd = 'SELECT'
+              and qual ilike '%owner%'
+              and qual ilike '%court_owner%'
+              and qual ilike '%staff%'
+              and qual ilike '%host_user_id%'
+          ) then
+            raise exception 'host-session payment-review read policy is incomplete';
+          end if;
+
+          select pg_get_expr(policy.polwithcheck, policy.polrelid)
+            into insert_check
+            from pg_policy policy
+            join pg_class table_record on table_record.oid = policy.polrelid
+            join pg_namespace schema_record on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and table_record.relname = 'bookings'
+              and policy.polname = 'bookings_insert_public';
+
+          select pg_get_expr(policy.polwithcheck, policy.polrelid)
+            into update_check
+            from pg_policy policy
+            join pg_class table_record on table_record.oid = policy.polrelid
+            join pg_namespace schema_record on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and table_record.relname = 'bookings'
+              and policy.polname = 'bookings_update_public_hold';
+
+          select pg_get_expr(policy.polwithcheck, policy.polrelid)
+            into open_play_insert_check
+            from pg_policy policy
+            join pg_class table_record on table_record.oid = policy.polrelid
+            join pg_namespace schema_record on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and table_record.relname = 'open_play_registrations'
+              and policy.polname = 'open_play_insert_public';
+
+          select pg_get_expr(policy.polqual, policy.polrelid)
+            into open_play_select_qual
+            from pg_policy policy
+            join pg_class table_record on table_record.oid = policy.polrelid
+            join pg_namespace schema_record on schema_record.oid = table_record.relnamespace
+            where schema_record.nspname = 'public'
+              and table_record.relname = 'open_play_registrations'
+              and policy.polname = 'open_play_select_capacity';
+
+          if insert_check is null
+             or insert_check not ilike '%status%verifying%'
+             or insert_check not ilike '%payment_status%for_verification%'
+             or insert_check not ilike '%payment_method%cash%'
+             or update_check is null
+             or update_check not ilike '%status%verifying%'
+             or update_check not ilike '%payment_status%for_verification%'
+             or update_check not ilike '%payment_status%failed%' then
+            raise exception 'public booking receipt-hold policies are not current';
+          end if;
+
+          if open_play_insert_check is null
+             or open_play_insert_check not ilike '%payment_method%cash%'
+             or open_play_insert_check not ilike '%receipt_verification_id%IS NULL%'
+             or open_play_insert_check not ilike '%receipt_verification_id%IS NOT NULL%'
+             or open_play_insert_check not ilike '%receipt_image_url%'
+             or open_play_insert_check not ilike '%receipt_image_hash%'
+             or open_play_insert_check not ilike '%created_at%' then
+            raise exception 'anonymous Open Play insert policy is missing a secured cash or attested compatibility lane';
+          end if;
+
+          if open_play_select_qual is null
+             or open_play_select_qual not ilike '%capacity_exception%'
+             or open_play_select_qual not ilike '%payment_status%rejected%' then
+            raise exception 'anonymous Open Play capacity reads include review-only overflow rows';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260723153000'
+              and name = 'payment_review_notifications'
+              and statements = array[
+                'sha256:ccd3331ec98c5b66652d44bd71786f8b64654e8fbbebcabe7f3b4cc31a8c89a1'
+              ]::text[]
+          ) then
+            raise exception 'payment-review migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      - name: Rehearse, verify, and apply only the payment-review migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          stripped_migration="$RUNNER_TEMP/payment-review-migration.sql"
+          payload_file="$RUNNER_TEMP/payment-review-migration.json"
+          response_file="$RUNNER_TEMP/payment-review-migration-response.json"
+          rehearsal_payload="$RUNNER_TEMP/payment-review-migration-rehearsal.json"
+          rehearsal_response="$RUNNER_TEMP/payment-review-migration-rehearsal-response.json"
+
+          awk '
+            /^[[:space:]]*begin;[[:space:]]*$/ { next }
+            /^[[:space:]]*commit;[[:space:]]*$/ { next }
+            { print }
+          ' "$MIGRATION_FILE" > "$stripped_migration"
+
+          jq -Rs \
+            '{query: ("begin;\n" + . + "\nrollback;")}' \
+            "$stripped_migration" > "$rehearsal_payload"
+
+          rehearsal_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$rehearsal_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$rehearsal_payload")"
+
+          if [[ ! "$rehearsal_status" =~ ^2 ]]; then
+            echo "::error::Rollback-only payment-review migration rehearsal failed with HTTP $rehearsal_status."
+            jq -c '{code, message, error}' "$rehearsal_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$stripped_migration" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Payment-review migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          payload_file="$RUNNER_TEMP/payment-review-verification.json"
+          response_file="$RUNNER_TEMP/payment-review-verification-response.json"
+
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Payment-review database verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Payment-review production migration verified."
+
+      - name: Deploy schema-dependent payment-review Edge Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+
+          for function_name in \
+            verify-gcash-receipt \
+            manage-payment-review-notification \
+            process-payment-review-notifications \
+            review-payment-receipt
+          do
+            supabase functions deploy "$function_name" \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              --no-verify-jwt
+          done

@@ -86,13 +86,6 @@ try {
   Write-Host "Target Supabase project: $projectRef"
   Invoke-Supabase link --project-ref $projectRef
 
-  # Functions in this repository depend on the newest booking/host columns and
-  # RLS policies. Stop immediately if migrations fail; deploying functions
-  # against an older schema can break approvals and host reservations.
-  Write-Host "Applying database migrations before Edge Functions..."
-  Invoke-Supabase db push --dry-run
-  Invoke-Supabase db push
-
   $secretArgs = @(
     "secrets", "set",
     "SERVICE_ROLE_KEY=$serviceRoleKey",
@@ -102,10 +95,20 @@ try {
   if ($paymentWebhookSecret) { $secretArgs += "PAYMENT_WEBHOOK_SECRET=$paymentWebhookSecret" }
   Invoke-Supabase @secretArgs
 
-  $functions = @(
+  # Expand and verify the database contract before deploying handlers that use
+  # the new receipt-attestation and host-review columns/RPCs. Public pages are
+  # still deployed separately after both server layers are ready.
+  Write-Host "Validating and applying database migrations..."
+  Invoke-Supabase db push --dry-run
+  Invoke-Supabase db push
+
+  $allFunctions = @(
+    "verify-gcash-receipt",
+    "manage-payment-review-notification",
+    "process-payment-review-notifications",
+    "review-payment-receipt",
     "create-payment-session",
     "payment-webhook",
-    "verify-gcash-receipt",
     "host-application",
     "manage-account",
     "send-confirmation-email",
@@ -115,7 +118,7 @@ try {
     "integration-status"
   )
 
-  foreach ($functionName in $functions) {
+  foreach ($functionName in $allFunctions) {
     Invoke-Supabase functions deploy $functionName --no-verify-jwt
   }
 

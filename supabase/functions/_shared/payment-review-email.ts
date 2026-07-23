@@ -274,6 +274,8 @@ export function paymentReviewFlagLabel(flag: unknown): string {
     BOOKING_UPDATE_FAILED: "Automatic booking confirmation did not finish",
     SESSION_CAPACITY_REVIEW:
       "The session filled while this paid receipt was being checked",
+    LEGACY_CLIENT_REVIEW:
+      "Submitted from an older booking page and needs an owner check",
     VERIFICATION_PROCESSING_ERROR:
       "Automatic receipt verification did not finish",
   };
@@ -443,6 +445,33 @@ export async function createPaymentReviewDedupeKey(
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
   return `payment-review:v1:${hex}`;
+}
+
+export async function createPaymentReviewDeliveryIdempotencyKey(
+  dedupeKey: unknown,
+  recipientValue: unknown,
+): Promise<string> {
+  const stableDedupeKey = cleanText(dedupeKey, 160);
+  if (stableDedupeKey.length < 16) {
+    throw new Error("Payment-review dedupe key is invalid");
+  }
+  const recipient = normalizePaymentReviewEmail(recipientValue);
+  if (!recipient) throw new Error("Notification recipient is not configured");
+
+  // Resend requires an idempotency key to keep the exact same request
+  // payload. Including the normalized recipient preserves safe retries while
+  // allowing an owner to replace the manually configured destination after a
+  // failed attempt without creating a permanent 409 conflict.
+  const material =
+    `payment-review-delivery-v1\u0000${stableDedupeKey}\u0000${recipient}`;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(material),
+  );
+  const hex = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `payment-review-delivery:v1:${hex}`;
 }
 
 async function sendResendEmail(
@@ -751,7 +780,10 @@ export async function deliverPaymentReviewNotification(
         resendApiKey: options.resendApiKey,
         recipient,
         notification,
-        idempotencyKey: dedupeKey,
+        idempotencyKey: await createPaymentReviewDeliveryIdempotencyKey(
+          dedupeKey,
+          recipient,
+        ),
         fromAddress: options.fromAddress,
         adminUrl: options.adminUrl,
         fetcher: options.fetcher,
@@ -762,6 +794,7 @@ export async function deliverPaymentReviewNotification(
         .from("payment_review_notifications")
         .update({
           status: "sent",
+          recipient_email: recipient,
           provider_message_id: sent.providerMessageId || null,
           error_message: null,
           sent_at: sentAt,
@@ -787,6 +820,7 @@ export async function deliverPaymentReviewNotification(
         .from("payment_review_notifications")
         .update({
           status: "failed",
+          recipient_email: recipient,
           error_message: failure,
           next_attempt_at: isoAfterMinutes(
             retryDelayMinutes(claimedAttempt),
