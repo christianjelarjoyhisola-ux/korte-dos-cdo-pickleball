@@ -1475,6 +1475,9 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .ft-c a { color:var(--muted); font-size:.87rem; transition:color .2s; }
 .ft-c a:hover { color:var(--accent); }
 .ft-bot { max-width:1080px; margin:0 auto; padding-top:20px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:.81rem; color:var(--muted); flex-wrap:wrap; gap:8px; }
+.ft-business-cta { display:inline-flex; align-items:center; gap:5px; }
+.ft-business-cta a { color:var(--text); font-weight:700; text-decoration:underline; text-decoration-color:rgba(var(--ac),.65); text-underline-offset:3px; transition:color .2s, text-decoration-color .2s; }
+.ft-business-cta a:hover { color:var(--accent); text-decoration-color:var(--accent); }
 
 /* TOASTS */
 .toasts { position:fixed; top:74px; right:20px; z-index:15000; display:flex; flex-direction:column; gap:8px; }
@@ -3875,8 +3878,10 @@ body.host-mode .courts { padding-bottom:140px; }
   <div class="ft-bot">
     <span>© 2026 Korte DOS. All rights reserved.</span>
     <span>Built for pickleball lovers</span>
-    <br>
-    <span> Dev: <a href="https://www.facebook.com/jelarjoychristian" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;text-underline-offset:3px;">Jelar</a></span>
+    <span class="ft-business-cta">
+      Need a website or booking system?
+      <a href="https://www.facebook.com/jelarjoychristian" target="_blank" rel="noopener noreferrer" aria-label="Message Dev Jelar on Facebook (opens in a new tab)">Message Dev Jelar ↗</a>
+    </span>
   </div>
 </footer>
 

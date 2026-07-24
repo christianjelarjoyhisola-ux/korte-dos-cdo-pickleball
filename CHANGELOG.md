@@ -6,6 +6,16 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-24] - Business Website Contact Footer
+
+### Changed
+- **Clear developer contact** - replaced the abbreviated footer credit with a concise website and booking-system call to action that opens Dev Jelar's Facebook profile.
+- **Responsive footer layout** - removed the forced line break and added an accessible, visually distinct contact link that remains readable on desktop and mobile.
+
+**Files affected:** `index.html`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-24] - Dedicated GoTyme to GCash Verification
 
 ### Added
