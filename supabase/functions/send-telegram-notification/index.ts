@@ -73,7 +73,7 @@ function paymentMethodLabel(method?: string): string {
     maya: "Maya",
     bpi: "BPI",
     maribank: "MariBank",
-    gotyme: "GoTyme",
+    gotyme: "GoTyme → GCash",
     pnb: "PNB",
     cash: "Cash",
   };

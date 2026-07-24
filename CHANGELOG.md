@@ -6,6 +6,24 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-24] - Dedicated GoTyme to GCash Verification
+
+### Added
+- **GoTyme to GCash payment flow** - players can select GoTyme, scan the court's configured GCash QR, send through InstaPay, enter the complete `ITO` Reference No., and upload the full GoTyme receipt in court-booking, Open Play, and host-session flows.
+- **Dedicated GoTyme receipt parser** - auto-verification now reads and cross-checks the full Reference No., six-digit Trace ID, completed transfer status, InstaPay/Instant route, GoTyme source, G-Xchange/GCash destination, masked recipient and account suffix, sender suffix, amount, fee, total, and Philippine receipt timestamp.
+- **Detailed owner review evidence** - payment review shows the dedicated GoTyme fields and plain-language reasons whenever a receipt needs a court owner's decision.
+
+### Changed
+- **One GCash destination** - GoTyme no longer has a separate receiver or QR configuration. It uses the GCash number, account name, QR image, and QR Account ID saved in Payment Settings.
+- **Conservative automation** - a fully matching GoTyme receipt can auto-confirm; missing, conflicting, unfamiliar, or incomplete evidence remains pending and triggers the existing owner-review workflow instead of being cancelled automatically.
+
+### Security
+- **Receipt replay and destination checks** - the full provider-namespaced `ITO` reference remains the race-safe payment replay key, while its Trace ID suffix and configured GCash account suffix are independently checked. The short Trace ID is never treated as a globally unique payment key.
+
+**Files affected:** `admin.html`, `index.html`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/functions/_shared/gotyme-receipt.ts`, `supabase/functions/_shared/gotyme-receipt_test.ts`, `supabase/functions/_shared/payment-review-email.ts`, `supabase/functions/_shared/payment-review-email_test.ts`, `supabase/functions/send-telegram-notification/index.ts`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-24] - Clearer Payment Upload Instructions
 
 ### Changed

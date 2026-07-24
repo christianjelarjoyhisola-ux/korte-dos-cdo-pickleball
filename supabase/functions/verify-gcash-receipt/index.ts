@@ -65,6 +65,32 @@ import {
   isMariBankReference,
   parseMariBankDateTime,
 } from "../_shared/maribank-receipt.ts";
+import {
+  checkGoTymeDestinationAccountSuffix,
+  checkGoTymeRecipientName,
+  extractGoTymeAmount,
+  extractGoTymeDestination,
+  extractGoTymeDestinationInstitution,
+  extractGoTymeFee,
+  extractGoTymeProcessingSpeed,
+  extractGoTymeRecipientName,
+  extractGoTymeRecipientToken,
+  extractGoTymeReference,
+  extractGoTymeSenderLast4,
+  extractGoTymeSourceInstitution,
+  extractGoTymeStatus,
+  extractGoTymeTotal,
+  extractGoTymeTraceId,
+  extractGoTymeTransferChannel,
+  goTymeReferenceMatchesTrace,
+  hasConsistentGoTymeAccounting,
+  hasGoTymeGcashDestination,
+  hasGoTymeInstapayInstant,
+  hasSuccessfulGoTymeTransfer,
+  isGoTymeReference,
+  isGoTymeToGcashReceipt,
+  parseGoTymePhDateTime,
+} from "../_shared/gotyme-receipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -447,9 +473,9 @@ function parseReceiptDateTimeForProvider(
   text: string,
   provider: PaymentProvider,
 ): { date: string | null; shifted: Date | null } {
-  return provider === "maribank"
-    ? parseMariBankDateTime(text)
-    : parseReceiptDateTime(text);
+  if (provider === "maribank") return parseMariBankDateTime(text);
+  if (provider === "gotyme") return parseGoTymePhDateTime(text);
+  return parseReceiptDateTime(text);
 }
 
 function digitsOnly(s: string): string {
@@ -529,8 +555,13 @@ function extractReference(
   if (provider === "maribank") {
     return extractMariBankReference(text, typedRef);
   }
+  if (provider === "gotyme") {
+    // Extract independently from the customer-entered value so an actual OCR
+    // mismatch is retained as REF_MISMATCH instead of becoming "unreadable".
+    return extractGoTymeReference(text);
+  }
 
-  // BDO Pay/GoTyme/PNB references are not guaranteed to be 13-digit GCash-style refs.
+  // BDO Pay/PNB references are not guaranteed to be 13-digit GCash-style refs.
   // For those providers, trust the customer-entered reference only if OCR sees
   // the same alphanumeric token in the receipt text.
   const normalizedTyped = normalizeReferenceForProvider(typedRef, provider);
@@ -588,7 +619,7 @@ function isGcashToGcashReceipt(text: string): boolean {
   const t = text || "";
   if (
     isBdoPayReceipt(t) || isMayaReceipt(t) || isBpiReceipt(t) ||
-    isMariBankReceipt(t)
+    isMariBankReceipt(t) || isGoTymeToGcashReceipt(t)
   ) return false;
   return /\bsent\s+via\s+gcash\b/i.test(t) ||
     /\bsent\s+through\s+gcash\b/i.test(t) ||
@@ -604,21 +635,31 @@ function selectedMethodMismatch(
   const mayaReceipt = isMayaReceipt(text);
   const bpiReceipt = isBpiReceipt(text);
   const mariBankReceipt = isMariBankReceipt(text);
+  const goTymeReceipt = isGoTymeToGcashReceipt(text);
   const gcashReceipt = isGcashToGcashReceipt(text);
   if (provider === "gcash") {
-    return bdoReceipt || mayaReceipt || bpiReceipt || mariBankReceipt;
+    return bdoReceipt || mayaReceipt || bpiReceipt || mariBankReceipt ||
+      goTymeReceipt;
   }
   if (provider === "bdopay") {
-    return gcashReceipt || mayaReceipt || bpiReceipt || mariBankReceipt;
+    return gcashReceipt || mayaReceipt || bpiReceipt || mariBankReceipt ||
+      goTymeReceipt;
   }
   if (provider === "maya") {
-    return gcashReceipt || bdoReceipt || bpiReceipt || mariBankReceipt;
+    return gcashReceipt || bdoReceipt || bpiReceipt || mariBankReceipt ||
+      goTymeReceipt;
   }
   if (provider === "bpi") {
-    return gcashReceipt || bdoReceipt || mayaReceipt || mariBankReceipt;
+    return gcashReceipt || bdoReceipt || mayaReceipt || mariBankReceipt ||
+      goTymeReceipt;
   }
   if (provider === "maribank") {
-    return gcashReceipt || bdoReceipt || mayaReceipt || bpiReceipt;
+    return gcashReceipt || bdoReceipt || mayaReceipt || bpiReceipt ||
+      goTymeReceipt;
+  }
+  if (provider === "gotyme") {
+    return gcashReceipt || bdoReceipt || mayaReceipt || bpiReceipt ||
+      mariBankReceipt;
   }
   return false;
 }
@@ -733,8 +774,11 @@ function expectedMerchantForProvider(
   }
   if (provider === "gotyme") {
     return {
-      number: settings.gotyme_merchant_number || "",
-      name: settings.gotyme_merchant_name || "",
+      // GoTyme is the sending bank. Customers scan the same GCash QR and the
+      // completed receipt must identify G-Xchange/GCash as the destination.
+      number: settings.gcash_merchant_number || "",
+      name: settings.gcash_merchant_name || settings.payment_merchant_name ||
+        "Korte DOS",
     };
   }
   if (provider === "pnb") {
@@ -1058,11 +1102,12 @@ async function googleVisionOCR(
   const text: string = String(
     annotation?.text || r?.textAnnotations?.[0]?.description || "",
   );
-  // Only MariBank currently needs visual row reconstruction for its two-column
-  // receipt. Keep every established provider on Google's raw reading order.
+  // MariBank and GoTyme receipts use paired/two-column field layouts.
+  // Reconstruct their visual rows while retaining the complete raw OCR text in
+  // the immutable audit.
   // The helper returns a layout only when every recognized word is positioned,
   // so choosing it cannot discard an unpositioned failure/status marker.
-  const layoutText = provider === "maribank"
+  const layoutText = provider === "maribank" || provider === "gotyme"
     ? reconstructGoogleVisionRows(annotation)
     : null;
   return {
@@ -1087,6 +1132,8 @@ function ocrCriticalGaps(
     : null;
   const hasReliableAmount = provider === "maribank"
     ? extractMariBankTransferAmount(text) != null
+    : provider === "gotyme"
+    ? extractGoTymeAmount(text) != null
     : mayaAmount
     ? mayaAmount.amount != null && mayaAmount.reliable
     : extractAmount(text) != null;
@@ -3066,6 +3113,39 @@ Deno.serve(async (req) => {
     const extractedMariBankTransferFee = provider === "maribank"
       ? extractMariBankTransferFee(ocrText)
       : null;
+    const extractedGoTymeTraceId = provider === "gotyme"
+      ? extractGoTymeTraceId(ocrText)
+      : null;
+    const extractedGoTymeRecipientToken = provider === "gotyme"
+      ? extractGoTymeRecipientToken(ocrText)
+      : null;
+    const extractedGoTymeRecipientName = provider === "gotyme"
+      ? extractGoTymeRecipientName(ocrText)
+      : null;
+    const extractedGoTymeSenderLast4 = provider === "gotyme"
+      ? extractGoTymeSenderLast4(ocrText)
+      : null;
+    const extractedGoTymeTransferFee = provider === "gotyme"
+      ? extractGoTymeFee(ocrText)
+      : null;
+    const extractedGoTymeTotalAmount = provider === "gotyme"
+      ? extractGoTymeTotal(ocrText)
+      : null;
+    const extractedGoTymeStatus = provider === "gotyme"
+      ? extractGoTymeStatus(ocrText)
+      : null;
+    const extractedGoTymeChannel = provider === "gotyme"
+      ? extractGoTymeTransferChannel(ocrText)
+      : null;
+    const extractedGoTymeSpeed = provider === "gotyme"
+      ? extractGoTymeProcessingSpeed(ocrText)
+      : null;
+    const extractedGoTymeSource = provider === "gotyme"
+      ? extractGoTymeSourceInstitution(ocrText)
+      : null;
+    const extractedGoTymeDestination = provider === "gotyme"
+      ? extractGoTymeDestinationInstitution(ocrText)
+      : null;
     const amountExtraction = provider === "maya"
       ? extractReceiptAmount(ocrText, { provider })
       : null;
@@ -3073,6 +3153,8 @@ Deno.serve(async (req) => {
     // stored for diagnostics but routed to manual review as unreadable.
     const extractedAmount = provider === "maribank"
       ? extractMariBankTransferAmount(ocrText)
+      : provider === "gotyme"
+      ? extractGoTymeAmount(ocrText)
       : amountExtraction
       ? (amountExtraction.reliable ? amountExtraction.amount : null)
       : extractAmount(ocrText);
@@ -3100,6 +3182,9 @@ Deno.serve(async (req) => {
       flags.push("REF_FORMAT_INVALID");
     }
     if (provider === "maribank" && !isMariBankReference(typedRef)) {
+      flags.push("REF_FORMAT_INVALID");
+    }
+    if (provider === "gotyme" && !isGoTymeReference(typedRef)) {
       flags.push("REF_FORMAT_INVALID");
     }
 
@@ -3343,6 +3428,124 @@ Deno.serve(async (req) => {
           // fraud, but it must prevent automatic approval.
           flags.push("ACCOUNT_UNCONFIGURED");
         }
+      } else if (provider === "gotyme") {
+        // GoTyme is accepted only as the sending bank for an instant InstaPay
+        // transfer into the configured GCash account. The receipt exposes a
+        // full ITO reference, a six-digit trace suffix, a masked GCash account
+        // token, and independently labeled amount/fee/total values.
+        if (!extractedRef) flags.push("GOTYME_REFERENCE_UNREADABLE");
+        else if (typedRef && extractedRef !== typedRef) {
+          flags.push("REF_MISMATCH");
+        }
+
+        if (!extractedGoTymeTraceId) {
+          flags.push("GOTYME_TRACE_ID_UNREADABLE");
+        } else if (
+          extractedRef &&
+          !goTymeReferenceMatchesTrace(
+            extractedRef,
+            extractedGoTymeTraceId,
+          )
+        ) {
+          // A six-digit OCR error is uncertain and stays pending for review.
+          flags.push("GOTYME_TRACE_ID_MISMATCH");
+        }
+
+        if (pricingError) flags.push("AMOUNT_MISMATCH");
+        else if (extractedAmount == null) flags.push("AMOUNT_UNREADABLE");
+        else if (
+          extractedAmount < expectedAmount &&
+          !closeMoney(extractedAmount, expectedAmount)
+        ) {
+          flags.push("AMOUNT_MISMATCH");
+        } else if (!closeMoney(extractedAmount, expectedAmount)) {
+          flags.push("AMOUNT_REVIEW");
+        }
+
+        if (!hasConsistentGoTymeAccounting(ocrText)) {
+          // Missing or contradictory principal/fee/total values are not proof
+          // of non-payment, but they must block automatic approval.
+          flags.push("GOTYME_TOTAL_UNREADABLE");
+        }
+
+        if (!receiptDate) flags.push("DATE_UNREADABLE");
+        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+          flags.push("DATE_NOT_TODAY");
+        }
+        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+        else if (
+          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+        ) flags.push("TIME_FUTURE");
+        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+          flags.push("TIME_EXPIRED");
+        }
+
+        if (
+          !isGoTymeToGcashReceipt(ocrText) ||
+          !extractedGoTymeSource
+        ) {
+          flags.push("GOTYME_UNREADABLE");
+        }
+        if (!extractedGoTymeStatus) {
+          flags.push("GOTYME_STATUS_UNREADABLE");
+        } else if (extractedGoTymeStatus !== "transferred") {
+          // Even an explicitly pending/failed transfer is left for the owner;
+          // automation never cancels a stored paid-booking attempt.
+          flags.push("GOTYME_TRANSFER_NOT_COMPLETED");
+        }
+        if (
+          !hasGoTymeInstapayInstant(ocrText) ||
+          !extractedGoTymeChannel ||
+          !extractedGoTymeSpeed
+        ) {
+          flags.push("GOTYME_INSTAPAY_UNREADABLE");
+        }
+        if (
+          !hasGoTymeGcashDestination(ocrText) ||
+          !extractedGoTymeDestination
+        ) {
+          flags.push("GOTYME_DESTINATION_UNREADABLE");
+        }
+
+        const recipientNameCheck = checkGoTymeRecipientName(
+          ocrText,
+          expectedName,
+        );
+        if (
+          recipientNameCheck === "unreadable" ||
+          recipientNameCheck === "unconfigured"
+        ) {
+          flags.push("RECEIVER_NAME_UNREADABLE");
+        } else if (recipientNameCheck === "mismatch") {
+          // Masked-name OCR is a manual-review signal, not enough evidence to
+          // cancel the booking automatically.
+          flags.push("RECEIVER_NAME_MISMATCH");
+        }
+
+        const accountCheck = checkGoTymeDestinationAccountSuffix(
+          ocrText,
+          expectedGcashQrAccountId,
+        );
+        if (accountCheck === "wrong") {
+          flags.push("GOTYME_ACCOUNT_MISMATCH");
+        } else if (accountCheck === "unreadable") {
+          flags.push("GOTYME_ACCOUNT_UNREADABLE");
+        } else if (accountCheck === "unconfigured") {
+          flags.push("ACCOUNT_UNCONFIGURED");
+        }
+
+        // This combines the completed status and exact InstaPay/Instant rail.
+        // Keep the explicit field flags above so the owner can see what failed.
+        if (
+          extractedGoTymeStatus === "transferred" &&
+          extractedGoTymeChannel &&
+          extractedGoTymeSpeed &&
+          !hasSuccessfulGoTymeTransfer(ocrText) &&
+          !flags.includes("GOTYME_UNREADABLE")
+        ) {
+          flags.push("GOTYME_UNREADABLE");
+        }
       } else {
         if (!extractedRef) flags.push("REF_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) {
@@ -3510,11 +3713,32 @@ Deno.serve(async (req) => {
       mariBankSenderLast4: extractedMariBankSenderLast4,
       mariBankTotalAmount: extractedMariBankTotalAmount,
       mariBankTransferFee: extractedMariBankTransferFee,
+      goTymeReferenceNo: provider === "gotyme" ? extractedRef : null,
+      goTymeTraceId: extractedGoTymeTraceId,
+      goTymeDestinationAccountSuffix: extractedGoTymeRecipientToken,
+      goTymeRecipientName: extractedGoTymeRecipientName,
+      goTymeSenderLast4: extractedGoTymeSenderLast4,
+      goTymeTransferAmount: provider === "gotyme" ? extractedAmount : null,
+      goTymeTransferFee: extractedGoTymeTransferFee,
+      goTymeTotalAmount: extractedGoTymeTotalAmount,
+      goTymeStatus: extractedGoTymeStatus,
+      goTymeTransferChannel: extractedGoTymeChannel,
+      goTymeProcessingSpeed: extractedGoTymeSpeed,
+      goTymeSourceInstitution: extractedGoTymeSource,
+      goTymeDestinationInstitution: extractedGoTymeDestination,
+      goTymeDestinationType: provider === "gotyme"
+        ? extractGoTymeDestination(ocrText)
+        : null,
+      goTymeTransferVerified: provider === "gotyme"
+        ? hasSuccessfulGoTymeTransfer(ocrText)
+        : null,
       amount: extractedAmount,
       amountReliable: amountExtraction?.reliable ?? (extractedAmount != null),
       amountAmbiguous: amountExtraction?.ambiguous ?? false,
       amountReason: provider === "maribank"
         ? "maribank_transfer_amount"
+        : provider === "gotyme"
+        ? "gotyme_transfer_amount"
         : amountExtraction?.reason || "legacy_parser",
       amountEvidence: amountExtraction?.evidence || [],
       amountCandidates: amountExtraction?.candidates.map((candidate) => ({
@@ -3550,14 +3774,15 @@ Deno.serve(async (req) => {
       ocrAnalysisVersion: ocrAnalysisSource === "google_layout"
         ? "google_visual_rows_v1"
         : null,
-      expectedReceiverNumber:
-        provider === "bdopay" || provider === "maya" || provider === "maribank"
-          ? null
-          : expectedNumber || null,
+      expectedReceiverNumber: provider === "bdopay" || provider === "maya" ||
+          provider === "maribank" || provider === "gotyme"
+        ? null
+        : expectedNumber || null,
       expectedReceiverName: provider === "bpi" ? null : expectedName || null,
-      expectedReceiverAccountId: provider === "maribank"
-        ? expectedGcashQrAccountId || null
-        : null,
+      expectedReceiverAccountId:
+        provider === "maribank" || provider === "gotyme"
+          ? expectedGcashQrAccountId || null
+          : null,
     };
 
     // ── persist outcome on the booking ──────────────────────────────────────

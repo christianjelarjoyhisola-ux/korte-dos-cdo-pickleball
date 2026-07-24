@@ -3552,7 +3552,7 @@ body.host-mode .courts { padding-bottom:140px; }
               <div class="pay-opt" id="payOptGotyme" data-m="gotyme" onclick="pickPay('gotyme')">
                 <div class="pay-ic">🏦</div>
                 <div class="pay-lb">GoTyme</div>
-                <div class="pay-sub">Scan QR · enter ref #</div>
+                <div class="pay-sub">InstaPay → GCash</div>
               </div>
               <div class="pay-opt" id="payOptPnb" data-m="pnb" onclick="pickPay('pnb')">
                 <div class="pay-ic">🏛️</div>
@@ -3649,11 +3649,11 @@ body.host-mode .courts { padding-bottom:140px; }
             </div>
           </div>
 
-          <!-- GoTyme QR section -->
+          <!-- GoTyme to GCash QR section -->
           <div class="gcash bpay-card" id="gotymeBox">
             <div class="gc-header">
               <span class="gc-header-icon">🏦</span>
-              <span class="gc-header-lbl">GoTyme Payment</span>
+              <span class="gc-header-lbl">GoTyme → GCash / InstaPay</span>
             </div>
             <div class="bpay-card-head">
               <div class="gc-amount-lbl" id="gtPayLabel">Payment amount</div>
@@ -3674,26 +3674,26 @@ body.host-mode .courts { padding-bottom:140px; }
             </div>
             <div class="bpay-recipient">
               <div class="bpay-qr-wrap">
-                <img id="gotymeQrImg" class="qr-img bpay-qr qr-clickable" alt="GoTyme QR Code" style="display:none" onclick="openQrZoomFromImg(this,'GoTyme QR')" />
+                <img id="gotymeQrImg" class="qr-img bpay-qr qr-clickable" alt="GCash recipient QR code for GoTyme payment" style="display:none" onclick="openQrZoomFromImg(this,'GCash recipient QR')" />
                 <div id="gotymeQrPlaceholder" class="bpay-qr-placeholder">
                   <span style="font-size:1.7rem">🏦</span>
                   <span style="font-size:.74rem">QR not uploaded</span>
                 </div>
               </div>
               <div class="bpay-recipient-info">
-                <div class="bpay-send-title">🏦 Send GoTyme Payment To</div>
+                <div class="bpay-send-title">🏦 Send from GoTyme to this GCash account</div>
                 <div class="gc-num-row" style="justify-content:flex-start;margin:4px 0 3px">
                   <div class="gc-num" id="gtMerchantNumber" style="font-size:1rem;font-weight:800;margin:0">—</div>
-                  <button type="button" class="gc-copy-btn" onclick="copyPaymentNumber('gotyme')">📋 Copy</button>
+                  <button type="button" class="gc-copy-btn" onclick="copyPaymentNumber('gotyme')">📋 Copy GCash #</button>
                 </div>
                 <div class="bpay-send-name" id="gtMerchantName">Korte DOS</div>
               </div>
             </div>
             <div class="payment-guide">
-              <div class="payment-guide-step"><b>1</b><span><span class="payment-guide-long">Copy #/tap to zoom QR.</span><span class="payment-guide-short">Copy #/tap to zoom QR</span></span></div>
-              <div class="payment-guide-step"><b>2</b><span><span class="payment-guide-long">Paste # / upload receipt.</span><span class="payment-guide-short">Paste # / upload</span></span></div>
-              <div class="payment-guide-step"><b>3</b><span><span class="payment-guide-long">Pay exact amount.</span><span class="payment-guide-short">Pay exact</span></span></div>
-              <div class="payment-guide-step"><b>4</b><span><span class="payment-guide-long">Copy/save ref & QR.</span><span class="payment-guide-short">Save ref & QR</span></span></div>
+              <div class="payment-guide-step"><b>1</b><span><span class="payment-guide-long">Scan this GCash QR in GoTyme.</span><span class="payment-guide-short">Scan GCash QR</span></span></div>
+              <div class="payment-guide-step"><b>2</b><span><span class="payment-guide-long">Pay the exact amount via InstaPay.</span><span class="payment-guide-short">Pay exact via InstaPay</span></span></div>
+              <div class="payment-guide-step"><b>3</b><span><span class="payment-guide-long">Use the full Reference No., not Trace ID.</span><span class="payment-guide-short">Use full Reference No.</span></span></div>
+              <div class="payment-guide-step"><b>4</b><span><span class="payment-guide-long">Upload the complete GoTyme receipt.</span><span class="payment-guide-short">Upload full receipt</span></span></div>
             </div>
           </div>
 
@@ -4366,18 +4366,30 @@ function hostSessionPaymentHtml(session) {
   `).join('');
   const receiver = hostSessionReceiver(_hostSessionPayMethod);
   const label = hostSessionPaymentMethodLabel(_hostSessionPayMethod);
+  const isGotyme = _hostSessionPayMethod === 'gotyme';
   const qr = receiver.qrImage
-    ? `<img src="${receiver.qrImage}" class="op-qr-img qr-clickable" alt="${label} QR" onclick="openQrZoomFromImg(this,'${label} QR')" />`
+    ? `<img src="${receiver.qrImage}" class="op-qr-img qr-clickable" alt="${isGotyme ? 'GCash recipient QR for GoTyme payment' : label + ' QR'}" onclick="openQrZoomFromImg(this,'${isGotyme ? 'GCash recipient QR' : label + ' QR'}')" />`
     : `<div class="op-qr-placeholder">QR</div>`;
+  const gotymeInstructions = isGotyme ? `
+    <div class="payment-method-note" style="margin-bottom:10px">
+      GoTyme to GCash/G-Xchange via InstaPay only.<br>
+      Pay the exact amount, enter the full Reference No. beginning with ITO—not the 6-digit Trace ID—and upload the complete GoTyme receipt.
+    </div>
+    <div class="payment-guide" style="margin-bottom:10px">
+      <div class="payment-guide-step"><b>1</b><span><span class="payment-guide-long">Scan the GCash QR in GoTyme.</span><span class="payment-guide-short">Scan GCash QR</span></span></div>
+      <div class="payment-guide-step"><b>2</b><span><span class="payment-guide-long">Pay exact via InstaPay.</span><span class="payment-guide-short">Pay exact</span></span></div>
+      <div class="payment-guide-step"><b>3</b><span><span class="payment-guide-long">Use full Reference No.</span><span class="payment-guide-short">Use full ref</span></span></div>
+      <div class="payment-guide-step"><b>4</b><span><span class="payment-guide-long">Upload full receipt.</span><span class="payment-guide-short">Upload receipt</span></span></div>
+    </div>` : '';
   return `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${methodButtons}</div>
     <div class="op-pay-card" style="margin-bottom:10px">
       <div class="op-receiver-row">
         <div class="op-qr-pane">${qr}</div>
         <div>
-          <div class="op-send-label">Send exactly</div>
+          <div class="op-send-label">${isGotyme ? 'Send from GoTyme to this GCash account' : 'Send exactly'}</div>
           <div class="op-send-amount">${fmt(amount)}</div>
-          <div class="op-send-name">${esc(receiver.name || 'Court owner account')}</div>
+          <div class="op-send-name">${esc(isGotyme ? (maskGcashOwnerName(receiver.name) || 'Court owner account') : (receiver.name || 'Court owner account'))}</div>
           <div class="op-number-row">
             <code>${esc(receiver.number || 'Scan QR')}</code>
             <button type="button" onclick="copyHostSessionPaymentNumber()">Copy</button>
@@ -4385,9 +4397,10 @@ function hostSessionPaymentHtml(session) {
         </div>
       </div>
     </div>
+    ${gotymeInstructions}
     <div class="fg">
-      <label class="fl" for="hsPaymentRef">${_hostSessionPayMethod === 'bpi' ? 'BPI Confirmation No.' : `${label} Reference Number`}</label>
-      <input type="text" class="fi" id="hsPaymentRef" placeholder="${_hostSessionPayMethod === 'gcash' ? 'e.g. 1234567890123' : _hostSessionPayMethod === 'bdopay' ? 'e.g. BN-20260627-91811670' : _hostSessionPayMethod === 'maya' ? 'e.g. B6DC F633 F08C' : _hostSessionPayMethod === 'bpi' ? 'e.g. 1783397488347' : _hostSessionPayMethod === 'maribank' ? 'e.g. 012710' : 'Enter payment reference number'}" maxlength="${paymentRefMaxLength(_hostSessionPayMethod)}" inputmode="${(_hostSessionPayMethod === 'bdopay' || _hostSessionPayMethod === 'maya') ? 'text' : 'numeric'}" oninput="syncHostSessionRef()" />
+      <label class="fl" for="hsPaymentRef">${_hostSessionPayMethod === 'bpi' ? 'BPI Confirmation No.' : _hostSessionPayMethod === 'gotyme' ? 'GoTyme Reference No.' : `${label} Reference Number`}</label>
+      <input type="text" class="fi" id="hsPaymentRef" placeholder="${_hostSessionPayMethod === 'gcash' ? 'e.g. 1234567890123' : _hostSessionPayMethod === 'bdopay' ? 'e.g. BN-20260627-91811670' : _hostSessionPayMethod === 'maya' ? 'e.g. B6DC F633 F08C' : _hostSessionPayMethod === 'bpi' ? 'e.g. 1783397488347' : _hostSessionPayMethod === 'maribank' ? 'e.g. 012710' : _hostSessionPayMethod === 'gotyme' ? 'e.g. ITO260723233836004' : 'Enter payment reference number'}" maxlength="${paymentRefMaxLength(_hostSessionPayMethod)}" inputmode="${(_hostSessionPayMethod === 'bdopay' || _hostSessionPayMethod === 'maya' || _hostSessionPayMethod === 'gotyme') ? 'text' : 'numeric'}" oninput="syncHostSessionRef()" />
       <div id="hsRefHelp" style="font-size:.7rem;color:var(--muted);margin-top:4px">${paymentRefHelpText(_hostSessionPayMethod)}</div>
     </div>
     <div class="fg">
@@ -4524,12 +4537,13 @@ async function submitHostSessionJoin() {
   const refInput = $('hsPaymentRef');
   const paymentRef = normalizePaymentRef(refInput?.value || '', paymentMethod);
   if (amount > 0) {
-    if (!paymentRef) { toast(paymentMethod === 'bpi' ? 'Enter your BPI Confirmation No.' : paymentMethod === 'maribank' ? 'Enter your 6-digit MariBank Reference Number.' : 'Enter your payment reference number.', 'err'); refInput?.focus(); return; }
+    if (!paymentRef) { toast(paymentMethod === 'bpi' ? 'Enter your BPI Confirmation No.' : paymentMethod === 'maribank' ? 'Enter your 6-digit MariBank Reference Number.' : paymentMethod === 'gotyme' ? 'Enter the full GoTyme Reference No., not the Trace ID.' : 'Enter your payment reference number.', 'err'); refInput?.focus(); return; }
     if (paymentMethod === 'gcash' && !isGcashRefValid(paymentRef)) { toast('GCash reference number must be exactly 13 digits.', 'err'); refInput?.focus(); return; }
     if (paymentMethod === 'bdopay' && !isBdoPayRefValid(paymentRef)) { toast('BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'err'); refInput?.focus(); return; }
     if (paymentMethod === 'maya' && !isMayaRefValid(paymentRef)) { toast('Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'err'); refInput?.focus(); return; }
     if (paymentMethod === 'bpi' && !isBpiConfirmationValid(paymentRef)) { toast('Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'err'); refInput?.focus(); return; }
     if (paymentMethod === 'maribank' && !isMaribankReferenceValid(paymentRef)) { toast('MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'err'); refInput?.focus(); return; }
+    if (paymentMethod === 'gotyme' && !isGotymeReferenceValid(paymentRef)) { toast('GoTyme Reference No. must begin with ITO followed by 15 digits. Do not enter the 6-digit Trace ID.', 'err'); refInput?.focus(); return; }
     if (!receiptFile) { toast('Please upload your payment receipt screenshot.', 'err'); return; }
   }
   const submission = Object.freeze({
@@ -5114,7 +5128,7 @@ let paymentReceiverSettings = {
   maya: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
   bpi: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
   maribank: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
-  gotyme: { number: '', name: 'Korte DOS', qrImage: '' },
+  gotyme: { number: '09XX XXX XXXX', name: 'Korte DOS', qrImage: '' },
   pnb: { number: '', name: 'Korte DOS', qrImage: '' },
 };
 let paymentMethods = { cash: true, gcash: true, bdopay: true, maya: true, bpi: true, maribank: true, gotyme: true, pnb: true };
@@ -5126,11 +5140,11 @@ function isDigitalPayMethod(method) {
 }
 
 function paymentMethodName(method) {
-  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(method || '').toLowerCase()] || 'Payment');
+  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme → GCash', pnb: 'PNB', cash: 'Cash' }[String(method || '').toLowerCase()] || 'Payment');
 }
 
 function paymentReceiverKey(method) {
-  return method === 'bdopay' || method === 'maya' || method === 'bpi' || method === 'maribank' ? 'gcash' : method;
+  return method === 'bdopay' || method === 'maya' || method === 'bpi' || method === 'maribank' || method === 'gotyme' ? 'gcash' : method;
 }
 let paymentWatch = { ref: null, timer: null, tries: 0 };
 
@@ -5470,9 +5484,9 @@ function applyPaymentSettings(settings) {
       qrImage: settings.gcash_qr_image || '',
     },
     gotyme: {
-      number: settings.gotyme_merchant_number || '',
-      name: settings.gotyme_merchant_name || 'Korte DOS',
-      qrImage: settings.gotyme_qr_image || '',
+      number: settings.gcash_merchant_number || '09XX XXX XXXX',
+      name: settings.gcash_merchant_name || 'Korte DOS',
+      qrImage: settings.gcash_qr_image || '',
     },
     pnb: {
       number: settings.pnb_merchant_number || '',
@@ -5507,8 +5521,8 @@ function applyPaymentSettings(settings) {
 
   if ($('gcMerchantNumber')) $('gcMerchantNumber').textContent = gcashSettings.merchantNumber;
   if ($('gcMerchantName')) $('gcMerchantName').textContent = maskGcashOwnerName(gcashSettings.merchantName) || 'Court owner account';
-  if ($('gtMerchantNumber')) $('gtMerchantNumber').textContent = paymentReceiverSettings.gotyme.number || 'Scan QR';
-  if ($('gtMerchantName')) $('gtMerchantName').textContent = paymentReceiverSettings.gotyme.name;
+  if ($('gtMerchantNumber')) $('gtMerchantNumber').textContent = paymentReceiverSettings.gcash.number || 'Scan QR';
+  if ($('gtMerchantName')) $('gtMerchantName').textContent = maskGcashOwnerName(paymentReceiverSettings.gcash.name) || 'Court owner account';
   if ($('pnMerchantNumber')) $('pnMerchantNumber').textContent = paymentReceiverSettings.pnb.number || 'Scan QR';
   if ($('pnMerchantName')) $('pnMerchantName').textContent = paymentReceiverSettings.pnb.name;
 
@@ -5519,9 +5533,9 @@ function applyPaymentSettings(settings) {
     const ph = $('gcashQrPlaceholder');
     if (ph) ph.style.display = 'none';
   }
-  if (settings.gotyme_qr_image) {
+  if (settings.gcash_qr_image) {
     const img = $('gotymeQrImg');
-    if (img) { img.src = settings.gotyme_qr_image; img.style.display = ''; }
+    if (img) { img.src = settings.gcash_qr_image; img.style.display = ''; }
     const ph = $('gotymeQrPlaceholder');
     if (ph) ph.style.display = 'none';
   }
@@ -5679,6 +5693,17 @@ function receiptReasonFromFlags(flags) {
     BPI_TRANSACTION_UNREADABLE: 'BPI Transaction Ref. No. unreadable',
     MARIBANK_UNREADABLE: 'MariBank transaction receipt unreadable',
     MARIBANK_REFERENCE_UNREADABLE: 'MariBank Reference Number unreadable',
+    GOTYME_UNREADABLE: 'GoTyme receipt details unreadable',
+    GOTYME_REFERENCE_UNREADABLE: 'GoTyme Reference No. unreadable',
+    GOTYME_TRACE_ID_UNREADABLE: 'GoTyme Trace ID unreadable',
+    GOTYME_TRACE_ID_MISMATCH: 'GoTyme Trace ID does not match the Reference No.',
+    GOTYME_STATUS_UNREADABLE: 'GoTyme transfer status unreadable',
+    GOTYME_TRANSFER_NOT_COMPLETED: 'GoTyme transfer is not completed',
+    GOTYME_INSTAPAY_UNREADABLE: 'GoTyme InstaPay/Instant details unreadable',
+    GOTYME_DESTINATION_UNREADABLE: 'GoTyme GCash destination unreadable',
+    GOTYME_ACCOUNT_UNREADABLE: 'GoTyme GCash account suffix unreadable',
+    GOTYME_ACCOUNT_MISMATCH: 'GoTyme GCash account suffix needs checking',
+    GOTYME_TOTAL_UNREADABLE: 'GoTyme amount, fee, or total unreadable',
     INSTAPAY_QRPH_UNREADABLE: 'InstaPay/QRPh text unreadable',
     GXI_DESTINATION_UNREADABLE: 'GXI/GCash destination unreadable',
     RECEIVER_NAME_UNREADABLE: 'Receiver name unreadable',
@@ -7449,7 +7474,11 @@ function pickPay(m) {
         'Enter the exact 6-digit Reference Number, including any leading zero.',
         'Upload the full MariBank transaction receipt for auto-verification.',
       ],
-      gotyme: 'Use GoTyme only. Receipts from another payment method will not auto-approve.',
+      gotyme: [
+        'GoTyme to GCash/G-Xchange via InstaPay only.',
+        'Enter the full Reference No. beginning with ITO — not the 6-digit Trace ID.',
+        'Upload the complete GoTyme receipt showing recipient, amount, reference, and date/time.',
+      ],
       pnb: 'Use PNB only. Receipts from another payment method will not auto-approve.',
       cash: 'Cash bookings are paid at the front desk and are not auto-approved by receipt OCR.',
     };
@@ -7483,6 +7512,7 @@ function syncGcashSharedPanel(method) {
   const isMaya = method === 'maya';
   const isBpi = method === 'bpi';
   const isMaribank = method === 'maribank';
+  const isGotyme = method === 'gotyme';
   const header = $('gcashBox')?.querySelector('.gc-header-lbl');
   if (header) header.textContent = isBdo ? 'BDO Pay / InstaPay' : isBpi ? 'BPI / InstaPay' : 'GCash Payment';
   const title = $('gcashBox')?.querySelector('.bpay-send-title');
@@ -7522,6 +7552,9 @@ function syncGcashSharedPanel(method) {
     $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-short').forEach((el, i) => { if (maribankGuide[i]) el.textContent = maribankGuide[i]; });
     if (receiptHelp) receiptHelp.innerHTML = 'MariBank to GCash/G-Xchange only.<br>Enter the exact 6-digit Reference Number, including any leading zero.<br>Upload the full transaction receipt showing the amount, recipient, reference, and date/time.';
   }
+  if (isGotyme && receiptHelp) {
+    receiptHelp.innerHTML = 'GoTyme to GCash/G-Xchange via InstaPay only.<br>Enter the full Reference No. beginning with ITO, not the 6-digit Trace ID.<br>Upload the complete receipt showing the recipient, amount, Reference No., and date/time.';
+  }
 }
 
 function copyPaymentNumber(method = 'gcash') {
@@ -7531,7 +7564,7 @@ function copyPaymentNumber(method = 'gcash') {
     maya: { id: 'gcMerchantNumber', label: 'Maya' },
     bpi: { id: 'gcMerchantNumber', label: 'BPI' },
     maribank: { id: 'gcMerchantNumber', label: 'MariBank' },
-    gotyme: { id: 'gtMerchantNumber', label: 'GoTyme' },
+    gotyme: { id: 'gtMerchantNumber', label: 'GCash recipient' },
     pnb: { id: 'pnMerchantNumber', label: 'PNB' },
   };
   const meta = map[method] || map.gcash;
@@ -7559,7 +7592,7 @@ function copyMerchantNum() {
 }
 
 function paymentRefMaxLength(method) {
-  return method === 'gcash' ? 13 : method === 'bdopay' ? 32 : method === 'maya' ? 14 : method === 'bpi' ? 20 : method === 'maribank' ? 6 : 30;
+  return method === 'gcash' ? 13 : method === 'bdopay' ? 32 : method === 'maya' ? 14 : method === 'bpi' ? 20 : method === 'maribank' ? 6 : method === 'gotyme' ? 18 : 30;
 }
 
 function normalizePaymentRef(value, method) {
@@ -7571,6 +7604,7 @@ function normalizePaymentRef(value, method) {
   }
   if (method === 'bpi') return raw.replace(/\D/g, '').slice(0, paymentRefMaxLength(method));
   if (method === 'maribank') return raw.replace(/\D/g, '').slice(0, paymentRefMaxLength(method));
+  if (method === 'gotyme') return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, paymentRefMaxLength(method));
   return raw.replace(/\D/g, '').slice(0, paymentRefMaxLength(method));
 }
 
@@ -7594,12 +7628,17 @@ function isMaribankReferenceValid(ref) {
   return /^\d{6}$/.test(String(ref || ''));
 }
 
+function isGotymeReferenceValid(ref) {
+  return /^ITO\d{15}$/.test(String(ref || '').toUpperCase());
+}
+
 function paymentRefHelpText(method) {
   if (method === 'gcash') return 'GCash reference must be exactly 13 digits.';
   if (method === 'bdopay') return 'Enter the BDO Pay Reference no. in BN-YYYYMMDD-######## format, not the invoice number. We verify the invoice from the receipt.';
   if (method === 'maya') return 'Enter the Maya Reference ID, e.g. B6DC F633 F08C. Do not enter the InstaPay Ref. No.';
   if (method === 'bpi') return 'Enter the BPI Confirmation No., e.g. 1783397488347. Do not enter the Transaction Ref. No.';
   if (method === 'maribank') return 'Enter the exact 6-digit Reference Number shown on the MariBank receipt, including any leading zero (e.g. 012710).';
+  if (method === 'gotyme') return 'Enter the complete GoTyme Reference No., e.g. ITO260723233836004. Do not enter the 6-digit Trace ID.';
   return 'Must match the reference number on the uploaded receipt.';
 }
 
@@ -7607,14 +7646,14 @@ function syncBookingRefUi(method = $('bPay')?.value || 'gcash') {
   const input = $('bGcashRef');
   if (input) {
     input.maxLength = paymentRefMaxLength(method);
-    input.placeholder = method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : method === 'maribank' ? 'e.g. 012710' : 'Enter payment reference number';
-    input.inputMode = (method === 'bdopay' || method === 'maya') ? 'text' : 'numeric';
+    input.placeholder = method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : method === 'maribank' ? 'e.g. 012710' : method === 'gotyme' ? 'e.g. ITO260723233836004' : 'Enter payment reference number';
+    input.inputMode = (method === 'bdopay' || method === 'maya' || method === 'gotyme') ? 'text' : 'numeric';
     const clean = normalizePaymentRef(input.value, method);
     if (input.value !== clean) input.value = clean;
   }
   const refLabel = document.querySelector('.bpay-ref-label');
   if (refLabel) {
-    refLabel.innerHTML = `${method === 'bpi' ? 'BPI Confirmation No.' : method === 'maribank' ? 'MariBank Reference Number' : 'Reference #'} <span id="refMethodLabel" style="color:var(--muted);text-transform:none;font-size:.68rem;font-weight:500;letter-spacing:0">${method ? '&mdash; ' + paymentMethodName(method) : ''}</span>`;
+    refLabel.innerHTML = `${method === 'bpi' ? 'BPI Confirmation No.' : method === 'maribank' ? 'MariBank Reference Number' : method === 'gotyme' ? 'GoTyme Reference No.' : 'Reference #'} <span id="refMethodLabel" style="color:var(--muted);text-transform:none;font-size:.68rem;font-weight:500;letter-spacing:0">${method ? '&mdash; ' + paymentMethodName(method) : ''}</span>`;
   }
   if ($('bRefHelp')) $('bRefHelp').textContent = paymentRefHelpText(method);
   updateRefCount();
@@ -7657,6 +7696,9 @@ function updateRefCount() {
   } else if (method === 'maribank') {
     el.textContent = `${len}/6 digits`;
     el.style.color = isMaribankReferenceValid(input?.value || '') ? 'var(--accent)' : 'var(--muted)';
+  } else if (method === 'gotyme') {
+    el.textContent = `${len}/18 chars`;
+    el.style.color = isGotymeReferenceValid(input?.value || '') ? 'var(--accent)' : 'var(--muted)';
   } else {
     el.textContent = len + (len === 1 ? ' digit' : ' digits');
     el.style.color = len > 0 ? 'var(--accent)' : 'var(--muted)';
@@ -7764,12 +7806,13 @@ async function submitBookingLegacy(e) {
     [!payMethod, 'Please select a payment method.', 'payMethodBlock', 4],
     [!!payMethod && !paymentMethods[payMethod], 'Selected payment method is no longer available.', 'payMethodBlock', 4],
     [!$('bookingPolicyAgree')?.checked, 'Please agree to the booking and payment policy before confirming.', $('bookingPolicyAgree')?.closest('.booking-policy-check'), 5],
-    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number after paying.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
+    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number after paying.' : payMethod === 'gotyme' ? 'Please enter the full GoTyme Reference No., not the Trace ID.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
     [payMethod === 'gcash' && !isGcashRefValid(gcashRef), 'GCash reference number must be exactly 13 digits.', 'bGcashRef', 5],
     [payMethod === 'bdopay' && !isBdoPayRefValid(gcashRef), 'BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'bGcashRef', 5],
     [payMethod === 'maya' && !isMayaRefValid(gcashRef), 'Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'bGcashRef', 5],
     [payMethod === 'bpi' && !isBpiConfirmationValid(gcashRef), 'Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'bGcashRef', 5],
     [payMethod === 'maribank' && !isMaribankReferenceValid(gcashRef), 'MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'bGcashRef', 5],
+    [payMethod === 'gotyme' && !isGotymeReferenceValid(gcashRef), 'GoTyme Reference No. must begin with ITO followed by 15 digits. Do not enter the 6-digit Trace ID.', 'bGcashRef', 5],
     [digitalPay && !receiptFile, () => {
       // Scroll to and flash the upload zone so the user knows exactly what's missing.
       const drop = $('bReceiptDrop');
@@ -8006,12 +8049,13 @@ async function submitBooking(e) {
     [!payMethod, 'Please select a payment method.', 'payMethodBlock', 4],
     [!!payMethod && !paymentMethods[payMethod], 'Selected payment method is no longer available.', 'payMethodBlock', 4],
     [!$('bookingPolicyAgree')?.checked, 'Please agree to the booking and payment policy before confirming.', $('bookingPolicyAgree')?.closest('.booking-policy-check'), 5],
-    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number after paying.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
+    [digitalPay && !gcashRef, payMethod === 'bpi' ? 'Please enter your BPI Confirmation No. after paying.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number after paying.' : payMethod === 'gotyme' ? 'Please enter the full GoTyme Reference No., not the Trace ID.' : 'Please enter your payment reference number after paying.', 'bGcashRef', 5],
     [payMethod === 'gcash' && !isGcashRefValid(gcashRef), 'GCash reference number must be exactly 13 digits.', 'bGcashRef', 5],
     [payMethod === 'bdopay' && !isBdoPayRefValid(gcashRef), 'BDO Pay reference must look like BN-YYYYMMDD-########. Do not enter the invoice number.', 'bGcashRef', 5],
     [payMethod === 'maya' && !isMayaRefValid(gcashRef), 'Maya Reference ID must look like B6DC F633 F08C. Do not enter the InstaPay Ref. No.', 'bGcashRef', 5],
     [payMethod === 'bpi' && !isBpiConfirmationValid(gcashRef), 'Enter the BPI Confirmation No. from the receipt, not the Transaction Ref. No.', 'bGcashRef', 5],
     [payMethod === 'maribank' && !isMaribankReferenceValid(gcashRef), 'MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'bGcashRef', 5],
+    [payMethod === 'gotyme' && !isGotymeReferenceValid(gcashRef), 'GoTyme Reference No. must begin with ITO followed by 15 digits. Do not enter the 6-digit Trace ID.', 'bGcashRef', 5],
     [digitalPay && !receiptFile, () => {
       const drop = $('bReceiptDrop');
       if (drop) markBookingInvalid(drop, 5);
@@ -9165,7 +9209,7 @@ async function openPlaySignup(courtId, date, h, courtName) {
     paymentMethods.bdopay  ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'bdopay' ? 'on' : ''}" data-m="bdopay"  onclick="opPickPay('bdopay')"><span class="po-ico">🏦</span><span class="po-lbl">BDO Pay</span><span class="po-sub">InstaPay to GCash QR</span></div>` : '',
     paymentMethods.maya    ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'maya' ? 'on' : ''}" data-m="maya"    onclick="opPickPay('maya')"><span class="po-ico">M</span><span class="po-lbl">Maya</span><span class="po-sub">QRPh to GCash</span></div>` : '',
     paymentMethods.maribank ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'maribank' ? 'on' : ''}" data-m="maribank" onclick="opPickPay('maribank')"><span class="po-ico">MB</span><span class="po-lbl">MariBank</span><span class="po-sub">6-digit Reference Number</span></div>` : '',
-    paymentMethods.gotyme  ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'gotyme' ? 'on' : ''}" data-m="gotyme"  onclick="opPickPay('gotyme')"><span class="po-ico">🏦</span><span class="po-lbl">GoTyme</span><span class="po-sub">Scan QR · enter ref #</span></div>` : '',
+    paymentMethods.gotyme  ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'gotyme' ? 'on' : ''}" data-m="gotyme"  onclick="opPickPay('gotyme')"><span class="po-ico">🏦</span><span class="po-lbl">GoTyme</span><span class="po-sub">InstaPay → GCash</span></div>` : '',
     paymentMethods.pnb     ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'pnb' ? 'on' : ''}" data-m="pnb"     onclick="opPickPay('pnb')"><span class="po-ico">🏛️</span><span class="po-lbl">PNB</span><span class="po-sub">Scan QR · enter ref #</span></div>` : '',
     paymentMethods.cash    ? `<div class="pay-opt op-pay-opt ${defaultPayMethod === 'cash' ? 'on' : ''}" data-m="cash"    onclick="opPickPay('cash')"><span class="po-ico">💵</span><span class="po-lbl">Cash</span><span class="po-sub">Pay at front desk</span></div>` : '',
   ].filter(Boolean);
@@ -9286,14 +9330,16 @@ function opPickPay(method) {
       ? `${cleanRef.length}/20 digits`
     : method === 'maribank'
       ? `${cleanRef.length}/6 digits`
+    : method === 'gotyme'
+      ? `${cleanRef.length}/18 chars`
     : cleanRef.length + (cleanRef.length === 1 ? ' digit' : ' digits');
   const refHtml = `
     <div class="op-ref-block">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <label>${method === 'bpi' ? 'BPI Confirmation No. *' : method === 'maribank' ? 'MariBank Reference Number *' : 'Reference # (after sending) *'}</label>
+        <label>${method === 'bpi' ? 'BPI Confirmation No. *' : method === 'maribank' ? 'MariBank Reference Number *' : method === 'gotyme' ? 'GoTyme Reference No. *' : 'Reference # (after sending) *'}</label>
         <span id="opRefCount" style="font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap">${refCountText}</span>
       </div>
-      <input type="text" class="fi" id="opGcashRef" placeholder="${method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : method === 'maribank' ? 'e.g. 012710' : 'Enter payment reference number'}" inputmode="${(method === 'bdopay' || method === 'maya') ? 'text' : 'numeric'}"
+      <input type="text" class="fi" id="opGcashRef" placeholder="${method === 'gcash' ? 'e.g. 1234567890123' : method === 'bdopay' ? 'e.g. BN-20260627-91811670' : method === 'maya' ? 'e.g. B6DC F633 F08C' : method === 'bpi' ? 'e.g. 1783397488347' : method === 'maribank' ? 'e.g. 012710' : method === 'gotyme' ? 'e.g. ITO260723233836004' : 'Enter payment reference number'}" inputmode="${(method === 'bdopay' || method === 'maya' || method === 'gotyme') ? 'text' : 'numeric'}"
         maxlength="${paymentRefMaxLength(method)}"
         style="margin:0;font-family:monospace;letter-spacing:1px"
         oninput="syncOpenPlayRefInput('${method}')"
@@ -9307,7 +9353,7 @@ function opPickPay(method) {
       maya: { icon: 'M', label: 'Maya', receiver: paymentReceiverSettings.gcash },
       bpi: { icon: 'BPI', label: 'BPI', receiver: paymentReceiverSettings.gcash },
       maribank: { icon: 'MB', label: 'MariBank', receiver: paymentReceiverSettings.gcash },
-      gotyme: { icon: '🏦', label: 'GoTyme', receiver: paymentReceiverSettings.gotyme },
+      gotyme: { icon: '🏦', label: 'GoTyme → GCash', receiver: paymentReceiverSettings.gcash },
       pnb: { icon: '🏛️', label: 'PNB', receiver: paymentReceiverSettings.pnb },
     }[method];
     const receiver = meta.receiver;
@@ -9321,21 +9367,26 @@ function opPickPay(method) {
         ? 'MariBank to GCash/G-Xchange only.<br>Enter the exact 6-digit Reference Number, including any leading zero.<br>Upload the full transaction receipt showing the amount, recipient, reference, and date/time.'
       : method === 'gcash'
         ? 'GCash to GCash only.<br>BDO Pay/InstaPay receipts will require manual review.<br>Please choose the correct payment method before paying.'
+      : method === 'gotyme'
+        ? 'GoTyme to GCash/G-Xchange via InstaPay only.<br>Enter the full Reference No. beginning with ITO—not the 6-digit Trace ID.<br>Upload the complete GoTyme receipt showing recipient, amount, reference, and date/time.'
         : `Use ${meta.label} only. Receipts from another payment method will not auto-approve.`;
-    const displayReceiverName = method === 'gcash'
+    const displayReceiverName = method === 'gcash' || method === 'gotyme'
       ? (maskGcashOwnerName(receiver.name) || 'Court owner account')
       : (receiver.name || 'Court owner account');
     const copyValue = (receiver.number || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const qrDisplay = receiver.qrImage
-      ? `<img class="op-qr-img qr-clickable" src="${receiver.qrImage}" alt="${meta.label} QR" onclick="openQrZoomFromImg(this,'${meta.label} QR')" />`
+      ? `<img class="op-qr-img qr-clickable" src="${receiver.qrImage}" alt="${method === 'gotyme' ? 'GCash recipient QR for GoTyme payment' : meta.label + ' QR'}" onclick="openQrZoomFromImg(this,'${method === 'gotyme' ? 'GCash recipient QR' : meta.label + ' QR'}')" />`
       : `<div class="op-qr-placeholder">📸<br>No QR</div>`;
+    const guide = method === 'gotyme'
+      ? ['Scan GCash QR in GoTyme.', 'Pay exact via InstaPay.', 'Use full Reference No.', 'Upload full receipt.']
+      : ['Copy # / tap QR.', 'Pay exact amount.', 'Save ref + receipt.', 'Paste ref + upload.'];
     const dpControlsHtml = openPlayDpControlsHtml(opTotal);
     info.innerHTML = `
       <div class="op-payment-combo">
         <div class="op-pay-outside ${dpControlsHtml ? '' : 'single'}">
           ${dpControlsHtml}
           <div class="op-send-panel">
-            <div class="op-send-title">${meta.icon} Send ${meta.label} Payment To</div>
+            <div class="op-send-title">${meta.icon} ${method === 'gotyme' ? 'Send from GoTyme to this GCash account' : `Send ${meta.label} Payment To`}</div>
             ${receiver.number ? `<div class="op-number-row">
               <span class="op-number">${receiver.number}</span>
               <button type="button" class="op-mini-btn" onclick="copyToClipboard('${copyValue}')">Copy</button>
@@ -9349,7 +9400,7 @@ function opPickPay(method) {
             ${qrDisplay}
           </div>
           <div>
-            <div class="op-send-title">${meta.icon} Send ${meta.label} Payment To</div>
+            <div class="op-send-title">${meta.icon} ${method === 'gotyme' ? 'Send from GoTyme to this GCash account' : `Send ${meta.label} Payment To`}</div>
             ${receiver.number ? `<div class="op-number-row">
               <span class="op-number">${receiver.number}</span>
               <button type="button" class="op-mini-btn" onclick="copyToClipboard('${copyValue}')">📋 Copy</button>
@@ -9358,10 +9409,10 @@ function opPickPay(method) {
           </div>
         </div>
         <div class="payment-guide">
-          <div class="payment-guide-step"><b>1</b><span><span class="payment-guide-long">Copy # / tap QR.</span><span class="payment-guide-short">Copy # / tap QR</span></span></div>
-          <div class="payment-guide-step"><b>2</b><span><span class="payment-guide-long">Pay exact amount.</span><span class="payment-guide-short">Pay exact amount</span></span></div>
-          <div class="payment-guide-step"><b>3</b><span><span class="payment-guide-long">Save ref + receipt.</span><span class="payment-guide-short">Save ref + receipt</span></span></div>
-          <div class="payment-guide-step"><b>4</b><span><span class="payment-guide-long">Paste ref + upload.</span><span class="payment-guide-short">Paste ref + upload</span></span></div>
+          <div class="payment-guide-step"><b>1</b><span><span class="payment-guide-long">${guide[0]}</span><span class="payment-guide-short">${guide[0]}</span></span></div>
+          <div class="payment-guide-step"><b>2</b><span><span class="payment-guide-long">${guide[1]}</span><span class="payment-guide-short">${guide[1]}</span></span></div>
+          <div class="payment-guide-step"><b>3</b><span><span class="payment-guide-long">${guide[2]}</span><span class="payment-guide-short">${guide[2]}</span></span></div>
+          <div class="payment-guide-step"><b>4</b><span><span class="payment-guide-long">${guide[3]}</span><span class="payment-guide-short">${guide[3]}</span></span></div>
         </div>
         <div class="op-pay-fields">
           <div class="payment-method-note" style="margin-bottom:10px">${methodWarning}</div>
@@ -9413,6 +9464,8 @@ function syncOpenPlayRefInput(method = _opSignupData.payMethod || 'gcash') {
         ? `${clean.length}/20 digits`
       : method === 'maribank'
         ? `${clean.length}/6 digits`
+      : method === 'gotyme'
+        ? `${clean.length}/18 chars`
       : clean.length + (clean.length === 1 ? ' digit' : ' digits');
     count.style.color = method === 'gcash' && clean.length === 13
       ? 'var(--accent)'
@@ -9424,7 +9477,9 @@ function syncOpenPlayRefInput(method = _opSignupData.payMethod || 'gcash') {
         ? 'var(--accent)'
       : method === 'maribank' && isMaribankReferenceValid(clean)
         ? 'var(--accent)'
-      : clean.length > 0 && method !== 'gcash' && method !== 'bdopay' && method !== 'maya' && method !== 'bpi' && method !== 'maribank'
+      : method === 'gotyme' && isGotymeReferenceValid(clean)
+        ? 'var(--accent)'
+      : clean.length > 0 && method !== 'gcash' && method !== 'bdopay' && method !== 'maya' && method !== 'bpi' && method !== 'maribank' && method !== 'gotyme'
         ? 'var(--accent)'
         : 'var(--muted)';
   }
@@ -9561,7 +9616,7 @@ async function submitOpenPlay() {
   const receiptFile = needsRef ? _opReceiptFile : null;
   if (needsRef && !paymentRef) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
-    toast(payMethod === 'bpi' ? 'Please enter your BPI Confirmation No.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number.' : 'Please enter your payment reference number.', 'err');
+    toast(payMethod === 'bpi' ? 'Please enter your BPI Confirmation No.' : payMethod === 'maribank' ? 'Please enter your 6-digit MariBank Reference Number.' : payMethod === 'gotyme' ? 'Please enter the full GoTyme Reference No., not the Trace ID.' : 'Please enter your payment reference number.', 'err');
     refEl?.focus();
     return;
   }
@@ -9592,6 +9647,12 @@ async function submitOpenPlay() {
   if (payMethod === 'maribank' && !isMaribankReferenceValid(paymentRef)) {
     if (refEl) refEl.style.borderColor = 'var(--red)';
     toast('MariBank Reference Number must be exactly 6 digits, including any leading zero.', 'err');
+    refEl?.focus();
+    return;
+  }
+  if (payMethod === 'gotyme' && !isGotymeReferenceValid(paymentRef)) {
+    if (refEl) refEl.style.borderColor = 'var(--red)';
+    toast('GoTyme Reference No. must begin with ITO followed by 15 digits. Do not enter the 6-digit Trace ID.', 'err');
     refEl?.focus();
     return;
   }

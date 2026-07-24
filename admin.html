@@ -2435,7 +2435,7 @@ tr:hover td { background: var(--bg2); }
           <div id="rpReceivedChart"><p class="rp-empty">No data.</p></div>
           <details class="rp-panel-note">
             <summary>Accounting view</summary>
-            <div>Digital rails such as BDO Pay, Maya, BPI, MariBank, GoTyme, and PNB are recorded as received to GCash unless a booking has an explicit receiving account.</div>
+            <div>Digital rails such as BDO Pay, Maya, BPI, MariBank, GoTyme &rarr; GCash, and PNB are recorded as received to GCash unless a booking has an explicit receiving account.</div>
           </details>
         </div>
         <div class="rp-breakdown-view" data-rp-panel="trend">
@@ -3105,7 +3105,7 @@ tr:hover td { background: var(--bg2); }
               <input type="checkbox" id="payMethodMaribankOn" /> MariBank
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
-              <input type="checkbox" id="payMethodGotymeOn" /> GoTyme
+              <input type="checkbox" id="payMethodGotymeOn" /> GoTyme &rarr; GCash
             </label>
             <label style="display:flex;align-items:center;gap:7px;font-size:.84rem;cursor:pointer">
               <input type="checkbox" id="payMethodPnbOn" /> PNB
@@ -3129,7 +3129,7 @@ tr:hover td { background: var(--bg2); }
           <div class="fg" style="margin:0 0 10px">
             <label class="fl">GCash QR Account ID</label>
             <input type="text" class="fi" id="gcashQrAccountIdInput" placeholder="DWQM4TK496R3UA1BS" maxlength="24" autocomplete="off" spellcheck="false" />
-            <div style="font-size:.72rem;color:var(--muted);margin-top:4px">The alphanumeric Acct No. shown on InstaPay receipts. MariBank uses this server-side value to verify the payment destination.</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:4px">The alphanumeric Acct No. shown on InstaPay receipts. MariBank and GoTyme use this server-side value to verify the GCash destination.</div>
           </div>
           <div class="fg" style="margin:0">
             <label class="fl">GCash QR Code Image</label>
@@ -3146,31 +3146,14 @@ tr:hover td { background: var(--bg2); }
           </div>
         </div>
 
-        <!-- GoTyme Section -->
+        <!-- GoTyme to GCash Section -->
         <div style="margin-top:12px;padding:14px;background:var(--input);border-radius:10px;border:1px solid var(--border);">
-          <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--yellow);margin-bottom:10px;">🏦 GoTyme</div>
-          <div class="frow" style="gap:10px;margin-bottom:10px;">
-            <div class="fg" style="margin:0;flex:1">
-              <label class="fl">GoTyme Number / Account No.</label>
-              <input type="text" class="fi" id="gotymeNumInput" placeholder="e.g. 09XX XXX XXXX" />
-            </div>
-            <div class="fg" style="margin:0;flex:1">
-              <label class="fl">Account Name</label>
-              <input type="text" class="fi" id="gotymeNameInput" placeholder="e.g. Korte DOS Bayabas" />
-            </div>
+          <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--yellow);margin-bottom:8px;">🏦 GoTyme &rarr; GCash</div>
+          <div style="font-size:.78rem;color:var(--text);line-height:1.55;margin-bottom:8px">
+            Players send from GoTyme through InstaPay to the same GCash account configured above. There is no separate GoTyme receiving account or QR code.
           </div>
-          <div class="fg" style="margin:0">
-            <label class="fl">GoTyme QR Code Image</label>
-            <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-              <div id="gotymeQrPreviewWrap" style="display:none">
-                <img id="gotymeQrPreview" src="" alt="GoTyme QR" style="width:110px;height:110px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fff;padding:4px;"/>
-                <button type="button" onclick="removeQr('gotyme')" style="display:block;margin-top:6px;font-size:.7rem;color:#e53935;background:none;border:none;cursor:pointer;padding:2px 0;font-weight:600;">✕ Remove QR</button>
-              </div>
-              <label style="flex:1;min-width:160px;display:flex;align-items:center;gap:9px;padding:11px 13px;background:var(--card);border:1.5px dashed var(--border);border-radius:8px;cursor:pointer;font-size:.84rem;color:var(--muted);" onmouseover="this.style.borderColor='var(--yellow)'" onmouseout="this.style.borderColor='var(--border)'">
-                📷 Upload GoTyme QR image
-                <input type="file" accept="image/*" id="gotymeQrFile" style="display:none" onchange="handleQrUpload('gotyme',event)"/>
-              </label>
-            </div>
+          <div id="gotymeGcashSummary" style="padding:10px 12px;border-radius:8px;background:var(--card);border:1px solid var(--border);font-size:.72rem;color:var(--muted);line-height:1.55">
+            Uses the configured GCash number, account name, QR image, and QR Account ID.
           </div>
         </div>
 
@@ -3357,7 +3340,7 @@ tr:hover td { background: var(--bg2); }
       <div style="background:rgba(var(--green-rgb),.07);border:1.5px solid rgba(var(--green-rgb),.28);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px">
         <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Payment Reference #</div>
         <div id="vmGcashRef" style="font-family:monospace;font-size:1.55rem;font-weight:800;color:var(--green);letter-spacing:2px">—</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:5px">Check your GCash/GoTyme app for this reference</div>
+        <div id="vmReferenceHelp" style="font-size:.7rem;color:var(--muted);margin-top:5px">Match this reference in the selected payment provider's app.</div>
       </div>
       <div style="font-size:.82rem;color:var(--muted)">
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>Customer</span><strong style="color:var(--text)" id="vmName">—</strong></div>
@@ -3404,7 +3387,7 @@ tr:hover td { background: var(--bg2); }
       <div style="background:rgba(56,189,248,.07);border:1.5px solid rgba(56,189,248,.3);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px">
         <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Payment Reference #</div>
         <div id="ovGcashRef" style="font-family:monospace;font-size:1.55rem;font-weight:800;color:#38bdf8;letter-spacing:2px">—</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:5px">Verify this reference in the selected payment provider's app</div>
+        <div id="ovReferenceHelp" style="font-size:.7rem;color:var(--muted);margin-top:5px">Match this reference in the selected payment provider's app.</div>
       </div>
       <div style="font-size:.82rem;color:var(--muted)">
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>Player</span><strong style="color:var(--text)" id="ovName">—</strong></div>
@@ -3417,6 +3400,7 @@ tr:hover td { background: var(--bg2); }
         <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Auto-Verification</div>
         <div id="ovReceiptStatus" style="font-size:.82rem;font-weight:700;border-radius:8px;padding:8px 10px;margin-bottom:8px"></div>
         <div id="ovReceiptFlags" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px"></div>
+        <div id="ovReceiptDetails" class="receipt-detail-grid" style="display:none"></div>
         <a id="ovReceiptLink" href="#" target="_blank" rel="noopener" style="display:none">
           <img id="ovReceiptImg" alt="Receipt" style="width:100%;max-height:320px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fff"/>
         </a>
@@ -4107,6 +4091,17 @@ const RECEIPT_FLAG_LABELS = {
   AMOUNT_REVIEW:'Amount needs owner review',
   DATE_UNREADABLE:'Date unreadable', TIME_UNREADABLE:'Time unreadable', NUMBER_UNREADABLE:'Receiver number unreadable',
   BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', BPI_UNREADABLE:'BPI success unreadable', BPI_CONFIRMATION_UNREADABLE:'BPI confirmation unreadable', BPI_TRANSACTION_UNREADABLE:'BPI transaction ref unreadable', MARIBANK_UNREADABLE:'MariBank receipt status unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable', ACCOUNT_UNREADABLE:'GCash QR account unreadable', ACCOUNT_UNCONFIGURED:'GCash QR account not configured',
+  GOTYME_UNREADABLE:'GoTyme receipt unreadable',
+  GOTYME_REFERENCE_UNREADABLE:'GoTyme Reference No. unreadable',
+  GOTYME_TRACE_ID_UNREADABLE:'GoTyme Trace ID unreadable',
+  GOTYME_TRACE_ID_MISMATCH:'Trace ID does not match the Reference No.',
+  GOTYME_STATUS_UNREADABLE:'GoTyme transfer status unreadable',
+  GOTYME_TRANSFER_NOT_COMPLETED:'GoTyme transfer is not completed',
+  GOTYME_INSTAPAY_UNREADABLE:'GoTyme InstaPay/Instant details unreadable',
+  GOTYME_DESTINATION_UNREADABLE:'GoTyme GCash destination unreadable',
+  GOTYME_ACCOUNT_UNREADABLE:'GoTyme GCash account suffix unreadable',
+  GOTYME_ACCOUNT_MISMATCH:'GoTyme GCash account suffix needs checking',
+  GOTYME_TOTAL_UNREADABLE:'GoTyme amount, fee, or total unreadable',
   SESSION_CAPACITY_REVIEW:'Session filled — owner action required',
   LEGACY_CLIENT_REVIEW:'Older booking page — owner review required',
 };
@@ -4228,6 +4223,8 @@ function receiptReceiverValue(extracted){
 }
 function receiptDetailsHtml(b){
   const ex = b.receiptExtracted || {};
+  const method = String(b?.paymentMethod || b?.payment_method || ex.provider || '').toLowerCase();
+  const isGotyme = method === 'gotyme';
   const enteredRef = b?.gcashRef ?? b?.gcash_ref;
   const hasEnteredRef = enteredRef !== null && enteredRef !== undefined && String(enteredRef).trim() !== '';
   const displayFlags = receiptFlagsForDisplay(b);
@@ -4236,7 +4233,11 @@ function receiptDetailsHtml(b){
   const ocrConfidence = ex.ocrConfidence != null && Number.isFinite(ocrConfidenceNumber)
     ? `${Math.round(ocrConfidenceNumber * 100)}%`
     : '--';
-  const amountParse = ex.amountReason === 'maribank_transfer_amount'
+  const amountParse = ex.amountReason === 'gotyme_transfer_amount'
+    ? ex.amountReliable === true
+      ? 'GoTyme Transfer Amount'
+      : 'GoTyme Transfer Amount not extracted'
+    : ex.amountReason === 'maribank_transfer_amount'
     ? ex.amountReliable === true
       ? 'MariBank Transfer Amount'
       : 'MariBank Transfer Amount not extracted'
@@ -4249,9 +4250,28 @@ function receiptDetailsHtml(b){
           : ex.amountReliable === false
             ? 'Uncertain — manual review'
             : '--';
+  const gotymeRows = isGotyme ? [
+    ['GoTyme Reference No.', receiptDetailValue(ex.goTymeReferenceNo || ex.ref)],
+    ['Trace ID', receiptDetailValue(ex.goTymeTraceId)],
+    ['Transfer Status', receiptDetailValue(ex.goTymeStatus)],
+    ['Transfer Rail', receiptDetailValue([
+      ex.goTymeTransferChannel,
+      ex.goTymeProcessingSpeed,
+    ].filter(Boolean).join(' / '))],
+    ['Transfer Amount', receiptAmountValue(ex.goTymeTransferAmount ?? ex.amount)],
+    ['Transfer Fee', receiptAmountValue(ex.goTymeTransferFee)],
+    ['Receipt Total', receiptAmountValue(ex.goTymeTotalAmount)],
+    ['GCash Account Suffix', receiptDetailValue(ex.goTymeDestinationAccountSuffix)],
+    ['Sender Account Suffix', receiptDetailValue(ex.goTymeSenderLast4)],
+    ['Transfer Route', receiptDetailValue([
+      ex.goTymeSourceInstitution,
+      ex.goTymeDestinationInstitution,
+    ].filter(Boolean).join(' \u2192 ')), true],
+  ] : [];
   const rows = [
     ['OCR Ref', receiptDetailValue(ex.ref)],
     ...(hasEnteredRef ? [['Entered Ref', receiptDetailValue(enteredRef)]] : []),
+    ...gotymeRows,
     ['Amount Read', receiptAmountValue(ex.amount)],
     ['Receipt Time', receiptTimeValue(ex)],
     ['Receipt Date', receiptDetailValue(ex.date)],
@@ -5206,7 +5226,13 @@ async function restoreDeletedBooking(id, ref) {
 
 /* ── CALENDAR VIEW ── */
 function paymentMethodLabel(m) {
-  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' }[String(m || '').toLowerCase()] || (m || 'Cash'));
+  return ({ gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme \u2192 GCash', pnb: 'PNB', cash: 'Cash' }[String(m || '').toLowerCase()] || (m || 'Cash'));
+}
+
+function paymentReferenceReviewHelp(method) {
+  return String(method || '').toLowerCase() === 'gotyme'
+    ? 'Match the complete GoTyme Reference No. beginning with ITO, not the 6-digit Trace ID.'
+    : "Match this reference in the selected payment provider's app.";
 }
 
 function isDigitalPayment(m) {
@@ -6035,6 +6061,7 @@ async function openVerifyModal(ref, { returnFocus = null } = {}) {
   if (!b) { toast('Booking not found.', 'err'); return false; }
   $('vmMethod').textContent = paymentMethodLabel(b.paymentMethod);
   $('vmGcashRef').textContent = b.gcashRef || '—';
+  if ($('vmReferenceHelp')) $('vmReferenceHelp').textContent = paymentReferenceReviewHelp(b.paymentMethod);
   $('vmName').textContent = b.fullName;
   $('vmContact').textContent = b.contactNumber;
   $('vmRef').textContent = b.displayRef || b.ref;
@@ -8062,8 +8089,6 @@ async function renderPaymentSettings() {
   if ($('gcashNumInput')) $('gcashNumInput').value = settings.gcash_merchant_number || '';
   if ($('gcashNameInput')) $('gcashNameInput').value = settings.gcash_merchant_name || '';
   if ($('gcashQrAccountIdInput')) $('gcashQrAccountIdInput').value = settings.gcash_qr_account_id || '';
-  if ($('gotymeNumInput')) $('gotymeNumInput').value = settings.gotyme_merchant_number || '';
-  if ($('gotymeNameInput')) $('gotymeNameInput').value = settings.gotyme_merchant_name || '';
   if ($('pnbNumInput')) $('pnbNumInput').value = settings.pnb_merchant_number || '';
   if ($('pnbNameInput')) $('pnbNameInput').value = settings.pnb_merchant_name || '';
   if ($('platformGcashNumInput')) $('platformGcashNumInput').value = settings.platform_gcash_number || '';
@@ -8079,11 +8104,6 @@ async function renderPaymentSettings() {
     $('gcashQrPreview').src = gcashQr;
     $('gcashQrPreviewWrap').style.display = '';
   }
-  const gotymeQr = settings.gotyme_qr_image || '';
-  if (gotymeQr && $('gotymeQrPreview')) {
-    $('gotymeQrPreview').src = gotymeQr;
-    $('gotymeQrPreviewWrap').style.display = '';
-  }
   const pnbQr = settings.pnb_qr_image || '';
   if (pnbQr && $('pnbQrPreview')) {
     $('pnbQrPreview').src = pnbQr;
@@ -8091,6 +8111,17 @@ async function renderPaymentSettings() {
   }
 
   const gcashQrAccountId = String(settings.gcash_qr_account_id || '').trim();
+  const gotymeGcashSummary = $('gotymeGcashSummary');
+  if (gotymeGcashSummary) {
+    const gcashNumber = String(settings.gcash_merchant_number || '').trim() || 'not configured';
+    const gcashName = String(settings.gcash_merchant_name || '').trim() || 'not configured';
+    gotymeGcashSummary.textContent = [
+      `GCash number: ${gcashNumber}`,
+      `Account name: ${gcashName}`,
+      `GCash QR: ${gcashQr ? 'uploaded' : 'not uploaded'}`,
+      `QR Account ID: ${gcashQrAccountId || 'not configured'}`,
+    ].join(' \u2022 ');
+  }
   const enabledMethods = [
     cashOn && 'Cash',
     gcashOn && 'GCash',
@@ -8098,7 +8129,7 @@ async function renderPaymentSettings() {
     mayaOn && 'Maya',
     bpiOn && 'BPI',
     maribankOn && 'MariBank',
-    gotymeOn && 'GoTyme',
+    gotymeOn && 'GoTyme \u2192 GCash',
     pnbOn && 'PNB',
   ].filter(Boolean);
   const summaryParts = [
@@ -9081,10 +9112,11 @@ async function removePlatformQr() {
 
 async function removeQr(type) {
   if (!Auth.can('payments', sess.role)) { toast('You do not have access to edit payment settings.', 'err'); return; }
-  const key = type === 'gcash' ? 'gcash_qr_image' : type === 'gotyme' ? 'gotyme_qr_image' : 'pnb_qr_image';
-  const previewId = type === 'gcash' ? 'gcashQrPreview' : type === 'gotyme' ? 'gotymeQrPreview' : 'pnbQrPreview';
-  const wrapId = type === 'gcash' ? 'gcashQrPreviewWrap' : type === 'gotyme' ? 'gotymeQrPreviewWrap' : 'pnbQrPreviewWrap';
-  const fileId = type === 'gcash' ? 'gcashQrFile' : type === 'gotyme' ? 'gotymeQrFile' : 'pnbQrFile';
+  if (!['gcash', 'pnb'].includes(type)) { toast('This QR setting is no longer used.', 'inf'); return; }
+  const key = type === 'gcash' ? 'gcash_qr_image' : 'pnb_qr_image';
+  const previewId = type === 'gcash' ? 'gcashQrPreview' : 'pnbQrPreview';
+  const wrapId = type === 'gcash' ? 'gcashQrPreviewWrap' : 'pnbQrPreviewWrap';
+  const fileId = type === 'gcash' ? 'gcashQrFile' : 'pnbQrFile';
   try {
     await DB.saveSetting(key, '');
     $(previewId).src = '';
@@ -9098,18 +9130,16 @@ async function removeQr(type) {
 
 function handleQrUpload(type, e) {
   if (!Auth.can('payments', sess.role)) { toast('You do not have access to edit payment settings.', 'err'); e.target.value = ''; return; }
+  if (!['gcash', 'pnb'].includes(type)) { toast('This QR setting is no longer used.', 'inf'); e.target.value = ''; return; }
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = async ev => {
     const data = ev.target.result;
-    const key = type === 'gcash' ? 'gcash_qr_image' : type === 'gotyme' ? 'gotyme_qr_image' : 'pnb_qr_image';
+    const key = type === 'gcash' ? 'gcash_qr_image' : 'pnb_qr_image';
     if (type === 'gcash') {
       $('gcashQrPreview').src = data;
       $('gcashQrPreviewWrap').style.display = '';
-    } else if (type === 'gotyme') {
-      $('gotymeQrPreview').src = data;
-      $('gotymeQrPreviewWrap').style.display = '';
     } else {
       $('pnbQrPreview').src = data;
       $('pnbQrPreviewWrap').style.display = '';
@@ -9142,8 +9172,8 @@ async function savePaymentSettings() {
     return;
   }
   const gcashQrAccountId = ($('gcashQrAccountIdInput')?.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (maribankOn && !/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{12,24}$/.test(gcashQrAccountId)) {
-    toast('Enter the valid GCash QR Account ID shown as Acct No. on the MariBank receipt.', 'err');
+  if ((maribankOn || gotymeOn) && !/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{12,24}$/.test(gcashQrAccountId)) {
+    toast('Enter the valid GCash QR Account ID used to verify MariBank and GoTyme receipts.', 'err');
     $('gcashQrAccountIdInput')?.focus();
     return;
   }
@@ -9163,26 +9193,20 @@ async function savePaymentSettings() {
 
     const gcashNum = $('gcashNumInput')?.value.trim() || '';
     const gcashName = $('gcashNameInput')?.value.trim() || '';
-    const gotymeNum = $('gotymeNumInput')?.value.trim() || '';
-    const gotymeName = $('gotymeNameInput')?.value.trim() || '';
     const pnbNum = $('pnbNumInput')?.value.trim() || '';
     const pnbName = $('pnbNameInput')?.value.trim() || '';
     await DB.saveSetting('gcash_merchant_number', gcashNum);
     await DB.saveSetting('gcash_merchant_name', gcashName);
     await DB.saveSetting('gcash_qr_account_id', gcashQrAccountId);
-    await DB.saveSetting('gotyme_merchant_number', gotymeNum);
-    await DB.saveSetting('gotyme_merchant_name', gotymeName);
     await DB.saveSetting('pnb_merchant_number', pnbNum);
     await DB.saveSetting('pnb_merchant_name', pnbName);
 
     // Save QR images (base64 data URLs) — save empty string if removed
     const platformQrSrc = $('platformGcashQrPreview')?.src || '';
     const gcashQrSrc = $('gcashQrPreview')?.src || '';
-    const gotymeQrSrc = $('gotymeQrPreview')?.src || '';
     const pnbQrSrc = $('pnbQrPreview')?.src || '';
     if (platformQrSrc.startsWith('data:')) await DB.saveSetting('platform_gcash_qr', platformQrSrc);
     if (gcashQrSrc.startsWith('data:')) await DB.saveSetting('gcash_qr_image', gcashQrSrc);
-    if (gotymeQrSrc.startsWith('data:')) await DB.saveSetting('gotyme_qr_image', gotymeQrSrc);
     if (pnbQrSrc.startsWith('data:')) await DB.saveSetting('pnb_qr_image', pnbQrSrc);
 
     await renderPaymentSettings();
@@ -10436,10 +10460,10 @@ async function openOpVerifyModal(id) {
   if (modalToken !== _openPlayPaymentReviewLoadToken) return false;
   const r = regs.find(x => String(x.id) === String(id));
   if (!r) { toast('Registration not found.', 'err'); return false; }
-  const methodLabel = { gcash: 'GCash', bdopay: 'BDO Pay', maya: 'Maya', bpi: 'BPI', maribank: 'MariBank', gotyme: 'GoTyme', pnb: 'PNB', cash: 'Cash' };
   $('ovModalTitle').textContent = '🏓 VERIFY OPEN PLAY PAYMENT';
-  $('ovMethod').textContent  = methodLabel[r.payment_method] || r.payment_method || 'GCash';
+  $('ovMethod').textContent  = paymentMethodLabel(r.payment_method);
   $('ovGcashRef').textContent = r.gcash_ref || '—';
+  if ($('ovReferenceHelp')) $('ovReferenceHelp').textContent = paymentReferenceReviewHelp(r.payment_method);
   $('ovName').textContent    = r.full_name;
   $('ovCourt').textContent   = r.court_name || '—';
   $('ovDate').textContent    = `${fmtD(r.date)} · ${r.time_label || '—'}`;
@@ -10513,6 +10537,7 @@ async function openHostSessionVerifyModal(id) {
   $('ovModalTitle').textContent = '🏓 VERIFY HOST SESSION PAYMENT';
   $('ovMethod').textContent = paymentMethodLabel(r.payment_method);
   $('ovGcashRef').textContent = r.gcash_ref || '—';
+  if ($('ovReferenceHelp')) $('ovReferenceHelp').textContent = paymentReferenceReviewHelp(r.payment_method);
   $('ovName').textContent = r.full_name || '—';
   $('ovCourt').textContent = r.court_name || '—';
   $('ovDate').textContent = `${r.date ? fmtD(r.date) : '—'} · ${r.time_label || '—'}`;
@@ -10567,7 +10592,19 @@ async function ovPopulateReceipt(r, { expectedId, expectedContext, loadToken } =
   };
   const [c,bg,lbl] = map[s] || map.none;
   if (st) { st.style.color = c; st.style.background = bg; st.textContent = lbl; }
-  if ($('ovReceiptFlags')) $('ovReceiptFlags').innerHTML = receiptFlagChips(r.receipt_flags);
+  const reviewRecord = {
+    paymentMethod: r.payment_method,
+    gcashRef: r.gcash_ref,
+    receiptFlags: r.receipt_flags || [],
+    receiptExtracted: r.receipt_extracted || {},
+  };
+  const displayFlags = receiptFlagsForDisplay(reviewRecord);
+  if ($('ovReceiptFlags')) $('ovReceiptFlags').innerHTML = receiptFlagChips(displayFlags);
+  const detailBox = $('ovReceiptDetails');
+  if (detailBox) {
+    detailBox.innerHTML = receiptDetailsHtml(reviewRecord);
+    detailBox.style.display = '';
+  }
   if (String(r.receipt_image_url || '').trim()) {
     try {
       const url = r?._reviewContext === 'host_session'

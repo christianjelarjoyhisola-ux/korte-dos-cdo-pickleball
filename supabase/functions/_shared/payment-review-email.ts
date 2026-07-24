@@ -271,6 +271,28 @@ export function paymentReviewFlagLabel(flag: unknown): string {
       "BPI transaction reference may have been used before",
     DUPLICATE_MARIBANK_TRANSACTION:
       "MariBank transaction may have been used before",
+    GOTYME_UNREADABLE: "GoTyme receipt details need checking",
+    GOTYME_REFERENCE_UNREADABLE: "GoTyme Reference No. could not be read",
+    GOTYME_TRACE_ID_UNREADABLE: "GoTyme Trace ID could not be read",
+    GOTYME_TRACE_ID_MISMATCH:
+      "GoTyme Trace ID does not match the Reference No.",
+    GOTYME_STATUS_UNREADABLE: "GoTyme transfer status could not be read",
+    GOTYME_TRANSFER_NOT_COMPLETED: "GoTyme transfer is not shown as completed",
+    GOTYME_INSTAPAY_UNREADABLE:
+      "GoTyme InstaPay/Instant details could not be verified",
+    GOTYME_DESTINATION_UNREADABLE:
+      "GoTyme receipt does not clearly show the GCash destination",
+    GOTYME_ACCOUNT_UNREADABLE:
+      "GCash destination account suffix could not be read",
+    GOTYME_ACCOUNT_MISMATCH: "GCash destination account suffix needs checking",
+    GOTYME_TOTAL_UNREADABLE: "GoTyme amount, fee, and total need checking",
+    RECEIVER_NAME_UNREADABLE: "Receiver name could not be read",
+    RECEIVER_NAME_MISMATCH: "Receiver name needs checking",
+    ACCOUNT_UNCONFIGURED:
+      "GCash QR Account ID must be configured before auto-verification",
+    AMOUNT_REVIEW: "Payment amount needs owner review",
+    DATE_UNREADABLE: "Receipt date could not be read",
+    TIME_UNREADABLE: "Receipt time could not be read",
     BOOKING_UPDATE_FAILED: "Automatic booking confirmation did not finish",
     SESSION_CAPACITY_REVIEW:
       "The session filled while this paid receipt was being checked",
@@ -316,7 +338,12 @@ export function buildPaymentReviewEmail(
   if (safe.courtLabel) detailRows.push(["Court", safe.courtLabel]);
   if (safe.scheduleLabel) detailRows.push(["Schedule", safe.scheduleLabel]);
   if (safe.provider) {
-    detailRows.push(["Payment provider", safe.provider.toUpperCase()]);
+    detailRows.push([
+      "Payment provider",
+      safe.provider === "gotyme"
+        ? "GoTyme → GCash"
+        : safe.provider.toUpperCase(),
+    ]);
   }
   if (maskedReference) {
     detailRows.push(["Payment reference", maskedReference]);

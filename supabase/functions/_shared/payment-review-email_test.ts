@@ -69,6 +69,10 @@ Deno.test("technical verification flags become owner-friendly reasons", () => {
     paymentReviewFlagLabel("LEGACY_CLIENT_REVIEW"),
     "Submitted from an older booking page and needs an owner check",
   );
+  assertEquals(
+    paymentReviewFlagLabel("GOTYME_TRACE_ID_MISMATCH"),
+    "GoTyme Trace ID does not match the Reference No.",
+  );
 });
 
 Deno.test("payment review email escapes content and never exposes a full payment reference", () => {
