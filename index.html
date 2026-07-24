@@ -8813,6 +8813,9 @@ function shouldShowBookingSystemPromo() {
   const params = new URLSearchParams(location.search);
   if (hostBookingRequested() || params.has('openPlayHostSession')) return false;
 
+  const role = String(window.Auth?.getSession?.()?.role || '').toLowerCase();
+  if (role === 'host') return false;
+
   if (typeof readGuestBookingResume === 'function' && readGuestBookingResume()) return false;
   if (bookingSystemPromoHasBlockingExperience()) return false;
   return true;
