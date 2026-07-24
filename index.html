@@ -8794,28 +8794,11 @@ function animateStat(el, final) {
 /* =============================================
    SPLASH SCREEN
    ============================================= */
-const BOOKING_SYSTEM_PROMO_KEY = 'pb_booking_system_promo_seen_v1';
 const BOOKING_SYSTEM_PROMO_DURATION_MS = 10000;
-const BOOKING_SYSTEM_PROMO_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 let _bookingSystemPromoTimer = null;
 let _bookingSystemPromoDeadline = 0;
 let _bookingSystemPromoLastSecond = null;
 let _bookingSystemPromoShownThisPage = false;
-
-function bookingSystemPromoLastSeen() {
-  try {
-    const value = Number(localStorage.getItem(BOOKING_SYSTEM_PROMO_KEY));
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  } catch (_) {
-    return 0;
-  }
-}
-
-function rememberBookingSystemPromo() {
-  try {
-    localStorage.setItem(BOOKING_SYSTEM_PROMO_KEY, String(Date.now()));
-  } catch (_) {}
-}
 
 function bookingSystemPromoHasBlockingExperience() {
   if (typeof hostInviteHasBlockingModal === 'function' && hostInviteHasBlockingModal()) return true;
@@ -8830,14 +8813,9 @@ function shouldShowBookingSystemPromo() {
   const params = new URLSearchParams(location.search);
   if (hostBookingRequested() || params.has('openPlayHostSession')) return false;
 
-  const role = String(window.Auth?.getSession?.()?.role || '').toLowerCase();
-  if (['host', 'owner', 'court_owner', 'staff'].includes(role)) return false;
-
   if (typeof readGuestBookingResume === 'function' && readGuestBookingResume()) return false;
   if (bookingSystemPromoHasBlockingExperience()) return false;
-
-  const seenAt = bookingSystemPromoLastSeen();
-  return !seenAt || Date.now() - seenAt >= BOOKING_SYSTEM_PROMO_COOLDOWN_MS;
+  return true;
 }
 
 function updateBookingSystemPromoCountdown() {
@@ -8889,7 +8867,6 @@ function showBookingSystemPromo() {
   if (!promo || _bookingSystemPromoShownThisPage) return false;
 
   _bookingSystemPromoShownThisPage = true;
-  rememberBookingSystemPromo();
   clearInterval(_bookingSystemPromoTimer);
   _bookingSystemPromoDeadline = Date.now() + BOOKING_SYSTEM_PROMO_DURATION_MS;
   _bookingSystemPromoLastSecond = null;

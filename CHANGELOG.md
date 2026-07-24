@@ -14,7 +14,7 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 - **Player-friendly continuation** - players can continue immediately, close with the accessible button or Escape key, or continue automatically after the visible 10-second countdown.
 
 ### Changed
-- **Non-intrusive frequency** - the promotion appears at most once per device every seven days and is skipped for authenticated operators, host bookings, shared hosted-session links, resumed reservations, and active booking dialogs.
+- **Reliable display after TAP TO BOOK** - the promotion now appears on every normal public page visit, including browsers that previously saw it and signed-in staff testing the customer website. It remains skipped only when a host/deep-link, resumed reservation, or another active booking experience must continue uninterrupted.
 
 **Files affected:** `index.html`, `CHANGELOG.md`
 
