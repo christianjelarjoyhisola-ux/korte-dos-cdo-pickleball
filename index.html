@@ -3749,8 +3749,8 @@ body.host-mode .courts { padding-bottom:140px; }
           <div id="gcashRefWrap" style="display:none;">
             <div class="bpay-ref-card">
               <div class="bpay-window" id="bPayWindow" style="display:none">
-                <span>⏳</span>
-                <div><strong>Payment window:</strong> <span>pay between</span> <strong id="bPayWindowStart">--</strong> and <strong id="bPayWindowEnd">--</strong> PH.</div>
+                <span>📤</span>
+                <div><strong>Upload proof of payment by <span id="bPayWindowEnd">--</span> PH.</strong> Upload a clear and complete receipt before the deadline to keep your selected booking slot.</div>
               </div>
               <div class="bpay-ref-head">
                 <label class="bpay-ref-label">
@@ -3771,11 +3771,11 @@ body.host-mode .courts { padding-bottom:140px; }
               <!-- Receipt screenshot upload (auto-verification) -->
               <div class="bpay-receipt">
                 <label class="bpay-ref-label" style="display:block;margin-bottom:6px">
-                  📸 Upload Receipt <span style="color:#e53935;font-size:.8rem">*</span>
+                  📸 Upload Payment Receipt <span style="color:#e53935;font-size:.8rem">*</span>
                 </label>
                 <label id="bReceiptDrop" class="bpay-receipt-drop"
                   onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-                  📷 Tap to attach your receipt screenshot
+                  📷 Tap to upload your proof of payment
                   <input type="file" accept="image/*" id="bReceiptImg" style="display:none" onchange="onReceiptPicked(event)" />
                 </label>
                 <div id="bReceiptPreviewWrap" class="bpay-receipt-preview">
@@ -5607,7 +5607,6 @@ function updatePaymentWindowText() {
     return;
   }
   const ends = new Date(started.getTime() + RESERVATION_MINUTES * 60 * 1000);
-  if ($('bPayWindowStart')) $('bPayWindowStart').textContent = formatPhTime12(started);
   if ($('bPayWindowEnd')) $('bPayWindowEnd').textContent = formatPhTime12(ends);
   wrap.style.display = '';
 }

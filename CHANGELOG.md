@@ -6,6 +6,16 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-24] - Clearer Payment Upload Instructions
+
+### Changed
+- **Proof-of-payment deadline** - the digital-payment notice now tells players to complete payment and upload a clear receipt by the displayed Philippine-time deadline, replacing the less direct payment-window wording.
+- **Clear upload action** - the required receipt field now says **Upload Payment Receipt** and its attachment area says **Tap to upload your proof of payment**.
+
+**Files affected:** `index.html`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-24] - Court Owner Booking System Promotion
 
 ### Added
