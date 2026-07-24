@@ -10,7 +10,7 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ### Added
 - **Modern booking-system promotion** - after a guest taps the opening booking screen, the live court-selection page is softened behind a responsive promotional card for the free pickleball court booking system.
-- **Clear owner value and lead action** - the card presents 24/7 reservations, real-time availability, receipt verification, owner dashboard alerts, zero setup and monthly fees, and a direct Messenger call to action.
+- **Clear owner value and lead action** - the card presents 24/7 reservations, real-time availability, receipt verification, owner dashboard alerts, zero setup and monthly fees, and a clearly identified **Message Dev Jelar** Messenger call to action.
 - **Player-friendly continuation** - players can continue immediately, close with the accessible button or Escape key, or continue automatically after the visible 10-second countdown.
 
 ### Changed
