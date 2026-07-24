@@ -2104,6 +2104,368 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .sr.d3 { transition-delay: .3s; }
 .sr.d4 { transition-delay: .4s; }
 
+/* ── FREE BOOKING SYSTEM PROMO ── */
+.booking-promo {
+  --promo-progress: 100%;
+  position: fixed; inset: 0; z-index: 990;
+  display: grid; place-items: center;
+  padding:
+    max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 18% 12%, rgba(201,207,67,.14), transparent 32%),
+    radial-gradient(circle at 84% 88%, rgba(217,81,43,.18), transparent 36%),
+    rgba(3,12,22,.54);
+  -webkit-backdrop-filter: blur(15px) saturate(.72);
+  backdrop-filter: blur(15px) saturate(.72);
+  opacity: 0; visibility: hidden;
+  transition: opacity .28s ease, visibility .28s ease;
+  overflow: auto;
+}
+.booking-promo[hidden] { display: none; }
+.booking-promo.show { opacity: 1; visibility: visible; }
+.booking-promo-card {
+  position: relative;
+  width: min(100%, 620px);
+  max-height: calc(100dvh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  color: #f7fbff;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 30px;
+  background:
+    linear-gradient(145deg, rgba(24,54,78,.98), rgba(7,24,39,.99) 58%, rgba(10,31,48,.99));
+  box-shadow:
+    0 40px 100px rgba(0,0,0,.55),
+    0 0 0 1px rgba(127,169,204,.08) inset,
+    0 1px 0 rgba(255,255,255,.13) inset;
+  padding: 32px;
+  transform: translateY(22px) scale(.97);
+  transition: transform .42s cubic-bezier(.2,.85,.2,1);
+  isolation: isolate;
+}
+.booking-promo-card::-webkit-scrollbar { width: 0; height: 0; }
+.booking-promo.show .booking-promo-card { transform: translateY(0) scale(1); }
+.booking-promo-card::before {
+  content: '';
+  position: absolute; z-index: -1;
+  width: 280px; height: 280px;
+  top: -160px; right: -100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,207,67,.18), transparent 68%);
+  pointer-events: none;
+}
+.booking-promo-card::after {
+  content: '';
+  position: absolute; z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent 72%);
+  mask-image: linear-gradient(to bottom, #000, transparent 72%);
+  pointer-events: none;
+}
+.booking-promo-close {
+  position: absolute; z-index: 3;
+  top: 16px; right: 16px;
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 50%;
+  background: rgba(255,255,255,.07);
+  color: rgba(247,251,255,.82);
+  font: 500 1.2rem/1 'Outfit', sans-serif;
+  cursor: pointer;
+  transition: background .2s, color .2s, transform .2s;
+}
+.booking-promo-close:hover,
+.booking-promo-close:focus-visible {
+  background: rgba(255,255,255,.14);
+  color: #fff;
+  transform: rotate(4deg);
+}
+.booking-promo-topline {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding-right: 44px; margin-bottom: 24px;
+}
+.booking-promo-kicker,
+.booking-promo-free {
+  display: inline-flex; align-items: center;
+  min-height: 28px; border-radius: 999px;
+  font-size: .66rem; font-weight: 800;
+  letter-spacing: 1.25px; text-transform: uppercase;
+}
+.booking-promo-kicker { gap: 8px; color: #b8cad9; }
+.booking-promo-kicker::before {
+  content: ''; width: 8px; height: 8px; flex: 0 0 8px;
+  border-radius: 50%; background: #dce768;
+  box-shadow: 0 0 0 5px rgba(220,231,104,.11), 0 0 18px rgba(220,231,104,.46);
+}
+.booking-promo-free {
+  padding: 5px 10px;
+  color: #edf69a;
+  background: rgba(220,231,104,.10);
+  border: 1px solid rgba(220,231,104,.24);
+  white-space: nowrap;
+}
+.booking-promo-hero {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 24px; align-items: end;
+}
+.booking-promo-title {
+  max-width: 470px;
+  margin: 0;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(2.65rem, 7.2vw, 4.25rem);
+  line-height: .92;
+  letter-spacing: 1.3px;
+  color: #f7fbff;
+}
+.booking-promo-title span {
+  display: block;
+  color: #dce768;
+  text-shadow: 0 0 34px rgba(220,231,104,.18);
+}
+.booking-promo-zero {
+  min-width: 108px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(127,169,204,.18);
+  border-radius: 18px;
+  background: rgba(255,255,255,.055);
+  text-align: center;
+}
+.booking-promo-zero strong {
+  display: block;
+  color: #fff;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.55rem;
+  line-height: .9;
+  letter-spacing: 1px;
+}
+.booking-promo-zero span {
+  display: block;
+  margin-top: 7px;
+  color: #b8cad9;
+  font-size: .61rem;
+  line-height: 1.35;
+  font-weight: 800;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+}
+.booking-promo-copy {
+  max-width: 500px;
+  margin: 16px 0 0;
+  color: #b8cad9;
+  font-size: .96rem;
+  line-height: 1.6;
+}
+.booking-promo-copy strong { color: #f7fbff; font-weight: 700; }
+.booking-promo-benefits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 9px;
+  margin: 22px 0 18px;
+}
+.booking-promo-benefit {
+  display: grid;
+  grid-template-columns: 30px minmax(0,1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 51px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 14px;
+  background: rgba(255,255,255,.045);
+  color: #eaf1f6;
+  font-size: .76rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.booking-promo-benefit i {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  background: rgba(127,169,204,.12);
+  color: #a9cee9;
+  font-size: .63rem;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: -.2px;
+}
+.booking-promo-promise {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(220,231,104,.18);
+  border-radius: 15px;
+  background: linear-gradient(90deg, rgba(220,231,104,.10), rgba(220,231,104,.035));
+}
+.booking-promo-promise strong {
+  color: #f2f9b7;
+  font-size: .8rem;
+  letter-spacing: .2px;
+}
+.booking-promo-promise span {
+  color: #b8cad9;
+  font-size: .7rem;
+  line-height: 1.35;
+  text-align: right;
+}
+.booking-promo-actions {
+  display: grid;
+  grid-template-columns: minmax(0,1.35fr) minmax(0,.9fr);
+  gap: 10px;
+}
+.booking-promo-message,
+.booking-promo-continue {
+  min-height: 54px;
+  border-radius: 15px;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform .2s, box-shadow .2s, border-color .2s, background .2s;
+}
+.booking-promo-message {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 11px 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #de5235, #ac301f);
+  box-shadow: 0 12px 30px rgba(200,61,38,.28);
+  text-align: left;
+}
+.booking-promo-message small {
+  display: block;
+  margin-bottom: 1px;
+  color: rgba(255,255,255,.72);
+  font-size: .55rem;
+  font-weight: 800;
+  letter-spacing: .9px;
+}
+.booking-promo-message b {
+  display: block;
+  font-size: .78rem;
+  letter-spacing: .15px;
+  white-space: normal;
+}
+.booking-promo-message > span:nth-child(2) { min-width: 0; }
+.booking-promo-message .booking-promo-arrow { margin-left: auto; font-size: 1rem; }
+.booking-promo-continue {
+  border: 1px solid rgba(255,255,255,.16);
+  padding: 10px 14px;
+  background: rgba(255,255,255,.07);
+  color: #f7fbff;
+  font-size: .78rem;
+}
+.booking-promo-message:hover,
+.booking-promo-message:focus-visible,
+.booking-promo-continue:hover,
+.booking-promo-continue:focus-visible {
+  transform: translateY(-2px);
+}
+.booking-promo-message:hover,
+.booking-promo-message:focus-visible { box-shadow: 0 16px 36px rgba(200,61,38,.36); }
+.booking-promo-continue:hover,
+.booking-promo-continue:focus-visible {
+  border-color: rgba(255,255,255,.28);
+  background: rgba(255,255,255,.11);
+}
+.booking-promo-timer {
+  margin-top: 15px;
+  color: #8fa5b7;
+  font-size: .67rem;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: .15px;
+}
+.booking-promo-timer strong { color: #e7eef3; font-variant-numeric: tabular-nums; }
+.booking-promo-timer-track {
+  height: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255,255,255,.07);
+}
+.booking-promo-timer-track::after {
+  content: '';
+  display: block;
+  width: var(--promo-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #dce768, #ffb043);
+  box-shadow: 0 0 14px rgba(220,231,104,.34);
+  transition: width .24s linear;
+}
+@media (max-width: 600px) {
+  .booking-promo {
+    place-items: end center;
+    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  }
+  .booking-promo-card {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    padding: 25px 18px 18px;
+    border-radius: 25px;
+  }
+  .booking-promo-topline { align-items: flex-start; gap: 8px; margin-bottom: 18px; }
+  .booking-promo-kicker { font-size: .58rem; letter-spacing: .9px; }
+  .booking-promo-free { font-size: .55rem; letter-spacing: .7px; padding: 4px 8px; }
+  .booking-promo-hero { grid-template-columns: minmax(0,1fr) 86px; gap: 12px; }
+  .booking-promo-title { font-size: clamp(2.25rem, 11vw, 3.35rem); }
+  .booking-promo-zero { min-width: 0; padding: 12px 8px 10px; border-radius: 15px; }
+  .booking-promo-zero strong { font-size: 2.05rem; }
+  .booking-promo-zero span { font-size: .51rem; }
+  .booking-promo-copy { margin-top: 12px; font-size: .84rem; line-height: 1.48; }
+  .booking-promo-benefits { gap: 7px; margin: 17px 0 13px; }
+  .booking-promo-benefit {
+    grid-template-columns: 26px minmax(0,1fr);
+    min-height: 45px; gap: 7px; padding: 8px;
+    border-radius: 12px; font-size: .65rem;
+  }
+  .booking-promo-benefit i { width: 26px; height: 26px; border-radius: 8px; font-size: .55rem; }
+  .booking-promo-promise { padding: 10px 11px; margin-bottom: 13px; }
+  .booking-promo-promise strong { font-size: .7rem; }
+  .booking-promo-promise span { font-size: .61rem; }
+  .booking-promo-actions { grid-template-columns: 1fr; gap: 8px; }
+  .booking-promo-message,
+  .booking-promo-continue { min-height: 48px; border-radius: 13px; }
+  .booking-promo-timer { margin-top: 11px; }
+}
+@media (min-width: 601px) and (max-height: 760px) {
+  .booking-promo-card { padding: 24px; }
+  .booking-promo-topline { margin-bottom: 16px; }
+  .booking-promo-title { font-size: clamp(2.5rem, 6vw, 3.65rem); }
+  .booking-promo-copy { margin-top: 11px; font-size: .87rem; }
+  .booking-promo-benefits { gap: 7px; margin: 16px 0 12px; }
+  .booking-promo-benefit { min-height: 44px; padding: 8px 10px; }
+  .booking-promo-promise { margin-bottom: 12px; padding: 10px 12px; }
+  .booking-promo-message,
+  .booking-promo-continue { min-height: 48px; }
+  .booking-promo-timer { margin-top: 10px; }
+}
+@media (max-width: 365px), (max-height: 670px) {
+  .booking-promo-card { padding-top: 20px; }
+  .booking-promo-topline { margin-bottom: 13px; }
+  .booking-promo-copy { font-size: .77rem; }
+  .booking-promo-benefits { margin: 13px 0 10px; }
+  .booking-promo-promise { margin-bottom: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .booking-promo,
+  .booking-promo-card,
+  .booking-promo-message,
+  .booking-promo-continue,
+  .booking-promo-timer-track::after { transition: none !important; }
+}
+
 /* ── SPLASH SCREEN ── */
 #splashScreen {
   position: fixed; inset: 0; z-index: 1000;
@@ -2771,6 +3133,89 @@ body.host-mode .courts { padding-bottom:140px; }
   </div>
 
   <div class="sp-bottom">Korte DOS &nbsp;·&nbsp; Bayabas, Cagayan de Oro</div>
+</div>
+
+<!-- FREE BOOKING SYSTEM PROMO -->
+<div
+  class="booking-promo"
+  id="bookingSystemPromo"
+  aria-hidden="true"
+  hidden
+  onclick="if (event.target === this) continueToBooking('backdrop')"
+>
+  <section
+    class="booking-promo-card"
+    id="bookingSystemPromoCard"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="bookingSystemPromoTitle"
+    aria-describedby="bookingSystemPromoCopy bookingSystemPromoTimer"
+    tabindex="-1"
+  >
+    <button
+      class="booking-promo-close"
+      type="button"
+      onclick="continueToBooking('close')"
+      aria-label="Close this message and continue to court booking"
+    >&#10005;</button>
+
+    <div class="booking-promo-topline">
+      <span class="booking-promo-kicker">Made for pickleball courts</span>
+      <span class="booking-promo-free">Free for court owners</span>
+    </div>
+
+    <div class="booking-promo-hero">
+      <h2 class="booking-promo-title" id="bookingSystemPromoTitle">
+        Run your court.
+        <span>We handle the bookings.</span>
+      </h2>
+      <div class="booking-promo-zero" aria-label="Zero peso setup and monthly fee">
+        <strong>&#8369;0</strong>
+        <span>Setup fee<br/>Monthly fee</span>
+      </div>
+    </div>
+
+    <p class="booking-promo-copy" id="bookingSystemPromoCopy">
+      Get your <strong>FREE online booking website</strong> built for your pickleball court—simple for players and powerful for owners.
+    </p>
+
+    <div class="booking-promo-benefits" aria-label="Booking system benefits">
+      <div class="booking-promo-benefit"><i>24/7</i><span>Online court reservations</span></div>
+      <div class="booking-promo-benefit"><i>LIVE</i><span>Real-time court availability</span></div>
+      <div class="booking-promo-benefit"><i>PAY</i><span>Receipt verification</span></div>
+      <div class="booking-promo-benefit"><i>PRO</i><span>Owner dashboard and alerts</span></div>
+    </div>
+
+    <div class="booking-promo-promise">
+      <strong>No setup. No subscription.</strong>
+      <span>Players cover only a small booking fee.</span>
+    </div>
+
+    <div class="booking-promo-actions">
+      <a
+        class="booking-promo-message"
+        href="https://m.me/jelarjoychristian"
+        target="_blank"
+        rel="noopener noreferrer"
+        onclick="continueToBooking('message')"
+      >
+        <span aria-hidden="true">&#128172;</span>
+        <span>
+          <small>Own or manage a court?</small>
+          <b>I OWN A COURT — MESSAGE US</b>
+        </span>
+        <span class="booking-promo-arrow" aria-hidden="true">&#8599;</span>
+      </a>
+      <button class="booking-promo-continue" id="bookingSystemPromoContinue" type="button" onclick="continueToBooking('continue')">
+        Continue to Booking&nbsp; &#8594;
+      </button>
+    </div>
+
+    <div class="booking-promo-timer" id="bookingSystemPromoTimer" role="status" aria-live="polite">
+      Continuing automatically in <strong id="bookingSystemPromoSeconds">10</strong> seconds
+      <div class="booking-promo-timer-track" aria-hidden="true"></div>
+    </div>
+  </section>
 </div>
 
 <!-- NAVBAR -->
@@ -8349,11 +8794,159 @@ function animateStat(el, final) {
 /* =============================================
    SPLASH SCREEN
    ============================================= */
+const BOOKING_SYSTEM_PROMO_KEY = 'pb_booking_system_promo_seen_v1';
+const BOOKING_SYSTEM_PROMO_DURATION_MS = 10000;
+const BOOKING_SYSTEM_PROMO_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+let _bookingSystemPromoTimer = null;
+let _bookingSystemPromoDeadline = 0;
+let _bookingSystemPromoLastSecond = null;
+let _bookingSystemPromoShownThisPage = false;
+
+function bookingSystemPromoLastSeen() {
+  try {
+    const value = Number(localStorage.getItem(BOOKING_SYSTEM_PROMO_KEY));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function rememberBookingSystemPromo() {
+  try {
+    localStorage.setItem(BOOKING_SYSTEM_PROMO_KEY, String(Date.now()));
+  } catch (_) {}
+}
+
+function bookingSystemPromoHasBlockingExperience() {
+  if (typeof hostInviteHasBlockingModal === 'function' && hostInviteHasBlockingModal()) return true;
+  return ['opAnnounceSplash', 'easterSplash', 'grandSplash'].some(id => {
+    const el = $(id);
+    return !!el && getComputedStyle(el).display !== 'none' && !el.classList.contains('closing');
+  });
+}
+
+function shouldShowBookingSystemPromo() {
+  if (_bookingSystemPromoShownThisPage) return false;
+  const params = new URLSearchParams(location.search);
+  if (hostBookingRequested() || params.has('openPlayHostSession')) return false;
+
+  const role = String(window.Auth?.getSession?.()?.role || '').toLowerCase();
+  if (['host', 'owner', 'court_owner', 'staff'].includes(role)) return false;
+
+  if (typeof readGuestBookingResume === 'function' && readGuestBookingResume()) return false;
+  if (bookingSystemPromoHasBlockingExperience()) return false;
+
+  const seenAt = bookingSystemPromoLastSeen();
+  return !seenAt || Date.now() - seenAt >= BOOKING_SYSTEM_PROMO_COOLDOWN_MS;
+}
+
+function updateBookingSystemPromoCountdown() {
+  const promo = $('bookingSystemPromo');
+  if (!promo || promo.hidden) return;
+  const remainingMs = Math.max(0, _bookingSystemPromoDeadline - Date.now());
+  const seconds = Math.ceil(remainingMs / 1000);
+  promo.style.setProperty(
+    '--promo-progress',
+    `${Math.max(0, Math.min(100, (remainingMs / BOOKING_SYSTEM_PROMO_DURATION_MS) * 100))}%`
+  );
+  if (seconds !== _bookingSystemPromoLastSecond) {
+    _bookingSystemPromoLastSecond = seconds;
+    if ($('bookingSystemPromoSeconds')) $('bookingSystemPromoSeconds').textContent = String(seconds);
+  }
+  if (remainingMs <= 0) continueToBooking('timer');
+}
+
+function bookingSystemPromoKeydown(event) {
+  const promo = $('bookingSystemPromo');
+  if (!promo || promo.hidden) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    continueToBooking('escape');
+    return;
+  }
+  if (event.key !== 'Tab') return;
+
+  const focusable = [...promo.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.hidden && getComputedStyle(el).visibility !== 'hidden');
+  if (!focusable.length) {
+    event.preventDefault();
+    $('bookingSystemPromoCard')?.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function showBookingSystemPromo() {
+  const promo = $('bookingSystemPromo');
+  if (!promo || _bookingSystemPromoShownThisPage) return false;
+
+  _bookingSystemPromoShownThisPage = true;
+  rememberBookingSystemPromo();
+  clearInterval(_bookingSystemPromoTimer);
+  _bookingSystemPromoDeadline = Date.now() + BOOKING_SYSTEM_PROMO_DURATION_MS;
+  _bookingSystemPromoLastSecond = null;
+
+  promo.hidden = false;
+  promo.setAttribute('aria-hidden', 'false');
+  promo.style.transition = 'none';
+  promo.style.opacity = '1';
+  promo.style.visibility = 'visible';
+  document.body.style.overflow = 'hidden';
+  document.addEventListener('keydown', bookingSystemPromoKeydown);
+  void promo.offsetWidth;
+  promo.classList.add('show');
+  $('bookingSystemPromoContinue')?.focus({ preventScroll: true });
+
+  updateBookingSystemPromoCountdown();
+  _bookingSystemPromoTimer = setInterval(updateBookingSystemPromoCountdown, 200);
+  return true;
+}
+
+function continueToBooking() {
+  const promo = $('bookingSystemPromo');
+  clearInterval(_bookingSystemPromoTimer);
+  _bookingSystemPromoTimer = null;
+  _bookingSystemPromoDeadline = 0;
+  document.removeEventListener('keydown', bookingSystemPromoKeydown);
+
+  if (promo && !promo.hidden) {
+    promo.classList.remove('show');
+    promo.setAttribute('aria-hidden', 'true');
+    promo.hidden = true;
+    promo.style.removeProperty('transition');
+    promo.style.removeProperty('opacity');
+    promo.style.removeProperty('visibility');
+  }
+  document.body.style.overflow = '';
+  setTimeout(() => $('courtSharedDateDisplay')?.focus({ preventScroll: true }), 0);
+}
+
 function dismissSplash() {
   const sp = document.getElementById('splashScreen');
+  if (!sp || sp.classList.contains('dismissed')) return;
+  const promoEligible = shouldShowBookingSystemPromo();
+  let splashFinished = false;
+  const finishSplash = () => {
+    if (splashFinished) return;
+    splashFinished = true;
+    sp.style.display = 'none';
+    if (promoEligible) {
+      showBookingSystemPromo();
+    } else {
+      document.body.style.overflow = '';
+    }
+  };
   sp.classList.add('dismissed');
-  document.body.style.overflow = '';
-  sp.addEventListener('transitionend', () => { sp.style.display = 'none'; }, { once: true });
+  sp.addEventListener('transitionend', finishSplash, { once: true });
+  setTimeout(finishSplash, 800);
 }
 // Lock scroll while splash is showing
 document.body.style.overflow = 'hidden';
