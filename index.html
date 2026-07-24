@@ -2127,6 +2127,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .booking-promo[hidden] { display: none; }
 .booking-promo.show { opacity: 1; visibility: visible; }
 .booking-promo-card {
+  --promo-card-padding: 32px;
   position: relative;
   width: min(100%, 620px);
   max-height: calc(100dvh - 32px);
@@ -2143,7 +2144,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
     0 40px 100px rgba(0,0,0,.55),
     0 0 0 1px rgba(127,169,204,.08) inset,
     0 1px 0 rgba(255,255,255,.13) inset;
-  padding: 32px;
+  padding: var(--promo-card-padding);
   transform: translateY(22px) scale(.97);
   transition: transform .42s cubic-bezier(.2,.85,.2,1);
   isolation: isolate;
@@ -2321,9 +2322,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   text-align: right;
 }
 .booking-promo-actions {
-  display: grid;
-  grid-template-columns: minmax(0,1.35fr) minmax(0,.9fr);
-  gap: 10px;
+  display: block;
 }
 .booking-promo-message,
 .booking-promo-continue {
@@ -2336,6 +2335,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 }
 .booking-promo-message {
   display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
   padding: 11px 16px;
   color: #fff;
   background: linear-gradient(135deg, #de5235, #ac301f);
@@ -2360,10 +2360,11 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .booking-promo-message .booking-promo-arrow { margin-left: auto; font-size: 1rem; }
 .booking-promo-continue {
   border: 1px solid rgba(255,255,255,.16);
-  padding: 10px 14px;
+  padding: 10px 18px;
   background: rgba(255,255,255,.07);
   color: #f7fbff;
   font-size: .78rem;
+  white-space: nowrap;
 }
 .booking-promo-message:hover,
 .booking-promo-message:focus-visible,
@@ -2378,20 +2379,37 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   border-color: rgba(255,255,255,.28);
   background: rgba(255,255,255,.11);
 }
+.booking-promo-footer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin:
+    22px
+    calc(var(--promo-card-padding) * -1)
+    calc(var(--promo-card-padding) * -1);
+  padding: 17px var(--promo-card-padding) 18px;
+  overflow: hidden;
+  border-top: 1px solid rgba(255,255,255,.11);
+  border-radius: 0 0 29px 29px;
+  background: rgba(2,12,21,.34);
+  box-shadow: 0 1px 0 rgba(255,255,255,.025) inset;
+}
 .booking-promo-timer {
-  margin-top: 15px;
   color: #8fa5b7;
-  font-size: .67rem;
+  font-size: .72rem;
   font-weight: 600;
-  text-align: center;
+  text-align: left;
   letter-spacing: .15px;
 }
 .booking-promo-timer strong { color: #e7eef3; font-variant-numeric: tabular-nums; }
 .booking-promo-timer-track {
+  position: absolute;
+  top: 0; left: 0; right: 0;
   height: 3px;
-  margin-top: 8px;
   overflow: hidden;
-  border-radius: 99px;
+  border-radius: 0;
   background: rgba(255,255,255,.07);
 }
 .booking-promo-timer-track::after {
@@ -2410,6 +2428,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
     padding: 10px 10px max(10px, env(safe-area-inset-bottom));
   }
   .booking-promo-card {
+    --promo-card-padding: 18px;
     width: 100%;
     max-height: calc(100dvh - 20px);
     padding: 25px 18px 18px;
@@ -2434,13 +2453,20 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   .booking-promo-promise { padding: 10px 11px; margin-bottom: 13px; }
   .booking-promo-promise strong { font-size: .7rem; }
   .booking-promo-promise span { font-size: .61rem; }
-  .booking-promo-actions { grid-template-columns: 1fr; gap: 8px; }
   .booking-promo-message,
   .booking-promo-continue { min-height: 48px; border-radius: 13px; }
-  .booking-promo-timer { margin-top: 11px; }
+  .booking-promo-footer {
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 14px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    border-radius: 0 0 24px 24px;
+  }
+  .booking-promo-timer { font-size: .66rem; }
+  .booking-promo-continue { padding-inline: 14px; font-size: .72rem; }
 }
 @media (min-width: 601px) and (max-height: 760px) {
-  .booking-promo-card { padding: 24px; }
+  .booking-promo-card { --promo-card-padding: 24px; padding: 24px; }
   .booking-promo-topline { margin-bottom: 16px; }
   .booking-promo-title { font-size: clamp(2.5rem, 6vw, 3.65rem); }
   .booking-promo-copy { margin-top: 11px; font-size: .87rem; }
@@ -2449,7 +2475,7 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
   .booking-promo-promise { margin-bottom: 12px; padding: 10px 12px; }
   .booking-promo-message,
   .booking-promo-continue { min-height: 48px; }
-  .booking-promo-timer { margin-top: 10px; }
+  .booking-promo-footer { margin-top: 14px; padding-top: 14px; padding-bottom: 14px; }
 }
 @media (max-width: 365px), (max-height: 670px) {
   .booking-promo-card { padding-top: 20px; }
@@ -3207,14 +3233,16 @@ body.host-mode .courts { padding-bottom:140px; }
         </span>
         <span class="booking-promo-arrow" aria-hidden="true">&#8599;</span>
       </a>
-      <button class="booking-promo-continue" id="bookingSystemPromoContinue" type="button" onclick="continueToBooking('continue')">
-        Continue to Booking&nbsp; &#8594;
-      </button>
     </div>
 
-    <div class="booking-promo-timer" id="bookingSystemPromoTimer" role="status" aria-live="polite">
-      Continuing automatically in <strong id="bookingSystemPromoSeconds">10</strong> seconds
-      <div class="booking-promo-timer-track" aria-hidden="true"></div>
+    <div class="booking-promo-footer">
+      <div class="booking-promo-timer" id="bookingSystemPromoTimer" role="status" aria-live="polite">
+        Continuing in <strong id="bookingSystemPromoSeconds">10</strong>s
+        <div class="booking-promo-timer-track" aria-hidden="true"></div>
+      </div>
+      <button class="booking-promo-continue" id="bookingSystemPromoContinue" type="button" onclick="continueToBooking('continue')">
+        Continue Booking
+      </button>
     </div>
   </section>
 </div>

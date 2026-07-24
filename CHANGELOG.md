@@ -15,6 +15,7 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ### Changed
 - **Reliable display after TAP TO BOOK** - the promotion now appears on every normal public page visit, including browsers that previously saw it and signed-in staff testing the customer website. It remains skipped only when a host/deep-link, resumed reservation, or another active booking experience must continue uninterrupted.
+- **Separate player continuation footer** - the Dev Jelar message action now spans the promotion’s main content area, while the countdown and Continue Booking control sit in a visually separate bottom footer like a standard advertisement dismissal bar.
 
 **Files affected:** `index.html`, `CHANGELOG.md`
 
