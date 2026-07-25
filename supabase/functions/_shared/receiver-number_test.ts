@@ -294,6 +294,25 @@ PHP 720.00
   );
 });
 
+Deno.test("BPI named destination still requires the QR Code marker", () => {
+  const receipt = `
+Transfer successful!
+Sent via BPI
+Transfer to
+GCash/G-Xchange
+Korte Dos
+xxxxxxxxxxxxx1BS
+Transfer amount
+PHP 720.00
+`;
+  assertResult(
+    checkBpiReceiverNumber(receipt, EXPECTED, {
+      expectedQrRecipientName: "Korte DOS",
+    }),
+    "unreadable",
+  );
+});
+
 Deno.test("BPI named QR fallback cannot override a readable wrong mobile", () => {
   const receipt = `
 Transfer successful!
