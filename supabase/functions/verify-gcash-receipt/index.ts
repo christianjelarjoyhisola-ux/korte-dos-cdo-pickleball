@@ -3301,8 +3301,8 @@ Deno.serve(async (req) => {
       } else if (provider === "bpi") {
         // BPI focused path. Current BPI success receipts identify the sender as
         // BPI and the destination as GCash/G-Xchange, but they do not print
-        // "InstaPay"/"QRPh" and they mask the receiver name. Verify the exact
-        // destination number instead of requiring those unavailable labels.
+        // "InstaPay"/"QRPh". Some QR transfers expose the exact mobile number;
+        // newer ones expose the configured name plus an opaque masked QR token.
         if (!extractedRef) flags.push("BPI_CONFIRMATION_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) {
           flags.push("REF_MISMATCH");
@@ -3341,6 +3341,7 @@ Deno.serve(async (req) => {
         }
         const numCheck = checkBpiReceiverNumber(ocrText, expectedNumber, {
           allowHardWrong: ocrConfidence >= MIN_OCR_CONFIDENCE,
+          expectedQrRecipientName: expectedName,
         });
         if (numCheck === "wrong") flags.push("WRONG_GCASH_NUMBER");
         else if (numCheck === "unreadable") {

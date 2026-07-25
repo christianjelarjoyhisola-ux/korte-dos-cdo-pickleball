@@ -252,3 +252,63 @@ PHP 720.00
     "unreadable",
   );
 });
+
+Deno.test("BPI accepts its named QR destination when the mobile is opaque", () => {
+  const receipt = `
+Transfer successful!
+Saturday, Jul 25 2026; 05:34:20 PM (GMT +8)
+Confirmation No. 1784972045140
+Transaction Ref. No. 717789
+Sent via BPI
+Transfer to
+GCash/G-Xchange
+Korte Dos (QR Code)
+xxxxxxxxxxxxx1BS
+Transfer amount
+PHP 720.00
+`;
+  assertResult(
+    checkBpiReceiverNumber(receipt, EXPECTED, {
+      expectedQrRecipientName: "Korte DOS",
+    }),
+    "match",
+  );
+});
+
+Deno.test("BPI does not accept an opaque QR destination for another recipient", () => {
+  const receipt = `
+Transfer successful!
+Sent via BPI
+Transfer to
+GCash/G-Xchange
+Another Venue (QR Code)
+xxxxxxxxxxxxx1BS
+Transfer amount
+PHP 720.00
+`;
+  assertResult(
+    checkBpiReceiverNumber(receipt, EXPECTED, {
+      expectedQrRecipientName: "Korte DOS",
+    }),
+    "unreadable",
+  );
+});
+
+Deno.test("BPI named QR fallback cannot override a readable wrong mobile", () => {
+  const receipt = `
+Transfer successful!
+Sent via BPI
+Transfer to
+GCash/G-Xchange
+Korte Dos (QR Code)
+09171112222
+Transfer amount
+PHP 720.00
+`;
+  assertResult(
+    checkBpiReceiverNumber(receipt, EXPECTED, {
+      expectedQrRecipientName: "Korte DOS",
+    }),
+    "wrong",
+  );
+});

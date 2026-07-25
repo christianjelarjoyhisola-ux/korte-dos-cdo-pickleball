@@ -2,6 +2,7 @@ export type ReceiverNumberCheck = "match" | "wrong" | "unreadable";
 
 export interface ReceiverNumberOptions {
   allowHardWrong?: boolean;
+  expectedQrRecipientName?: string;
 }
 
 type ReceiptProvider = "gcash" | "bpi";
@@ -185,6 +186,40 @@ function digitDistance(left: string, right: string): number {
   return differences;
 }
 
+function hasExpectedBpiQrRecipient(
+  text: string,
+  expectedName: string,
+): boolean {
+  const expected = String(expectedName || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (expected.length < 3) return false;
+
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = 0; index < lines.length; index++) {
+    if (
+      !/\btransfer\s+to\b/i.test(lines[index]) &&
+      !/\bgcash\s*\/\s*g-?xchange\b/i.test(lines[index])
+    ) continue;
+
+    const destinationBlock = lines.slice(index, index + 5).join("\n");
+    const normalizedBlock = destinationBlock
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (
+      /\bgcash\s*\/\s*g-?xchange\b/i.test(destinationBlock) &&
+      /\bqr\s*code\b/i.test(destinationBlock) &&
+      normalizedBlock.includes(expected)
+    ) return true;
+  }
+
+  return false;
+}
+
 function checkReceiverNumber(
   text: string,
   expectedRaw: string,
@@ -227,6 +262,17 @@ function checkReceiverNumber(
     }
     return "wrong";
   }
+
+  // Current BPI QR transfers can replace the mobile number with an opaque
+  // masked token such as "xxxxxxxxxxxxx1BS". Accept that layout only when the
+  // destination block independently identifies GCash/G-Xchange, the configured
+  // recipient name, and "QR Code". This fallback never overrides a readable
+  // full mobile number or a numeric masked-mobile suffix.
+  if (
+    provider === "bpi" &&
+    !maskedSuffix &&
+    hasExpectedBpiQrRecipient(text, options.expectedQrRecipientName || "")
+  ) return "match";
 
   if (maskedSuffix === expected.slice(-4)) return "match";
   return "unreadable";
