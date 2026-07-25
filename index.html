@@ -5611,6 +5611,8 @@ async function releaseIncompleteReservation(ref) {
   await DB.updateBooking(ref, {
     status: 'cancelled',
     paymentStatus: 'failed',
+  }, {
+    asPublicCustomer: current.createdVia === 'customer' && !current.hostBooking,
   });
 }
 
@@ -5940,8 +5942,13 @@ async function proceedToBookLegacy(courtId) {
     gcashRef:      null,
     ...reserveIdentity,
   };
+  let authoritativeReserveStartedAt = reserveStartedAt;
   try {
-    await DB.addBooking(reserveData);
+    const savedHold = await DB.addBooking(reserveData);
+    if (savedHold?.createdAt) {
+      authoritativeReserveStartedAt = savedHold.createdAt;
+      reserveData.createdAt = savedHold.createdAt;
+    }
   } catch (err) {
     const msg = err?.message || '';
     if (msg.toLowerCase().includes('no longer available') || msg.toLowerCase().includes('already booked')) {
@@ -5953,7 +5960,7 @@ async function proceedToBookLegacy(courtId) {
     return;
   }
   _reservedRef = reserveRef;
-  _reservationStartedAt = reserveStartedAt;
+  _reservationStartedAt = authoritativeReserveStartedAt;
 
   selSlots = [...cardSel.slots];
   await refreshBookingItemViews([reserveData]);
@@ -6023,10 +6030,11 @@ async function proceedToBook(courtId = null) {
   const reserveIdentity = hostBookingIdentity();
   const reserveItems = bookingSelections.map(sel => makeBookingItemFromSelection(sel, genRef(), groupRef));
   const createdRefs = [];
+  let authoritativeReserveStartedAt = reserveStartedAt;
 
   try {
     for (const item of reserveItems) {
-      await DB.addBooking({
+      const savedHold = await DB.addBooking({
         ref:           item.ref,
         groupRef:      item.groupRef,
         fullName:      'Reserving...',
@@ -6051,6 +6059,10 @@ async function proceedToBook(courtId = null) {
         gcashRef:      null,
         ...reserveIdentity,
       });
+      if (savedHold?.createdAt) {
+        item.createdAt = savedHold.createdAt;
+        if (createdRefs.length === 0) authoritativeReserveStartedAt = savedHold.createdAt;
+      }
       createdRefs.push(item.ref);
     }
   } catch (err) {
@@ -6068,7 +6080,7 @@ async function proceedToBook(courtId = null) {
   bookingItems = reserveItems;
   _reservedRefs = reserveItems.map(item => item.ref);
   _reservedRef = _reservedRefs[0] || null;
-  _reservationStartedAt = reserveStartedAt;
+  _reservationStartedAt = authoritativeReserveStartedAt;
   saveGuestBookingResume();
   selSlots = [...primary.slots];
   await refreshBookingItemViews(reserveItems);
@@ -7436,7 +7448,8 @@ async function submitBookingLegacy(e) {
       });
     } else {
       // Fallback: no prior reservation (e.g. wizard flow) — insert fresh.
-      await DB.addBooking(booking);
+      const savedBooking = await DB.addBooking(booking);
+      if (savedBooking?.createdAt) booking.createdAt = savedBooking.createdAt;
       _reservedRef = booking.ref;
       _reservedRefs = [booking.ref];
       _reservationStartedAt = booking.createdAt;
@@ -7610,6 +7623,8 @@ async function submitBooking(e) {
   const groupDownpayment = downpaymentAmount(groupTotal, bookingItemsCourtFee(items), bookingItemsServiceFee(items));
   const sharedGroupRef = items.length > 1 ? (items[0].groupRef || genRef() + '-G') : null;
   const heldRefs = new Set(reservedRefs());
+  let authoritativeCreatedAt = createdAt;
+  let capturedServerCreatedAt = heldRefs.size > 0;
   const status = digitalPay ? 'verifying' : 'pending';
   const paymentStatus = payMethod === 'cash' ? 'unpaid' : 'for_verification';
   const hostSession = activeHostSession();
@@ -7683,12 +7698,20 @@ async function submitBooking(e) {
           createdAt:     row.createdAt,
         });
       } else {
-        await DB.addBooking(row);
+        const savedBooking = await DB.addBooking(row);
+        if (savedBooking?.createdAt) {
+          row.createdAt = savedBooking.createdAt;
+          if (!capturedServerCreatedAt) {
+            authoritativeCreatedAt = savedBooking.createdAt;
+            capturedServerCreatedAt = true;
+          }
+        }
       }
     }
+    booking.createdAt = authoritativeCreatedAt;
     _reservedRefs = itemBookings.map(row => row.ref);
     _reservedRef = _reservedRefs[0] || null;
-    _reservationStartedAt = createdAt;
+    _reservationStartedAt = authoritativeCreatedAt;
     saveGuestBookingResume();
     bookingSaved = true;
 

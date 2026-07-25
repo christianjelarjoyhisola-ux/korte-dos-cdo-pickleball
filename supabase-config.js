@@ -35,6 +35,33 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: { fetch: (input, init) => _pbFetchWithTimeout(input, init) },
 });
 
+// Public customer booking writes must always use the anon database role.
+// Keeping this client session-free prevents an admin/host login stored on the
+// same origin from changing the role used by the public booking flow.
+const _publicBookingSb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: (input, init) => _pbFetchWithTimeout(input, init) },
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    storageKey: 'pb_public_booking_anon',
+  },
+});
+
+function isPublicCustomerBookingWrite(payload) {
+  return payload?.createdVia === 'customer' && payload?.hostBooking !== true;
+}
+
+function bookingMutationClient(payload, options = {}) {
+  return options.asPublicCustomer === true || isPublicCustomerBookingWrite(payload)
+    ? _publicBookingSb
+    : _sb;
+}
+
+function shouldDatabaseSetBookingCreatedAt(booking) {
+  return isPublicCustomerBookingWrite(booking);
+}
+
 // Expose globally so HTML pages can use real-time subscriptions
 window._supabase = _sb;
 
@@ -516,7 +543,7 @@ function hasSlotConflict(existingBookings, booking) {
 }
 
 function bookingToRow(b) {
-  return {
+  const row = {
     ref:            b.ref,
     booking_group_ref: b.groupRef || null,
     full_name:      b.fullName,
@@ -551,8 +578,16 @@ function bookingToRow(b) {
     created_by_name:    b.createdByName || null,
     created_by_email:   b.createdByEmail || null,
     status:         b.status,
-    created_at:     b.createdAt,
   };
+
+  // Public customer inserts use the database default (`now()`), so phone clock
+  // drift can never make an otherwise-valid booking fail the RLS time window.
+  // Admin/import/host writes keep their existing timestamp behavior.
+  if (!shouldDatabaseSetBookingCreatedAt(b) && b.createdAt !== undefined) {
+    row.created_at = b.createdAt;
+  }
+
+  return row;
 }
 
 function withoutOptionalBookingColumns(row) {
@@ -817,8 +852,10 @@ window.DB = {
   },
 
   async addBooking(booking) {
+    const client = bookingMutationClient(booking);
+
     // Check for slot conflicts before inserting
-    const { data: existing } = await _sb
+    const { data: existing } = await client
       .from('bookings')
       .select('ref, status, slots, created_at')
       .eq('court_id', booking.courtId)
@@ -831,12 +868,24 @@ window.DB = {
     }
 
     const row = bookingToRow(booking);
-    let { error } = await _sb.from('bookings').insert(row);
+    let { data, error } = await client
+      .from('bookings')
+      .insert(row)
+      .select('ref, created_at')
+      .single();
     if (error && isMissingOptionalBookingColumnError(error) && !booking.hostBooking) {
-      ({ error } = await _sb.from('bookings').insert(withoutOptionalBookingColumns(row)));
+      ({ data, error } = await client
+        .from('bookings')
+        .insert(withoutOptionalBookingColumns(row))
+        .select('ref, created_at')
+        .single());
     }
     if (error) { console.error('addBooking:', error); throw error; }
     _pbClearFastCache(['bookings']);
+    return {
+      ref: data?.ref || booking.ref,
+      createdAt: data?.created_at || booking.createdAt || null,
+    };
   },
 
   async getBookingByRef(ref) {
@@ -845,7 +894,9 @@ window.DB = {
     return rowToBooking(data);
   },
 
-  async updateBooking(ref, updates) {
+  async updateBooking(ref, updates, options = {}) {
+    const client = bookingMutationClient(updates, options);
+
     // Map only the fields provided (camelCase → snake_case)
     const row = {};
     if (updates.status    !== undefined) row.status = updates.status;
@@ -887,9 +938,9 @@ window.DB = {
     if (updates.confirmationEmailId !== undefined) row.confirmation_email_id = updates.confirmationEmailId;
     if (updates.confirmationEmailSentAt !== undefined) row.confirmation_email_sent_at = updates.confirmationEmailSentAt;
     if (updates.confirmationEmailLastEvent !== undefined) row.confirmation_email_last_event = updates.confirmationEmailLastEvent;
-    let { data, error } = await _sb.from('bookings').update(row).eq('ref', ref).select('ref');
+    let { data, error } = await client.from('bookings').update(row).eq('ref', ref).select('ref');
     if (error && isMissingOptionalBookingColumnError(error) && !updates.hostBooking && updates.createdVia !== 'host') {
-      ({ data, error } = await _sb.from('bookings').update(withoutOptionalBookingColumns(row)).eq('ref', ref).select('ref'));
+      ({ data, error } = await client.from('bookings').update(withoutOptionalBookingColumns(row)).eq('ref', ref).select('ref'));
     }
     if (error) { console.error('updateBooking:', error); throw error; }
     if (!Array.isArray(data) || data.length === 0) {

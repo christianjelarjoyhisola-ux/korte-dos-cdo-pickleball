@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "test": "node --test booking-balance.test.js booking-write-routing.test.js"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",
     "pg": "^8.21.0"
