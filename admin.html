@@ -4127,7 +4127,7 @@ function receiptFlagsForDisplay(b){
     // does not print. Keep old audit data, but do not present these as current failures.
     flags = removeReceiptFlags(flags, ['INSTAPAY_QRPH_UNREADABLE', 'RECEIVER_NAME_UNREADABLE', 'RECEIVER_NAME_MISMATCH']);
   }
-  if (method === 'bdopay' && /^BN\d{16}$/.test(ref)) {
+  if (method === 'bdopay' && /^BN(?:NB)?\d{16}$/.test(ref)) {
     flags = removeReceiptFlags(flags, ['REF_FORMAT_INVALID']);
   }
   if (method === 'maya' && /^[A-Z0-9]{12}$/.test(ref)) {

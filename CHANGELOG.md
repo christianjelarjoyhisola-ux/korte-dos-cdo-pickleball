@@ -6,6 +6,18 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-25] - Current BDO Pay Reference Support
+
+### Fixed
+- **BN-NB receipt references** - BDO Pay verification now accepts both the legacy `BN-YYYYMMDD-########` format and the current `BN-NB-YYYYMMDD-########` format across court booking, host-session, and Open Play forms.
+- **Independent BDO OCR extraction** - the verifier now reads the labeled reference from the receipt instead of merely searching for the customer-entered value, so an incomplete entry produces an accurate reference mismatch rather than "Reference unreadable."
+- **Current BDO/InstaPay detection** - receipts containing a valid `BN-NB` reference plus InstaPay or invoice evidence are recognized as BDO Pay receipts.
+- **Regression coverage** - added tests for legacy, current, compact, spaced, dashed, and line-wrapped Google Vision reference variants.
+
+**Files affected:** `index.html`, `admin.html`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/functions/_shared/bdo-pay-receipt.ts`, `supabase/functions/_shared/bdo-pay-receipt_test.ts`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-24] - Business Website Contact Footer
 
 ### Changed

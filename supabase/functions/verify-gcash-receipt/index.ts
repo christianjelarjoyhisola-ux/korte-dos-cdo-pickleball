@@ -32,6 +32,11 @@ import {
   roundMoney,
   toNumber,
 } from "../_shared/booking-payment.ts";
+import {
+  extractBdoPayReference,
+  isBdoPayReceipt,
+  isBdoPayReference,
+} from "../_shared/bdo-pay-receipt.ts";
 import { extractReceiptAmount } from "../_shared/receipt-amount.ts";
 import { reconstructGoogleVisionRows } from "../_shared/google-vision-layout.ts";
 import {
@@ -491,10 +496,6 @@ function normalizeReferenceForProvider(
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
-function isBdoPayReference(value: string): boolean {
-  return /^BN\d{16}$/.test(normalizeReferenceForProvider(value, "bdopay"));
-}
-
 function isMayaReference(value: string): boolean {
   return /^[A-Z0-9]{12}$/.test(normalizeReferenceForProvider(value, "maya"));
 }
@@ -555,6 +556,12 @@ function extractReference(
   if (provider === "maribank") {
     return extractMariBankReference(text, typedRef);
   }
+  if (provider === "bdopay") {
+    // Read the labeled receipt value independently. This preserves a true
+    // mismatch when the customer enters the legacy BN form but the uploaded
+    // receipt contains the current BN-NB form.
+    return extractBdoPayReference(text);
+  }
   if (provider === "gotyme") {
     // Extract independently from the customer-entered value so an actual OCR
     // mismatch is retained as REF_MISMATCH instead of becoming "unreadable".
@@ -590,20 +597,6 @@ function hasMariBankIndicator(text: string): boolean {
 
 function hasInstapayQrphIndicator(text: string): boolean {
   return /\binsta\s*pay\b|\bqrph\b|\bqr\s*ph\b/i.test(text);
-}
-
-function hasBdoBnReference(text: string): boolean {
-  return /\bbn[\s-]*\d{8}[\s-]*\d{8}\b/i.test(text);
-}
-
-function isBdoPayReceipt(text: string): boolean {
-  const t = text || "";
-  const hasBnRef = hasBdoBnReference(t);
-  return /\bbdo\s*pay\b/i.test(t) ||
-    /\bthank\s+you\s+for\s+using\s+bdo\b/i.test(t) ||
-    (hasBnRef && /\binsta\s*pay\b/i.test(t)) ||
-    (hasBnRef && /\bbdo\b/i.test(t)) ||
-    (hasBnRef && extractBdoInvoiceNumber(t) !== null);
 }
 
 function isMayaReceipt(text: string): boolean {
