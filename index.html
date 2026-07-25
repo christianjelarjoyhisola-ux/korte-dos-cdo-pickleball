@@ -2107,6 +2107,137 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .sr.d3 { transition-delay: .3s; }
 .sr.d4 { transition-delay: .4s; }
 
+/* ── BOOK-FIRST NOTICE ── */
+.book-first-notice {
+  z-index: 1100;
+  padding:
+    max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  background: rgba(3,12,22,.82);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.book-first-card {
+  max-width: 520px;
+  overflow: hidden;
+  border-color: rgba(255,176,67,.32);
+  box-shadow: 0 30px 80px rgba(0,0,0,.52);
+}
+.book-first-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 24px 18px;
+  background: linear-gradient(135deg,rgba(255,176,67,.16),rgba(217,81,43,.06));
+  border-bottom: 1px solid rgba(255,176,67,.2);
+}
+.book-first-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 14px;
+  background: rgba(255,176,67,.15);
+  border: 1px solid rgba(255,176,67,.32);
+  font-size: 1.5rem;
+}
+.book-first-kicker {
+  color: var(--accent);
+  font-size: .67rem;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.book-first-title {
+  margin-top: 3px;
+  color: var(--text);
+  font-size: clamp(1.25rem,4vw,1.65rem);
+  line-height: 1.12;
+}
+.book-first-body { padding: 20px 24px 22px; }
+.book-first-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: .92rem;
+  line-height: 1.6;
+}
+.book-first-copy strong { color: var(--text); }
+.book-first-steps {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 8px;
+  margin: 18px 0;
+}
+.book-first-step {
+  min-width: 0;
+  padding: 12px 9px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--input);
+  text-align: center;
+}
+.book-first-step b {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: .7rem;
+}
+.book-first-step strong {
+  display: block;
+  color: var(--text);
+  font-size: .76rem;
+  line-height: 1.25;
+}
+.book-first-step span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: .64rem;
+  line-height: 1.3;
+}
+.book-first-warning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid rgba(229,57,53,.3);
+  border-radius: 11px;
+  background: rgba(229,57,53,.09);
+  color: var(--red);
+  font-size: .78rem;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: .2px;
+}
+.book-first-foot {
+  display: block;
+  padding: 14px 24px max(16px,env(safe-area-inset-bottom));
+}
+.book-first-foot .btn {
+  width: 100%;
+  min-height: 50px;
+  justify-content: center;
+  font-size: .9rem;
+}
+@media(max-width:480px) {
+  .book-first-head { padding: 18px 17px 15px; }
+  .book-first-body { padding: 16px 17px 18px; }
+  .book-first-foot { padding-left: 17px; padding-right: 17px; }
+  .book-first-steps { gap: 6px; }
+  .book-first-step { padding: 10px 5px; }
+  .book-first-step strong { font-size: .69rem; }
+  .book-first-step span { font-size: .58rem; }
+}
+
 /* ── SPLASH SCREEN ── */
 #splashScreen {
   position: fixed; inset: 0; z-index: 1000;
@@ -2774,6 +2905,45 @@ body.host-mode .courts { padding-bottom:140px; }
   </div>
 
   <div class="sp-bottom">Korte DOS &nbsp;·&nbsp; Bayabas, Cagayan de Oro</div>
+</div>
+
+<!-- BOOK-FIRST NOTICE -->
+<div class="overlay book-first-notice" id="bookingPaymentNotice" aria-hidden="true">
+  <section
+    class="modal book-first-card"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="bookingPaymentNoticeTitle"
+    aria-describedby="bookingPaymentNoticeCopy"
+  >
+    <div class="book-first-head">
+      <div class="book-first-icon" aria-hidden="true">⚠️</div>
+      <div>
+        <div class="book-first-kicker">Please read before booking</div>
+        <h2 class="book-first-title" id="bookingPaymentNoticeTitle">Book first, then pay</h2>
+      </div>
+    </div>
+    <div class="book-first-body">
+      <p class="book-first-copy" id="bookingPaymentNoticeCopy">
+        <strong>Do not send payment before selecting your booking.</strong>
+        Pay only when you reach <strong>Step 5: Payment</strong> on this website and see the exact amount and payment instructions.
+      </p>
+      <div class="book-first-steps" aria-label="Correct booking order">
+        <div class="book-first-step"><b>1</b><strong>Select a slot</strong><span>Court, date, and time</span></div>
+        <div class="book-first-step"><b>2</b><strong>Enter details</strong><span>Review your booking</span></div>
+        <div class="book-first-step"><b>3</b><strong>Pay at Step 5</strong><span>Use the amount shown</span></div>
+      </div>
+      <div class="book-first-warning">
+        <span aria-hidden="true">⛔</span>
+        Paying first does not reserve a court and may be rejected.
+      </div>
+    </div>
+    <div class="m-foot book-first-foot">
+      <button class="btn btn-p" id="bookingPaymentNoticeContinue" type="button" onclick="acknowledgeBookingPaymentNotice()">
+        I understand — Start booking
+      </button>
+    </div>
+  </section>
 </div>
 
 <!-- NAVBAR -->
@@ -8420,6 +8590,35 @@ function animateStat(el, final) {
 /* =============================================
    SPLASH SCREEN
    ============================================= */
+function bookingPaymentNoticeKeydown(event) {
+  const notice = $('bookingPaymentNotice');
+  if (!notice?.classList.contains('show') || event.key !== 'Tab') return;
+  event.preventDefault();
+  $('bookingPaymentNoticeContinue')?.focus();
+}
+
+function showBookingPaymentNotice() {
+  const notice = $('bookingPaymentNotice');
+  if (!notice) {
+    document.body.style.overflow = '';
+    return;
+  }
+  notice.classList.add('show');
+  notice.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  document.addEventListener('keydown', bookingPaymentNoticeKeydown);
+  requestAnimationFrame(() => $('bookingPaymentNoticeContinue')?.focus({ preventScroll: true }));
+}
+
+function acknowledgeBookingPaymentNotice() {
+  const notice = $('bookingPaymentNotice');
+  notice?.classList.remove('show');
+  notice?.setAttribute('aria-hidden', 'true');
+  document.removeEventListener('keydown', bookingPaymentNoticeKeydown);
+  document.body.style.overflow = '';
+  setTimeout(() => $('courtSharedDateDisplay')?.focus({ preventScroll: true }), 0);
+}
+
 function dismissSplash() {
   const sp = document.getElementById('splashScreen');
   if (!sp || sp.classList.contains('dismissed')) return;
@@ -8428,7 +8627,7 @@ function dismissSplash() {
     if (splashFinished) return;
     splashFinished = true;
     sp.style.display = 'none';
-    document.body.style.overflow = '';
+    showBookingPaymentNotice();
   };
   sp.classList.add('dismissed');
   sp.addEventListener('transitionend', finishSplash, { once: true });
