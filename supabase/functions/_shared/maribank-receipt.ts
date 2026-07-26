@@ -354,9 +354,49 @@ function exactPairedFieldValue(
   return labelCount === 1 && pairedCount === 1;
 }
 
+type MariBankMethodCheck = "instapay" | "unreadable" | "missing" | "wrong";
+
+function mariBankTransferMethodCheck(text: string): MariBankMethodCheck {
+  const lines = nonEmptyLines(text);
+  const label = /\btransfer\s+method\b/i;
+  const clean = (value: string) =>
+    value.replace(/^[\s:|=#.\-â€“â€”]+|[\s:|=#.\-â€“â€”]+$/g, "").trim();
+  const labelIndexes = lines
+    .map((line, index) => label.test(line) ? index : -1)
+    .filter((index) => index >= 0);
+  if (labelIndexes.length !== 1) return "missing";
+
+  const lineIndex = labelIndexes[0];
+  const sameLine = clean(lines[lineIndex].replace(label, ""));
+  if (sameLine) {
+    return /^insta\s*pay$/i.test(sameLine) ? "instapay" : "wrong";
+  }
+
+  const adjacentMethodValues = [lineIndex - 1, lineIndex + 1]
+    .filter((index) => index >= 0 && index < lines.length)
+    .map((index) => clean(lines[index]))
+    .filter((candidate) =>
+      /^(?:insta\s*pay|peso\s*net|pesonet|pddts|scheduled)$/i.test(candidate)
+    );
+  if (adjacentMethodValues.length > 1) return "wrong";
+  if (adjacentMethodValues.length === 1) {
+    return /^insta\s*pay$/i.test(adjacentMethodValues[0])
+      ? "instapay"
+      : "wrong";
+  }
+
+  // MariBank renders InstaPay as a stylized logo. Google Vision can recognize
+  // the "Transfer Method" label while returning no text at all for the logo.
+  // Leave that value unreadable rather than treating a missing logo as a
+  // contradictory transfer rail.
+  return "unreadable";
+}
+
 // The supplied layout has no separate "successful" line. Its stable completed
-// state is a generated transaction receipt whose field/value pairs explicitly
-// read Transfer Method = InstaPay and Processing Time = Realtime.
+// state is a generated transaction receipt whose Processing Time field reads
+// Realtime. Transfer Method normally reads InstaPay, but the app renders that
+// value as a logo which OCR may omit completely. A missing logo is allowed only
+// when the label remains present; a readable non-InstaPay method still fails.
 export function hasSuccessfulMariBankTransfer(text: string): boolean {
   const value = normalizeOcrText(text);
   const withoutProcessingTimeLabel = value
@@ -365,18 +405,29 @@ export function hasSuccessfulMariBankTransfer(text: string): boolean {
   const explicitFailure =
     /\b(?:pending|scheduled|processing|failed|declined|cancelled|canceled|revers(?:ed|al)|reject(?:ed)?|unsuccessful|refund(?:ed)?|return(?:ed)?|void(?:ed)?|expired|error|queued?|submitted|initiated|delayed)\b|\bnot\s+(?:successful|completed|real\s*time)\b|\bin\s+progress\b|\bon\s+hold\b/i
       .test(withoutProcessingTimeLabel);
+  const methodCheck = mariBankTransferMethodCheck(value);
   return hasStrongMariBankContext(value) &&
-    exactPairedFieldValue(
-      value,
-      /\btransfer\s+method\b/i,
-      /^insta\s*pay$/i,
-    ) &&
+    (methodCheck === "instapay" || methodCheck === "unreadable") &&
     exactPairedFieldValue(
       value,
       /\bprocessing\s+time\b/i,
       /^real\s*time$/i,
     ) &&
     !explicitFailure;
+}
+
+const MARIBANK_ACCOUNT_LABEL = /\b(?:acct|account)\s*(?:no|number)?\b/i;
+const ACCOUNT_FRAGMENT_FIELD =
+  /\b(?:transfer|amount|fee|total|reference|method|processing|transaction|date|time|from|to|gcash|xchange|maribank|receipt|realtime|instapay|free)\b/i;
+
+function fragmentedMariBankAccountCandidate(lines: string[]): string | null {
+  if (!lines.length) return null;
+  for (const line of lines) {
+    if (ACCOUNT_FRAGMENT_FIELD.test(line)) return null;
+    if (!/^[A-Z0-9\s:|=#.\-]+$/i.test(line)) return null;
+  }
+  const normalized = normalizeMariBankAccountId(lines.join(""));
+  return isMariBankAccountId(normalized) ? normalized : null;
 }
 
 export function extractMariBankDestinationAccount(
@@ -386,7 +437,7 @@ export function extractMariBankDestinationAccount(
   const lines = nonEmptyLines(value);
   const nearby = new Set<string>();
   lines.forEach((line, lineIndex) => {
-    if (!/\b(?:acct|account)\s*(?:no|number)?\b/i.test(line)) return;
+    if (!MARIBANK_ACCOUNT_LABEL.test(line)) return;
     for (let index = lineIndex - 2; index <= lineIndex + 2; index++) {
       if (index < 0 || index >= lines.length) continue;
       const tokens = lines[index].match(/\b[A-Z0-9]{12,24}\b/gi) || [];
@@ -394,6 +445,23 @@ export function extractMariBankDestinationAccount(
         const normalized = normalizeMariBankAccountId(token);
         if (isMariBankAccountId(normalized)) nearby.add(normalized);
       });
+    }
+
+    const sameLineRemainder = line.replace(MARIBANK_ACCOUNT_LABEL, "");
+    const sequences = [
+      [sameLineRemainder],
+      [lines[lineIndex - 1]],
+      [lines[lineIndex + 1]],
+      [lines[lineIndex - 2], lines[lineIndex - 1]],
+      [lines[lineIndex + 1], lines[lineIndex + 2]],
+      [lines[lineIndex - 1], sameLineRemainder],
+      [sameLineRemainder, lines[lineIndex + 1]],
+    ];
+    for (const sequence of sequences) {
+      const candidate = fragmentedMariBankAccountCandidate(
+        sequence.filter((part): part is string => typeof part === "string"),
+      );
+      if (candidate) nearby.add(candidate);
     }
   });
   if (nearby.size > 1) return null;

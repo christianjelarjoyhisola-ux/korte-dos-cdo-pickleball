@@ -119,6 +119,27 @@ PHP 720.00
 Receipt generated from MariBank app
 `;
 
+const reported1080Layout = `
+MariBank
+Transaction Receipt
+PHP 1,080.00
+From
+KATHERINE JOY C.
+MariBank: *******4115
+To
+Korte Dos
+G-Xchange / GCash
+Acct No.: DWQM4TK496R3UA1BS
+Transfer Amount PHP 1,080.00
+Transfer Fee FREE
+Total Amount PHP 1,080.00
+Reference Number 012588
+Transfer Method
+Processing Time Realtime
+Transaction Date & Time 26 Jul 2026, 09:22
+Receipt generated from MariBank app
+`;
+
 Deno.test("recognizes the current MariBank realtime InstaPay receipt", () => {
   if (!isMariBankReceipt(sample)) {
     throw new Error("MariBank receipt not recognized");
@@ -379,6 +400,30 @@ Deno.test("requires status and method values to be paired with their labels", ()
   }
 });
 
+Deno.test("accepts the reported Realtime receipt when OCR misses the InstaPay logo", () => {
+  if (!hasSuccessfulMariBankTransfer(reported1080Layout)) {
+    throw new Error(
+      "Missing stylized InstaPay logo blocked a Realtime receipt",
+    );
+  }
+  if (extractMariBankReference(reported1080Layout, "012588") !== "012588") {
+    throw new Error("Reported reference was not extracted");
+  }
+  if (extractMariBankTransferAmount(reported1080Layout) !== 1080) {
+    throw new Error("Reported transfer amount was not extracted");
+  }
+});
+
+Deno.test("still requires the Transfer Method field when its logo is unreadable", () => {
+  const missingMethodField = reported1080Layout.replace(
+    "Transfer Method\n",
+    "",
+  );
+  if (hasSuccessfulMariBankTransfer(missingMethodField)) {
+    throw new Error("Receipt without a Transfer Method field passed");
+  }
+});
+
 Deno.test("extracts the six-digit reference without dropping its leading zero", () => {
   if (!isMariBankReference("012710")) throw new Error("Reference rejected");
   if (isMariBankReference("MB012710")) {
@@ -435,6 +480,45 @@ Deno.test("extracts and validates the GCash destination account token", () => {
     ) !== "unreadable"
   ) {
     throw new Error("Expected unreadable destination");
+  }
+});
+
+Deno.test("reconstructs a fragmented destination account beside Acct No.", () => {
+  for (
+    const fragmented of [
+      "Acct No.: DWQM4TK 496R3UA1BS",
+      "Acct No.:\nDWQM4TK 496R3UA1BS",
+      "DWQM4TK\n496R3UA1BS\nAcct No.",
+    ]
+  ) {
+    const receipt = reported1080Layout.replace(
+      "Acct No.: DWQM4TK496R3UA1BS",
+      fragmented,
+    );
+    if (
+      extractMariBankDestinationAccount(receipt) !== "DWQM4TK496R3UA1BS"
+    ) {
+      throw new Error(
+        `Fragmented account was not reconstructed: ${fragmented}`,
+      );
+    }
+    if (
+      checkMariBankDestinationAccount(receipt, "DWQM4TK496R3UA1BS") !== "match"
+    ) {
+      throw new Error(`Fragmented account did not match: ${fragmented}`);
+    }
+  }
+});
+
+Deno.test("does not repair a fragmented account with different characters", () => {
+  const wrong = reported1080Layout.replace(
+    "Acct No.: DWQM4TK496R3UA1BS",
+    "Acct No.: ZZZZ4TK 496R3UA999",
+  );
+  if (
+    checkMariBankDestinationAccount(wrong, "DWQM4TK496R3UA1BS") !== "wrong"
+  ) {
+    throw new Error("A different fragmented account was not rejected");
   }
 });
 
