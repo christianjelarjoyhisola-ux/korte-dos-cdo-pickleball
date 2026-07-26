@@ -6794,6 +6794,7 @@ values
   ('open_play_fee', '100'),
   ('payment_method_maya', '1'),
   ('payment_method_bpi', '1'),
+  ('bpi_merchant_name', 'Korte Dos'),
   ('payment_method_maribank', '1'),
   ('gcash_qr_account_id', 'DWQM4TK496R3UA1BS')
 on conflict (key) do nothing;

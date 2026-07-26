@@ -275,6 +275,34 @@ PHP 720.00
   );
 });
 
+Deno.test("reported BPI Korte Dos QR receipt uses the provider-specific name", () => {
+  const receipt = `
+Transfer successful!
+Sunday, Jul 26 2026; 07:52:50 PM (GMT +8)
+Confirmation No. 1620719026641
+Transaction Ref. No. 708172
+Sent via BPI
+Transfer to
+GCash/G-Xchange
+Korte Dos (QR Code)
+xxxxxxxxxxxxx1BS
+Transfer amount
+PHP 360.00
+`;
+  assertResult(
+    checkBpiReceiverNumber(receipt, EXPECTED, {
+      expectedQrRecipientName: "Jan Kennith Magallano",
+    }),
+    "unreadable",
+  );
+  assertResult(
+    checkBpiReceiverNumber(receipt, EXPECTED, {
+      expectedQrRecipientName: "Korte Dos",
+    }),
+    "match",
+  );
+});
+
 Deno.test("BPI does not accept an opaque QR destination for another recipient", () => {
   const receipt = `
 Transfer successful!

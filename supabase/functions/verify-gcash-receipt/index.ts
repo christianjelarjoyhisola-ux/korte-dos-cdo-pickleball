@@ -3772,7 +3772,7 @@ Deno.serve(async (req) => {
           provider === "maribank" || provider === "gotyme"
         ? null
         : expectedNumber || null,
-      expectedReceiverName: provider === "bpi" ? null : expectedName || null,
+      expectedReceiverName: expectedName || null,
       expectedReceiverAccountId:
         provider === "maribank" || provider === "gotyme"
           ? expectedGcashQrAccountId || null

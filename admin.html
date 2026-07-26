@@ -3146,6 +3146,19 @@ tr:hover td { background: var(--bg2); }
           </div>
         </div>
 
+        <!-- BPI to GCash Section -->
+        <div style="margin-top:12px;padding:14px;background:var(--input);border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#d71920;margin-bottom:8px;">BPI &rarr; GCash</div>
+          <div style="font-size:.78rem;color:var(--text);line-height:1.55;margin-bottom:10px">
+            BPI QR receipts can hide the destination mobile number. Enter the exact recipient name shown below <strong>GCash/G-Xchange</strong> on the BPI success screen.
+          </div>
+          <div class="fg" style="margin:0">
+            <label class="fl">BPI QR Recipient Name</label>
+            <input type="text" class="fi" id="bpiMerchantNameInput" placeholder="e.g. Korte Dos" autocomplete="off" />
+            <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Used only for BPI receipts with an opaque masked QR token. The verifier still requires the BPI success status, GCash/G-Xchange destination, QR Code marker, amount, references, date, and time.</div>
+          </div>
+        </div>
+
         <!-- GoTyme to GCash Section -->
         <div style="margin-top:12px;padding:14px;background:var(--input);border-radius:10px;border:1px solid var(--border);">
           <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--yellow);margin-bottom:8px;">🏦 GoTyme &rarr; GCash</div>
@@ -4279,7 +4292,7 @@ function receiptDetailsHtml(b){
     ['Window', `${RECEIPT_PAYMENT_WINDOW_MINUTES} min`],
     ['OCR Engine', receiptOcrProviderLabel(ex.ocrProvider)],
     ...(ex.ocrAnalysisSource ? [['OCR Layout', receiptOcrAnalysisLabel(ex.ocrAnalysisSource)]] : []),
-    ['Receiver', receiptReceiverValue(ex), true],
+    ['Expected Receiver Account', receiptReceiverValue(ex), true],
     ...(ex.ocrFallbackReason ? [['OCR Diagnostic', receiptOcrDiagnosticValue(ex.ocrFallbackReason), true]] : []),
     ...(ex.amountReliable !== undefined ? [['Amount Parse', receiptDetailValue(amountParse), true]] : []),
     ['Reason', receiptDetailValue(reason), true],
@@ -8088,6 +8101,7 @@ async function renderPaymentSettings() {
 
   if ($('gcashNumInput')) $('gcashNumInput').value = settings.gcash_merchant_number || '';
   if ($('gcashNameInput')) $('gcashNameInput').value = settings.gcash_merchant_name || '';
+  if ($('bpiMerchantNameInput')) $('bpiMerchantNameInput').value = settings.bpi_merchant_name || '';
   if ($('gcashQrAccountIdInput')) $('gcashQrAccountIdInput').value = settings.gcash_qr_account_id || '';
   if ($('pnbNumInput')) $('pnbNumInput').value = settings.pnb_merchant_number || '';
   if ($('pnbNameInput')) $('pnbNameInput').value = settings.pnb_merchant_name || '';
@@ -9172,6 +9186,12 @@ async function savePaymentSettings() {
     return;
   }
   const gcashQrAccountId = ($('gcashQrAccountIdInput')?.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const bpiMerchantName = $('bpiMerchantNameInput')?.value.trim() || '';
+  if (bpiOn && bpiMerchantName.replace(/[^A-Z0-9]/gi, '').length < 3) {
+    toast('Enter the BPI QR recipient name exactly as shown on the BPI success receipt.', 'err');
+    $('bpiMerchantNameInput')?.focus();
+    return;
+  }
   if ((maribankOn || gotymeOn) && !/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{12,24}$/.test(gcashQrAccountId)) {
     toast('Enter the valid GCash QR Account ID used to verify MariBank and GoTyme receipts.', 'err');
     $('gcashQrAccountIdInput')?.focus();
@@ -9197,6 +9217,7 @@ async function savePaymentSettings() {
     const pnbName = $('pnbNameInput')?.value.trim() || '';
     await DB.saveSetting('gcash_merchant_number', gcashNum);
     await DB.saveSetting('gcash_merchant_name', gcashName);
+    await DB.saveSetting('bpi_merchant_name', bpiMerchantName);
     await DB.saveSetting('gcash_qr_account_id', gcashQrAccountId);
     await DB.saveSetting('pnb_merchant_number', pnbNum);
     await DB.saveSetting('pnb_merchant_name', pnbName);

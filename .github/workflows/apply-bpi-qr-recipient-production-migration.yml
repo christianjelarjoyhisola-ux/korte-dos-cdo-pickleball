@@ -1,0 +1,145 @@
+name: Apply BPI QR Recipient Production Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-bpi-qr-recipient-production-migration.yml"
+      - "supabase/migrations/20260726203000_add_bpi_qr_recipient_name.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply and verify BPI QR recipient setting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260726203000_add_bpi_qr_recipient_name.sql
+      MIGRATION_SHA256: f0d11ef66d7199021c24a7d86af4675fff9a5512bad1f6e8714851d158619529
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260726203000',
+          'add_bpi_qr_recipient_name',
+          array[
+            'sha256:f0d11ef66d7199021c24a7d86af4675fff9a5512bad1f6e8714851d158619529'
+          ]::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        begin
+          if not exists (
+            select 1
+            from public.settings
+            where key = 'bpi_merchant_name'
+              and value = 'Korte Dos'
+          ) then
+            raise exception 'bpi_merchant_name does not match the BPI QR receipt';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260726203000'
+              and name = 'add_bpi_qr_recipient_name'
+              and statements = array[
+                'sha256:f0d11ef66d7199021c24a7d86af4675fff9a5512bad1f6e8714851d158619529'
+              ]::text[]
+          ) then
+            raise exception 'BPI QR recipient migration history is missing';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply migration through the Supabase Management API
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          payload_file="$RUNNER_TEMP/bpi-qr-recipient-migration.json"
+          response_file="$RUNNER_TEMP/bpi-qr-recipient-migration-response.json"
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::BPI QR recipient migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          payload_file="$RUNNER_TEMP/bpi-qr-recipient-verification.json"
+          response_file="$RUNNER_TEMP/bpi-qr-recipient-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::BPI QR recipient verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "BPI QR recipient production setting verified."
