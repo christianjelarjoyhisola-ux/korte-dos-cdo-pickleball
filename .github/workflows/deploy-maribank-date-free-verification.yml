@@ -1,5 +1,7 @@
 name: Deploy Date-Free MariBank Verification
 
+# This workflow is intentionally separate from the general function deploy so
+# the database replay-key rule is active before the verifier begins using it.
 on:
   push:
     branches: [main]
