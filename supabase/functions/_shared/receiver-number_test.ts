@@ -1,8 +1,8 @@
 import {
   checkBpiReceiverNumber,
-  checkGcashReceiverNumber,
   type ReceiverNumberCheck,
 } from "./receiver-number.ts";
+import { checkGcashReceiverNumber } from "./gcash-receiver-number.ts";
 
 const EXPECTED = "09453984516";
 
@@ -34,6 +34,55 @@ Deno.test("matches the masked receiver on the reported GCash receipt", () => {
     checkGcashReceiverNumber(screenshotStyleGcashReceipt, EXPECTED),
     "match",
   );
+});
+
+Deno.test("GCash accepts a receiver row split by Google Vision", () => {
+  const receipt = `
+J** KE****H M.
++63 9**
+*** 4516
+Sent via GCash
+Amount
+1,080.00
+Ref No. 5043317080632
+`;
+  assertResult(checkGcashReceiverNumber(receipt, EXPECTED), "match");
+});
+
+Deno.test("GCash accepts mask dots omitted by Google Vision", () => {
+  const receipt = `
+J** KE****H M.
++63 9 4516
+Sent via GCash
+Amount
+1,080.00
+Ref No. 5043317080632
+`;
+  assertResult(checkGcashReceiverNumber(receipt, EXPECTED), "match");
+});
+
+Deno.test("GCash omitted-mask fallback still rejects a bare suffix", () => {
+  const receipt = `
+J** KE****H M.
+4516
+Sent via GCash
+Amount
+1,080.00
+Ref No. 5043317080632
+`;
+  assertResult(checkGcashReceiverNumber(receipt, EXPECTED), "unreadable");
+});
+
+Deno.test("GCash omitted-mask fallback does not accept a wrong suffix", () => {
+  const receipt = `
+J** KE****H M.
++63 9 2222
+Sent via GCash
+Amount
+1,080.00
+Ref No. 5043317080632
+`;
+  assertResult(checkGcashReceiverNumber(receipt, EXPECTED), "unreadable");
 });
 
 Deno.test("a 13-digit GCash reference is not parsed as a mobile number", () => {

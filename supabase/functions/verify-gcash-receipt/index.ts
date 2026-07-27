@@ -47,10 +47,8 @@ import {
   isBpiConfirmationNo,
   isBpiReceipt,
 } from "../_shared/bpi-receipt.ts";
-import {
-  checkBpiReceiverNumber,
-  checkGcashReceiverNumber,
-} from "../_shared/receiver-number.ts";
+import { checkBpiReceiverNumber } from "../_shared/receiver-number.ts";
+import { checkGcashReceiverNumber } from "../_shared/gcash-receiver-number.ts";
 import {
   bookingOutcomeForReceipt,
   customerStatusForProcessedBooking,
