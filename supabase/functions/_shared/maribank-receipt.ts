@@ -308,9 +308,13 @@ export function isMariBankReceipt(text: string): boolean {
 
 function hasStrongMariBankContext(text: string): boolean {
   const value = normalizeOcrText(text);
+  const hasReceiptHeading = /\btransaction\s+receipt\b/i.test(value);
+  const hasSuccessfulTransferHeading =
+    /\btransfer\s+result\b/i.test(value) &&
+    /\btransfer\s+successful\b/i.test(value);
   if (
     !/\bmari[\s-]*bank\b/i.test(value) ||
-    !/\btransaction\s+receipt\b/i.test(value)
+    (!hasReceiptHeading && !hasSuccessfulTransferHeading)
   ) return false;
   const anchors = [
     /\btransfer\s+amount\b/i,
@@ -495,34 +499,34 @@ export function checkMariBankDestinationAccount(
 }
 
 export function extractMariBankSenderLast4(text: string): string | null {
-  const match = String(text || "").match(
+  const value = String(text || "");
+  const masked = value.match(
     /\bmari[\s-]*bank\s*:\s*[*xX#\u2022\u2023\u25E6\u2219.\s]{2,}(\d{4})\b/i,
   );
-  return match ? match[1] : null;
+  if (masked) return masked[1];
+  const unmasked = value.match(
+    /\bmari[\s-]*bank\s*:\s*(\d{7,20})\b/i,
+  );
+  return unmasked ? unmasked[1].slice(-4) : null;
 }
 
-// Do not include the optional sender suffix: the same genuine screenshot may
-// OCR it as four digits on one pass and unreadable on another. Timestamp,
-// reference, and principal amount form the stable receipt replay identity;
-// the sender suffix is still retained separately for audit.
+// MariBank's six-digit reference is short, so pair it with the exact principal
+// amount and keep the provider namespace. Do not depend on receipt date/time:
+// the current MariBank share screen can obscure that row, while the reference
+// and amount remain visible and stable across OCR passes.
 export function buildMariBankTransactionKey({
   reference,
-  transactionDateTime,
   amount,
 }: {
   reference: string;
-  transactionDateTime: Date | null;
   amount: number | null;
 }): string | null {
   if (
-    !isMariBankReference(reference) || !transactionDateTime ||
-    Number.isNaN(transactionDateTime.getTime()) || amount == null ||
-    !Number.isFinite(amount) || amount < 0
+    !isMariBankReference(reference) || amount == null ||
+    !Number.isFinite(amount) || amount <= 0
   ) return null;
-  const minute = transactionDateTime.toISOString().slice(0, 16);
   return [
     "maribank_transaction",
-    minute,
     reference,
     amount.toFixed(2),
   ].join(":");

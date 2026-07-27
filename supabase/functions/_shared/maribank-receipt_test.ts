@@ -140,6 +140,26 @@ Transaction Date & Time 26 Jul 2026, 09:22
 Receipt generated from MariBank app
 `;
 
+const currentTransferResultWithoutDate = `
+Transfer Result
+MariBank
+Transfer Successful!
+PHP 2,160.00
+From
+JEZZEBELLE A.
+MariBank: 18136719690
+To
+Korte Dos
+G-Xchange / GCash
+Acct No.: DWQM4TK496R3UA1BS
+Transfer Amount PHP 2,160.00
+Transfer Fee FREE
+Total Amount PHP 2,160.00
+Reference Number 074188
+Transfer Method InstaPay
+Processing Time Realtime
+`;
+
 Deno.test("recognizes the current MariBank realtime InstaPay receipt", () => {
   if (!isMariBankReceipt(sample)) {
     throw new Error("MariBank receipt not recognized");
@@ -527,24 +547,46 @@ Deno.test("extracts only the masked sender account suffix", () => {
   if (suffix !== "5910") throw new Error(`Unexpected sender suffix: ${suffix}`);
 });
 
-Deno.test("builds a replay key from more than the short reference", () => {
-  const parsed = parseMariBankDateTime(sample);
+Deno.test("builds a date-free replay key from reference and amount", () => {
   const key = buildMariBankTransactionKey({
     reference: "012710",
-    transactionDateTime: parsed.shifted,
     amount: 360,
   });
   if (
-    key !== "maribank_transaction:2026-07-22T14:33:012710:360.00"
+    key !== "maribank_transaction:012710:360.00"
   ) {
     throw new Error(`Unexpected transaction key: ${key}`);
   }
-  const nextDay = buildMariBankTransactionKey({
-    reference: "012710",
-    transactionDateTime: new Date("2026-07-23T14:33:00.000Z"),
-    amount: 360,
-  });
-  if (nextDay === key) throw new Error("Reference collided across dates");
+  if (buildMariBankTransactionKey({ reference: "012710", amount: null })) {
+    throw new Error("Replay key accepted a missing amount");
+  }
+});
+
+Deno.test("accepts the current Transfer Result without date or time", () => {
+  if (!isMariBankReceipt(currentTransferResultWithoutDate)) {
+    throw new Error("Current MariBank transfer result was not recognized");
+  }
+  if (!hasSuccessfulMariBankTransfer(currentTransferResultWithoutDate)) {
+    throw new Error("Successful current transfer result was not recognized");
+  }
+  if (
+    extractMariBankReference(currentTransferResultWithoutDate, "074188") !==
+      "074188"
+  ) {
+    throw new Error("Current transfer reference was not extracted");
+  }
+  if (extractMariBankTransferAmount(currentTransferResultWithoutDate) !== 2160) {
+    throw new Error("Current transfer amount was not extracted");
+  }
+  if (
+    extractMariBankDestinationAccount(currentTransferResultWithoutDate) !==
+      "DWQM4TK496R3UA1BS"
+  ) {
+    throw new Error("Current destination account was not extracted");
+  }
+  if (extractMariBankSenderLast4(currentTransferResultWithoutDate) !== "9690") {
+    throw new Error("Current unmasked sender suffix was not extracted");
+  }
 });
 
 Deno.test("destination extraction leaves multiple account candidates unreadable", () => {

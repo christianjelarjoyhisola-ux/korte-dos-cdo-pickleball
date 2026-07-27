@@ -1,0 +1,180 @@
+name: Deploy Date-Free MariBank Verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-maribank-date-free-verification.yml"
+      - "supabase/migrations/20260727113000_maribank_date_free_verification.sql"
+      - "supabase/functions/_shared/maribank-receipt.ts"
+      - "supabase/functions/verify-gcash-receipt/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Apply MariBank migration and deploy verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260727113000_maribank_date_free_verification.sql
+      MIGRATION_VERSION: "20260727113000"
+      MIGRATION_NAME: maribank_date_free_verification
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      - name: Rehearse and apply the database migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+
+          migration_sha="$(sha256sum "$MIGRATION_FILE" | cut -d' ' -f1)"
+          rehearsal_payload="$RUNNER_TEMP/maribank-rehearsal.json"
+          rehearsal_response="$RUNNER_TEMP/maribank-rehearsal-response.json"
+          apply_payload="$RUNNER_TEMP/maribank-apply.json"
+          apply_response="$RUNNER_TEMP/maribank-apply-response.json"
+
+          jq -Rs \
+            '{query: ("begin;\n" + . + "\nrollback;")}' \
+            "$MIGRATION_FILE" > "$rehearsal_payload"
+
+          rehearsal_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$rehearsal_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$rehearsal_payload")"
+
+          if [[ ! "$rehearsal_status" =~ ^2 ]]; then
+            echo "::error::MariBank migration rehearsal failed with HTTP $rehearsal_status."
+            jq -c '{code, message, error}' "$rehearsal_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          history_sql="$(cat <<SQL
+          create schema if not exists supabase_migrations;
+          create table if not exists supabase_migrations.schema_migrations (
+            version text not null primary key
+          );
+          alter table supabase_migrations.schema_migrations
+            add column if not exists statements text[];
+          alter table supabase_migrations.schema_migrations
+            add column if not exists name text;
+          insert into supabase_migrations.schema_migrations (version, name, statements)
+          values (
+            '$MIGRATION_VERSION',
+            '$MIGRATION_NAME',
+            array['sha256:$migration_sha']::text[]
+          )
+          on conflict (version) do update
+          set name = excluded.name,
+              statements = excluded.statements;
+          SQL
+          )"
+
+          jq -Rs --arg history "$history_sql" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$MIGRATION_FILE" > "$apply_payload"
+
+          apply_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$apply_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$apply_payload")"
+
+          if [[ ! "$apply_status" =~ ^2 ]]; then
+            echo "::error::MariBank migration failed with HTTP $apply_status."
+            jq -c '{code, message, error}' "$apply_response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify the production replay key
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_payload="$RUNNER_TEMP/maribank-verify.json"
+          verify_response="$RUNNER_TEMP/maribank-verify-response.json"
+          verify_sql="$(cat <<'SQL'
+          do $verify$
+          declare
+            replay_key text;
+            replay_provider text;
+          begin
+            select ledger_key, provider_key
+              into replay_key, replay_provider
+              from public.payment_review_ledger_keys(
+                '{"provider":"maribank","ref":"074188","amount":2160,"dedupeKeys":[]}'::jsonb,
+                'maribank',
+                '074188'
+              );
+
+            if replay_key is distinct from
+                 'maribank_transaction:074188:2160.00'
+               or replay_provider is distinct from
+                 'maribank_transaction' then
+              raise exception 'Date-free MariBank replay key is not active';
+            end if;
+          end
+          $verify$;
+          SQL
+          )"
+
+          jq -n --arg query "$verify_sql" '{query: $query}' > "$verify_payload"
+          verify_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$verify_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$verify_payload")"
+
+          if [[ ! "$verify_status" =~ ^2 ]]; then
+            echo "::error::MariBank production verification failed with HTTP $verify_status."
+            jq -c '{code, message, error}' "$verify_response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Deploy the receipt verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy verify-gcash-receipt \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt

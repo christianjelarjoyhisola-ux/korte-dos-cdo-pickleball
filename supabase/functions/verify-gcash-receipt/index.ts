@@ -3382,19 +3382,6 @@ Deno.serve(async (req) => {
           flags.push("AMOUNT_REVIEW");
         }
 
-        if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
-          flags.push("DATE_NOT_TODAY");
-        }
-        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
-        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if (
-          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
-        ) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
-          flags.push("TIME_EXPIRED");
-        }
-
         if (!hasMariBankIndicator(ocrText)) {
           flags.push("MARIBANK_UNREADABLE");
         }
@@ -3565,8 +3552,8 @@ Deno.serve(async (req) => {
     // Use the OCR-extracted ref when available, else the customer-typed ref.
     // GCash refs are stored as digits only; other providers are namespaced so
     // same-looking references from different banks do not collide. MariBank's
-    // six-digit value is too small for permanent global uniqueness, so it uses
-    // the composite transaction fingerprint below instead of a bare ref key.
+    // six-digit value is paired with the exact principal amount below instead
+    // of depending on a receipt date/time row that its share screen can hide.
     const rawRefForDedupe = extractedRef || typedRef || null;
     const refForDedupe = rawRefForDedupe && provider !== "maribank"
       ? provider === "gcash"
@@ -3607,7 +3594,6 @@ Deno.serve(async (req) => {
     if (provider === "maribank" && rawRefForDedupe) {
       const transactionKey = buildMariBankTransactionKey({
         reference: rawRefForDedupe,
-        transactionDateTime: receiptDateTime,
         amount: extractedAmount,
       });
       if (transactionKey) {
