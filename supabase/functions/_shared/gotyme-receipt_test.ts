@@ -220,6 +220,56 @@ Deno.test("normalizes character-spaced OCR without guessing missing fields", () 
   );
 });
 
+Deno.test("recovers labeled GoTyme reference glyph errors and collapsed masks", () => {
+  const photographedReceipt = suppliedReceipt
+    .replace("Korte D**", "Korte D*")
+    .replace("ITO260723233836004", "1TO26O723233836O04");
+
+  assertEquals(
+    extractGoTymeReference(photographedReceipt),
+    "ITO260723233836004",
+    "labeled reference glyph recovery",
+  );
+  assertEquals(
+    extractGoTymeTraceId(photographedReceipt),
+    "836004",
+    "independent trace read",
+  );
+  assert(
+    hasMatchingGoTymeReferenceTrace(photographedReceipt),
+    "recovered reference still agrees with trace",
+  );
+  assertEquals(
+    checkGoTymeRecipientName(photographedReceipt, "Korte DOS"),
+    "match",
+    "collapsed receiver mask",
+  );
+});
+
+Deno.test("does not repair an unlabeled or trace-conflicting GoTyme reference", () => {
+  const unlabeled = suppliedReceipt
+    .replace("Reference No. ITO260723233836004", "Code 1TO26O723233836O04");
+  assertEquals(
+    extractGoTymeReference(unlabeled),
+    null,
+    "unlabeled glyph substitutions",
+  );
+
+  const wrongTrace = suppliedReceipt
+    .replace("ITO260723233836004", "1TO26O723233836O04")
+    .replace("Trace ID 836004", "Trace ID 111111");
+  assertEquals(
+    extractGoTymeReference(wrongTrace),
+    "ITO260723233836004",
+    "labeled recovery remains auditable",
+  );
+  assertEquals(
+    hasMatchingGoTymeReferenceTrace(wrongTrace),
+    false,
+    "conflicting trace still blocks verification",
+  );
+});
+
 Deno.test("rejects non-GoTyme and non-GCash transfer receipts", () => {
   const gcashReceipt = suppliedReceipt
     .replace("GoTyme Bank", "Sent via GCash")

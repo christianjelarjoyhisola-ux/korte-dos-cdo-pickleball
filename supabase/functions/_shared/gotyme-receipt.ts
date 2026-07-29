@@ -267,12 +267,56 @@ export function isGoTymeReference(value: string): boolean {
 
 function referenceCandidates(text: string): Set<string> {
   const candidates = new Set<string>();
-  for (const line of nonEmptyLines(text)) {
+  const lines = nonEmptyLines(text);
+
+  // Preserve exact reads anywhere in the receipt, but recover OCR glyph
+  // substitutions only from the labeled Reference No. field. GoTyme uses a
+  // fixed ITO + 15-digit format, so characters such as 1/O in the prefix and
+  // O/I in the numeric portion can be corrected without consulting the
+  // customer-entered value.
+  for (const line of lines) {
     const value = compact(line);
     for (const match of value.matchAll(/ITO\d{15}(?!\d)/g)) {
       if (isGoTymeReference(match[0])) candidates.add(match[0]);
     }
   }
+
+  const repairLabeledCandidate = (value: string): string | null => {
+    const raw = compact(value);
+    if (raw.length !== 18) return null;
+    const prefix = raw.slice(0, 3)
+      .replace(/[1L]/g, "I")
+      .replace(/[0Q]/g, "O");
+    const digits = raw.slice(3)
+      .replace(/[OQD]/g, "0")
+      .replace(/[IL]/g, "1")
+      .replace(/Z/g, "2")
+      .replace(/S/g, "5")
+      .replace(/G/g, "6")
+      .replace(/B/g, "8");
+    const repaired = `${prefix}${digits}`;
+    return isGoTymeReference(repaired) ? repaired : null;
+  };
+
+  lines.forEach((line, index) => {
+    const label = compact(line).match(/^REFERENCE(?:NO|NUMBER|#)?(.*)$/);
+    if (!label) return;
+    const next = index + 1 < lines.length ? compact(lines[index + 1]) : "";
+    const afterNext = index + 2 < lines.length
+      ? compact(lines[index + 2])
+      : "";
+    const fieldValues = [
+      label[1],
+      next,
+      `${label[1]}${next}`,
+      `${next}${afterNext}`,
+    ];
+    for (const fieldValue of fieldValues) {
+      const repaired = repairLabeledCandidate(fieldValue);
+      if (repaired) candidates.add(repaired);
+    }
+  });
+
   return candidates;
 }
 
@@ -401,7 +445,10 @@ export function checkGoTymeDestinationAccountSuffix(
 }
 
 function normalizedMaskedName(value: string): string {
-  return String(value || "").toUpperCase().replace(/[^A-Z0-9*]/g, "");
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[#\u2022\u2023\u25CF\u25E6\u2219]/g, "*")
+    .replace(/[^A-Z0-9*]/g, "");
 }
 
 export function extractGoTymeRecipientName(text: string): string | null {
@@ -443,13 +490,23 @@ export function checkGoTymeRecipientName(
   const receiptName = extractGoTymeRecipientName(text);
   if (!receiptName) return "unreadable";
   const masked = normalizedMaskedName(receiptName);
-  if (masked.length !== expected.length) return "unreadable";
-  for (let index = 0; index < expected.length; index++) {
-    if (masked[index] !== "*" && masked[index] !== expected[index]) {
-      return "mismatch";
-    }
+  if (!masked) return "unreadable";
+
+  // OCR commonly collapses GoTyme's repeated trailing mask ("**") into one
+  // glyph. Treat each mask run as one-or-more hidden characters while keeping
+  // every visible character anchored to the configured receiver name.
+  if (masked.includes("*")) {
+    const visible = masked.replace(/\*/g, "");
+    if (visible.length < 3) return "unreadable";
+    const pattern = masked
+      .replace(/\*+/g, "\u0000")
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\u0000/g, "[A-Z0-9]+");
+    return new RegExp(`^${pattern}$`).test(expected) ? "match" : "mismatch";
   }
-  return "match";
+
+  if (masked.length !== expected.length) return "unreadable";
+  return masked === expected ? "match" : "mismatch";
 }
 
 export function extractGoTymeSenderLast4(text: string): string | null {
