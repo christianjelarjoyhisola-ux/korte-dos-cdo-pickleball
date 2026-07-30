@@ -1,0 +1,179 @@
+name: Deploy Host Balance Payments
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-host-balance-payments.yml"
+      - "supabase/migrations/20260731120000_host_booking_balance_payments.sql"
+      - "supabase/functions/host-booking-balance-payment/**"
+      - "supabase/functions/verify-gcash-receipt/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Apply schema and deploy balance payment functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260731120000_host_booking_balance_payments.sql
+      MIGRATION_VERSION: "20260731120000"
+      MIGRATION_NAME: host_booking_balance_payments
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      - name: Rehearse and apply the database migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+
+          migration_sha="$(sha256sum "$MIGRATION_FILE" | cut -d' ' -f1)"
+          rehearsal_payload="$RUNNER_TEMP/host-balance-rehearsal.json"
+          rehearsal_response="$RUNNER_TEMP/host-balance-rehearsal-response.json"
+          apply_payload="$RUNNER_TEMP/host-balance-apply.json"
+          apply_response="$RUNNER_TEMP/host-balance-apply-response.json"
+
+          jq -Rs \
+            '{query: ("begin;\n" + . + "\nrollback;")}' \
+            "$MIGRATION_FILE" > "$rehearsal_payload"
+
+          rehearsal_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 180 \
+            --output "$rehearsal_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$rehearsal_payload")"
+
+          if [[ ! "$rehearsal_status" =~ ^2 ]]; then
+            echo "::error::Host balance migration rehearsal failed with HTTP $rehearsal_status."
+            jq -c '{code, message, error}' "$rehearsal_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          history_sql="$(cat <<SQL
+          create schema if not exists supabase_migrations;
+          create table if not exists supabase_migrations.schema_migrations (
+            version text not null primary key
+          );
+          alter table supabase_migrations.schema_migrations
+            add column if not exists statements text[];
+          alter table supabase_migrations.schema_migrations
+            add column if not exists name text;
+          insert into supabase_migrations.schema_migrations (version, name, statements)
+          values (
+            '$MIGRATION_VERSION',
+            '$MIGRATION_NAME',
+            array['sha256:$migration_sha']::text[]
+          )
+          on conflict (version) do update
+          set name = excluded.name,
+              statements = excluded.statements;
+          SQL
+          )"
+
+          jq -Rs --arg history "$history_sql" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$MIGRATION_FILE" > "$apply_payload"
+
+          apply_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 180 \
+            --output "$apply_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$apply_payload")"
+
+          if [[ ! "$apply_status" =~ ^2 ]]; then
+            echo "::error::Host balance migration failed with HTTP $apply_status."
+            jq -c '{code, message, error}' "$apply_response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production schema
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_payload="$RUNNER_TEMP/host-balance-verify.json"
+          verify_response="$RUNNER_TEMP/host-balance-verify-response.json"
+          verify_sql="$(cat <<'SQL'
+          do $verify$
+          begin
+            if to_regclass('public.host_booking_balance_payments') is null then
+              raise exception 'host balance payment table is missing';
+            end if;
+            if to_regprocedure(
+              'public.submit_host_booking_balance_payment(uuid,uuid,bigint)'
+            ) is null then
+              raise exception 'host balance submit function is missing';
+            end if;
+            if to_regprocedure(
+              'public.apply_host_booking_balance_payment_decision(uuid,text,uuid,text,text)'
+            ) is null then
+              raise exception 'host balance review function is missing';
+            end if;
+          end
+          $verify$;
+          SQL
+          )"
+
+          jq -n --arg query "$verify_sql" '{query: $query}' > "$verify_payload"
+          verify_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$verify_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$verify_payload")"
+
+          if [[ ! "$verify_status" =~ ^2 ]]; then
+            echo "::error::Host balance production schema verification failed with HTTP $verify_status."
+            jq -c '{code, message, error}' "$verify_response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Deploy balance receipt functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy verify-gcash-receipt \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt
+          supabase functions deploy host-booking-balance-payment \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt

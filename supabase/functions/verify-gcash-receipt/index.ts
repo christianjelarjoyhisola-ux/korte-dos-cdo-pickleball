@@ -161,7 +161,8 @@ type OcrResult = {
 type VerificationContext =
   | "court_booking"
   | "open_play"
-  | "host_session";
+  | "host_session"
+  | "host_booking_balance";
 
 type ReceiptDedupeKey = {
   key: string;
@@ -182,7 +183,7 @@ type ReceiptAuditRow = {
 };
 
 type PreparedInlineRegistration = {
-  context: Exclude<VerificationContext, "court_booking">;
+  context: "open_play" | "host_session";
   bookingRef: string;
   provider: PaymentProvider;
   typedRef: string;
@@ -1201,6 +1202,22 @@ async function sendTelegram(message: string) {
   );
 }
 
+async function bookingIsStillPending(
+  db: any,
+  bookingRef: string,
+): Promise<boolean> {
+  const { data, error } = await db
+    .from("bookings")
+    .select("status")
+    .eq("ref", bookingRef)
+    .maybeSingle();
+  if (error) {
+    console.error("Telegram pending-status check failed:", errMsg(error));
+    return false;
+  }
+  return String(data?.status || "").trim().toLowerCase() === "pending";
+}
+
 async function alertStoredPendingReceiptAfterFailure(
   db: any,
   bookingRef: string,
@@ -1331,7 +1348,7 @@ function auditIsRecent(createdAt: unknown): boolean {
 async function loadBoundReceiptAudit(
   db: any,
   receiptVerificationId: number,
-  context: Exclude<VerificationContext, "court_booking">,
+  context: "open_play" | "host_session",
 ): Promise<ReceiptAuditRow> {
   const { data, error } = await db
     .from("receipt_verifications")
@@ -1513,7 +1530,7 @@ function isMissingReceiptAttestationContract(error: unknown): boolean {
 
 async function receiptAttestationContractReady(
   db: any,
-  context: Exclude<VerificationContext, "court_booking">,
+  context: "open_play" | "host_session",
   options: { retryMissing?: boolean } = {},
 ): Promise<boolean> {
   const table = context === "host_session"
@@ -2583,7 +2600,13 @@ Deno.serve(async (req) => {
     if (bookingErr) return json({ error: "Booking could not be loaded" }, 500);
 
     let booking: Record<string, unknown>;
-    let inlinePricingKind: "open_play" | "host_session" | null = null;
+    let inlinePricingKind:
+      | "open_play"
+      | "host_session"
+      | "host_booking_balance"
+      | null = null;
+    let hostBalancePayment: Record<string, unknown> | null = null;
+    const isHostBalanceReference = /^HBAL-[A-F0-9]{32}$/.test(bookingRef);
     const hasPersistedBooking = !!persistedRow;
     const atomicInlineRegistrationRequested = Number(
       inlineBookingData?.registration_persistence_version ??
@@ -2632,6 +2655,49 @@ Deno.serve(async (req) => {
       if (!booking.date && inlineBookingData?.date) {
         booking.date = inlineBookingData.date;
       }
+    } else if (isHostBalanceReference) {
+      const nowIso = new Date().toISOString();
+      const { data: balanceRow, error: balanceError } = await db
+        .from("host_booking_balance_payments")
+        .select(
+          "id,verification_ref,status,expected_amount,total_amount,original_paid_amount,balance_due_at,expires_at,payment_provider,payment_reference,customer_name,customer_email,booking_date,court_label,schedule_label,created_at",
+        )
+        .eq("verification_ref", bookingRef)
+        .eq("status", "created")
+        .gt("expires_at", nowIso)
+        .gt("balance_due_at", nowIso)
+        .maybeSingle();
+      if (balanceError) {
+        console.error(
+          "host balance verification lookup failed:",
+          errMsg(balanceError),
+        );
+        return json({ error: "Balance payment could not be loaded" }, 500);
+      }
+      if (!balanceRow) {
+        return json({
+          error:
+            "This balance payment request expired or is no longer available. Please start again from My Bookings.",
+        }, 410);
+      }
+      const expectedAmount = roundMoney(
+        toNumber(balanceRow.expected_amount, -1),
+      );
+      if (expectedAmount <= 0) {
+        return json({ error: "Balance payment amount is invalid" }, 400);
+      }
+      hostBalancePayment = balanceRow as Record<string, unknown>;
+      booking = {
+        ref: bookingRef,
+        total: expectedAmount,
+        downpayment: expectedAmount,
+        payment_method: balanceRow.payment_provider,
+        gcash_ref: balanceRow.payment_reference,
+        date: balanceRow.booking_date,
+        full_name: balanceRow.customer_name,
+        created_at: balanceRow.created_at,
+      };
+      inlinePricingKind = "host_booking_balance";
     } else {
       if (!inlineBookingData) return json({ error: "Booking not found" }, 404);
       const isOpenPlayReference = /^OP-[A-Z0-9]{6,40}$/.test(bookingRef);
@@ -2681,7 +2747,10 @@ Deno.serve(async (req) => {
     if (
       !hasPersistedBooking &&
       atomicInlineRegistrationRequested &&
-      inlinePricingKind
+      (
+        inlinePricingKind === "open_play" ||
+        inlinePricingKind === "host_session"
+      )
     ) {
       const verifiedProvider = boundDigitalProvider(provider);
       const verifiedReference = normalizedStoredReference(
@@ -3003,6 +3072,14 @@ Deno.serve(async (req) => {
       if (preparedInline) {
         expectedTotal = preparedInline.expectedTotal;
         expectedAmount = preparedInline.expectedAmount;
+      } else if (inlinePricingKind === "host_booking_balance") {
+        expectedTotal = roundMoney(
+          toNumber(hostBalancePayment?.expected_amount, -1),
+        );
+        expectedAmount = expectedTotal;
+        if (expectedAmount <= 0) {
+          throw new Error("Balance payment amount is invalid");
+        }
       } else if (inlinePricingKind === "host_session") {
         const amounts = await expectedHostSessionAmounts(db, booking);
         expectedTotal = amounts.total;
@@ -3771,6 +3848,8 @@ Deno.serve(async (req) => {
       ? "court_booking"
       : inlinePricingKind === "host_session"
       ? "host_session"
+      : inlinePricingKind === "host_booking_balance"
+      ? "host_booking_balance"
       : "open_play";
     const registrationContext = preparedInline?.registrationContext;
     // Older pages verify first and insert the registration in a second request.
@@ -3806,6 +3885,9 @@ Deno.serve(async (req) => {
     const auditExtracted = {
       ...extracted,
       verificationContext,
+      ...(verificationContext === "host_booking_balance"
+        ? { balancePaymentId: String(hostBalancePayment?.id || "") }
+        : {}),
       ...(registrationContext ? { registrationContext } : {}),
       ...(legacyRegistrationContext ? { legacyRegistrationContext } : {}),
       submittedReference: typedRef,
@@ -4040,7 +4122,10 @@ Deno.serve(async (req) => {
     }
 
     // ── alert admin on anything needing a human ─────────────────────────────
-    if (hasPersistedBooking && needsOwnerReview) {
+    if (
+      hasPersistedBooking && needsOwnerReview &&
+      await bookingIsStillPending(db, bookingRef)
+    ) {
       await sendTelegram(
         `⚠️ <b>RECEIPT NEEDS OWNER REVIEW</b>\n` +
           `━━━━━━━━━━━━━━━━━━\n` +

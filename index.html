@@ -6,6 +6,7 @@
 <title>Korte DOS — Bayabas, Cagayan de Oro</title>
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="booking-balance.js?v=20260716-host-balance-v1"></script>
+<script src="host-balance-payment.js?v=20260731-host-balance-payment-v1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
 <style>
@@ -2763,6 +2764,59 @@ body.host-mode .courts { padding-bottom:140px; }
 .host-deadline.final,.host-deadline.overdue,.host-deadline.forfeited { border-color:rgba(200,61,38,.28); background:rgba(200,61,38,.08); }
 .host-deadline.final em,.host-deadline.overdue em,.host-deadline.forfeited em { color:var(--red); }
 .host-chip { max-width:100%; font-size:.6rem; font-weight:850; color:var(--muted); background:var(--card); border:1px solid var(--border); border-radius:999px; padding:3px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.host-pay-balance-btn { width:100%; justify-content:center; margin-top:9px; min-height:40px; font-size:.8rem; box-shadow:0 8px 18px rgba(var(--ac),.18); }
+.host-balance-payment-overlay { z-index:1250; }
+.host-balance-payment-modal { max-width:540px; overflow:hidden; display:flex; flex-direction:column; }
+.host-balance-payment-modal .m-hd { flex-shrink:0; padding:17px 20px 14px; align-items:flex-start; }
+.host-balance-payment-kicker { color:var(--accent); font-size:.61rem; line-height:1; font-weight:950; text-transform:uppercase; letter-spacing:.8px; margin-bottom:5px; }
+.host-balance-payment-title { margin:0; font-family:'Bebas Neue',sans-serif; font-size:1.45rem; line-height:1; letter-spacing:1px; }
+.host-balance-payment-meta { color:var(--muted); font-size:.72rem; line-height:1.35; margin-top:4px; }
+.host-balance-payment-body { min-height:0; padding:14px 16px 16px; overflow-y:auto; overscroll-behavior:contain; }
+.host-balance-loading { min-height:180px; display:flex; align-items:center; justify-content:center; }
+.host-balance-quote { display:grid; gap:10px; }
+.host-balance-amount { padding:14px; border:1px solid rgba(var(--ac),.25); border-radius:14px; text-align:center; background:linear-gradient(135deg,rgba(var(--ac),.11),rgba(var(--lime-rgb),.06)); }
+.host-balance-amount span { display:block; color:var(--muted); font-size:.61rem; font-weight:900; text-transform:uppercase; letter-spacing:.65px; }
+.host-balance-amount strong { display:block; color:var(--text); font-size:1.55rem; line-height:1.05; margin-top:4px; }
+.host-balance-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--border); gap:1px; }
+.host-balance-fact { min-width:0; padding:8px 9px; background:var(--card); }
+.host-balance-fact.wide { grid-column:1/-1; }
+.host-balance-fact span { display:block; color:var(--muted); font-size:.55rem; line-height:1.1; font-weight:900; text-transform:uppercase; letter-spacing:.45px; margin-bottom:3px; }
+.host-balance-fact strong { display:block; color:var(--text); font-size:.72rem; line-height:1.3; overflow-wrap:anywhere; }
+.host-balance-section { display:grid; gap:7px; }
+.host-balance-section-label { color:var(--muted); font-size:.6rem; font-weight:950; text-transform:uppercase; letter-spacing:.6px; }
+.host-balance-methods { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
+.host-balance-method { min-width:0; border:1px solid var(--border); border-radius:10px; padding:8px 4px; background:var(--card); color:var(--muted); font-family:'Outfit',sans-serif; font-size:.65rem; font-weight:900; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:border-color .2s,background .2s,color .2s; }
+.host-balance-method.on { color:var(--text); border-color:rgba(var(--ac),.52); background:rgba(var(--ac),.1); box-shadow:inset 0 0 0 1px rgba(var(--ac),.1); }
+.host-balance-method:disabled { cursor:default; opacity:.72; }
+.host-balance-receiver { display:grid; grid-template-columns:88px minmax(0,1fr); gap:10px; align-items:center; padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--input); }
+.host-balance-receiver.no-qr { grid-template-columns:1fr; }
+.host-balance-qr { width:88px; height:88px; padding:4px; object-fit:contain; border:1px solid var(--border); border-radius:10px; background:#fff; cursor:zoom-in; }
+.host-balance-receiver-copy { min-width:0; }
+.host-balance-receiver-copy span { display:block; color:var(--muted); font-size:.59rem; font-weight:900; text-transform:uppercase; letter-spacing:.45px; }
+.host-balance-receiver-copy strong { display:block; color:var(--text); font-size:.9rem; line-height:1.25; margin:3px 0; overflow-wrap:anywhere; }
+.host-balance-receiver-copy em { display:block; color:var(--muted); font-size:.7rem; line-height:1.3; font-style:normal; overflow-wrap:anywhere; }
+.host-balance-copy-btn { border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); padding:5px 8px; margin-top:7px; font-family:'Outfit',sans-serif; font-size:.65rem; font-weight:900; cursor:pointer; }
+.host-balance-method-note { color:var(--muted); font-size:.69rem; line-height:1.45; padding:8px 10px; border-radius:10px; background:var(--input); border:1px solid var(--border); }
+.host-balance-field { display:grid; gap:5px; }
+.host-balance-field label { color:var(--muted); font-size:.6rem; font-weight:950; text-transform:uppercase; letter-spacing:.55px; }
+.host-balance-field-help { color:var(--muted); font-size:.64rem; line-height:1.35; }
+.host-balance-receipt-drop { min-height:74px; display:flex; align-items:center; justify-content:center; gap:7px; border:1.5px dashed var(--border); border-radius:11px; background:var(--input); color:var(--muted); font-size:.72rem; font-weight:850; text-align:center; padding:12px; cursor:pointer; }
+.host-balance-receipt-preview { display:flex; align-items:center; gap:9px; padding:8px; border:1px solid var(--border); border-radius:11px; background:var(--input); }
+.host-balance-receipt-preview img { width:48px; height:48px; object-fit:cover; border-radius:8px; border:1px solid var(--border); background:var(--card); }
+.host-balance-receipt-name { min-width:0; flex:1; color:var(--text); font-size:.7rem; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.host-balance-remove { border:0; background:transparent; color:var(--red); padding:3px; font-size:.65rem; font-weight:900; cursor:pointer; }
+.host-balance-policy { margin:0; padding:9px 10px; font-size:.7rem; line-height:1.4; }
+.host-balance-payment-status { display:none; padding:9px 10px; border-radius:10px; font-size:.7rem; font-weight:800; line-height:1.4; }
+.host-balance-payment-status.show { display:block; }
+.host-balance-payment-status.error { color:var(--red); background:rgba(200,61,38,.08); border:1px solid rgba(200,61,38,.24); }
+.host-balance-result { min-height:250px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:18px 10px; }
+.host-balance-result-icon { width:58px; height:58px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(var(--ac),.12); color:var(--accent); font-size:1.65rem; font-weight:950; margin-bottom:12px; }
+.host-balance-result.pending .host-balance-result-icon { color:var(--yellow); background:rgba(184,139,36,.1); }
+.host-balance-result.rejected .host-balance-result-icon { color:var(--red); background:rgba(200,61,38,.1); }
+.host-balance-result h3 { margin:0 0 7px; color:var(--text); font-size:1.05rem; }
+.host-balance-result p { margin:0; max-width:390px; color:var(--muted); font-size:.78rem; line-height:1.55; }
+.host-balance-result-ref { margin-top:12px; color:var(--muted); font-size:.65rem; font-weight:800; overflow-wrap:anywhere; }
+.host-balance-payment-foot { flex-shrink:0; padding:12px 16px; }
 .host-empty { text-align:center; color:var(--muted); padding:24px 14px; border:1px dashed var(--border); border-radius:12px; background:var(--input); }
 @media(max-width:560px) {
   .host-bookings-modal { width:calc(100vw - 24px); max-width:420px; border-radius:18px; }
@@ -2776,6 +2830,13 @@ body.host-mode .courts { padding-bottom:140px; }
   .host-booking-card summary { padding:9px; }
   .host-booking-side { min-width:80px; }
   .host-status { max-width:90px; }
+  .host-balance-payment-overlay { align-items:flex-end; padding:0; }
+  .host-balance-payment-modal { width:100%; max-width:none; max-height:94dvh; border-radius:20px 20px 0 0; }
+  .host-balance-payment-body { padding:12px 12px 14px; }
+  .host-balance-payment-modal .m-hd { padding:15px 14px 12px; }
+  .host-balance-methods { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .host-balance-payment-foot { padding:10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .host-balance-payment-foot .btn { flex:1; justify-content:center; }
 }
 
 </style>
@@ -2810,6 +2871,25 @@ body.host-mode .courts { padding-bottom:140px; }
       </div>
     </div>
   </div>
+</div>
+
+<div class="overlay host-balance-payment-overlay" id="hostBalancePaymentModal" aria-hidden="true">
+  <section class="modal host-balance-payment-modal" role="dialog" aria-modal="true" aria-labelledby="hostBalancePaymentTitle">
+    <div class="m-hd">
+      <div>
+        <div class="host-balance-payment-kicker">Remaining balance</div>
+        <h2 class="host-balance-payment-title" id="hostBalancePaymentTitle">Pay Booking Balance</h2>
+        <div class="host-balance-payment-meta" id="hostBalancePaymentMeta">Secure payment verification</div>
+      </div>
+      <button type="button" class="bk-modal-x" onclick="closeHostBalancePayment()" aria-label="Close balance payment">&times;</button>
+    </div>
+    <div class="host-balance-payment-body" id="hostBalancePaymentBody">
+      <div class="host-balance-loading"><div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading exact balance</div></div></div>
+    </div>
+    <div class="m-foot host-balance-payment-foot" id="hostBalancePaymentFoot">
+      <button class="btn btn-g" type="button" onclick="closeHostBalancePayment()">Cancel</button>
+    </div>
+  </section>
 </div>
 
 <div class="host-invite-backdrop" id="hostInviteBackdrop" onclick="dismissHostInvite(event)" aria-hidden="true" hidden style="display:none !important;"></div>
@@ -8348,6 +8428,7 @@ function hostBookingCardHtml(booking) {
   const status = hostBookingStatusLabel(booking);
   const forfeited = booking.status === 'forfeited' || booking.paymentStatus === 'deposit_retained';
   const deadlineState = window.BookingBalance?.deadlineState?.(booking) || {};
+  const balancePaymentEligibility = window.HostBalancePayment?.eligibility?.(booking, new Date()) || { eligible: false };
   const amountHeadline = forfeited ? `${fmt(paid)} retained` : fmt(balance);
   return `
     <details class="host-booking-card">
@@ -8375,6 +8456,7 @@ function hostBookingCardHtml(booking) {
           ${ref ? `<span class="host-chip" title="${esc(ref)}">${esc(ref)}</span>` : ''}
           ${booking.gcashRef ? `<span class="host-chip" title="${esc(booking.gcashRef)}">Pay ref ${esc(booking.gcashRef)}</span>` : ''}
         </div>
+        ${balancePaymentEligibility.eligible ? `<button type="button" class="btn btn-p host-pay-balance-btn" onclick="event.preventDefault();event.stopPropagation();openHostBalancePayment('${jsArg(balancePaymentEligibility.bookingKey)}')">Pay ${esc(fmt(balancePaymentEligibility.balance))} Balance Now</button>` : ''}
       </div>
     </details>`;
 }
@@ -8420,6 +8502,555 @@ function groupHostBookingRows(bookings = []) {
       items,
     };
   });
+}
+
+let _hostBalancePaymentState = {
+  booking: null,
+  quote: null,
+  payment: null,
+  method: '',
+  reference: '',
+  receiptFile: null,
+  receiptPreviewUrl: '',
+  receiptResult: null,
+  idempotencyKey: '',
+  busy: false,
+};
+
+function hostBalancePaymentApi() {
+  return window.HostBalancePayment || null;
+}
+
+function hostBalancePaymentClient() {
+  if (window._sb?.functions?.invoke) return window._sb;
+  try {
+    if (typeof _sb !== 'undefined' && _sb?.functions?.invoke) return _sb;
+  } catch (_) {}
+  return null;
+}
+
+function hostBalancePaymentFindBooking(key) {
+  const api = hostBalancePaymentApi();
+  return (_hostBookingsCache || []).find(booking => api?.bookingMatchesKey?.(booking, key)) || null;
+}
+
+function hostBalancePaymentNewIdempotencyKey() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  const random = window.crypto?.getRandomValues
+    ? Array.from(window.crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('')
+    : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  return `hbp-${random}`;
+}
+
+function hostBalancePaymentReleasePreview() {
+  if (_hostBalancePaymentState.receiptPreviewUrl) {
+    try { URL.revokeObjectURL(_hostBalancePaymentState.receiptPreviewUrl); } catch (_) {}
+  }
+  _hostBalancePaymentState.receiptPreviewUrl = '';
+}
+
+function resetHostBalancePaymentState() {
+  hostBalancePaymentReleasePreview();
+  _hostBalancePaymentState = {
+    booking: null,
+    quote: null,
+    payment: null,
+    method: '',
+    reference: '',
+    receiptFile: null,
+    receiptPreviewUrl: '',
+    receiptResult: null,
+    idempotencyKey: '',
+    busy: false,
+  };
+}
+
+function hostBalancePaymentEnabledMethods() {
+  return DIGITAL_PAYMENT_METHODS.filter(method => paymentMethods[method]);
+}
+
+function hostBalancePaymentMethodIcon(method) {
+  return ({ gcash: 'GC', bdopay: 'BDO', maya: 'M', bpi: 'BPI', maribank: 'MB', gotyme: 'GT', pnb: 'PNB' }[method] || 'Pay');
+}
+
+function hostBalancePaymentReferencePlaceholder(method) {
+  return method === 'gcash' ? 'e.g. 1234567890123'
+    : method === 'bdopay' ? 'e.g. BN-NB-20260725-02534395'
+    : method === 'maya' ? 'e.g. B6DC F633 F08C'
+    : method === 'bpi' ? 'e.g. 1783397488347'
+    : method === 'maribank' ? 'e.g. 012710'
+    : method === 'gotyme' ? 'e.g. ITO260723233836004'
+    : 'Enter the new transaction reference';
+}
+
+function hostBalancePaymentMethodNote(method) {
+  return ({
+    gcash: 'Use GCash to GCash and upload the complete successful receipt.',
+    bdopay: 'Use BDO Pay to the configured GCash recipient and enter the full BN or BN-NB reference.',
+    maya: 'Use Maya to the configured GCash recipient and enter the Maya Reference ID.',
+    bpi: 'Use BPI to GCash/G-Xchange and enter the Confirmation No., not the Transaction Ref. No.',
+    maribank: 'Use MariBank to GCash/G-Xchange and enter the exact 6-digit Reference Number.',
+    gotyme: 'Use GoTyme to the configured GCash recipient and enter the full ITO Reference No.',
+    pnb: 'Use the configured PNB payment details and upload the complete successful receipt.',
+  })[method] || 'Use a new transaction and upload its complete successful receipt.';
+}
+
+function hostBalancePaymentReferenceValid(method, reference) {
+  if (!reference) return false;
+  if (method === 'gcash') return isGcashRefValid(reference);
+  if (method === 'bdopay') return isBdoPayRefValid(reference);
+  if (method === 'maya') return isMayaRefValid(reference);
+  if (method === 'bpi') return isBpiConfirmationValid(reference);
+  if (method === 'maribank') return isMaribankReferenceValid(reference);
+  if (method === 'gotyme') return isGotymeReferenceValid(reference);
+  return reference.length >= 4;
+}
+
+function hostBalancePaymentOriginalReferences() {
+  const booking = _hostBalancePaymentState.booking;
+  const rows = Array.isArray(booking?.items) && booking.items.length ? booking.items : [booking];
+  return new Set(rows.map(row => normalizePaymentRef(row?.gcashRef || row?.gcash_ref || '', row?.paymentMethod || row?.payment_method || 'gcash')).filter(Boolean));
+}
+
+function hostBalancePaymentReceiver(method) {
+  const key = paymentReceiverKey(method);
+  const receiver = paymentReceiverSettings[key] || paymentReceiverSettings.gcash || {};
+  const number = String(receiver.number || '').trim();
+  const usableNumber = number && !/[xX]{2,}/.test(number) && !/^scan qr$/i.test(number) ? number : '';
+  const displayName = key === 'gcash'
+    ? (maskGcashOwnerName(receiver.name) || 'Court owner account')
+    : (receiver.name || 'Court owner account');
+  return {
+    number: usableNumber,
+    name: String(displayName || ''),
+    qrImage: hostBalancePaymentApi()?.safeImageUrl?.(receiver.qrImage) || '',
+  };
+}
+
+function hostBalancePaymentSchedule(booking) {
+  if (!booking) return '--';
+  const date = booking.date ? fmtD(booking.date) : '--';
+  const time = booking.timeLabel || booking.time_label || `${booking.startTime || booking.start_time || ''} - ${booking.endTime || booking.end_time || ''}`;
+  const court = booking.courtName || booking.court_name || 'Court booking';
+  return `${court} · ${date}${String(time || '').trim() ? ` · ${time}` : ''}`;
+}
+
+function hostBalancePaymentDeadlineLabel(value) {
+  if (!value) return '--';
+  try {
+    return window.BookingBalance?.formatDeadline?.(value) || new Date(value).toLocaleString('en-PH');
+  } catch (_) {
+    return '--';
+  }
+}
+
+function renderHostBalancePaymentLoading() {
+  if ($('hostBalancePaymentMeta')) $('hostBalancePaymentMeta').textContent = 'Checking the latest booking balance';
+  if ($('hostBalancePaymentBody')) {
+    $('hostBalancePaymentBody').innerHTML = '<div class="host-balance-loading"><div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading exact balance</div></div></div>';
+  }
+  if ($('hostBalancePaymentFoot')) {
+    $('hostBalancePaymentFoot').innerHTML = '<button class="btn btn-g" type="button" onclick="closeHostBalancePayment()">Cancel</button>';
+  }
+}
+
+function renderHostBalancePaymentError(message, retryKey = '') {
+  const safeMessage = esc(message || 'Could not load this balance payment.');
+  if ($('hostBalancePaymentMeta')) $('hostBalancePaymentMeta').textContent = 'Balance payment unavailable';
+  if ($('hostBalancePaymentBody')) {
+    $('hostBalancePaymentBody').innerHTML = `
+      <div class="host-balance-result rejected">
+        <div class="host-balance-result-icon" aria-hidden="true">!</div>
+        <h3>Could not continue</h3>
+        <p>${safeMessage}</p>
+      </div>`;
+  }
+  if ($('hostBalancePaymentFoot')) {
+    $('hostBalancePaymentFoot').innerHTML = `
+      <button class="btn btn-g" type="button" onclick="closeHostBalancePayment()">Close</button>
+      ${retryKey ? `<button class="btn btn-p" type="button" onclick="openHostBalancePayment('${jsArg(retryKey)}')">Try Again</button>` : ''}`;
+  }
+}
+
+function hostBalancePaymentExistingAttemptState(quote) {
+  const raw = String(quote?.status || '').trim().toLowerCase();
+  if (['approved', 'paid', 'completed'].includes(raw)) return 'approved';
+  if (['rejected', 'failed', 'declined'].includes(raw)) return 'rejected';
+  if (['submitted', 'pending', 'pending_review', 'manual_review', 'for_verification'].includes(raw)) return 'pending';
+  return '';
+}
+
+async function openHostBalancePayment(key) {
+  const api = hostBalancePaymentApi();
+  const booking = hostBalancePaymentFindBooking(key);
+  const modal = $('hostBalancePaymentModal');
+  if (!api || !booking || !modal) {
+    toast('Balance payment is unavailable. Please refresh and try again.', 'err');
+    return;
+  }
+
+  const eligible = api.eligibility(booking, new Date());
+  if (!eligible.eligible) {
+    toast(eligible.reason === 'deadline_passed' ? 'The balance deadline has passed.' : 'This booking is not currently eligible for balance payment.', 'err');
+    await openHostBookings();
+    return;
+  }
+
+  resetHostBalancePaymentState();
+  _hostBalancePaymentState.booking = booking;
+  _hostBalancePaymentState.idempotencyKey = hostBalancePaymentNewIdempotencyKey();
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden', 'false');
+  renderHostBalancePaymentLoading();
+
+  try {
+    const response = await api.invoke(hostBalancePaymentClient(), api.buildQuotePayload(booking));
+    const quote = api.normalizeQuote(response, booking);
+    if (quote.balance <= 0) throw new Error('This booking no longer has a remaining balance.');
+    if (quote.deadline && new Date(quote.deadline).getTime() <= Date.now()) throw new Error('The balance deadline has passed.');
+    _hostBalancePaymentState.quote = quote;
+    const existingState = hostBalancePaymentExistingAttemptState(quote);
+    if (existingState) {
+      renderHostBalancePaymentResult(response, existingState);
+      return;
+    }
+
+    const enabledMethods = hostBalancePaymentEnabledMethods();
+    const returnedMethod = String(quote.paymentProvider || '').toLowerCase();
+    const originalMethod = String(booking.paymentMethod || '').toLowerCase();
+    _hostBalancePaymentState.method = enabledMethods.includes(returnedMethod)
+      ? returnedMethod
+      : enabledMethods.includes(originalMethod)
+        ? originalMethod
+        : enabledMethods[0] || '';
+    if (quote.paymentId && quote.verificationRef) {
+      _hostBalancePaymentState.payment = quote;
+      _hostBalancePaymentState.reference = quote.paymentReference || '';
+    }
+    renderHostBalancePaymentForm();
+  } catch (error) {
+    renderHostBalancePaymentError(api.errorMessage(error), eligible.bookingKey);
+  }
+}
+
+function closeHostBalancePayment() {
+  if (_hostBalancePaymentState.busy) {
+    toast('Please wait while your receipt is being secured.', 'inf');
+    return false;
+  }
+  const modal = $('hostBalancePaymentModal');
+  modal?.classList.remove('show');
+  modal?.setAttribute('aria-hidden', 'true');
+  resetHostBalancePaymentState();
+  return true;
+}
+
+function renderHostBalancePaymentForm() {
+  const state = _hostBalancePaymentState;
+  const booking = state.booking;
+  const quote = state.quote;
+  const methods = hostBalancePaymentEnabledMethods();
+  const lockedAttempt = !!state.payment?.paymentId;
+  const method = methods.includes(state.method) ? state.method : methods[0] || '';
+  state.method = method;
+
+  if (!methods.length || !method) {
+    renderHostBalancePaymentError('No receipt-based payment method is enabled. Please contact Korte DOS.', quote?.bookingKey || hostBalancePaymentApi()?.bookingKey?.(booking));
+    return;
+  }
+
+  const receiver = hostBalancePaymentReceiver(method);
+  const amount = Number(quote?.balance || quote?.amount || 0);
+  const bookingRef = quote?.bookingKey || hostBalancePaymentApi()?.bookingKey?.(booking) || '';
+  const schedule = hostBalancePaymentSchedule(quote || booking);
+  const deadline = hostBalancePaymentDeadlineLabel(quote?.deadline || hostBalancePaymentApi()?.balanceDeadline?.(booking));
+  const methodButtons = methods.map(item => `
+    <button type="button" class="host-balance-method ${item === method ? 'on' : ''}" ${lockedAttempt ? 'disabled' : ''} onclick="setHostBalancePaymentMethod('${jsArg(item)}')" title="${esc(paymentMethodName(item))}">
+      ${esc(hostBalancePaymentMethodIcon(item))} · ${esc(paymentMethodName(item))}
+    </button>`).join('');
+  const qrHtml = receiver.qrImage
+    ? `<img class="host-balance-qr" src="${esc(receiver.qrImage)}" alt="${esc(paymentMethodName(method))} payment QR" onclick="openQrZoomFromImg(this,'${jsArg(paymentMethodName(method) + ' payment QR')}')" />`
+    : '';
+  const receiverHtml = receiver.qrImage || receiver.number
+    ? `<div class="host-balance-receiver ${receiver.qrImage ? '' : 'no-qr'}">
+        ${qrHtml}
+        <div class="host-balance-receiver-copy">
+          <span>Send exact balance to</span>
+          <strong>${receiver.number ? esc(receiver.number) : 'Scan the configured QR'}</strong>
+          <em>${esc(receiver.name)}</em>
+          ${receiver.number ? '<button class="host-balance-copy-btn" type="button" onclick="copyHostBalancePaymentNumber()">Copy number</button>' : ''}
+        </div>
+      </div>`
+    : '<div class="host-balance-method-note">No payment number or QR is available for this method. Please contact Korte DOS before sending payment.</div>';
+  const receiptHtml = state.receiptFile
+    ? `<div class="host-balance-receipt-preview">
+        <img src="${esc(state.receiptPreviewUrl)}" alt="New balance payment receipt preview" />
+        <div class="host-balance-receipt-name" title="${esc(state.receiptFile.name)}">${esc(state.receiptFile.name)}</div>
+        <button class="host-balance-remove" type="button" onclick="clearHostBalancePaymentReceipt()">Remove</button>
+      </div>`
+    : `<label class="host-balance-receipt-drop" id="hostBalanceReceiptDrop">
+        <span aria-hidden="true">📷</span><span>Attach the new balance payment receipt</span>
+        <input type="file" id="hostBalanceReceiptInput" accept="image/*" hidden onchange="onHostBalancePaymentReceiptPicked(event)" />
+      </label>`;
+
+  if ($('hostBalancePaymentMeta')) $('hostBalancePaymentMeta').textContent = bookingRef ? `Booking ${bookingRef}` : 'Secure payment verification';
+  if ($('hostBalancePaymentBody')) {
+    $('hostBalancePaymentBody').innerHTML = `
+      <div class="host-balance-quote">
+        <div class="host-balance-amount">
+          <span>Exact remaining balance</span>
+          <strong>${esc(fmt(amount))}</strong>
+        </div>
+        <div class="host-balance-facts">
+          <div class="host-balance-fact wide"><span>Schedule</span><strong>${esc(schedule)}</strong></div>
+          <div class="host-balance-fact"><span>Booking ref</span><strong>${esc(bookingRef)}</strong></div>
+          <div class="host-balance-fact"><span>Pay before</span><strong>${esc(deadline)}</strong></div>
+        </div>
+        <div class="host-balance-section">
+          <div class="host-balance-section-label">Payment method</div>
+          <div class="host-balance-methods">${methodButtons}</div>
+        </div>
+        ${receiverHtml}
+        <div class="host-balance-method-note">${esc(hostBalancePaymentMethodNote(method))}</div>
+        <div class="host-balance-field">
+          <label for="hostBalancePaymentReference">New transaction reference</label>
+          <input class="fi" id="hostBalancePaymentReference" type="text" value="${esc(state.reference)}" placeholder="${esc(hostBalancePaymentReferencePlaceholder(method))}" maxlength="${paymentRefMaxLength(method)}" autocomplete="off" ${lockedAttempt ? 'disabled' : ''} oninput="syncHostBalancePaymentReference(this)" />
+          <div class="host-balance-field-help">${esc(paymentRefHelpText(method))} Do not reuse the deposit transaction reference.</div>
+        </div>
+        <div class="host-balance-section">
+          <div class="host-balance-section-label">New payment receipt</div>
+          ${receiptHtml}
+        </div>
+        <label class="booking-policy-check host-balance-policy">
+          <input type="checkbox" id="hostBalancePaymentAgree" />
+          <span><strong>I agree</strong> that this is a new payment for the exact balance shown, the reference and receipt are correct, and all payments are final and non-refundable.</span>
+        </label>
+        <div class="host-balance-payment-status" id="hostBalancePaymentStatus" role="status"></div>
+      </div>`;
+  }
+  if ($('hostBalancePaymentFoot')) {
+    $('hostBalancePaymentFoot').innerHTML = `
+      <button class="btn btn-g" type="button" id="hostBalancePaymentCancel" onclick="closeHostBalancePayment()">Cancel</button>
+      <button class="btn btn-p" type="button" id="hostBalancePaymentSubmit" onclick="submitHostBalancePayment()">Submit Balance Receipt</button>`;
+  }
+}
+
+function setHostBalancePaymentMethod(method) {
+  if (_hostBalancePaymentState.busy || _hostBalancePaymentState.payment?.paymentId || !paymentMethods[method] || !isDigitalPayMethod(method)) return;
+  if (_hostBalancePaymentState.method === method) return;
+  _hostBalancePaymentState.method = method;
+  _hostBalancePaymentState.reference = '';
+  clearHostBalancePaymentReceipt({ silent: true });
+  renderHostBalancePaymentForm();
+}
+
+function syncHostBalancePaymentReference(input) {
+  const method = _hostBalancePaymentState.method;
+  const clean = normalizePaymentRef(input?.value || '', method);
+  _hostBalancePaymentState.reference = clean;
+  if (input && input.value !== clean) input.value = clean;
+  if (input) input.style.borderColor = '';
+  const status = $('hostBalancePaymentStatus');
+  if (status) status.className = 'host-balance-payment-status';
+}
+
+function onHostBalancePaymentReceiptPicked(event) {
+  if (_hostBalancePaymentState.busy) {
+    if (event?.target) event.target.value = '';
+    return;
+  }
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  if (!String(file.type || '').startsWith('image/')) {
+    toast('Please choose an image file.', 'err');
+    event.target.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    toast('Image too large (max 5 MB).', 'err');
+    event.target.value = '';
+    return;
+  }
+  hostBalancePaymentReleasePreview();
+  _hostBalancePaymentState.receiptFile = file;
+  _hostBalancePaymentState.receiptPreviewUrl = URL.createObjectURL(file);
+  _hostBalancePaymentState.receiptResult = null;
+  renderHostBalancePaymentForm();
+}
+
+function clearHostBalancePaymentReceipt(options = {}) {
+  if (_hostBalancePaymentState.busy) return false;
+  hostBalancePaymentReleasePreview();
+  _hostBalancePaymentState.receiptFile = null;
+  _hostBalancePaymentState.receiptResult = null;
+  if (!options.silent) renderHostBalancePaymentForm();
+  return true;
+}
+
+function copyHostBalancePaymentNumber() {
+  const receiver = hostBalancePaymentReceiver(_hostBalancePaymentState.method);
+  if (!receiver.number) {
+    toast('Payment number is unavailable. Please use the QR.', 'inf');
+    return;
+  }
+  copyToClipboard(receiver.number.replace(/\s/g, ''));
+}
+
+function setHostBalancePaymentBusy(busy, text = '') {
+  _hostBalancePaymentState.busy = !!busy;
+  const submit = $('hostBalancePaymentSubmit');
+  const cancel = $('hostBalancePaymentCancel');
+  if (submit) {
+    submit.disabled = !!busy;
+    submit.textContent = busy ? (text || 'Securing receipt...') : 'Submit Balance Receipt';
+  }
+  if (cancel) cancel.disabled = !!busy;
+}
+
+function lockHostBalancePaymentAttempt() {
+  document.querySelectorAll('#hostBalancePaymentBody .host-balance-method').forEach(button => { button.disabled = true; });
+  const input = $('hostBalancePaymentReference');
+  if (input) {
+    input.value = _hostBalancePaymentState.reference;
+    input.disabled = true;
+  }
+}
+
+function showHostBalancePaymentInlineError(message) {
+  const status = $('hostBalancePaymentStatus');
+  if (!status) {
+    toast(message, 'err');
+    return;
+  }
+  status.textContent = String(message || 'Could not submit the balance payment.');
+  status.className = 'host-balance-payment-status show error';
+}
+
+async function submitHostBalancePayment() {
+  const api = hostBalancePaymentApi();
+  const state = _hostBalancePaymentState;
+  if (!api || state.busy || !state.booking || !state.quote) return;
+  const method = state.method;
+  const reference = normalizePaymentRef(state.reference || '', method);
+  state.reference = reference;
+  const input = $('hostBalancePaymentReference');
+  if (!hostBalancePaymentReferenceValid(method, reference)) {
+    if (input) input.style.borderColor = 'var(--red)';
+    showHostBalancePaymentInlineError(paymentRefHelpText(method));
+    input?.focus();
+    return;
+  }
+  if (hostBalancePaymentOriginalReferences().has(reference)) {
+    if (input) input.style.borderColor = 'var(--red)';
+    showHostBalancePaymentInlineError('Use the new balance transaction reference, not the original deposit reference.');
+    input?.focus();
+    return;
+  }
+  if (!state.receiptFile) {
+    const drop = $('hostBalanceReceiptDrop');
+    if (drop) drop.style.borderColor = 'var(--red)';
+    showHostBalancePaymentInlineError('Attach the new balance payment receipt before submitting.');
+    return;
+  }
+  if (!$('hostBalancePaymentAgree')?.checked) {
+    showHostBalancePaymentInlineError('Please confirm the balance payment policy before submitting.');
+    return;
+  }
+
+  setHostBalancePaymentBusy(true, state.payment?.paymentId ? 'Verifying receipt...' : 'Creating secure payment...');
+  try {
+    if (!state.payment?.paymentId) {
+      const createResponse = await api.invoke(hostBalancePaymentClient(), api.buildCreatePayload(state.quote, state.idempotencyKey, {
+        paymentMethod: method,
+        paymentReference: reference,
+      }));
+      const payment = api.normalizeQuote(createResponse, state.booking);
+      if (!payment.paymentId || !/^HBAL-[A-F0-9]{32}$/.test(payment.verificationRef)) {
+        throw new Error('The secure balance verification reference is invalid.');
+      }
+      if (Math.abs(Number(payment.balance) - Number(state.quote.balance)) > 0.009) {
+        state.quote = payment;
+        state.payment = payment;
+        renderHostBalancePaymentForm();
+        throw new Error('The balance changed while this payment was being prepared. Review the updated exact amount before continuing.');
+      }
+      const existingState = hostBalancePaymentExistingAttemptState(payment);
+      if (existingState) {
+        state.payment = payment;
+        await openHostBookings();
+        renderHostBalancePaymentResult(createResponse, existingState);
+        return;
+      }
+      if (
+        (payment.paymentProvider && payment.paymentProvider !== method) ||
+        (payment.paymentReference && normalizePaymentRef(payment.paymentReference, method) !== normalizePaymentRef(reference, method))
+      ) {
+        throw new Error('The secure payment details do not match this transaction.');
+      }
+      state.payment = payment;
+      state.method = payment.paymentProvider || method;
+      state.reference = payment.paymentReference || reference;
+      lockHostBalancePaymentAttempt();
+    }
+
+    let receiptResult = state.receiptResult;
+    let receiptVerificationId = receiptResult?.receiptVerificationId ?? receiptResult?.receipt_verification_id;
+    if (!receiptVerificationId) {
+      setHostBalancePaymentBusy(true, 'Verifying receipt...');
+      const verificationBookingData = api.buildVerificationBookingData(state.payment, {
+        paymentMethod: state.method,
+        paymentReference: state.reference,
+      });
+      const verificationPayload = {
+        bookingRef: state.payment.verificationRef,
+        provider: state.payment.paymentProvider || state.method,
+        imageFile: state.receiptFile,
+        contentType: state.receiptFile.type || 'image/jpeg',
+      };
+      if (verificationBookingData) verificationPayload.bookingData = verificationBookingData;
+      receiptResult = await DB.verifyGcashReceipt(verificationPayload);
+      receiptVerificationId = receiptResult?.receiptVerificationId ?? receiptResult?.receipt_verification_id;
+      if (!receiptVerificationId) throw new Error('Receipt verification did not return an audit reference.');
+      state.receiptResult = { ...receiptResult, receiptVerificationId };
+      receiptResult = state.receiptResult;
+    }
+
+    setHostBalancePaymentBusy(true, 'Submitting for review...');
+    const submitResponse = await api.invoke(hostBalancePaymentClient(), api.buildSubmitPayload(state.payment, receiptResult));
+    const finalPayment = api.normalizeQuote(submitResponse, state.booking);
+    state.payment = { ...state.payment, ...finalPayment };
+    await openHostBookings();
+    renderHostBalancePaymentResult(submitResponse);
+  } catch (error) {
+    showHostBalancePaymentInlineError(api.errorMessage(error));
+  } finally {
+    setHostBalancePaymentBusy(false);
+  }
+}
+
+function renderHostBalancePaymentResult(response, forcedState = '') {
+  const api = hostBalancePaymentApi();
+  const payment = api?.normalizeQuote?.(response, _hostBalancePaymentState.booking) || _hostBalancePaymentState.payment || {};
+  const state = forcedState || api?.statusState?.(response) || 'pending';
+  const config = state === 'approved'
+    ? { icon: '✓', title: 'Balance Paid', copy: 'Your remaining balance was verified and the booking is fully paid.' }
+    : state === 'rejected'
+      ? { icon: '!', title: 'Payment Not Accepted', copy: payment.reviewReason || payment.review_reason || 'This balance receipt was not accepted. Please contact Korte DOS before trying again.' }
+      : { icon: '…', title: 'Receipt Submitted', copy: 'Your new balance receipt is pending owner review. You will be notified after it is checked.' };
+  const ref = payment.bookingKey || payment.bookingRef || api?.bookingKey?.(_hostBalancePaymentState.booking) || '';
+  if ($('hostBalancePaymentMeta')) $('hostBalancePaymentMeta').textContent = state === 'approved' ? 'Payment complete' : state === 'rejected' ? 'Payment review finished' : 'Pending payment review';
+  if ($('hostBalancePaymentBody')) {
+    $('hostBalancePaymentBody').innerHTML = `
+      <div class="host-balance-result ${esc(state)}">
+        <div class="host-balance-result-icon" aria-hidden="true">${esc(config.icon)}</div>
+        <h3>${esc(config.title)}</h3>
+        <p>${esc(config.copy)}</p>
+        ${ref ? `<div class="host-balance-result-ref">Booking ${esc(ref)}</div>` : ''}
+      </div>`;
+  }
+  if ($('hostBalancePaymentFoot')) {
+    $('hostBalancePaymentFoot').innerHTML = '<button class="btn btn-p" style="width:100%;justify-content:center" type="button" onclick="closeHostBalancePayment()">Done</button>';
+  }
 }
 
 function hostBookingHasBalance(booking) {
@@ -8657,13 +9288,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   initBookingValidationHighlights();
   $('invModal').addEventListener('click', e => { if (e.target === $('invModal')) closeModal(); });
   $('hostBookingsModal')?.addEventListener('click', e => { if (e.target === $('hostBookingsModal')) closeHostBookings(); });
+  $('hostBalancePaymentModal')?.addEventListener('click', e => { if (e.target === $('hostBalancePaymentModal')) closeHostBalancePayment(); });
   $('opModal').addEventListener('click', e => { if (e.target === $('opModal')) closeOpModal(); });
   $('hostApplyModal')?.addEventListener('click', e => { if (e.target === $('hostApplyModal')) closeHostApplyModal(); });
   $('hostSessionModal')?.addEventListener('click', e => { if (e.target === $('hostSessionModal')) closeHostSessionModal(); });
   initOpAnnounceSplash();
   initEasterSplash();
   initGrandSplash();
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSharedDatePicker(); closeQrZoom(); closeFindTimeModal(); closeBookModal(); closeOpModal(); closeHostApplyModal(); closeHostSessionModal(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSharedDatePicker(); closeQrZoom(); closeFindTimeModal(); closeBookModal(); closeOpModal(); closeHostApplyModal(); closeHostSessionModal(); closeHostBalancePayment(); } });
   initScrollReveal();
 });
 

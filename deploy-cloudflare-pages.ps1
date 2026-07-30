@@ -39,6 +39,8 @@ $publicFiles = @(
   "chart.min.js",
   "court-splash.jpg",
   "f6b5eb3c-a6b6-49ce-981e-d9b127b67ba3.jpg",
+  "host-balance-admin.js",
+  "host-balance-payment.js",
   "host.html",
   "index.html",
   "korte-dos-logo.png",
