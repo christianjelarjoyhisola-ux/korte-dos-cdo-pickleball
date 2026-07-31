@@ -1,0 +1,237 @@
+name: Deploy Telegram Owner Linking
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-telegram-owner-linking.yml"
+      - "supabase/migrations/20260731153000_telegram_owner_linking.sql"
+      - "supabase/functions/_shared/telegram-owner-link.ts"
+      - "supabase/functions/_shared/telegram-owner-link_test.ts"
+      - "supabase/functions/send-telegram-notification/**"
+      - "supabase/functions/verify-gcash-receipt/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Apply Telegram schema and deploy notifications
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260731153000_telegram_owner_linking.sql
+      MIGRATION_VERSION: "20260731153000"
+      MIGRATION_NAME: telegram_owner_linking
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Test Telegram linking and notification logic
+        if: ${{ hashFiles('supabase/functions/_shared/telegram-owner-link.ts') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$MIGRATION_FILE"
+          deno test --no-config \
+            supabase/functions/_shared/telegram-owner-link_test.ts \
+            supabase/functions/send-telegram-notification/logic_test.ts
+
+      - name: Rehearse and apply the database migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+
+          migration_sha="$(sha256sum "$MIGRATION_FILE" | cut -d' ' -f1)"
+          rehearsal_payload="$RUNNER_TEMP/telegram-link-rehearsal.json"
+          rehearsal_response="$RUNNER_TEMP/telegram-link-rehearsal-response.json"
+          apply_payload="$RUNNER_TEMP/telegram-link-apply.json"
+          apply_response="$RUNNER_TEMP/telegram-link-apply-response.json"
+
+          jq -Rs \
+            '{query: ("begin;\n" + . + "\nrollback;")}' \
+            "$MIGRATION_FILE" > "$rehearsal_payload"
+
+          rehearsal_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 180 \
+            --output "$rehearsal_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$rehearsal_payload")"
+
+          if [[ ! "$rehearsal_status" =~ ^2 ]]; then
+            echo "::error::Telegram migration rehearsal failed with HTTP $rehearsal_status."
+            jq -c '{code, message, error}' "$rehearsal_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          history_sql="$(cat <<SQL
+          create schema if not exists supabase_migrations;
+          create table if not exists supabase_migrations.schema_migrations (
+            version text not null primary key
+          );
+          alter table supabase_migrations.schema_migrations
+            add column if not exists statements text[];
+          alter table supabase_migrations.schema_migrations
+            add column if not exists name text;
+          insert into supabase_migrations.schema_migrations (version, name, statements)
+          values (
+            '$MIGRATION_VERSION',
+            '$MIGRATION_NAME',
+            array['sha256:$migration_sha']::text[]
+          )
+          on conflict (version) do update
+          set name = excluded.name,
+              statements = excluded.statements;
+          SQL
+          )"
+
+          jq -Rs --arg history "$history_sql" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$MIGRATION_FILE" > "$apply_payload"
+
+          apply_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 180 \
+            --output "$apply_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$apply_payload")"
+
+          if [[ ! "$apply_status" =~ ^2 ]]; then
+            echo "::error::Telegram migration failed with HTTP $apply_status."
+            jq -c '{code, message, error}' "$apply_response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production schema
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_payload="$RUNNER_TEMP/telegram-link-verify.json"
+          verify_response="$RUNNER_TEMP/telegram-link-verify-response.json"
+          verify_sql="$(cat <<'SQL'
+          do $verify$
+          begin
+            if to_regclass('public.telegram_owner_link_codes') is null then
+              raise exception 'telegram owner link codes table is missing';
+            end if;
+            if to_regclass('public.telegram_owner_connections') is null then
+              raise exception 'telegram owner connections table is missing';
+            end if;
+            if to_regclass('public.telegram_notification_deliveries') is null then
+              raise exception 'telegram notification deliveries table is missing';
+            end if;
+            if to_regprocedure(
+              'public.create_telegram_owner_link_code(text,uuid)'
+            ) is null then
+              raise exception 'telegram code creation function is missing';
+            end if;
+            if to_regprocedure(
+              'public.consume_telegram_owner_link_code(text,bigint,bigint,text,text,text,text,text)'
+            ) is null then
+              raise exception 'telegram code consumption function is missing';
+            end if;
+            if to_regprocedure(
+              'public.list_active_telegram_owner_chat_ids()'
+            ) is null then
+              raise exception 'telegram recipient function is missing';
+            end if;
+            if to_regprocedure(
+              'public.claim_telegram_notification_delivery(text,bigint,text)'
+            ) is null then
+              raise exception 'telegram delivery claim function is missing';
+            end if;
+          end
+          $verify$;
+          SQL
+          )"
+
+          jq -n --arg query "$verify_sql" '{query: $query}' > "$verify_payload"
+          verify_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$verify_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$verify_payload")"
+
+          if [[ ! "$verify_status" =~ ^2 ]]; then
+            echo "::error::Telegram production schema verification failed with HTTP $verify_status."
+            jq -c '{code, message, error}' "$verify_response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Deploy Telegram notification functions
+        if: ${{ hashFiles('supabase/functions/_shared/telegram-owner-link.ts') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy send-telegram-notification \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt
+          supabase functions deploy verify-gcash-receipt \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt
+
+      - name: Verify pending-only dispatcher
+        if: ${{ hashFiles('supabase/functions/_shared/telegram-owner-link.ts') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/telegram-dispatcher-smoke.json"
+          status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 60 \
+            --output "$response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://$SUPABASE_PROJECT_REF.supabase.co/functions/v1/send-telegram-notification" \
+            --header "Content-Type: application/json" \
+            --data '{"type":"open_play","event":"open_play"}')"
+
+          if [[ "$status" != "200" ]] || ! jq -e \
+            '.ok == true and .skipped == true' "$response" >/dev/null; then
+            echo "::error::Telegram dispatcher smoke check failed with HTTP $status."
+            jq -c . "$response" 2>/dev/null || true
+            exit 1
+          fi
