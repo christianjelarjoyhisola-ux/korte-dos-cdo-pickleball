@@ -1182,40 +1182,45 @@ async function runOCR(
   return { text: "", confidence: 0, provider: "none" };
 }
 
-async function sendTelegram(message: string) {
-  const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN") || "";
-  const chatIdRaw = Deno.env.get("TELEGRAM_CHAT_ID") || "";
-  if (!botToken || !chatIdRaw) return;
-  const chatIds = chatIdRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  await Promise.allSettled(
-    chatIds.map((chatId) =>
-      fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: message,
-          parse_mode: "HTML",
-        }),
-      })
-    ),
-  );
-}
+async function dispatchTelegramPaymentReview(bookingRef: string) {
+  const supabaseUrl = String(Deno.env.get("SUPABASE_URL") || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const serviceRoleKey = String(
+    Deno.env.get("SERVICE_ROLE_KEY") ||
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+      "",
+  ).trim();
+  if (!supabaseUrl || !serviceRoleKey || !bookingRef) return;
 
-async function bookingIsStillPending(
-  db: any,
-  bookingRef: string,
-): Promise<boolean> {
-  const { data, error } = await db
-    .from("bookings")
-    .select("status")
-    .eq("ref", bookingRef)
-    .maybeSingle();
-  if (error) {
-    console.error("Telegram pending-status check failed:", errMsg(error));
-    return false;
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/send-telegram-notification`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          bookingRef,
+          event: "payment_review_needed",
+        }),
+      },
+    );
+    if (!response.ok) {
+      console.error(
+        "Telegram payment-review dispatcher failed:",
+        response.status,
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Telegram payment-review dispatcher unavailable:",
+      errMsg(error),
+    );
   }
-  return String(data?.status || "").trim().toLowerCase() === "pending";
 }
 
 async function alertStoredPendingReceiptAfterFailure(
@@ -1266,12 +1271,7 @@ async function alertStoredPendingReceiptAfterFailure(
         scheduleLabel: paymentReviewScheduleLabel(group) || undefined,
       },
     });
-    await sendTelegram(
-      `⚠️ <b>RECEIPT NEEDS OWNER REVIEW</b>\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `📋 Ref: <code>${bookingRef}</code>\n` +
-        `⏳ Receipt evidence is stored, but automatic verification did not finish.`,
-    );
+    await dispatchTelegramPaymentReview(bookingRef);
   } catch (notificationError) {
     console.error(
       "failed to alert owner after receipt processing error:",
@@ -4122,23 +4122,8 @@ Deno.serve(async (req) => {
     }
 
     // ── alert admin on anything needing a human ─────────────────────────────
-    if (
-      hasPersistedBooking && needsOwnerReview &&
-      await bookingIsStillPending(db, bookingRef)
-    ) {
-      await sendTelegram(
-        `⚠️ <b>RECEIPT NEEDS OWNER REVIEW</b>\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `📋 Ref: <code>${bookingRef}</code>\n` +
-          `👤 ${booking.full_name || "—"}\n` +
-          `💰 Expected: ₱${expectedAmount.toFixed(2)}` +
-          (extractedAmount != null
-            ? ` · Seen: ₱${extractedAmount.toFixed(2)}`
-            : "") +
-          `\n` +
-          `🚩 Flags: <code>${flags.join(", ") || "none"}</code>\n` +
-          `⏳ Booking remains pending. Open the admin panel to review it.`,
-      );
+    if (hasPersistedBooking && needsOwnerReview) {
+      await dispatchTelegramPaymentReview(bookingRef);
     }
 
     return json({
