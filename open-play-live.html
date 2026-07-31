@@ -1,0 +1,2204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#081d31" />
+<title>Open Play Live | Korte DOS</title>
+<link rel="icon" type="image/png" href="korte-dos-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --navy-950: #061522;
+    --navy-900: #081d31;
+    --navy-850: #0b2744;
+    --navy-800: #103552;
+    --navy-700: #143d63;
+    --navy-500: #3677a5;
+    --red: #c83d26;
+    --red-dark: #9f2f1f;
+    --lime: #c9cf43;
+    --lime-soft: #e5e98d;
+    --paper: #f6f8f3;
+    --ink: #10283c;
+    --muted: #647688;
+    --line: #d8e1e5;
+    --card: #ffffff;
+    --success: #17734b;
+    --warning: #a06013;
+    --danger: #b52d20;
+    --shadow: 0 20px 50px rgba(2, 18, 31, .14);
+    --shadow-soft: 0 10px 28px rgba(2, 18, 31, .09);
+    --radius: 18px;
+    --radius-sm: 12px;
+  }
+
+  html {
+    min-height: 100%;
+    background: var(--paper);
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    background:
+      radial-gradient(circle at 84% 2%, rgba(201, 207, 67, .14), transparent 24rem),
+      linear-gradient(180deg, var(--navy-950) 0, var(--navy-900) 19rem, var(--paper) 19rem);
+    color: var(--ink);
+    font-family: "Outfit", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  button, select { font: inherit; }
+  button, a, select { -webkit-tap-highlight-color: transparent; }
+  button { cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  .skip-link {
+    position: fixed;
+    z-index: 1000;
+    top: 10px;
+    left: 10px;
+    transform: translateY(-160%);
+    border-radius: 8px;
+    background: var(--lime);
+    color: var(--navy-950);
+    padding: 10px 14px;
+    font-weight: 800;
+  }
+
+  .skip-link:focus { transform: translateY(0); }
+
+  :focus-visible {
+    outline: 3px solid var(--lime);
+    outline-offset: 3px;
+  }
+
+  .site-header {
+    min-height: 76px;
+    padding: max(12px, env(safe-area-inset-top)) 24px 12px;
+    color: #fff;
+  }
+
+  .header-inner {
+    width: min(1280px, 100%);
+    min-height: 52px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .brand img {
+    width: 46px;
+    height: 46px;
+    border: 2px solid rgba(255, 255, 255, .22);
+    border-radius: 50%;
+    background: #fff;
+    object-fit: contain;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .22);
+  }
+
+  .brand-text strong,
+  .display {
+    font-family: "Bebas Neue", Impact, sans-serif;
+    font-weight: 400;
+    letter-spacing: .075em;
+  }
+
+  .brand-text strong {
+    display: block;
+    font-size: 1.45rem;
+    line-height: 1;
+  }
+
+  .brand-text span {
+    display: block;
+    margin-top: 4px;
+    color: var(--lime-soft);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .sync-note {
+    color: #b9c9d6;
+    font-size: .76rem;
+    text-align: right;
+  }
+
+  .sync-note strong {
+    display: block;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .icon-button {
+    min-height: 42px;
+    border: 1px solid rgba(255, 255, 255, .24);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .08);
+    color: #fff;
+    padding: 9px 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .8rem;
+    font-weight: 800;
+    transition: background .2s ease, transform .2s ease;
+  }
+
+  .icon-button:hover { background: rgba(255, 255, 255, .16); }
+  .icon-button:active { transform: translateY(1px); }
+  .icon-button[disabled] { cursor: wait; opacity: .62; }
+
+  .page-shell {
+    width: min(1280px, calc(100% - 32px));
+    margin: 18px auto 48px;
+  }
+
+  .page-state {
+    min-height: 360px;
+    border: 1px solid rgba(255, 255, 255, .13);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, .98);
+    box-shadow: var(--shadow);
+    padding: clamp(30px, 6vw, 72px) 24px;
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+
+  .state-content { width: min(520px, 100%); }
+
+  .state-mark {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 18px;
+    border-radius: 22px;
+    display: grid;
+    place-items: center;
+    background: var(--navy-850);
+    color: var(--lime);
+    font-family: "Bebas Neue", Impact, sans-serif;
+    font-size: 2rem;
+    letter-spacing: .08em;
+    box-shadow: 0 12px 28px rgba(8, 29, 49, .24);
+  }
+
+  .state-title {
+    margin: 0;
+    font-family: "Bebas Neue", Impact, sans-serif;
+    font-size: clamp(2rem, 6vw, 3rem);
+    font-weight: 400;
+    letter-spacing: .05em;
+  }
+
+  .state-copy {
+    margin: 10px auto 0;
+    color: var(--muted);
+    font-size: .98rem;
+    line-height: 1.65;
+  }
+
+  .state-button {
+    min-height: 46px;
+    margin-top: 22px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--red);
+    color: #fff;
+    padding: 11px 20px;
+    font-weight: 800;
+    box-shadow: 0 8px 20px rgba(200, 61, 38, .24);
+  }
+
+  .state-button:hover { background: var(--red-dark); }
+
+  .loading-lines {
+    width: min(390px, 100%);
+    display: grid;
+    gap: 12px;
+  }
+
+  .loading-line {
+    height: 16px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e7edf0 20%, #f6f8f9 50%, #e7edf0 80%);
+    background-size: 260% 100%;
+    animation: shimmer 1.35s linear infinite;
+  }
+
+  .loading-line:nth-child(2) { width: 76%; margin-inline: auto; }
+  .loading-line:nth-child(3) { width: 54%; margin-inline: auto; }
+
+  @keyframes shimmer {
+    to { background-position: -260% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+  }
+
+  .inline-alert {
+    margin-bottom: 14px;
+    border: 1px solid rgba(181, 45, 32, .24);
+    border-radius: var(--radius-sm);
+    background: #fff2ef;
+    color: #8b241a;
+    padding: 11px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: .84rem;
+    font-weight: 700;
+  }
+
+  .session-hero {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .15);
+    border-radius: 24px;
+    background:
+      linear-gradient(115deg, rgba(255, 255, 255, .04), transparent 38%),
+      var(--navy-850);
+    color: #fff;
+    padding: clamp(22px, 4vw, 38px);
+    box-shadow: var(--shadow);
+  }
+
+  .session-hero::after {
+    content: "";
+    position: absolute;
+    right: -100px;
+    bottom: -160px;
+    width: 340px;
+    height: 340px;
+    border: 54px solid rgba(201, 207, 67, .09);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .hero-top {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .eyebrow {
+    margin: 0 0 5px;
+    color: var(--lime-soft);
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+
+  .session-title {
+    margin: 0;
+    font-family: "Bebas Neue", Impact, sans-serif;
+    font-size: clamp(2.25rem, 6vw, 4.2rem);
+    font-weight: 400;
+    letter-spacing: .04em;
+    line-height: .96;
+  }
+
+  .session-meta {
+    margin: 12px 0 0;
+    color: #c4d2dc;
+    font-size: .9rem;
+    line-height: 1.55;
+  }
+
+  .status-badge {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, .2);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .08);
+    padding: 8px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .75rem;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 5px currentColor;
+    opacity: .9;
+  }
+
+  .status-badge.active { color: var(--lime-soft); }
+  .status-badge.paused { color: #ffd18b; }
+  .status-badge.completed { color: #a9d6ff; }
+  .status-badge.cancelled { color: #ffaea3; }
+  .status-badge.draft { color: #d4e0e8; }
+
+  .metrics {
+    position: relative;
+    z-index: 1;
+    margin-top: 28px;
+    border-top: 1px solid rgba(255, 255, 255, .14);
+    padding-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .metric {
+    min-width: 0;
+    border-left: 3px solid var(--lime);
+    padding: 3px 0 3px 12px;
+  }
+
+  .metric-value {
+    display: block;
+    font-family: "Bebas Neue", Impact, sans-serif;
+    font-size: 1.75rem;
+    letter-spacing: .04em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-label {
+    display: block;
+    margin-top: 5px;
+    color: #aabfce;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .notification-panel {
+    margin-top: 16px;
+    border: 1px solid rgba(201, 207, 67, .34);
+    border-radius: var(--radius);
+    background: linear-gradient(105deg, #eff2b9, #fff 72%);
+    padding: 17px 18px;
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(200px, 340px) auto;
+    align-items: center;
+    gap: 16px;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .public-checkin-panel {
+    border-color: rgba(200, 61, 38, .3);
+    background: linear-gradient(105deg, #fff0ec, #fff 72%);
+  }
+
+  .public-checkin-panel .notification-copy p,
+  .public-checkin-panel .field-label {
+    color: #7b493f;
+  }
+
+  .public-checkin-panel .player-select {
+    border-color: #d7a096;
+  }
+
+  .public-checkin-panel .checkin-button {
+    background: var(--red);
+  }
+
+  .public-checkin-panel .checkin-button:hover {
+    background: var(--red-dark);
+  }
+
+  .checkin-help.success { color: var(--success) !important; }
+  .checkin-help.error { color: var(--danger) !important; }
+
+  .notification-copy h2 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .notification-copy p {
+    margin: 5px 0 0;
+    color: #5d6d49;
+    font-size: .78rem;
+    line-height: 1.45;
+  }
+
+  .field-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #43522f;
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .player-select {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid #aeb768;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--ink);
+    padding: 9px 36px 9px 11px;
+  }
+
+  .notify-button {
+    min-height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--navy-850);
+    color: #fff;
+    padding: 10px 16px;
+    font-size: .82rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .notify-button:hover { background: var(--navy-700); }
+  .notify-button:disabled { cursor: not-allowed; opacity: .5; }
+  .notify-button.on { background: var(--success); }
+
+  .dashboard {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(310px, .8fr);
+    align-items: start;
+    gap: 18px;
+  }
+
+  .primary-stack,
+  .side-stack {
+    min-width: 0;
+    display: grid;
+    gap: 18px;
+  }
+
+  .panel {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .panel-header {
+    min-height: 62px;
+    border-bottom: 1px solid var(--line);
+    padding: 15px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .panel-title {
+    margin: 0;
+    font-family: "Bebas Neue", Impact, sans-serif;
+    font-size: 1.55rem;
+    font-weight: 400;
+    letter-spacing: .055em;
+  }
+
+  .panel-subtitle {
+    color: var(--muted);
+    font-size: .73rem;
+    font-weight: 700;
+  }
+
+  .count-badge {
+    border-radius: 999px;
+    background: #edf2f5;
+    color: var(--navy-700);
+    padding: 5px 9px;
+    font-size: .7rem;
+    font-weight: 800;
+  }
+
+  .panel-body { padding: 18px; }
+
+  .courts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .court-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #cad7df;
+    border-radius: 15px;
+    background: #f9fbfc;
+  }
+
+  .court-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    background: var(--navy-500);
+  }
+
+  .court-card.complete::before { background: var(--success); }
+  .court-card.empty::before { background: #aab7c1; }
+
+  .court-heading {
+    min-height: 52px;
+    border-bottom: 1px solid #dce4e8;
+    padding: 12px 14px 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .court-name {
+    font-size: .92rem;
+    font-weight: 800;
+  }
+
+  .court-timer {
+    border-radius: 999px;
+    background: var(--navy-850);
+    color: #fff;
+    padding: 5px 9px;
+    font-size: .72rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .court-timer.complete { background: var(--success); }
+
+  .matchup {
+    padding: 15px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 7px;
+  }
+
+  .team {
+    min-width: 0;
+    border: 1px solid #d6e0e5;
+    border-radius: 12px;
+    background: #fff;
+    padding: 11px;
+  }
+
+  .team.team-a { border-top: 4px solid var(--navy-500); }
+  .team.team-b { border-top: 4px solid var(--red); }
+  .team.winner { background: #f3f8d2; border-color: #aab432; }
+
+  .team-label {
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: .62rem;
+    font-weight: 800;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+  }
+
+  .player-name {
+    overflow-wrap: anywhere;
+    font-size: .84rem;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .player-name + .player-name {
+    margin-top: 7px;
+    border-top: 1px dashed #d8e1e5;
+    padding-top: 7px;
+  }
+
+  .versus {
+    display: grid;
+    place-items: center;
+    color: #80909d;
+    font-family: "Bebas Neue", Impact, sans-serif;
+    font-size: 1rem;
+  }
+
+  .court-result {
+    margin: 0 15px 15px;
+    border-radius: 9px;
+    background: #e8f3ec;
+    color: #165f3e;
+    padding: 8px 10px;
+    font-size: .72rem;
+    font-weight: 800;
+    text-align: center;
+  }
+
+  .court-empty {
+    min-height: 142px;
+    padding: 26px 18px;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    font-size: .82rem;
+    line-height: 1.5;
+    text-align: center;
+  }
+
+  .next-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .next-card {
+    border: 1px solid #b7c05b;
+    border-radius: 14px;
+    background: linear-gradient(145deg, #f7f9d9, #fff);
+    padding: 13px;
+  }
+
+  .next-card-header {
+    margin-bottom: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .next-number {
+    color: #555e17;
+    font-size: .68rem;
+    font-weight: 900;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .ready-pill {
+    border-radius: 999px;
+    background: var(--lime);
+    color: var(--navy-950);
+    padding: 4px 7px;
+    font-size: .62rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .next-teams {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+  }
+
+  .next-team {
+    min-width: 0;
+    color: var(--ink);
+    font-size: .78rem;
+    font-weight: 800;
+    line-height: 1.45;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  .next-vs {
+    color: #79844a;
+    font-family: "Bebas Neue", Impact, sans-serif;
+    text-align: center;
+  }
+
+  .queue-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .queue-item {
+    min-height: 61px;
+    border-bottom: 1px solid #e3e9ec;
+    padding: 10px 0;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+  }
+
+  .queue-item:last-child { border-bottom: 0; }
+
+  .queue-position {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: var(--navy-850);
+    color: #fff;
+    font-size: .75rem;
+    font-weight: 900;
+  }
+
+  .queue-item.is-next .queue-position {
+    background: var(--lime);
+    color: var(--navy-950);
+  }
+
+  .queue-name {
+    overflow-wrap: anywhere;
+    font-size: .84rem;
+    font-weight: 800;
+  }
+
+  .queue-meta {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: .68rem;
+    line-height: 1.35;
+  }
+
+  .standings-wrap { overflow-x: auto; }
+
+  .standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .78rem;
+  }
+
+  .standings-table th {
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    padding: 0 7px 9px;
+    font-size: .62rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-align: right;
+    text-transform: uppercase;
+  }
+
+  .standings-table th:nth-child(2) { text-align: left; }
+
+  .standings-table td {
+    border-bottom: 1px solid #e5eaed;
+    padding: 10px 7px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .standings-table tr:last-child td { border-bottom: 0; }
+  .standings-table td:nth-child(2) { text-align: left; }
+
+  .rank {
+    width: 26px;
+    height: 26px;
+    margin-left: auto;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: #edf2f5;
+    color: var(--navy-700);
+    font-weight: 900;
+  }
+
+  .rank.top { background: var(--lime); color: var(--navy-950); }
+  .standing-name { min-width: 110px; overflow-wrap: anywhere; font-weight: 800; }
+
+  .empty-box {
+    min-height: 112px;
+    border: 1px dashed #cbd7de;
+    border-radius: 12px;
+    background: #fafcfc;
+    color: var(--muted);
+    padding: 22px 15px;
+    display: grid;
+    place-items: center;
+    font-size: .8rem;
+    line-height: 1.5;
+    text-align: center;
+  }
+
+  .session-finished {
+    margin-top: 18px;
+    border: 1px solid #9fb9cd;
+    border-radius: var(--radius);
+    background: #eaf3fa;
+    color: var(--navy-850);
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .session-finished strong { display: block; }
+  .session-finished span { color: #557188; font-size: .8rem; }
+
+  .site-footer {
+    width: min(1280px, calc(100% - 32px));
+    margin: 0 auto;
+    border-top: 1px solid #d8e1e5;
+    padding: 20px 0 max(28px, env(safe-area-inset-bottom));
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: .72rem;
+  }
+
+  .site-footer a { color: var(--navy-700); font-weight: 800; }
+
+  .toast {
+    position: fixed;
+    z-index: 500;
+    right: 18px;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    width: min(380px, calc(100% - 36px));
+    border-left: 5px solid var(--lime);
+    border-radius: 12px;
+    background: var(--navy-900);
+    color: #fff;
+    padding: 13px 15px;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, .3);
+    font-size: .82rem;
+    font-weight: 700;
+    line-height: 1.45;
+  }
+
+  .toast.error { border-left-color: var(--red); }
+
+  .sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  @media (max-width: 920px) {
+    body {
+      background:
+        radial-gradient(circle at 84% 2%, rgba(201, 207, 67, .13), transparent 18rem),
+        linear-gradient(180deg, var(--navy-950) 0, var(--navy-900) 24rem, var(--paper) 24rem);
+    }
+    .dashboard { grid-template-columns: 1fr; }
+    .side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .notification-panel { grid-template-columns: 1fr minmax(200px, 1fr) auto; }
+  }
+
+  @media (max-width: 680px) {
+    .site-header { padding-inline: 16px; }
+    .brand-text span { display: none; }
+    .sync-note { display: none; }
+    .icon-button .button-label { display: none; }
+    .icon-button { width: 43px; justify-content: center; padding-inline: 0; }
+    .page-shell { width: min(100% - 20px, 1280px); margin-top: 8px; }
+    .session-hero { border-radius: 20px; padding: 21px 18px; }
+    .hero-top { display: block; }
+    .status-badge { margin-top: 15px; }
+    .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 9px; }
+    .notification-panel { grid-template-columns: 1fr; }
+    .notify-button { width: 100%; }
+    .courts-grid, .next-grid, .side-stack { grid-template-columns: 1fr; }
+    .panel-header { padding-inline: 15px; }
+    .panel-body { padding: 14px; }
+    .matchup { padding: 12px; grid-template-columns: minmax(0, 1fr) 25px minmax(0, 1fr); }
+    .team { padding: 9px; }
+    .site-footer { width: min(100% - 24px, 1280px); display: block; text-align: center; }
+    .site-footer span { display: block; margin-top: 7px; }
+    .session-finished { align-items: flex-start; flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to live session</a>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html" aria-label="Korte DOS home">
+      <img src="korte-dos-logo.png" alt="" />
+      <span class="brand-text">
+        <strong>Korte DOS</strong>
+        <span>Open Play Live</span>
+      </span>
+    </a>
+    <div class="header-actions">
+      <div class="sync-note" aria-live="polite">
+        Auto-refreshes every 10 seconds
+        <strong id="lastUpdated">Connecting&hellip;</strong>
+      </div>
+      <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh live session">
+        <span aria-hidden="true">&#8635;</span>
+        <span class="button-label">Refresh</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="page-shell" id="main">
+  <div class="inline-alert" id="staleAlert" role="alert" hidden>
+    <span id="staleAlertText">Live updates are temporarily unavailable. Showing the last update.</span>
+    <button class="state-button" id="inlineRetryButton" type="button" style="margin:0;min-height:36px;padding:7px 12px">Retry</button>
+  </div>
+
+  <section class="page-state" id="loadingState" aria-label="Loading live open play session">
+    <div class="state-content">
+      <div class="state-mark" aria-hidden="true">KD</div>
+      <h1 class="state-title">Loading the live courts</h1>
+      <p class="state-copy">Getting the latest court assignments, queue, and standings.</p>
+      <div class="loading-lines" aria-hidden="true" style="margin:24px auto 0">
+        <span class="loading-line"></span>
+        <span class="loading-line"></span>
+        <span class="loading-line"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-state" id="messageState" hidden>
+    <div class="state-content">
+      <div class="state-mark" id="messageMark" aria-hidden="true">!</div>
+      <h1 class="state-title" id="messageTitle">Session unavailable</h1>
+      <p class="state-copy" id="messageCopy">Ask the organizer for a fresh live-session link.</p>
+      <button class="state-button" id="messageRetryButton" type="button">Try again</button>
+    </div>
+  </section>
+
+  <div id="liveContent" hidden>
+    <section class="session-hero" aria-labelledby="sessionTitle">
+      <div class="hero-top">
+        <div>
+          <p class="eyebrow">Open Play Rotation</p>
+          <h1 class="session-title" id="sessionTitle">Korte DOS Open Play</h1>
+          <p class="session-meta" id="sessionMeta"></p>
+        </div>
+        <span class="status-badge draft" id="statusBadge">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="statusText">Getting ready</span>
+        </span>
+      </div>
+      <div class="metrics" aria-label="Session summary">
+        <div class="metric">
+          <strong class="metric-value" id="metricPlayers">0</strong>
+          <span class="metric-label">Players</span>
+        </div>
+        <div class="metric">
+          <strong class="metric-value" id="metricPlaying">0</strong>
+          <span class="metric-label">On court</span>
+        </div>
+        <div class="metric">
+          <strong class="metric-value" id="metricQueue">0</strong>
+          <span class="metric-label">In queue</span>
+        </div>
+        <div class="metric">
+          <strong class="metric-value" id="metricGames">0</strong>
+          <span class="metric-label">Results</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="notification-panel" aria-labelledby="notificationTitle">
+      <div class="notification-copy">
+        <h2 id="notificationTitle">Get an Up Next alert</h2>
+        <p id="notificationHelp">Select your name, then enable browser alerts on this device.</p>
+      </div>
+      <div>
+        <label class="field-label" for="playerSelect">I am</label>
+        <select class="player-select" id="playerSelect">
+          <option value="">Select your name</option>
+        </select>
+      </div>
+      <button class="notify-button" id="notifyButton" type="button" disabled>Enable alerts</button>
+    </section>
+
+    <section class="notification-panel public-checkin-panel" id="publicCheckInPanel" aria-labelledby="checkInTitle" hidden>
+      <div class="notification-copy">
+        <h2 id="checkInTitle">Check in to Open Play</h2>
+        <p class="checkin-help" id="checkInHelp" aria-live="polite">Choose your name to join or return to the waiting queue.</p>
+      </div>
+      <div>
+        <label class="field-label" for="checkInPlayerSelect">Player name</label>
+        <select class="player-select" id="checkInPlayerSelect" aria-describedby="checkInHelp">
+          <option value="">Select your name</option>
+        </select>
+      </div>
+      <button class="notify-button checkin-button" id="checkInButton" type="button" disabled>Check in</button>
+    </section>
+
+    <div class="dashboard">
+      <div class="primary-stack">
+        <section class="panel" aria-labelledby="courtsTitle">
+          <header class="panel-header">
+            <div>
+              <h2 class="panel-title" id="courtsTitle">Live Courts</h2>
+              <div class="panel-subtitle" id="roundLabel">Waiting for the first rotation</div>
+            </div>
+            <span class="count-badge" id="courtsCount">0 courts</span>
+          </header>
+          <div class="panel-body">
+            <div class="courts-grid" id="courtsGrid"></div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="nextTitle">
+          <header class="panel-header">
+            <div>
+              <h2 class="panel-title" id="nextTitle">Up Next</h2>
+              <div class="panel-subtitle">Please stay close to the courts</div>
+            </div>
+            <span class="count-badge" id="nextCount">0 players</span>
+          </header>
+          <div class="panel-body">
+            <div class="next-grid" id="nextGrid"></div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="side-stack" aria-label="Queue and standings">
+        <section class="panel" aria-labelledby="queueTitle">
+          <header class="panel-header">
+            <div>
+              <h2 class="panel-title" id="queueTitle">Waiting Queue</h2>
+              <div class="panel-subtitle">Numbered in current order</div>
+            </div>
+            <span class="count-badge" id="queueCount">0</span>
+          </header>
+          <div class="panel-body">
+            <ol class="queue-list" id="queueList"></ol>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="standingsTitle">
+          <header class="panel-header">
+            <div>
+              <h2 class="panel-title" id="standingsTitle">Standings</h2>
+              <div class="panel-subtitle">Wins, games, and win rate</div>
+            </div>
+          </header>
+          <div class="panel-body">
+            <div class="standings-wrap" id="standingsWrap">
+              <table class="standings-table">
+                <caption class="sr-only">Current Open Play player standings</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Rank</th>
+                    <th scope="col">Player</th>
+                    <th scope="col">W</th>
+                    <th scope="col">G</th>
+                    <th scope="col">Rate</th>
+                  </tr>
+                </thead>
+                <tbody id="standingsBody"></tbody>
+              </table>
+            </div>
+            <div class="empty-box" id="standingsEmpty" hidden>No results have been recorded yet.</div>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="session-finished" id="finishedNotice" hidden aria-live="polite">
+      <div>
+        <strong id="finishedTitle">This session has ended.</strong>
+        <span id="finishedCopy">Final court history and standings remain available.</span>
+      </div>
+      <span aria-hidden="true">&#10003; Final</span>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <a href="index.html">Korte DOS Pickleball</a>
+  <span>Bayabas, Cagayan de Oro &middot; Live information may be up to 10 seconds behind.</span>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="supabase.min.js"></script>
+<script src="supabase-config.js?v=20260724-open-play-live-v1"></script>
+<script src="open-play-rotation.js?v=20260724-open-play-live-v1"></script>
+<script>
+(function () {
+  "use strict";
+
+  const POLL_MS = 10000;
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const TERMINAL_STATUSES = new Set(["completed", "cancelled"]);
+  const CHECK_IN_ELIGIBLE_STATUSES = new Set([
+    "removed",
+    "no_show",
+    "not_checked_in",
+    "not_here",
+    "not-here",
+    "not here",
+    "checked_out",
+    "break",
+    "on_break",
+    "on break",
+    "inactive",
+  ]);
+  const EXCLUDED_PLAYER_STATUSES = new Set(CHECK_IN_ELIGIBLE_STATUSES);
+  const $ = id => document.getElementById(id);
+
+  const state = {
+    sessionId: "",
+    payload: null,
+    loading: false,
+    hasLoaded: false,
+    selectedPlayerId: "",
+    previousUpNext: new Set(),
+    currentUpNext: new Set(),
+    alertArmed: false,
+    checkInPlayerId: "",
+    checkingIn: false,
+    checkInFeedback: null,
+    pollHandle: null,
+    tickHandle: null,
+    toastHandle: null,
+    audioContext: null,
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function firstValue() {
+    for (let index = 0; index < arguments.length; index += 1) {
+      if (arguments[index] !== undefined && arguments[index] !== null) return arguments[index];
+    }
+    return undefined;
+  }
+
+  function asArray(value) {
+    if (Array.isArray(value)) return value;
+    if (value == null) return [];
+    return [value];
+  }
+
+  function uniqueStrings(values) {
+    const seen = new Set();
+    return asArray(values).map(String).filter(value => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+  }
+
+  function normalizePayload(rawValue) {
+    let raw = rawValue;
+    if (Array.isArray(raw) && raw.length === 1) raw = raw[0];
+    if (raw && raw.data && !raw.session && !raw.game_session && !raw.id) raw = raw.data;
+    if (!raw || typeof raw !== "object") return null;
+
+    const nestedSession = firstValue(raw.session, raw.gameSession, raw.game_session);
+    const session = nestedSession && typeof nestedSession === "object" ? nestedSession : raw;
+    const players = asArray(firstValue(raw.players, raw.roster, session.players, session.roster));
+    const rounds = asArray(firstValue(raw.rounds, raw.gameRounds, raw.game_rounds, session.rounds));
+    const latest = [...rounds].sort((left, right) =>
+      Number(firstValue(left && left.round_no, left && left.roundNo, 0)) -
+      Number(firstValue(right && right.round_no, right && right.roundNo, 0))
+    ).at(-1);
+    const firstAssignment = asArray(latest && latest.assignments)[0] || {};
+    const embeddedUpNext = firstValue(firstAssignment.stagedMatches, firstAssignment.staged_matches);
+    const upNext = asArray(firstValue(
+      raw.upNext,
+      raw.up_next,
+      session.upNext,
+      session.up_next,
+      embeddedUpNext
+    ));
+    const publicQueue = asArray(firstValue(raw.queue, raw.waitingQueue, raw.waiting_queue, session.queue));
+
+    if (!session || !firstValue(session.id, session.session_id, raw.session_id)) return null;
+    return { session, players, rounds, upNext, publicQueue };
+  }
+
+  function playerId(player) {
+    return String(firstValue(player && player.id, player && player.player_id, ""));
+  }
+
+  function playerName(player) {
+    return String(firstValue(player && player.full_name, player && player.fullName, player && player.name, "Player"));
+  }
+
+  function playerStatus(player) {
+    return String(firstValue(player && player.status, "active")).trim().toLowerCase();
+  }
+
+  function includedPlayers(payload) {
+    return payload.players.filter(player => {
+      const id = playerId(player);
+      return id && !EXCLUDED_PLAYER_STATUSES.has(playerStatus(player));
+    });
+  }
+
+  function checkInEligiblePlayers(payload) {
+    return payload.players.filter(player => playerId(player) && CHECK_IN_ELIGIBLE_STATUSES.has(playerStatus(player)));
+  }
+
+  function truthyFlag(value) {
+    if (value === true || value === 1) return true;
+    return ["true", "1", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+  }
+
+  function publicCheckInEnabled(payload) {
+    const session = payload && payload.session;
+    if (!session || TERMINAL_STATUSES.has(String(session.status || "").toLowerCase())) return false;
+    return truthyFlag(firstValue(
+      session.public_check_in,
+      session.publicCheckIn,
+      session.settings && session.settings.publicCheckIn
+    ));
+  }
+
+  function checkInStatusLabel(status) {
+    return {
+      removed: "Checked out",
+      no_show: "Not here",
+      not_checked_in: "Not here",
+      not_here: "Not here",
+      "not-here": "Not here",
+      "not here": "Not here",
+      checked_out: "Checked out",
+      break: "On break",
+      on_break: "On break",
+      "on break": "On break",
+      inactive: "Not here",
+    }[status] || "Not checked in";
+  }
+
+  function playerMap(payload) {
+    return new Map(payload.players.map(player => [playerId(player), player]));
+  }
+
+  function normalizeAssignment(game, index) {
+    const raw = game || {};
+    return {
+      raw,
+      index,
+      courtId: String(firstValue(raw.courtId, raw.court_id, index + 1)),
+      courtName: String(firstValue(raw.courtName, raw.court_name, "Court " + (index + 1))),
+      teamA: uniqueStrings(firstValue(raw.teamA, raw.team_a, [])),
+      teamB: uniqueStrings(firstValue(raw.teamB, raw.team_b, [])),
+      winner: String(firstValue(raw.winner, "")).toUpperCase(),
+      completedGames: asArray(firstValue(raw.completedGames, raw.completed_games, [])),
+      resultAt: firstValue(raw.resultAt, raw.result_at),
+      startedAt: firstValue(raw.startedAt, raw.started_at, raw.createdAt, raw.created_at),
+    };
+  }
+
+  function roundNumber(round) {
+    return Number(firstValue(round && round.round_no, round && round.roundNo, 0)) || 0;
+  }
+
+  function sortedRounds(payload) {
+    return [...payload.rounds].sort((left, right) => roundNumber(left) - roundNumber(right));
+  }
+
+  function latestRound(payload) {
+    const rounds = sortedRounds(payload);
+    return rounds.length ? rounds[rounds.length - 1] : null;
+  }
+
+  function assignmentsFor(round) {
+    return asArray(round && round.assignments).map(normalizeAssignment);
+  }
+
+  function parseMode(modeValue) {
+    if (window.OpenPlayRotation && typeof window.OpenPlayRotation.parseMode === "function") {
+      return window.OpenPlayRotation.parseMode(modeValue);
+    }
+    const raw = String(modeValue || "doubles:balanced").toLowerCase();
+    const parts = raw.split(":");
+    return {
+      format: parts[0] === "singles" ? "singles" : "doubles",
+      style: parts[1] || (raw === "all_rotate" ? "queue" : raw === "winners_losers" ? "winners_losers" : "balanced"),
+    };
+  }
+
+  function modeLabel(modeValue) {
+    const mode = parseMode(modeValue);
+    const styleLabel = {
+      balanced: "Balanced",
+      queue: "Fair Queue",
+      winners_losers: "Winners / Challengers",
+      skill_separated: "Skill Separated",
+      mixed_doubles: "Mixed Doubles",
+      skill_courts: "Skill Courts",
+      king_court: "King / Queen of Court",
+      club_wars: "Club Wars",
+      tournament: "Tournament Schedule",
+    }[mode.style] || String(mode.style || "Balanced").replace(/_/g, " ");
+    return (mode.format === "singles" ? "Singles" : "Doubles") + " \u00b7 " + styleLabel;
+  }
+
+  function fallbackHistory(rounds) {
+    const resultCount = {};
+    const winCount = {};
+    const playCount = {};
+    const lastOutcome = {};
+
+    function record(game) {
+      const normalized = normalizeAssignment(game, 0);
+      const all = [...normalized.teamA, ...normalized.teamB];
+      all.forEach(id => { playCount[id] = (playCount[id] || 0) + 1; });
+      if (normalized.winner !== "A" && normalized.winner !== "B") return;
+      all.forEach(id => { resultCount[id] = (resultCount[id] || 0) + 1; });
+      const winners = normalized.winner === "A" ? normalized.teamA : normalized.teamB;
+      const losers = normalized.winner === "A" ? normalized.teamB : normalized.teamA;
+      winners.forEach(id => {
+        winCount[id] = (winCount[id] || 0) + 1;
+        lastOutcome[id] = "winner";
+      });
+      losers.forEach(id => { lastOutcome[id] = "loser"; });
+    }
+
+    rounds.forEach(round => {
+      asArray(round.assignments).forEach(game => {
+        asArray(firstValue(game.completedGames, game.completed_games, [])).forEach(record);
+        record(game);
+      });
+    });
+    return { resultCount, winCount, playCount, lastOutcome, partner: {}, opponent: {} };
+  }
+
+  function buildHistory(payload) {
+    const rounds = sortedRounds(payload);
+    if (window.OpenPlayRotation && typeof window.OpenPlayRotation.buildHistory === "function") {
+      return window.OpenPlayRotation.buildHistory(rounds);
+    }
+    return fallbackHistory(rounds);
+  }
+
+  function playingIds(payload) {
+    const round = latestRound(payload);
+    const ids = assignmentsFor(round)
+      .filter(game => game.winner !== "A" && game.winner !== "B")
+      .flatMap(game => [...game.teamA, ...game.teamB]);
+    return new Set(ids);
+  }
+
+  function queueIds(payload) {
+    const activeIds = new Set(includedPlayers(payload).map(playerId));
+    const onCourt = playingIds(payload);
+    const round = latestRound(payload);
+    const rawQueue = payload.publicQueue.length
+      ? payload.publicQueue.map(item => typeof item === "object" ? firstValue(item.id, item.player_id) : item)
+      : firstValue(round && round.queue_snapshot, round && round.queueSnapshot, []);
+    const ordered = uniqueStrings(rawQueue)
+      .filter(id => activeIds.has(id) && !onCourt.has(id));
+    includedPlayers(payload).forEach(player => {
+      const id = playerId(player);
+      if (!onCourt.has(id) && !ordered.includes(id)) ordered.push(id);
+    });
+    return ordered;
+  }
+
+  function playersPerGame(payload) {
+    return parseMode(payload.session.mode).format === "singles" ? 2 : 4;
+  }
+
+  function bestSplit(ids, history, payload) {
+    const group = ids.map((id, index) => ({ id, seed_order: index }));
+    if (window.OpenPlayRotation && typeof window.OpenPlayRotation.bestSplit === "function") {
+      const split = window.OpenPlayRotation.bestSplit(group, history, () => 0);
+      return {
+        teamA: split.teamA.map(player => String(player.id)),
+        teamB: split.teamB.map(player => String(player.id)),
+      };
+    }
+    const teamSize = playersPerGame(payload) / 2;
+    return { teamA: ids.slice(0, teamSize), teamB: ids.slice(teamSize) };
+  }
+
+  function payloadUpNextGroups(payload, history) {
+    if (!payload.upNext.length) return [];
+    return payload.upNext.map((raw, index) => {
+      const game = normalizeAssignment(raw, index);
+      if (game.teamA.length || game.teamB.length) {
+        return { teamA: game.teamA, teamB: game.teamB };
+      }
+      const source = raw && typeof raw === "object" ? raw : {};
+      const rawIds = asArray(firstValue(source.playerIds, source.player_ids, source.players, raw))
+        .map(item => typeof item === "object" ? firstValue(item.id, item.player_id) : item);
+      const ids = uniqueStrings(rawIds);
+      return bestSplit(ids, history, payload);
+    }).filter(group => group.teamA.length || group.teamB.length);
+  }
+
+  function derivedUpNextGroups(payload, history) {
+    const explicit = payloadUpNextGroups(payload, history);
+    if (explicit.length) return explicit;
+    if (!latestRound(payload)) return [];
+    if (["king_court", "tournament"].includes(parseMode(payload.session.mode).style)) return [];
+    const waiting = queueIds(payload);
+    const size = playersPerGame(payload);
+    const round = latestRound(payload);
+    const courts = Math.max(
+      1,
+      assignmentsFor(round).length,
+      asArray(firstValue(payload.session.court_ids, payload.session.courtIds, [])).length
+    );
+    const style = parseMode(payload.session.mode).style;
+    const groups = [];
+    let remaining = [...waiting];
+
+    while (groups.length < courts && remaining.length >= size) {
+      let ids = remaining.slice(0, size);
+      if (window.OpenPlayRotation && typeof window.OpenPlayRotation.selectNextPlayers === "function") {
+        ids = window.OpenPlayRotation.selectNextPlayers(remaining, history, size, style);
+      }
+      if (ids.length < size) break;
+      groups.push(bestSplit(ids, history, payload));
+      const chosen = new Set(ids);
+      remaining = remaining.filter(id => !chosen.has(id));
+    }
+    return groups;
+  }
+
+  function completedResultCount(payload) {
+    let total = 0;
+    sortedRounds(payload).forEach(round => {
+      asArray(round.assignments).forEach(game => {
+        total += asArray(firstValue(game.completedGames, game.completed_games, [])).length;
+        const winner = String(firstValue(game.winner, "")).toUpperCase();
+        if (winner === "A" || winner === "B") total += 1;
+      });
+    });
+    return total;
+  }
+
+  function parseDate(value) {
+    if (!value) return null;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
+  function gameStartTime(game, round, session) {
+    const previous = game.completedGames.length ? normalizeAssignment(game.completedGames[game.completedGames.length - 1], 0) : null;
+    return firstValue(
+      game.startedAt,
+      previous && previous.resultAt,
+      round && firstValue(round.started_at, round.startedAt, round.completed_at, round.completedAt, round.created_at, round.createdAt),
+      firstValue(session.started_at, session.startedAt, session.updated_at, session.updatedAt, session.created_at, session.createdAt)
+    );
+  }
+
+  function formatDuration(milliseconds) {
+    const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return hours
+      ? hours + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0")
+      : String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+  }
+
+  function updateTimers() {
+    const now = Date.now();
+    document.querySelectorAll("[data-court-start]").forEach(timer => {
+      const start = parseDate(timer.dataset.courtStart);
+      const end = parseDate(timer.dataset.courtEnd);
+      if (start == null) {
+        timer.textContent = timer.dataset.complete === "1" ? "Complete" : "Live";
+        return;
+      }
+      timer.textContent = formatDuration((end == null ? now : end) - start);
+      timer.setAttribute("aria-label", (end == null ? "Court time " : "Final court time ") + timer.textContent);
+    });
+  }
+
+  function formatSessionDate(value) {
+    if (!value) return "Date to be announced";
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = match
+      ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12)
+      : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("en-PH", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(date);
+  }
+
+  function statusPresentation(statusValue) {
+    const status = String(statusValue || "draft").toLowerCase();
+    return {
+      key: ["active", "paused", "completed", "cancelled", "draft"].includes(status) ? status : "draft",
+      label: {
+        active: "Live now",
+        paused: "Paused",
+        completed: "Completed",
+        cancelled: "Cancelled",
+        draft: "Getting ready",
+      }[status] || "Getting ready",
+    };
+  }
+
+  function showToast(message, type) {
+    const toast = $("toast");
+    window.clearTimeout(state.toastHandle);
+    toast.textContent = message;
+    toast.className = "toast" + (type === "error" ? " error" : "");
+    toast.hidden = false;
+    state.toastHandle = window.setTimeout(() => { toast.hidden = true; }, 5200);
+  }
+
+  function showMessage(title, copy, options) {
+    const config = options || {};
+    $("loadingState").hidden = true;
+    $("liveContent").hidden = true;
+    $("messageState").hidden = false;
+    $("messageTitle").textContent = title;
+    $("messageCopy").textContent = copy;
+    $("messageMark").textContent = config.mark || "!";
+    $("messageRetryButton").hidden = config.retry === false;
+  }
+
+  function playerNames(ids, map) {
+    return ids.map(id => playerName(map.get(String(id)) || { full_name: "Player" }));
+  }
+
+  function renderHero(payload, history, queue, currentPlaying) {
+    const session = payload.session;
+    const courts = asArray(firstValue(session.court_names, session.courtNames, []));
+    const title = String(firstValue(session.public_name, session.name, session.title, session.location, "")).trim() || "Korte DOS Open Play";
+    const date = formatSessionDate(session.date);
+    const timeLabel = String(firstValue(session.time_label, session.timeLabel, "")).trim();
+    const courtLabel = courts.length ? courts.join(", ") : "Korte DOS courts";
+    const status = statusPresentation(session.status);
+
+    $("sessionTitle").textContent = title;
+    $("sessionMeta").textContent = [date, timeLabel, courtLabel, modeLabel(session.mode)].filter(Boolean).join(" \u00b7 ");
+    $("statusBadge").className = "status-badge " + status.key;
+    $("statusText").textContent = status.label;
+    $("metricPlayers").textContent = includedPlayers(payload).length;
+    $("metricPlaying").textContent = currentPlaying.size;
+    $("metricQueue").textContent = queue.length;
+    $("metricGames").textContent = completedResultCount(payload);
+
+    const ended = TERMINAL_STATUSES.has(String(session.status || "").toLowerCase());
+    $("finishedNotice").hidden = !ended;
+    if (ended) {
+      const cancelled = String(session.status).toLowerCase() === "cancelled";
+      $("finishedTitle").textContent = cancelled ? "This session was cancelled." : "This session has ended.";
+      $("finishedCopy").textContent = cancelled
+        ? "The organizer has closed this rotation."
+        : "The standings below are final for this Open Play session.";
+    }
+  }
+
+  function renderCourts(payload, map) {
+    const round = latestRound(payload);
+    const assignments = assignmentsFor(round);
+    const sessionCourtNames = asArray(firstValue(payload.session.court_names, payload.session.courtNames, []));
+    const cards = [...assignments];
+    sessionCourtNames.forEach((name, index) => {
+      if (!cards.some(card => card.courtName === String(name))) {
+        cards.push(normalizeAssignment({ courtName: String(name), courtId: index + 1 }, cards.length));
+      }
+    });
+
+    $("roundLabel").textContent = round ? "Rotation " + roundNumber(round) : "Waiting for the first rotation";
+    $("courtsCount").textContent = cards.length + " " + (cards.length === 1 ? "court" : "courts");
+
+    if (!cards.length) {
+      $("courtsGrid").innerHTML = '<div class="empty-box" style="grid-column:1/-1">Court assignments will appear when the organizer starts the rotation.</div>';
+      return;
+    }
+
+    $("courtsGrid").innerHTML = cards.map((game, index) => {
+      const hasPlayers = game.teamA.length || game.teamB.length;
+      if (!hasPlayers) {
+        return '<article class="court-card empty">' +
+          '<header class="court-heading"><span class="court-name">' + escapeHtml(game.courtName || "Court " + (index + 1)) + '</span><span class="court-timer">Waiting</span></header>' +
+          '<div class="court-empty">Waiting for the organizer to assign this court.</div>' +
+        '</article>';
+      }
+
+      const complete = game.winner === "A" || game.winner === "B";
+      const start = gameStartTime(game, round, payload.session);
+      const end = complete ? game.resultAt : "";
+      const teamANames = playerNames(game.teamA, map);
+      const teamBNames = playerNames(game.teamB, map);
+      const winnerText = game.winner === "A" ? "Side A won this game" : game.winner === "B" ? "Side B won this game" : "";
+
+      function teamMarkup(names, side, winner) {
+        return '<div class="team team-' + side.toLowerCase() + (winner ? ' winner' : '') + '">' +
+          '<div class="team-label">Side ' + side + (winner ? ' \u00b7 Winner' : '') + '</div>' +
+          (names.length ? names.map(name => '<div class="player-name">' + escapeHtml(name) + '</div>').join("") : '<div class="player-name">Open slot</div>') +
+        '</div>';
+      }
+
+      return '<article class="court-card' + (complete ? ' complete' : '') + '">' +
+        '<header class="court-heading">' +
+          '<span class="court-name">' + escapeHtml(game.courtName || "Court " + (index + 1)) + '</span>' +
+          '<time class="court-timer' + (complete ? ' complete' : '') + '" datetime="' + escapeHtml(end || start || "") + '" data-court-start="' + escapeHtml(start || "") + '" data-court-end="' + escapeHtml(end || "") + '" data-complete="' + (complete ? "1" : "0") + '">' + (complete ? "Complete" : "Live") + '</time>' +
+        '</header>' +
+        '<div class="matchup">' +
+          teamMarkup(teamANames, "A", game.winner === "A") +
+          '<div class="versus" aria-hidden="true">VS</div>' +
+          teamMarkup(teamBNames, "B", game.winner === "B") +
+        '</div>' +
+        (winnerText ? '<p class="court-result">' + escapeHtml(winnerText) + '</p>' : '') +
+      '</article>';
+    }).join("");
+    updateTimers();
+  }
+
+  function renderNext(payload, map, groups) {
+    const ids = uniqueStrings(groups.flatMap(group => [...group.teamA, ...group.teamB]));
+    $("nextCount").textContent = ids.length + " " + (ids.length === 1 ? "player" : "players");
+    if (!groups.length) {
+      const terminal = TERMINAL_STATUSES.has(String(payload.session.status || "").toLowerCase());
+      const fullWave = ["king_court", "tournament"].includes(parseMode(payload.session.mode).style);
+      $("nextGrid").innerHTML = '<div class="empty-box" style="grid-column:1/-1">' +
+        (terminal
+          ? "This session is complete. There is no next rotation."
+          : fullWave
+            ? "The organizer will publish the next full rotation after every court reports a result."
+            : "No full Up Next group is ready yet.") +
+      '</div>';
+      return;
+    }
+
+    $("nextGrid").innerHTML = groups.map((group, index) => {
+      const teamA = playerNames(group.teamA, map).map(escapeHtml).join("<br>");
+      const teamB = playerNames(group.teamB, map).map(escapeHtml).join("<br>");
+      return '<article class="next-card">' +
+        '<header class="next-card-header"><span class="next-number">Next game ' + (index + 1) + '</span><span class="ready-pill">Get ready</span></header>' +
+        '<div class="next-teams">' +
+          '<div class="next-team">' + teamA + '</div>' +
+          '<div class="next-vs" aria-hidden="true">VS</div>' +
+          '<div class="next-team">' + teamB + '</div>' +
+        '</div>' +
+      '</article>';
+    }).join("");
+  }
+
+  function observedAverageGameMinutes(payload) {
+    const durations = [];
+    sortedRounds(payload).forEach(round => {
+      asArray(round.assignments).forEach(rawGame => {
+        const game = normalizeAssignment(rawGame, 0);
+        const completed = [...game.completedGames];
+        if (game.winner === "A" || game.winner === "B") completed.push(game.raw);
+        completed.forEach(item => {
+          const normalized = normalizeAssignment(item, 0);
+          const start = parseDate(normalized.startedAt);
+          const end = parseDate(normalized.resultAt);
+          if (start == null || end == null || end <= start) return;
+          const minutes = (end - start) / 60000;
+          if (minutes >= 2 && minutes <= 180) durations.push(minutes);
+        });
+      });
+    });
+    if (!durations.length) return 12;
+    return Math.max(5, Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length));
+  }
+
+  function waitLabel(index, courtCount, payload) {
+    const wave = Math.max(1, courtCount) * playersPerGame(payload);
+    const rotations = Math.floor(index / wave) + 1;
+    return "about " + (rotations * observedAverageGameMinutes(payload)) + " min";
+  }
+
+  function renderQueue(payload, map, history, queue, groups) {
+    const nextIds = new Set(groups.flatMap(group => [...group.teamA, ...group.teamB]).map(String));
+    const round = latestRound(payload);
+    const courtCount = Math.max(1, assignmentsFor(round).length, asArray(firstValue(payload.session.court_ids, payload.session.courtIds, [])).length);
+    $("queueCount").textContent = queue.length;
+
+    if (!queue.length) {
+      $("queueList").innerHTML = '<li class="empty-box">Everyone is currently on court, or the organizer is preparing the queue.</li>';
+      return;
+    }
+
+    $("queueList").innerHTML = queue.map((id, index) => {
+      const player = map.get(String(id));
+      const games = Number(history.resultCount[id] || 0);
+      const wins = Number(history.winCount[id] || 0);
+      const parts = [
+        games + " " + (games === 1 ? "game" : "games"),
+        wins + " " + (wins === 1 ? "win" : "wins"),
+        waitLabel(index, courtCount, payload),
+      ];
+      return '<li class="queue-item' + (nextIds.has(String(id)) ? ' is-next' : '') + '">' +
+        '<span class="queue-position" aria-label="Queue position ' + (index + 1) + '">' + (index + 1) + '</span>' +
+        '<div><div class="queue-name">' + escapeHtml(playerName(player)) + '</div><div class="queue-meta">' + escapeHtml(parts.join(" \u00b7 ")) + '</div></div>' +
+      '</li>';
+    }).join("");
+  }
+
+  function renderStandings(payload, history) {
+    const rows = payload.players.map(player => {
+      const id = playerId(player);
+      const games = Number(history.resultCount[id] || 0);
+      const wins = Number(history.winCount[id] || 0);
+      return {
+        id,
+        name: playerName(player),
+        games,
+        wins,
+        rate: games ? wins / games : 0,
+        included: !EXCLUDED_PLAYER_STATUSES.has(playerStatus(player)),
+      };
+    }).filter(row => row.id && (row.included || row.games > 0))
+      .sort((left, right) =>
+        right.wins - left.wins ||
+        right.rate - left.rate ||
+        left.games - right.games ||
+        left.name.localeCompare(right.name)
+      );
+
+    $("standingsWrap").hidden = !rows.length;
+    $("standingsEmpty").hidden = rows.length > 0;
+    $("standingsBody").innerHTML = rows.map((row, index) =>
+      '<tr>' +
+        '<td><span class="rank' + (index < 3 ? ' top' : '') + '">' + (index + 1) + '</span></td>' +
+        '<td class="standing-name">' + escapeHtml(row.name) + '</td>' +
+        '<td>' + row.wins + '</td>' +
+        '<td>' + row.games + '</td>' +
+        '<td>' + Math.round(row.rate * 100) + '%</td>' +
+      '</tr>'
+    ).join("");
+  }
+
+  function selectionStorageKey() {
+    return "korteDosOpenPlayPlayer:" + state.sessionId;
+  }
+
+  function renderPlayerSelection(payload) {
+    const players = includedPlayers(payload).sort((left, right) => playerName(left).localeCompare(playerName(right)));
+    const allowed = new Set(players.map(playerId));
+    if (state.selectedPlayerId && !allowed.has(state.selectedPlayerId)) {
+      state.selectedPlayerId = "";
+      localStorage.removeItem(selectionStorageKey());
+      state.alertArmed = false;
+    }
+
+    $("playerSelect").innerHTML = '<option value="">Select your name</option>' + players.map(player =>
+      '<option value="' + escapeHtml(playerId(player)) + '"' + (state.selectedPlayerId === playerId(player) ? ' selected' : '') + '>' +
+        escapeHtml(playerName(player)) +
+      '</option>'
+    ).join("");
+    $("playerSelect").disabled = !players.length;
+    updateNotificationControls();
+  }
+
+  function renderPublicCheckIn(payload) {
+    const panel = $("publicCheckInPanel");
+    const select = $("checkInPlayerSelect");
+    const button = $("checkInButton");
+    const help = $("checkInHelp");
+    const enabled = publicCheckInEnabled(payload);
+    panel.hidden = !enabled;
+
+    if (!enabled) {
+      state.checkInPlayerId = "";
+      state.checkInFeedback = null;
+      select.innerHTML = '<option value="">Select your name</option>';
+      select.disabled = true;
+      button.disabled = true;
+      button.removeAttribute("aria-busy");
+      return;
+    }
+
+    const players = checkInEligiblePlayers(payload)
+      .sort((left, right) => playerName(left).localeCompare(playerName(right)));
+    const allowed = new Set(players.map(playerId));
+    if (state.checkInPlayerId && !allowed.has(state.checkInPlayerId)) {
+      state.checkInPlayerId = "";
+    }
+
+    select.innerHTML = '<option value="">' +
+      (players.length ? "Select your name" : "Everyone is checked in") +
+      '</option>' +
+      players.map(player =>
+        '<option value="' + escapeHtml(playerId(player)) + '"' + (state.checkInPlayerId === playerId(player) ? ' selected' : '') + '>' +
+          escapeHtml(playerName(player) + " \u2014 " + checkInStatusLabel(playerStatus(player))) +
+        '</option>'
+      ).join("");
+    select.disabled = state.checkingIn || !players.length;
+    button.disabled = state.checkingIn || state.loading || !state.checkInPlayerId || !players.length;
+    button.textContent = state.checkingIn ? "Checking in\u2026" : "Check in";
+    if (state.checkingIn) button.setAttribute("aria-busy", "true");
+    else button.removeAttribute("aria-busy");
+
+    help.className = "checkin-help";
+    if (state.checkInFeedback) {
+      help.textContent = state.checkInFeedback.message;
+      help.classList.add(state.checkInFeedback.type);
+    } else if (!players.length) {
+      help.textContent = "Everyone on this roster is already checked in.";
+    } else {
+      help.textContent = "Choose your name to join or return to the waiting queue.";
+    }
+  }
+
+  function updateNotificationControls() {
+    const button = $("notifyButton");
+    const help = $("notificationHelp");
+    const supported = "Notification" in window;
+    const permission = supported ? Notification.permission : "unsupported";
+    const selected = Boolean(state.selectedPlayerId);
+
+    button.disabled = !selected || !supported || permission === "denied";
+    button.classList.toggle("on", state.alertArmed);
+    button.textContent = state.alertArmed ? "Alerts enabled" : "Enable alerts";
+
+    if (!supported) {
+      help.textContent = "Browser alerts are not supported on this device. Keep this page open to follow the queue.";
+    } else if (permission === "denied") {
+      help.textContent = "Alerts are blocked in this browser. Allow notifications in site settings to enable them.";
+    } else if (!selected) {
+      help.textContent = "Select your name, then enable browser alerts on this device.";
+    } else if (state.alertArmed) {
+      help.textContent = "This device will chime and vibrate when you enter Up Next.";
+    } else {
+      help.textContent = "Tap Enable alerts and approve the browser prompt.";
+    }
+  }
+
+  function render(payload) {
+    const map = playerMap(payload);
+    const history = buildHistory(payload);
+    const queue = queueIds(payload);
+    const currentPlaying = playingIds(payload);
+    const groups = derivedUpNextGroups(payload, history);
+    const nextSet = new Set(groups.flatMap(group => [...group.teamA, ...group.teamB]).map(String));
+
+    $("loadingState").hidden = true;
+    $("messageState").hidden = true;
+    $("liveContent").hidden = false;
+    renderHero(payload, history, queue, currentPlaying);
+    renderCourts(payload, map);
+    renderNext(payload, map, groups);
+    renderQueue(payload, map, history, queue, groups);
+    renderStandings(payload, history);
+    renderPlayerSelection(payload);
+    renderPublicCheckIn(payload);
+    handleUpNextTransition(nextSet, map);
+  }
+
+  function unlockAudio() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return Promise.resolve();
+    if (!state.audioContext) state.audioContext = new AudioContextClass();
+    if (state.audioContext.state === "suspended") return state.audioContext.resume().catch(() => {});
+    return Promise.resolve();
+  }
+
+  function playChime() {
+    if (!state.audioContext || state.audioContext.state !== "running") return;
+    const now = state.audioContext.currentTime;
+    [659.25, 783.99].forEach((frequency, index) => {
+      const oscillator = state.audioContext.createOscillator();
+      const gain = state.audioContext.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, now + index * .17);
+      gain.gain.exponentialRampToValueAtTime(.16, now + index * .17 + .025);
+      gain.gain.exponentialRampToValueAtTime(.0001, now + index * .17 + .28);
+      oscillator.connect(gain);
+      gain.connect(state.audioContext.destination);
+      oscillator.start(now + index * .17);
+      oscillator.stop(now + index * .17 + .3);
+    });
+  }
+
+  function announceUpNext(player) {
+    const name = playerName(player);
+    try {
+      if ("Notification" in window && Notification.permission === "granted") {
+        const notification = new Notification("You're Up Next at Korte DOS", {
+          body: name + ", please stay close to the courts and get ready.",
+          icon: "korte-dos-logo.png",
+          tag: "korte-dos-up-next-" + state.sessionId,
+          renotify: true,
+        });
+        notification.onclick = function () {
+          window.focus();
+          notification.close();
+        };
+      }
+    } catch (error) {
+      console.warn("Open Play notification:", error);
+    }
+    if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
+    playChime();
+    showToast(name + ", you're Up Next. Please get ready!");
+  }
+
+  function handleUpNextTransition(nextSet, map) {
+    state.currentUpNext = nextSet;
+    if (!state.hasLoaded) {
+      state.previousUpNext = new Set(nextSet);
+      return;
+    }
+    const entered = state.selectedPlayerId &&
+      nextSet.has(state.selectedPlayerId) &&
+      !state.previousUpNext.has(state.selectedPlayerId);
+    state.previousUpNext = new Set(nextSet);
+    if (entered && state.alertArmed) {
+      announceUpNext(map.get(state.selectedPlayerId));
+    }
+  }
+
+  async function armNotifications() {
+    if (!state.selectedPlayerId) {
+      showToast("Select your name first.", "error");
+      return;
+    }
+    if (!("Notification" in window)) {
+      updateNotificationControls();
+      return;
+    }
+    try {
+      let permission = Notification.permission;
+      if (permission === "default") permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        state.alertArmed = false;
+        updateNotificationControls();
+        showToast("Browser notifications were not enabled.", "error");
+        return;
+      }
+      await unlockAudio();
+      state.alertArmed = true;
+      state.previousUpNext = new Set(state.currentUpNext);
+      updateNotificationControls();
+      showToast("Alerts are ready for " + $("playerSelect").selectedOptions[0].textContent + ".");
+    } catch (error) {
+      state.alertArmed = false;
+      updateNotificationControls();
+      showToast("This browser could not enable alerts.", "error");
+    }
+  }
+
+  async function publicCheckInSelectedPlayer() {
+    const payload = state.payload;
+    if (!payload || !publicCheckInEnabled(payload)) {
+      showToast("Player self check-in is not enabled for this session.", "error");
+      return;
+    }
+    if (state.checkingIn) return;
+    if (state.loading) {
+      state.checkInFeedback = { type: "error", message: "Live details are refreshing. Please tap Check in again." };
+      renderPublicCheckIn(payload);
+      return;
+    }
+
+    const selected = checkInEligiblePlayers(payload)
+      .find(player => playerId(player) === state.checkInPlayerId);
+    if (!selected) {
+      state.checkInPlayerId = "";
+      state.checkInFeedback = { type: "error", message: "Choose your name before checking in." };
+      renderPublicCheckIn(payload);
+      return;
+    }
+    if (!window.DB || typeof window.DB.publicCheckInOpenPlayPlayer !== "function") {
+      state.checkInFeedback = { type: "error", message: "Player self check-in is temporarily unavailable." };
+      renderPublicCheckIn(payload);
+      return;
+    }
+
+    const selectedId = playerId(selected);
+    const selectedName = playerName(selected);
+    state.checkingIn = true;
+    state.checkInFeedback = { type: "success", message: "Checking in " + selectedName + "\u2026" };
+    renderPublicCheckIn(payload);
+
+    try {
+      await window.DB.publicCheckInOpenPlayPlayer(state.sessionId, selectedId);
+      state.checkInPlayerId = "";
+      state.checkInFeedback = {
+        type: "success",
+        message: selectedName + " is checked in and has joined the rotation.",
+      };
+      showToast("You're checked in, " + selectedName + "!");
+      await loadSession({ silent: true });
+    } catch (error) {
+      console.error("Open Play public check-in:", error);
+      state.checkInFeedback = {
+        type: "error",
+        message: error && error.message ? error.message : "Check-in failed. Please try again.",
+      };
+      showToast("Couldn't check in. Please try again.", "error");
+    } finally {
+      state.checkingIn = false;
+      if (state.payload) renderPublicCheckIn(state.payload);
+    }
+  }
+
+  async function loadSession(options) {
+    const config = options || {};
+    if (state.loading) return;
+    if (!state.sessionId || !UUID_PATTERN.test(state.sessionId)) return;
+    state.loading = true;
+    $("refreshButton").disabled = true;
+    $("refreshButton").setAttribute("aria-busy", "true");
+
+    try {
+      if (!window.DB || typeof window.DB.getPublicOpenPlayGameSession !== "function") {
+        throw new Error("The public Open Play view is not available yet.");
+      }
+      const raw = await window.DB.getPublicOpenPlayGameSession(state.sessionId);
+      const payload = normalizePayload(raw);
+      if (!payload) {
+        state.payload = null;
+        showMessage(
+          state.hasLoaded ? "Session no longer available" : "Session not found",
+          "This Open Play session may have ended, been unshared, or the link may be incorrect.",
+          { mark: "?", retry: true }
+        );
+        $("lastUpdated").textContent = "Session unavailable";
+        return;
+      }
+
+      const returnedId = String(firstValue(payload.session.id, payload.session.session_id, ""));
+      if (returnedId && returnedId !== state.sessionId) throw new Error("The public session response did not match this link.");
+
+      state.payload = payload;
+      render(payload);
+      state.hasLoaded = true;
+      $("staleAlert").hidden = true;
+      $("lastUpdated").textContent = "Updated " + new Intl.DateTimeFormat("en-PH", {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(new Date());
+    } catch (error) {
+      console.error("Open Play live session:", error);
+      const message = error && error.message ? error.message : "The live session could not be loaded.";
+      if (state.hasLoaded) {
+        $("staleAlertText").textContent = "Live updates are temporarily unavailable. Showing the last update.";
+        $("staleAlert").hidden = false;
+        $("lastUpdated").textContent = "Update delayed";
+        if (!config.silent) showToast("Couldn't refresh. Showing the last update.", "error");
+      } else {
+        showMessage("Live session unavailable", message + " Please try again in a moment.", { mark: "!", retry: true });
+      }
+    } finally {
+      state.loading = false;
+      $("refreshButton").disabled = false;
+      $("refreshButton").removeAttribute("aria-busy");
+    }
+  }
+
+  function startPolling() {
+    window.clearInterval(state.pollHandle);
+    state.pollHandle = window.setInterval(() => loadSession({ silent: true }), POLL_MS);
+    window.clearInterval(state.tickHandle);
+    state.tickHandle = window.setInterval(updateTimers, 1000);
+  }
+
+  function initialize() {
+    state.sessionId = String(new URLSearchParams(window.location.search).get("gm") || "").trim();
+    if (!state.sessionId) {
+      showMessage(
+        "Session link incomplete",
+        "This page needs a live Open Play session link from the organizer.",
+        { mark: "KD", retry: false }
+      );
+      $("lastUpdated").textContent = "No session selected";
+      return;
+    }
+    if (!UUID_PATTERN.test(state.sessionId)) {
+      showMessage(
+        "Invalid session link",
+        "This live-session link is not valid. Ask the organizer to share it again.",
+        { mark: "!", retry: false }
+      );
+      $("lastUpdated").textContent = "Invalid link";
+      return;
+    }
+
+    try {
+      state.selectedPlayerId = localStorage.getItem(selectionStorageKey()) || "";
+    } catch (_) {
+      state.selectedPlayerId = "";
+    }
+
+    $("refreshButton").addEventListener("click", () => loadSession({ silent: false }));
+    $("inlineRetryButton").addEventListener("click", () => loadSession({ silent: false }));
+    $("messageRetryButton").addEventListener("click", () => {
+      $("messageState").hidden = true;
+      $("loadingState").hidden = false;
+      loadSession({ silent: false });
+    });
+    $("playerSelect").addEventListener("change", event => {
+      state.selectedPlayerId = event.target.value;
+      state.alertArmed = false;
+      state.previousUpNext = new Set(state.currentUpNext);
+      try {
+        if (state.selectedPlayerId) localStorage.setItem(selectionStorageKey(), state.selectedPlayerId);
+        else localStorage.removeItem(selectionStorageKey());
+      } catch (_) {}
+      updateNotificationControls();
+    });
+    $("notifyButton").addEventListener("click", armNotifications);
+    $("checkInPlayerSelect").addEventListener("change", event => {
+      state.checkInPlayerId = event.target.value;
+      state.checkInFeedback = null;
+      if (state.payload) renderPublicCheckIn(state.payload);
+    });
+    $("checkInButton").addEventListener("click", publicCheckInSelectedPlayer);
+
+    window.addEventListener("online", () => loadSession({ silent: true }));
+    window.addEventListener("offline", () => {
+      if (state.hasLoaded) {
+        $("staleAlertText").textContent = "This device is offline. Showing the most recent live update.";
+        $("staleAlert").hidden = false;
+        $("lastUpdated").textContent = "Offline";
+      }
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        unlockAudio();
+        loadSession({ silent: true });
+      }
+    });
+
+    loadSession({ silent: false });
+    startPolling();
+  }
+
+  initialize();
+})();
+</script>
+</body>
+</html>

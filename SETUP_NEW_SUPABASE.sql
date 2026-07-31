@@ -470,6 +470,9 @@ create table if not exists public.open_play_game_sessions (
   mode text not null default 'smart_random_mixer',
   status text not null default 'draft',
   current_round integer not null default 0,
+  location text,
+  settings jsonb not null default '{}'::jsonb,
+  share_enabled boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint open_play_game_sessions_status_check
@@ -483,9 +486,10 @@ create table if not exists public.open_play_game_players (
   source_registration_id bigint,
   status text not null default 'active',
   seed_order integer not null default 0,
+  profile jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   constraint open_play_game_players_status_check
-    check (status in ('active','no_show','removed'))
+    check (status in ('active','no_show','break','removed'))
 );
 
 create table if not exists public.open_play_game_rounds (
@@ -499,6 +503,21 @@ create table if not exists public.open_play_game_rounds (
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
+
+alter table public.open_play_game_sessions
+  add column if not exists location text,
+  add column if not exists settings jsonb not null default '{}'::jsonb,
+  add column if not exists share_enabled boolean not null default true;
+
+alter table public.open_play_game_players
+  add column if not exists profile jsonb not null default '{}'::jsonb;
+
+alter table public.open_play_game_players
+  drop constraint if exists open_play_game_players_status_check;
+
+alter table public.open_play_game_players
+  add constraint open_play_game_players_status_check
+  check (status in ('active', 'no_show', 'break', 'removed'));
 
 create table if not exists public.open_play_host_applications (
   id uuid primary key default gen_random_uuid(),
@@ -2138,7 +2157,6 @@ declare
   clean_key text;
   clean_provider text;
   raw_reference text;
-  transaction_time text;
   amount_text text;
   explicit_key_count integer := 0;
 begin
@@ -2210,14 +2228,11 @@ begin
 
   if clean_provider = 'maribank'
      and raw_reference ~ '^[0-9]{6}$' then
-    transaction_time := p_extracted->>'time';
     amount_text := p_extracted->>'amount';
-    if transaction_time
-         ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}'
-       and amount_text ~ '^[0-9]+([.][0-9]+)?$' then
+    if amount_text ~ '^[0-9]+([.][0-9]+)?$'
+       and amount_text::numeric > 0 then
       ledger_key := 'maribank_transaction:'
-        || left(transaction_time, 16)
-        || ':' || raw_reference
+        || raw_reference
         || ':' || to_char(
           round(amount_text::numeric, 2),
           'FM999999999999990.00'
@@ -6798,6 +6813,1173 @@ values
   ('payment_method_maribank', '1'),
   ('gcash_qr_account_id', 'DWQM4TK496R3UA1BS')
 on conflict (key) do nothing;
+
+-- Atomically replace an Open Play Rotation roster while preserving supplied
+-- player IDs, so round history and standings remain connected.
+create or replace function public.replace_open_play_game_players(
+  p_session_id uuid,
+  p_players jsonb
+)
+returns setof public.open_play_game_players
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_invalid_count integer;
+  v_status text;
+begin
+  if p_session_id is null then
+    raise exception using
+      errcode = '22023',
+      message = 'A valid Open Play Rotation session is required.';
+  end if;
+
+  if jsonb_typeof(p_players) is distinct from 'array' then
+    raise exception using
+      errcode = '22023',
+      message = 'Open Play Rotation players must be a JSON array.';
+  end if;
+
+  if jsonb_array_length(p_players) > 500 then
+    raise exception using
+      errcode = '22023',
+      message = 'Open Play Rotation supports up to 500 players per session.';
+  end if;
+
+  select session.status
+  into v_status
+  from public.open_play_game_sessions
+  as session
+  where session.id = p_session_id
+  for update;
+  if not found then
+    raise exception using
+      errcode = '42501',
+      message = 'The Open Play Rotation session was not found or is not accessible.';
+  end if;
+
+  if v_status in ('paused', 'completed', 'cancelled') then
+    raise exception using
+      errcode = '55000',
+      message = 'Resume the session or create a new session before changing its roster.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_players) as entry(item)
+  where nullif(btrim(entry.item ->> 'full_name'), '') is null;
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'Every saved rotation player needs a name.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_players) as entry(item)
+  where coalesce(nullif(entry.item ->> 'status', ''), 'active')
+    not in ('active', 'no_show', 'break', 'removed');
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A rotation player has an invalid check-in status.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_players) as entry(item)
+  where entry.item ? 'profile'
+    and jsonb_typeof(entry.item -> 'profile') is distinct from 'object';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A rotation player profile must be a JSON object.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_players) as entry(item)
+  where nullif(entry.item ->> 'id', '') is not null
+    and (entry.item ->> 'id') !~
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A rotation player ID is invalid.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_players) as entry(item)
+  where nullif(entry.item ->> 'source_registration_id', '') is not null
+    and (entry.item ->> 'source_registration_id') !~ '^[1-9][0-9]*$';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A paid Open Play registration ID is invalid.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select lower(entry.item ->> 'id')
+    from jsonb_array_elements(p_players) as entry(item)
+    where nullif(entry.item ->> 'id', '') is not null
+    group by lower(entry.item ->> 'id')
+    having count(*) > 1
+  ) duplicates;
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'The same rotation player appears more than once.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select (entry.item ->> 'source_registration_id')::bigint
+    from jsonb_array_elements(p_players) as entry(item)
+    where nullif(entry.item ->> 'source_registration_id', '') is not null
+    group by (entry.item ->> 'source_registration_id')::bigint
+    having count(*) > 1
+  ) duplicates;
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'The same paid registration appears more than once.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_players) as entry(item)
+  where nullif(entry.item ->> 'id', '') is not null
+    and not exists (
+      select 1
+      from public.open_play_game_players player
+      where player.id = (entry.item ->> 'id')::uuid
+        and player.session_id = p_session_id
+    );
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A saved rotation player no longer belongs to this session.';
+  end if;
+
+  -- Ordinary check-in saves may update, add, or soft-remove players after play
+  -- starts, but must not delete/re-key anyone referenced by saved round JSON.
+  -- The explicit reset RPC deletes rounds first and can then replace the roster.
+  select count(*)
+  into v_invalid_count
+  from public.open_play_game_players player
+  where player.session_id = p_session_id
+    and exists (
+      select 1
+      from public.open_play_game_rounds round
+      where round.session_id = p_session_id
+    )
+    and not exists (
+      select 1
+      from jsonb_array_elements(p_players) as entry(item)
+      where nullif(entry.item ->> 'id', '') is not null
+        and (entry.item ->> 'id')::uuid = player.id
+    );
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '55000',
+      message = 'Saved rounds lock existing player IDs. Use the roster reset action to erase history first.';
+  end if;
+
+  update public.open_play_game_players
+  set source_registration_id = null
+  where session_id = p_session_id;
+
+  delete from public.open_play_game_players player
+  where player.session_id = p_session_id
+    and not exists (
+      select 1
+      from jsonb_array_elements(p_players) as entry(item)
+      where nullif(entry.item ->> 'id', '') is not null
+        and (entry.item ->> 'id')::uuid = player.id
+    );
+
+  insert into public.open_play_game_players (
+    id,
+    session_id,
+    full_name,
+    source_registration_id,
+    status,
+    seed_order,
+    profile
+  )
+  select
+    coalesce(nullif(entry.item ->> 'id', '')::uuid, gen_random_uuid()),
+    p_session_id,
+    btrim(entry.item ->> 'full_name'),
+    case
+      when nullif(entry.item ->> 'source_registration_id', '') is null then null
+      else (entry.item ->> 'source_registration_id')::bigint
+    end,
+    coalesce(nullif(entry.item ->> 'status', ''), 'active'),
+    (entry.ordinality - 1)::integer,
+    coalesce(entry.item -> 'profile', '{}'::jsonb)
+  from jsonb_array_elements(p_players) with ordinality as entry(item, ordinality)
+  on conflict (id) do update
+  set full_name = excluded.full_name,
+      source_registration_id = excluded.source_registration_id,
+      status = excluded.status,
+      seed_order = excluded.seed_order,
+      profile = excluded.profile
+  where open_play_game_players.session_id = p_session_id;
+
+  return query
+  select player.*
+  from public.open_play_game_players player
+  where player.session_id = p_session_id
+  order by player.seed_order, player.created_at, player.id;
+end;
+$$;
+
+revoke all on function public.replace_open_play_game_players(uuid, jsonb) from public, anon;
+grant execute on function public.replace_open_play_game_players(uuid, jsonb) to authenticated;
+
+comment on function public.replace_open_play_game_players(uuid, jsonb) is
+  'Atomically replaces one Open Play Rotation roster while preserving supplied player IDs.';
+
+-- A roster reset is intentionally separate from an ordinary check-in save.
+-- It clears round history and replaces the roster in the same transaction, so
+-- either the whole reset succeeds or the original session remains untouched.
+create or replace function public.reset_open_play_game_roster(
+  p_session_id uuid,
+  p_players jsonb
+)
+returns setof public.open_play_game_players
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+begin
+  select session.status
+  into v_status
+  from public.open_play_game_sessions session
+  where session.id = p_session_id
+  for update;
+
+  if not found then
+    raise exception using
+      errcode = '42501',
+      message = 'The Open Play Rotation session was not found or is not accessible.';
+  end if;
+
+  if v_status in ('paused', 'completed', 'cancelled') then
+    raise exception using
+      errcode = '55000',
+      message = 'Resume the session or create a new session before resetting its roster.';
+  end if;
+
+  delete from public.open_play_game_rounds
+  where session_id = p_session_id;
+
+  update public.open_play_game_sessions
+  set current_round = 0,
+      status = 'draft',
+      updated_at = now()
+  where id = p_session_id;
+
+  return query
+  select *
+  from public.replace_open_play_game_players(p_session_id, p_players);
+end;
+$$;
+
+revoke all on function public.reset_open_play_game_roster(uuid, jsonb) from public, anon;
+grant execute on function public.reset_open_play_game_roster(uuid, jsonb) to authenticated;
+
+comment on function public.reset_open_play_game_roster(uuid, jsonb) is
+  'Atomically clears rotation rounds and replaces the roster for a non-terminal, unpaused session.';
+
+-- Round creation participates in the same per-session lock as roster changes.
+-- This prevents two managers, or a manager and a roster reset, from committing
+-- stale assignments that reference players no longer in the session.
+create or replace function public.add_open_play_game_round(
+  p_session_id uuid,
+  p_round_no integer,
+  p_assignments jsonb,
+  p_queue_snapshot jsonb,
+  p_partner_history jsonb,
+  p_opponent_history jsonb,
+  p_completed_at timestamptz
+)
+returns public.open_play_game_rounds
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+  v_mode text;
+  v_current_round integer;
+  v_team_size integer;
+  v_invalid_count integer;
+  v_referenced_ids text[];
+  v_round public.open_play_game_rounds%rowtype;
+begin
+  select session.status, session.mode, session.current_round
+  into v_status, v_mode, v_current_round
+  from public.open_play_game_sessions session
+  where session.id = p_session_id
+  for update;
+
+  if not found then
+    raise exception using
+      errcode = '42501',
+      message = 'The Open Play Rotation session was not found or is not accessible.';
+  end if;
+
+  if v_status in ('paused', 'completed', 'cancelled') then
+    raise exception using
+      errcode = '55000',
+      message = 'Resume the session or create a new session before adding a round.';
+  end if;
+
+  if p_round_no is null or p_round_no <> v_current_round + 1 then
+    raise exception using
+      errcode = '55000',
+      message = 'The rotation changed in another manager. Reload it before adding the next round.';
+  end if;
+
+  if jsonb_typeof(p_assignments) is distinct from 'array'
+     or jsonb_array_length(p_assignments) = 0
+     or jsonb_typeof(p_queue_snapshot) is distinct from 'array'
+     or jsonb_typeof(p_partner_history) is distinct from 'object'
+     or jsonb_typeof(p_opponent_history) is distinct from 'object' then
+    raise exception using
+      errcode = '22023',
+      message = 'The new rotation round has invalid assignment or history data.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_assignments) as game(item)
+  where jsonb_typeof(game.item -> 'teamA') is distinct from 'array'
+     or jsonb_typeof(game.item -> 'teamB') is distinct from 'array';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'Every rotation game needs two valid teams.';
+  end if;
+
+  v_team_size := case
+    when split_part(coalesce(v_mode, ''), ':', 1) = 'singles' then 1
+    else 2
+  end;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_assignments) as game(item)
+  where jsonb_array_length(game.item -> 'teamA') <> v_team_size
+     or jsonb_array_length(game.item -> 'teamB') <> v_team_size;
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'Every rotation game must match the session singles or doubles format.';
+  end if;
+
+  select coalesce(array_agg(reference.player_id), array[]::text[])
+  into v_referenced_ids
+  from (
+    select queue_id as player_id
+    from jsonb_array_elements_text(p_queue_snapshot) as queue(queue_id)
+    union all
+    select team_a_id
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements_text(game.item -> 'teamA') as team_a(team_a_id)
+    union all
+    select team_b_id
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements_text(game.item -> 'teamB') as team_b(team_b_id)
+  ) reference;
+
+  select count(*)
+  into v_invalid_count
+  from unnest(v_referenced_ids) as reference(player_id)
+  where reference.player_id !~
+    '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'The new rotation round contains an invalid player ID.';
+  end if;
+
+  select count(*) - count(distinct assigned.player_id::uuid)
+  into v_invalid_count
+  from (
+    select team_a_id as player_id
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements_text(game.item -> 'teamA') as team_a(team_a_id)
+    union all
+    select team_b_id
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements_text(game.item -> 'teamB') as team_b(team_b_id)
+  ) assigned;
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A player cannot be assigned to two court positions in the same rotation round.';
+  end if;
+
+  select count(*) - count(distinct queue.player_id::uuid)
+  into v_invalid_count
+  from jsonb_array_elements_text(p_queue_snapshot) as queue(player_id);
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A player cannot appear twice in the saved rotation order.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from unnest(v_referenced_ids) as reference(player_id)
+  where not exists (
+    select 1
+    from public.open_play_game_players player
+    where player.id = reference.player_id::uuid
+      and player.session_id = p_session_id
+      and player.status = 'active'
+  );
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '55000',
+      message = 'The roster changed in another manager. Reload it before adding the next round.';
+  end if;
+
+  insert into public.open_play_game_rounds (
+    session_id,
+    round_no,
+    assignments,
+    queue_snapshot,
+    partner_history,
+    opponent_history,
+    completed_at
+  )
+  values (
+    p_session_id,
+    p_round_no,
+    p_assignments,
+    p_queue_snapshot,
+    p_partner_history,
+    p_opponent_history,
+    p_completed_at
+  )
+  returning * into v_round;
+
+  update public.open_play_game_sessions
+  set current_round = p_round_no,
+      status = 'active',
+      updated_at = now()
+  where id = p_session_id;
+
+  return v_round;
+end;
+$$;
+
+revoke all on function public.add_open_play_game_round(uuid, integer, jsonb, jsonb, jsonb, jsonb, timestamptz) from public, anon;
+grant execute on function public.add_open_play_game_round(uuid, integer, jsonb, jsonb, jsonb, jsonb, timestamptz) to authenticated;
+
+comment on function public.add_open_play_game_round(uuid, integer, jsonb, jsonb, jsonb, jsonb, timestamptz) is
+  'Atomically validates and adds the next Open Play Rotation round under the session roster lock.';
+
+create or replace function public.undo_latest_open_play_game_round(
+  p_session_id uuid
+)
+returns public.open_play_game_rounds
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+  v_current_round integer;
+  v_round public.open_play_game_rounds%rowtype;
+begin
+  select session.status, session.current_round
+  into v_status, v_current_round
+  from public.open_play_game_sessions session
+  where session.id = p_session_id
+  for update;
+
+  if not found then
+    raise exception using
+      errcode = '42501',
+      message = 'The Open Play Rotation session was not found or is not accessible.';
+  end if;
+
+  if v_status in ('paused', 'completed', 'cancelled') then
+    raise exception using
+      errcode = '55000',
+      message = 'Resume the session before undoing a round.';
+  end if;
+
+  select round.*
+  into v_round
+  from public.open_play_game_rounds round
+  where round.session_id = p_session_id
+  order by round.round_no desc, round.created_at desc, round.id desc
+  limit 1;
+
+  if not found then
+    return null;
+  end if;
+
+  delete from public.open_play_game_rounds
+  where id = v_round.id;
+
+  select coalesce(max(round.round_no), 0)
+  into v_current_round
+  from public.open_play_game_rounds round
+  where round.session_id = p_session_id;
+
+  update public.open_play_game_sessions
+  set current_round = v_current_round,
+      status = case when v_current_round = 0 then 'draft' else 'active' end,
+      updated_at = now()
+  where id = p_session_id;
+
+  return v_round;
+end;
+$$;
+
+revoke all on function public.undo_latest_open_play_game_round(uuid) from public, anon;
+grant execute on function public.undo_latest_open_play_game_round(uuid) to authenticated;
+
+comment on function public.undo_latest_open_play_game_round(uuid) is
+  'Atomically removes the latest Open Play Rotation round under the session roster lock.';
+
+-- Live result and queue edits use optimistic concurrency under the same
+-- session lock. A stale manager must reload instead of overwriting another
+-- manager's result for a different court.
+create or replace function public.update_open_play_game_round(
+  p_round_id uuid,
+  p_expected_assignments jsonb,
+  p_expected_queue_snapshot jsonb,
+  p_assignments jsonb,
+  p_queue_snapshot jsonb
+)
+returns public.open_play_game_rounds
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_session_id uuid;
+  v_status text;
+  v_mode text;
+  v_current_round integer;
+  v_round_no integer;
+  v_team_size integer;
+  v_invalid_count integer;
+  v_current_assignments jsonb;
+  v_current_queue_snapshot jsonb;
+  v_round public.open_play_game_rounds%rowtype;
+begin
+  if jsonb_typeof(p_expected_assignments) is distinct from 'array'
+     or jsonb_typeof(p_expected_queue_snapshot) is distinct from 'array'
+     or jsonb_typeof(p_assignments) is distinct from 'array'
+     or jsonb_typeof(p_queue_snapshot) is distinct from 'array' then
+    raise exception using
+      errcode = '22023',
+      message = 'The rotation round update is invalid.';
+  end if;
+
+  select round.session_id
+  into v_session_id
+  from public.open_play_game_rounds round
+  where round.id = p_round_id;
+
+  if not found then
+    raise exception using
+      errcode = '55000',
+      message = 'This rotation round no longer exists. Reload the session.';
+  end if;
+
+  select session.status, session.mode, session.current_round
+  into v_status, v_mode, v_current_round
+  from public.open_play_game_sessions session
+  where session.id = v_session_id
+  for update;
+
+  if not found or v_status <> 'active' then
+    raise exception using
+      errcode = '55000',
+      message = 'This rotation session is no longer active. Reload it before recording changes.';
+  end if;
+
+  select round.round_no, round.assignments, round.queue_snapshot
+  into v_round_no, v_current_assignments, v_current_queue_snapshot
+  from public.open_play_game_rounds round
+  where round.id = p_round_id
+    and round.session_id = v_session_id;
+
+  if not found or v_round_no <> v_current_round then
+    raise exception using
+      errcode = '55000',
+      message = 'The live rotation changed in another manager. Reload it and try again.';
+  end if;
+
+  if jsonb_array_length(p_assignments) = 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'The live rotation must keep at least one court assignment.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_assignments) as game(item)
+  where jsonb_typeof(game.item -> 'teamA') is distinct from 'array'
+     or jsonb_typeof(game.item -> 'teamB') is distinct from 'array';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'Every rotation game needs two valid teams.';
+  end if;
+
+  v_team_size := case
+    when split_part(coalesce(v_mode, ''), ':', 1) = 'singles' then 1
+    else 2
+  end;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements(p_assignments) as game(item)
+  where jsonb_array_length(game.item -> 'teamA') <> v_team_size
+     or jsonb_array_length(game.item -> 'teamB') <> v_team_size;
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'Every rotation game must match the session singles or doubles format.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select team_a.value #>> '{}' as player_id
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements(game.item -> 'teamA') as team_a(value)
+    union all
+    select team_b.value #>> '{}'
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements(game.item -> 'teamB') as team_b(value)
+  ) assigned
+  where assigned.player_id is not null
+    and assigned.player_id !~
+    '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'The live rotation contains an invalid assigned player ID.';
+  end if;
+
+  select count(*) - count(distinct assigned.player_id)
+  into v_invalid_count
+  from (
+    select team_a.value #>> '{}' as player_id
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements(game.item -> 'teamA') as team_a(value)
+    union all
+    select team_b.value #>> '{}'
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements(game.item -> 'teamB') as team_b(value)
+  ) assigned
+  where assigned.player_id is not null;
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A player cannot be assigned to two court positions in the same rotation round.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from (
+    select team_a.value #>> '{}' as player_id
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements(game.item -> 'teamA') as team_a(value)
+    union all
+    select team_b.value #>> '{}'
+    from jsonb_array_elements(p_assignments) as game(item)
+    cross join lateral jsonb_array_elements(game.item -> 'teamB') as team_b(value)
+  ) assigned
+  where assigned.player_id is not null
+    and not exists (
+    select 1
+    from public.open_play_game_players player
+    where player.id = assigned.player_id::uuid
+      and player.session_id = v_session_id
+  );
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '55000',
+      message = 'The roster changed in another manager. Reload it before recording live results.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements_text(p_queue_snapshot) as queue(player_id)
+  where queue.player_id !~
+    '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'The live rotation queue contains an invalid player ID.';
+  end if;
+
+  select count(*) - count(distinct queue.player_id::uuid)
+  into v_invalid_count
+  from jsonb_array_elements_text(p_queue_snapshot) as queue(player_id);
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'A player cannot appear twice in the live rotation queue.';
+  end if;
+
+  select count(*)
+  into v_invalid_count
+  from jsonb_array_elements_text(p_queue_snapshot) as queue(player_id)
+  where not exists (
+    select 1
+    from public.open_play_game_players player
+    where player.id = queue.player_id::uuid
+      and player.session_id = v_session_id
+      and player.status = 'active'
+  );
+  if v_invalid_count > 0 then
+    raise exception using
+      errcode = '55000',
+      message = 'The checked-in roster changed in another manager. Reload it before changing the queue.';
+  end if;
+
+  if v_current_assignments is distinct from p_expected_assignments
+     or v_current_queue_snapshot is distinct from p_expected_queue_snapshot then
+    raise exception using
+      errcode = '40001',
+      message = 'The live rotation changed in another manager. Reload it and try again.';
+  end if;
+
+  update public.open_play_game_rounds
+  set assignments = p_assignments,
+      queue_snapshot = p_queue_snapshot
+  where id = p_round_id
+  returning * into v_round;
+
+  return v_round;
+end;
+$$;
+
+revoke all on function public.update_open_play_game_round(uuid, jsonb, jsonb, jsonb, jsonb) from public, anon;
+grant execute on function public.update_open_play_game_round(uuid, jsonb, jsonb, jsonb, jsonb) to authenticated;
+
+comment on function public.update_open_play_game_round(uuid, jsonb, jsonb, jsonb, jsonb) is
+  'Atomically updates the latest active rotation round only when the caller has its current version.';
+
+create or replace function public.create_or_open_play_game_session(
+  p_date date,
+  p_time_label text,
+  p_court_ids text[],
+  p_court_names text[],
+  p_mode text
+)
+returns public.open_play_game_sessions
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_court_key text;
+  v_session public.open_play_game_sessions%rowtype;
+begin
+  if p_date is null
+     or coalesce(cardinality(p_court_ids), 0) = 0
+     or cardinality(p_court_ids) is distinct from cardinality(p_court_names)
+     or nullif(btrim(p_mode), '') is null then
+    raise exception using
+      errcode = '22023',
+      message = 'Choose a date, valid courts, and a rotation mode before creating the session.';
+  end if;
+
+  if (select count(*) <> count(distinct court_id) from unnest(p_court_ids) as court(court_id)) then
+    raise exception using
+      errcode = '22023',
+      message = 'The same court cannot be selected twice.';
+  end if;
+
+  select coalesce(string_agg(court_id, ',' order by court_id), '')
+  into v_court_key
+  from unnest(p_court_ids) as court(court_id);
+
+  perform pg_advisory_xact_lock(hashtextextended(
+    p_date::text || chr(31) ||
+    coalesce(btrim(p_time_label), '') || chr(31) ||
+    v_court_key || chr(31) ||
+    btrim(p_mode),
+    0
+  ));
+
+  select session.*
+  into v_session
+  from public.open_play_game_sessions session
+  where session.date = p_date
+    and coalesce(session.time_label, '') = coalesce(btrim(p_time_label), '')
+    and session.mode = btrim(p_mode)
+    and session.status not in ('completed', 'cancelled')
+    and session.court_ids @> p_court_ids
+    and session.court_ids <@ p_court_ids
+  order by session.created_at desc, session.id desc
+  limit 1;
+
+  if found then
+    return v_session;
+  end if;
+
+  insert into public.open_play_game_sessions (
+    date,
+    time_label,
+    court_ids,
+    court_names,
+    mode,
+    status,
+    current_round
+  )
+  values (
+    p_date,
+    nullif(btrim(p_time_label), ''),
+    p_court_ids,
+    p_court_names,
+    btrim(p_mode),
+    'draft',
+    0
+  )
+  returning * into v_session;
+
+  return v_session;
+end;
+$$;
+
+revoke all on function public.create_or_open_play_game_session(date, text, text[], text[], text) from public, anon;
+grant execute on function public.create_or_open_play_game_session(date, text, text[], text[], text) to authenticated;
+
+comment on function public.create_or_open_play_game_session(date, text, text[], text[], text) is
+  'Atomically creates or reuses one non-terminal session for the same date, time, courts, and mode.';
+
+create or replace function public.transition_open_play_game_session(
+  p_session_id uuid,
+  p_expected_status text,
+  p_next_status text
+)
+returns public.open_play_game_sessions
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_session public.open_play_game_sessions%rowtype;
+begin
+  select session.*
+  into v_session
+  from public.open_play_game_sessions session
+  where session.id = p_session_id
+  for update;
+
+  if not found then
+    raise exception using
+      errcode = '42501',
+      message = 'The Open Play Rotation session was not found or is not accessible.';
+  end if;
+
+  if v_session.status in ('completed', 'cancelled') then
+    raise exception using
+      errcode = '55000',
+      message = 'Completed and cancelled rotation sessions cannot be reopened.';
+  end if;
+
+  if v_session.status is distinct from p_expected_status then
+    raise exception using
+      errcode = '40001',
+      message = 'The session status changed in another manager. Reload it and try again.';
+  end if;
+
+  if not (
+    (v_session.status in ('draft', 'active') and p_next_status in ('paused', 'completed'))
+    or (v_session.status = 'paused' and p_next_status in ('active', 'completed'))
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'That rotation session status change is not allowed.';
+  end if;
+
+  update public.open_play_game_sessions
+  set status = p_next_status,
+      updated_at = now()
+  where id = p_session_id
+  returning * into v_session;
+
+  return v_session;
+end;
+$$;
+
+revoke all on function public.transition_open_play_game_session(uuid, text, text) from public, anon;
+grant execute on function public.transition_open_play_game_session(uuid, text, text) to authenticated;
+
+comment on function public.transition_open_play_game_session(uuid, text, text) is
+  'Atomically pauses, resumes, or completes a rotation session using an expected-status check.';
+
+-- Open Play Rotation parity fields are repeated here so rerunning this setup
+-- upgrades an existing project as well as creating a new one.
+alter table public.open_play_game_sessions
+  add column if not exists location text,
+  add column if not exists settings jsonb not null default '{}'::jsonb,
+  add column if not exists share_enabled boolean not null default true;
+
+alter table public.open_play_game_players
+  add column if not exists profile jsonb not null default '{}'::jsonb;
+
+alter table public.open_play_game_players
+  drop constraint if exists open_play_game_players_status_check;
+
+alter table public.open_play_game_players
+  add constraint open_play_game_players_status_check
+  check (status in ('active', 'no_show', 'break', 'removed'));
+
+create or replace function public.correct_open_play_game_result(
+  p_round_id uuid,
+  p_game_id text
+)
+returns public.open_play_game_rounds
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_round public.open_play_game_rounds%rowtype;
+  v_assignments jsonb;
+  v_found boolean;
+begin
+  if p_round_id is null or nullif(btrim(p_game_id), '') is null then
+    raise exception using errcode = '22023', message = 'A saved round and game are required.';
+  end if;
+
+  select * into v_round
+  from public.open_play_game_rounds round
+  where round.id = p_round_id
+  for update;
+  if not found then
+    raise exception using errcode = '55000', message = 'That saved rotation round was not found.';
+  end if;
+
+  select exists (
+    select 1
+    from jsonb_array_elements(v_round.assignments) game(item)
+    where game.item ->> 'gameId' = p_game_id
+      and game.item ->> 'winner' in ('A', 'B')
+    union all
+    select 1
+    from jsonb_array_elements(v_round.assignments) game(item)
+    cross join lateral jsonb_array_elements(coalesce(game.item -> 'completedGames', '[]'::jsonb)) completed(item)
+    where completed.item ->> 'gameId' = p_game_id
+      and completed.item ->> 'winner' in ('A', 'B')
+  ) into v_found;
+  if not v_found then
+    raise exception using errcode = '55000', message = 'That saved match result was not found.';
+  end if;
+
+  select jsonb_agg(
+    case
+      when game.item ->> 'gameId' = p_game_id
+        and game.item ->> 'winner' in ('A', 'B')
+      then jsonb_set(
+        jsonb_set(
+          game.item,
+          '{winner}',
+          to_jsonb(case when game.item ->> 'winner' = 'A' then 'B' else 'A' end),
+          true
+        ),
+        '{correctedAt}',
+        to_jsonb(now()),
+        true
+      )
+      else jsonb_set(
+        game.item,
+        '{completedGames}',
+        coalesce((
+          select jsonb_agg(
+            case
+              when completed.item ->> 'gameId' = p_game_id
+                and completed.item ->> 'winner' in ('A', 'B')
+              then jsonb_set(
+                jsonb_set(
+                  completed.item,
+                  '{winner}',
+                  to_jsonb(case when completed.item ->> 'winner' = 'A' then 'B' else 'A' end),
+                  true
+                ),
+                '{correctedAt}',
+                to_jsonb(now()),
+                true
+              )
+              else completed.item
+            end
+            order by completed.ordinality
+          )
+          from jsonb_array_elements(coalesce(game.item -> 'completedGames', '[]'::jsonb))
+            with ordinality completed(item, ordinality)
+        ), '[]'::jsonb),
+        true
+      )
+    end
+    order by game.ordinality
+  )
+  into v_assignments
+  from jsonb_array_elements(v_round.assignments) with ordinality game(item, ordinality);
+
+  update public.open_play_game_rounds
+  set assignments = v_assignments
+  where id = p_round_id
+  returning * into v_round;
+  return v_round;
+end;
+$$;
+
+revoke all on function public.correct_open_play_game_result(uuid, text) from public, anon;
+grant execute on function public.correct_open_play_game_result(uuid, text) to authenticated;
+
+create or replace function public.public_check_in_open_play_player(
+  p_session_id uuid,
+  p_player_id uuid
+)
+returns public.open_play_game_players
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_session public.open_play_game_sessions%rowtype;
+  v_player public.open_play_game_players%rowtype;
+begin
+  select * into v_session
+  from public.open_play_game_sessions session
+  where session.id = p_session_id
+    and session.share_enabled = true
+  for update;
+  if not found
+     or v_session.status in ('completed', 'cancelled')
+     or coalesce((v_session.settings ->> 'publicCheckIn')::boolean, false) is false then
+    raise exception using errcode = '42501', message = 'Player self check-in is not enabled for this session.';
+  end if;
+
+  update public.open_play_game_players
+  set status = 'active',
+      profile = jsonb_set(
+        coalesce(profile, '{}'::jsonb),
+        '{checkedInAt}',
+        to_jsonb(now()),
+        true
+      )
+  where id = p_player_id
+    and session_id = p_session_id
+  returning * into v_player;
+  if not found then
+    raise exception using errcode = '55000', message = 'That player was not found in this session.';
+  end if;
+  return v_player;
+end;
+$$;
+
+revoke all on function public.public_check_in_open_play_player(uuid, uuid) from public;
+grant execute on function public.public_check_in_open_play_player(uuid, uuid) to anon, authenticated;
+
+create or replace function public.get_public_open_play_game_session(
+  p_session_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public, pg_temp
+as $$
+declare
+  v_session public.open_play_game_sessions%rowtype;
+begin
+  select * into v_session
+  from public.open_play_game_sessions session
+  where session.id = p_session_id
+    and session.share_enabled = true;
+  if not found then
+    return null;
+  end if;
+
+  return jsonb_build_object(
+    'session', jsonb_build_object(
+      'id', v_session.id,
+      'date', v_session.date,
+      'time_label', v_session.time_label,
+      'location', v_session.location,
+      'court_ids', v_session.court_ids,
+      'court_names', v_session.court_names,
+      'mode', v_session.mode,
+      'status', v_session.status,
+      'public_check_in', coalesce((v_session.settings ->> 'publicCheckIn')::boolean, false),
+      'current_round', v_session.current_round,
+      'updated_at', v_session.updated_at
+    ),
+    'up_next', coalesce((
+      select coalesce(
+        (round.assignments -> 0) -> 'stagedMatches',
+        (round.assignments -> 0) -> 'staged_matches',
+        '[]'::jsonb
+      )
+      from public.open_play_game_rounds round
+      where round.session_id = p_session_id
+      order by round.round_no desc
+      limit 1
+    ), '[]'::jsonb),
+    'players', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', player.id,
+          'full_name', player.full_name,
+          'status', player.status,
+          'seed_order', player.seed_order,
+          'profile', coalesce(player.profile, '{}'::jsonb) - 'duprId' - 'dupr_id'
+        )
+        order by player.seed_order, player.created_at, player.id
+      )
+      from public.open_play_game_players player
+      where player.session_id = p_session_id
+    ), '[]'::jsonb),
+    'rounds', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', round.id,
+          'round_no', round.round_no,
+          'assignments', round.assignments,
+          'queue_snapshot', round.queue_snapshot,
+          'created_at', round.created_at,
+          'completed_at', round.completed_at
+        )
+        order by round.round_no
+      )
+      from public.open_play_game_rounds round
+      where round.session_id = p_session_id
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+revoke all on function public.get_public_open_play_game_session(uuid) from public;
+grant execute on function public.get_public_open_play_game_session(uuid) to anon, authenticated;
+
+comment on function public.get_public_open_play_game_session(uuid) is
+  'Returns the share-safe live Open Play board when public sharing is enabled.';
 
 notify pgrst, 'reload schema';
 

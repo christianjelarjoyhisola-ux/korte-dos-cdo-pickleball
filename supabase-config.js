@@ -9,6 +9,26 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const PB_REQUEST_TIMEOUT_MS = 45000;
 const PB_RECEIPT_TIMEOUT_MS = 90000;
 
+function normalizeOpenPlaySkillLevel(value, fallback = 1) {
+  const level = Number(value);
+  return Number.isInteger(level) && level >= 1 && level <= 6 ? level : fallback;
+}
+
+function openPlayPerformanceSeed(skillLevel) {
+  if (window.PBOpenPlayRating?.seedRating) {
+    return window.PBOpenPlayRating.seedRating(skillLevel);
+  }
+  return 1000 + (normalizeOpenPlaySkillLevel(skillLevel) - 1) * 100;
+}
+
+function normalizeOpenPlayRankingMode(value) {
+  if (window.PBOpenPlayRating?.normalizeRankingMode) {
+    return window.PBOpenPlayRating.normalizeRankingMode(value);
+  }
+  if (value === 'competitive') return 'competitive';
+  return value === 'win_percentage' ? 'win_percentage' : 'performance';
+}
+
 async function _pbFetchWithTimeout(input, init = {}, timeoutMs = PB_REQUEST_TIMEOUT_MS) {
   const supportsAbort = typeof AbortController === 'function';
   const controller = supportsAbort && !init.signal ? new AbortController() : null;
@@ -804,6 +824,72 @@ function rowToOpenPlayHostSessionRegistration(r) {
   };
 }
 
+function _normalizeOpenPlayGamePlayerRows(players, { allowLocalSourceIds = false } = {}) {
+  if (!Array.isArray(players)) throw new Error('Open Play Rotation players must be a list.');
+  if (players.length > 500) throw new Error('Open Play Rotation supports up to 500 players per session.');
+  const validStatuses = new Set(['active', 'no_show', 'break', 'removed']);
+  const maxBigint = BigInt('9223372036854775807');
+  const seenIds = new Set();
+  const seenSources = new Set();
+  return players.map((player, index) => {
+    const rawId = String(player.id || '').trim();
+    const id = rawId
+      ? (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId)
+          ? rawId.toLowerCase()
+          : rawId)
+      : null;
+    const fullName = String(player.fullName || player.full_name || '').trim();
+    const rawSource = player.sourceRegistrationId ?? player.source_registration_id ?? null;
+    let sourceRegistrationId = null;
+    if (rawSource !== '' && rawSource != null) {
+      const sourceText = String(rawSource).trim();
+      if (allowLocalSourceIds && /^[a-z0-9][a-z0-9_-]{0,127}$/i.test(sourceText) && !/^[0-9]+$/.test(sourceText)) {
+        sourceRegistrationId = sourceText.toUpperCase();
+      } else if (!/^[0-9]+$/.test(sourceText)) {
+        throw new Error('A paid Open Play registration ID is invalid.');
+      } else {
+        const sourceValue = BigInt(sourceText);
+        if (sourceValue <= 0 || sourceValue > maxBigint) {
+          throw new Error('A paid Open Play registration ID is invalid.');
+        }
+        sourceRegistrationId = sourceValue.toString();
+      }
+    }
+    const status = String(player.status || 'active');
+    const rawProfile = player.profile && typeof player.profile === 'object' ? player.profile : {};
+    const skillLevel = Math.max(0, Math.min(6, Number(rawProfile.skillLevel ?? rawProfile.skill_level ?? player.skillLevel ?? player.skill_level ?? 0) || 0));
+    const genderValue = String(rawProfile.gender ?? player.gender ?? 'unspecified').toLowerCase();
+    const gender = ['male', 'female', 'other', 'unspecified'].includes(genderValue) ? genderValue : 'unspecified';
+    const groupName = String(rawProfile.groupName ?? rawProfile.group_name ?? player.groupName ?? player.group_name ?? '').trim().slice(0, 50);
+    const lockedPartnerId = String(rawProfile.lockedPartnerId ?? rawProfile.locked_partner_id ?? player.lockedPartnerId ?? player.locked_partner_id ?? '').trim() || null;
+    const duprId = String(rawProfile.duprId ?? rawProfile.dupr_id ?? player.duprId ?? player.dupr_id ?? '').trim().slice(0, 40);
+    const checkedInAt = rawProfile.checkedInAt ?? rawProfile.checked_in_at ?? player.checkedInAt ?? player.checked_in_at ?? null;
+    if (!fullName) throw new Error('Every saved rotation player needs a name.');
+    if (!validStatuses.has(status)) throw new Error(`Invalid rotation player status: ${status}`);
+    if (id && seenIds.has(id)) throw new Error('The same rotation player appears more than once.');
+    if (id) seenIds.add(id);
+    if (sourceRegistrationId != null) {
+      if (seenSources.has(sourceRegistrationId)) throw new Error('The same paid registration appears more than once.');
+      seenSources.add(sourceRegistrationId);
+    }
+    return {
+      id,
+      full_name: fullName,
+      source_registration_id: sourceRegistrationId,
+      status,
+      seed_order: index,
+      profile: {
+        skillLevel,
+        gender,
+        groupName,
+        lockedPartnerId,
+        duprId,
+        checkedInAt,
+      },
+    };
+  });
+}
+
 // =============================================
 // DB — Async Data Layer (replaces localStorage)
 // =============================================
@@ -1323,10 +1409,10 @@ window.DB = {
     return rowToOpenPlayHostSessionRegistration(data?.[0] || insertRow);
   },
 
-  // ---- OPEN PLAY GAME MANAGER ----
+  // ---- OPEN PLAY ROTATION ----
   async getOpenPlayGameSessions() {
     const { data, error } = await _sb.from('open_play_game_sessions').select('*').order('date', { ascending: false }).order('created_at', { ascending: false });
-    if (error) { console.error('getOpenPlayGameSessions:', error); return []; }
+    if (error) { console.error('getOpenPlayGameSessions:', error); throw error; }
     return data || [];
   },
 
@@ -1336,9 +1422,254 @@ window.DB = {
       time_label: session.timeLabel || null,
       court_ids: session.courtIds || [],
       court_names: session.courtNames || [],
-      mode: session.mode || 'smart_random_mixer',
+      mode: session.mode || 'doubles:balanced',
       status: session.status || 'draft',
       current_round: session.currentRound || 0,
+      location: session.location || null,
+      settings: session.settings || {},
+      share_enabled: session.shareEnabled !== false,
+    };
+    const { data, error } = await _sb.from('open_play_game_sessions').insert(row).select('*').single();
+    if (error) { console.error('createOpenPlayGameSession:', error); throw error; }
+    return data;
+  },
+
+  async createOrOpenPlayGameSession(session) {
+    const { data, error } = await _sb.rpc('create_or_open_play_game_session', {
+      p_date: session.date,
+      p_time_label: session.timeLabel || null,
+      p_court_ids: session.courtIds || [],
+      p_court_names: session.courtNames || [],
+      p_mode: session.mode || 'doubles:balanced',
+    });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation database migration before creating a session.');
+    }
+    console.error('createOrOpenPlayGameSession rpc:', error);
+    throw error;
+  },
+
+  async updateOpenPlayGameSession(id, updates) {
+    const row = {};
+    if (updates.date !== undefined) row.date = updates.date;
+    if (updates.timeLabel !== undefined) row.time_label = updates.timeLabel;
+    if (updates.courtIds !== undefined) row.court_ids = updates.courtIds;
+    if (updates.courtNames !== undefined) row.court_names = updates.courtNames;
+    if (updates.mode !== undefined) row.mode = updates.mode;
+    if (updates.status !== undefined) row.status = updates.status;
+    if (updates.currentRound !== undefined) row.current_round = updates.currentRound;
+    if (updates.location !== undefined) row.location = updates.location || null;
+    if (updates.settings !== undefined) row.settings = updates.settings || {};
+    if (updates.shareEnabled !== undefined) row.share_enabled = Boolean(updates.shareEnabled);
+    const { data, error } = await _sb.from('open_play_game_sessions').update(row).eq('id', id).select('*').single();
+    if (error) { console.error('updateOpenPlayGameSession:', error); throw error; }
+    return data;
+  },
+
+  async transitionOpenPlayGameSession(id, expectedStatus, nextStatus) {
+    const { data, error } = await _sb.rpc('transition_open_play_game_session', {
+      p_session_id: id,
+      p_expected_status: expectedStatus,
+      p_next_status: nextStatus,
+    });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation database migration before changing session status.');
+    }
+    console.error('transitionOpenPlayGameSession rpc:', error);
+    throw error;
+  },
+
+  async getOpenPlayGamePlayers(sessionId) {
+    const { data, error } = await _sb.from('open_play_game_players').select('*').eq('session_id', sessionId).order('seed_order');
+    if (error) { console.error('getOpenPlayGamePlayers:', error); throw error; }
+    return data || [];
+  },
+
+  async replaceOpenPlayGamePlayers(sessionId, players) {
+    const normalizedInput = _normalizeOpenPlayGamePlayerRows(players);
+    const rpcPayload = normalizedInput.map(player => ({
+      id: player.id,
+      full_name: player.full_name,
+      source_registration_id: player.source_registration_id,
+      status: player.status,
+      profile: player.profile || {},
+    }));
+    const { data: rpcData, error: rpcError } = await _sb.rpc('replace_open_play_game_players', {
+      p_session_id: sessionId,
+      p_players: rpcPayload,
+    });
+    if (!rpcError) return rpcData || [];
+    const rpcMissing = rpcError.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(rpcError.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation database migration before saving a roster.');
+    }
+    console.error('replaceOpenPlayGamePlayers rpc:', rpcError);
+    throw rpcError;
+  },
+
+  async resetOpenPlayGameRoster(sessionId, players) {
+    const normalizedInput = _normalizeOpenPlayGamePlayerRows(players);
+    const rpcPayload = normalizedInput.map(player => ({
+      id: player.id,
+      full_name: player.full_name,
+      source_registration_id: player.source_registration_id,
+      status: player.status,
+      profile: player.profile || {},
+    }));
+    const { data, error } = await _sb.rpc('reset_open_play_game_roster', {
+      p_session_id: sessionId,
+      p_players: rpcPayload,
+    });
+    if (!error) return data || [];
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation database migration before resetting a roster with saved rounds.');
+    }
+    console.error('resetOpenPlayGameRoster rpc:', error);
+    throw error;
+  },
+
+  async getOpenPlayGameRounds(sessionId) {
+    const { data, error } = await _sb.from('open_play_game_rounds').select('*').eq('session_id', sessionId).order('round_no');
+    if (error) { console.error('getOpenPlayGameRounds:', error); throw error; }
+    return data || [];
+  },
+
+  async addOpenPlayGameRound(round) {
+    const row = {
+      session_id: round.sessionId,
+      round_no: round.roundNo,
+      assignments: round.assignments || [],
+      queue_snapshot: round.queueSnapshot || [],
+      partner_history: round.partnerHistory || {},
+      opponent_history: round.opponentHistory || {},
+      completed_at: round.completedAt || null,
+    };
+    const { data: rpcData, error: rpcError } = await _sb.rpc('add_open_play_game_round', {
+      p_session_id: row.session_id,
+      p_round_no: row.round_no,
+      p_assignments: row.assignments,
+      p_queue_snapshot: row.queue_snapshot,
+      p_partner_history: row.partner_history,
+      p_opponent_history: row.opponent_history,
+      p_completed_at: row.completed_at,
+    });
+    if (!rpcError) return Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    const rpcMissing = rpcError.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(rpcError.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation database migration before starting a round.');
+    }
+    console.error('addOpenPlayGameRound rpc:', rpcError);
+    throw rpcError;
+  },
+
+  async updateOpenPlayGameRound(id, updates, expected) {
+    if (!expected || !Array.isArray(expected.assignments) || !Array.isArray(expected.queueSnapshot)) {
+      throw new Error('Reload the live rotation before recording a result or queue change.');
+    }
+    const assignments = updates.assignments !== undefined ? updates.assignments : expected.assignments;
+    const queueSnapshot = updates.queueSnapshot !== undefined ? updates.queueSnapshot : expected.queueSnapshot;
+    const { data, error } = await _sb.rpc('update_open_play_game_round', {
+      p_round_id: id,
+      p_expected_assignments: expected.assignments,
+      p_expected_queue_snapshot: expected.queueSnapshot,
+      p_assignments: assignments,
+      p_queue_snapshot: queueSnapshot,
+    });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation database migration before recording live results.');
+    }
+    console.error('updateOpenPlayGameRound rpc:', error);
+    throw error;
+  },
+
+  async deleteLatestOpenPlayGameRound(sessionId) {
+    const { data, error } = await _sb.rpc('undo_latest_open_play_game_round', {
+      p_session_id: sessionId,
+    });
+    if (!error) return Array.isArray(data) ? (data[0] || null) : (data || null);
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation database migration before undoing a round.');
+    }
+    console.error('deleteLatestOpenPlayGameRound rpc:', error);
+    throw error;
+  },
+
+  async clearOpenPlayGameRounds(sessionId) {
+    const { error } = await _sb.from('open_play_game_rounds').delete().eq('session_id', sessionId);
+    if (error) { console.error('clearOpenPlayGameRounds:', error); throw error; }
+    await this.updateOpenPlayGameSession(sessionId, { currentRound: 0, status: 'draft' }).catch(() => {});
+  },
+
+  // ---- PADDLE RAGE PLAY MANAGER COMPATIBILITY ----
+  // These methods back the imported manager while retaining this project's
+  // booking, finance, and authentication adapters.
+  async setOpenPlayGamePublicShare(sessionId, enabled) {
+    const { data, error } = await _sb.rpc('set_open_play_game_public_share', {
+      p_session_id: sessionId,
+      p_enabled: Boolean(enabled),
+    });
+    if (error) {
+      console.error('setOpenPlayGamePublicShare:', error);
+      throw error;
+    }
+    return data || null;
+  },
+
+  async rotateOpenPlayGamePublicShare(sessionId) {
+    const { data, error } = await _sb.rpc('rotate_open_play_game_public_share', {
+      p_session_id: sessionId,
+    });
+    if (error) {
+      console.error('rotateOpenPlayGamePublicShare:', error);
+      throw error;
+    }
+    return data || null;
+  },
+
+  async getPublicOpenPlayGameLiveBoard(shareToken) {
+    const token = String(shareToken || '').trim();
+    if (!/^[0-9a-f]{64}$/.test(token)) return null;
+    const { data, error } = await _sb.rpc('get_public_open_play_game_live_board', {
+      p_share_token: token,
+    });
+    if (error) {
+      console.error('getPublicOpenPlayGameLiveBoard:', error);
+      throw error;
+    }
+    return data || null;
+  },
+
+  async createOpenPlayGameSession(session) {
+    const row = {
+      date: session.date,
+      time_label: session.timeLabel || null,
+      court_ids: session.courtIds || [],
+      court_names: session.courtNames || [],
+      mode: session.mode || 'smart_random_mixer',
+      ranking_mode: normalizeOpenPlayRankingMode(
+        session.rankingMode ?? session.ranking_mode ?? 'competitive'
+      ),
+      status: session.status || 'draft',
+      current_round: session.currentRound || 0,
+      performance_rating_version: 'pr-performance-v1',
+      performance_rating_k: 24,
+      performance_rating_scale: 400,
+      performance_rating_min_games: 2,
     };
     const { data, error } = await _sb.from('open_play_game_sessions').insert(row).select('*').single();
     if (error) { console.error('createOpenPlayGameSession:', error); throw error; }
@@ -1352,6 +1683,11 @@ window.DB = {
     if (updates.courtIds !== undefined) row.court_ids = updates.courtIds;
     if (updates.courtNames !== undefined) row.court_names = updates.courtNames;
     if (updates.mode !== undefined) row.mode = updates.mode;
+    if (updates.rankingMode !== undefined || updates.ranking_mode !== undefined) {
+      row.ranking_mode = normalizeOpenPlayRankingMode(
+        updates.rankingMode ?? updates.ranking_mode
+      );
+    }
     if (updates.status !== undefined) row.status = updates.status;
     if (updates.currentRound !== undefined) row.current_round = updates.currentRound;
     const { data, error } = await _sb.from('open_play_game_sessions').update(row).eq('id', id).select('*').single();
@@ -1359,31 +1695,67 @@ window.DB = {
     return data;
   },
 
-  async getOpenPlayGamePlayers(sessionId) {
-    const { data, error } = await _sb.from('open_play_game_players').select('*').eq('session_id', sessionId).order('seed_order');
-    if (error) { console.error('getOpenPlayGamePlayers:', error); return []; }
-    return data || [];
+  async addOpenPlayGamePlayer(sessionId, player) {
+    const skillLevel = normalizeOpenPlaySkillLevel(player.skillLevel ?? player.skill_level);
+    const row = {
+      session_id: sessionId,
+      full_name: player.fullName || player.full_name,
+      source_registration_id: player.sourceRegistrationId || player.source_registration_id || null,
+      status: player.status || 'active',
+      seed_order: Number(player.seedOrder ?? player.seed_order ?? 0),
+      skill_level: skillLevel,
+      performance_seed_rating: openPlayPerformanceSeed(skillLevel),
+    };
+    const { data, error } = await _sb.from('open_play_game_players').insert(row).select('*').single();
+    if (error) { console.error('addOpenPlayGamePlayer:', error); throw error; }
+    return data;
+  },
+
+  async updateOpenPlayGamePlayer(id, updates) {
+    const row = {};
+    if (updates.fullName !== undefined || updates.full_name !== undefined) {
+      row.full_name = String(updates.fullName ?? updates.full_name).trim();
+    }
+    if (updates.skillLevel !== undefined || updates.skill_level !== undefined) {
+      row.skill_level = normalizeOpenPlaySkillLevel(updates.skillLevel ?? updates.skill_level);
+    }
+    const { data, error } = await _sb
+      .from('open_play_game_players')
+      .update(row)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) { console.error('updateOpenPlayGamePlayer:', error); throw error; }
+    return data;
   },
 
   async replaceOpenPlayGamePlayers(sessionId, players) {
     const { error: delError } = await _sb.from('open_play_game_players').delete().eq('session_id', sessionId);
     if (delError) { console.error('replaceOpenPlayGamePlayers delete:', delError); throw delError; }
     if (!players.length) return [];
-    const rows = players.map((p, i) => ({
-      session_id: sessionId,
-      full_name: p.fullName || p.full_name,
-      source_registration_id: p.sourceRegistrationId || p.source_registration_id || null,
-      status: p.status || 'active',
-      seed_order: i,
-    }));
+    const rows = players.map((player, index) => {
+      const skillLevel = normalizeOpenPlaySkillLevel(player.skillLevel ?? player.skill_level);
+      return {
+        session_id: sessionId,
+        full_name: player.fullName || player.full_name,
+        source_registration_id: player.sourceRegistrationId || player.source_registration_id || null,
+        status: player.status || 'active',
+        seed_order: index,
+        skill_level: skillLevel,
+        performance_seed_rating: openPlayPerformanceSeed(skillLevel),
+      };
+    });
     const { data, error } = await _sb.from('open_play_game_players').insert(rows).select('*').order('seed_order');
     if (error) { console.error('replaceOpenPlayGamePlayers insert:', error); throw error; }
     return data || [];
   },
 
-  async getOpenPlayGameRounds(sessionId) {
-    const { data, error } = await _sb.from('open_play_game_rounds').select('*').eq('session_id', sessionId).order('round_no');
-    if (error) { console.error('getOpenPlayGameRounds:', error); return []; }
+  async syncOpenPlayGameQueueWaitTimes(sessionId, queuePlayerIds) {
+    const { data, error } = await _sb.rpc('sync_open_play_game_queue_wait_times', {
+      p_session_id: sessionId,
+      p_queue_player_ids: (queuePlayerIds || []).map(String),
+    });
+    if (error) { console.error('syncOpenPlayGameQueueWaitTimes:', error); throw error; }
     return data || [];
   },
 
@@ -1399,7 +1771,6 @@ window.DB = {
     };
     const { data, error } = await _sb.from('open_play_game_rounds').insert(row).select('*').single();
     if (error) { console.error('addOpenPlayGameRound:', error); throw error; }
-    await this.updateOpenPlayGameSession(round.sessionId, { currentRound: round.roundNo, status: 'active' }).catch(() => {});
     return data;
   },
 
@@ -1415,20 +1786,61 @@ window.DB = {
     return data;
   },
 
+  async updateOpenPlayGameRoundIfCurrent(id, expected, updates) {
+    const { data, error } = await _sb.rpc('update_open_play_game_round_if_current', {
+      p_round_id: id,
+      p_expected_assignments: expected.assignments || [],
+      p_expected_queue_snapshot: expected.queueSnapshot ?? expected.queue_snapshot ?? [],
+      p_assignments: updates.assignments || [],
+      p_queue_snapshot: updates.queueSnapshot ?? updates.queue_snapshot ?? [],
+    });
+    if (error) { console.error('updateOpenPlayGameRoundIfCurrent:', error); throw error; }
+    return data;
+  },
+
+  async replaceOpenPlayGameCourtPlayer(id, expected, replacement) {
+    const { data, error } = await _sb.rpc('replace_open_play_game_court_player', {
+      p_round_id: id,
+      p_expected_assignments: expected.assignments || [],
+      p_expected_queue_snapshot: expected.queueSnapshot ?? expected.queue_snapshot ?? [],
+      p_court_index: Number(replacement.courtIndex),
+      p_team: replacement.team,
+      p_slot_index: Number(replacement.slotIndex),
+      p_outgoing_player_id: replacement.outgoingPlayerId,
+      p_incoming_player_id: replacement.incomingPlayerId || null,
+      p_incoming_player_name: replacement.incomingPlayerName || null,
+      p_mark_outgoing_removed: replacement.markOutgoingRemoved === true,
+    });
+    if (error) { console.error('replaceOpenPlayGameCourtPlayer:', error); throw error; }
+    return data;
+  },
+
+  async correctOpenPlayGameMatchWinner(id, expected, correction) {
+    const { data, error } = await _sb.rpc('correct_open_play_game_match_winner', {
+      p_round_id: id,
+      p_expected_assignments: expected.assignments || [],
+      p_court_index: Number(correction.courtIndex),
+      p_completed_game_index: correction.completedGameIndex ?? null,
+      p_expected_winner: correction.expectedWinner,
+      p_new_winner: correction.newWinner,
+    });
+    if (error) { console.error('correctOpenPlayGameMatchWinner:', error); throw error; }
+    return data;
+  },
+
   async deleteLatestOpenPlayGameRound(sessionId) {
-    const rounds = await this.getOpenPlayGameRounds(sessionId);
-    const last = rounds[rounds.length - 1];
-    if (!last) return null;
-    const { error } = await _sb.from('open_play_game_rounds').delete().eq('id', last.id);
+    const { data, error } = await _sb.rpc('delete_latest_open_play_game_round_guarded', {
+      p_session_id: sessionId,
+    });
     if (error) { console.error('deleteLatestOpenPlayGameRound:', error); throw error; }
-    await this.updateOpenPlayGameSession(sessionId, { currentRound: Math.max(0, Number(last.round_no || 1) - 1) }).catch(() => {});
-    return last;
+    return data || null;
   },
 
   async clearOpenPlayGameRounds(sessionId) {
-    const { error } = await _sb.from('open_play_game_rounds').delete().eq('session_id', sessionId);
+    const { error } = await _sb.rpc('clear_open_play_game_rounds_guarded', {
+      p_session_id: sessionId,
+    });
     if (error) { console.error('clearOpenPlayGameRounds:', error); throw error; }
-    await this.updateOpenPlayGameSession(sessionId, { currentRound: 0, status: 'draft' }).catch(() => {});
   },
 
   // ---- BLOCKED DATES ----
@@ -1504,6 +1916,62 @@ window.DB = {
     const { error } = await _sb.from('settings').upsert({ key, value });
     if (error) { console.error('saveSetting:', error); throw error; }
     _pbClearFastCache(['settings']);
+  },
+
+  async getPublicOpenPlayGameSession(sessionId) {
+    const { data, error } = await _sb.rpc('get_public_open_play_game_session', {
+      p_session_id: sessionId,
+    });
+    if (!error) return data || null;
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation parity migration before sharing a live session.');
+    }
+    console.error('getPublicOpenPlayGameSession rpc:', error);
+    throw error;
+  },
+
+  async publicCheckInOpenPlayPlayer(sessionId, playerId) {
+    const { data, error } = await _sb.rpc('public_check_in_open_play_player', {
+      p_session_id: sessionId,
+      p_player_id: playerId,
+    });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Player self check-in is not available until the latest rotation migration is applied.');
+    }
+    console.error('publicCheckInOpenPlayPlayer rpc:', error);
+    throw error;
+  },
+
+  async correctOpenPlayGameResult(roundId, gameId) {
+    const { data, error } = await _sb.rpc('correct_open_play_game_result', {
+      p_round_id: roundId,
+      p_game_id: gameId,
+    });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    const rpcMissing = error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || ''));
+    if (rpcMissing) {
+      throw new Error('Apply the latest Open Play Rotation parity migration before correcting an older result.');
+    }
+    console.error('correctOpenPlayGameResult rpc:', error);
+    throw error;
+  },
+
+  async getOpenPlayGameAllPlayers() {
+    const { data, error } = await _sb.from('open_play_game_players').select('*').order('created_at');
+    if (error) { console.error('getOpenPlayGameAllPlayers:', error); throw error; }
+    return data || [];
+  },
+
+  async getOpenPlayGameAllRounds() {
+    const { data, error } = await _sb.from('open_play_game_rounds').select('*').order('created_at');
+    if (error) { console.error('getOpenPlayGameAllRounds:', error); throw error; }
+    return data || [];
   },
 
   async getPaymentReviewNotificationSettings() {
@@ -2781,13 +3249,52 @@ window.DB = {
         time_label: session.timeLabel || null,
         court_ids: session.courtIds || [],
         court_names: session.courtNames || [],
-        mode: session.mode || 'smart_random_mixer',
+        mode: session.mode || 'doubles:balanced',
         status: session.status || 'draft',
         current_round: session.currentRound || 0,
+        location: session.location || null,
+        settings: session.settings || {},
+        share_enabled: session.shareEnabled !== false,
         created_at: nowIso(),
         updated_at: nowIso(),
       };
       db.openPlayGameSessions.unshift(row);
+      writeDb(db);
+      return row;
+    },
+    async createOrOpenPlayGameSession(session) {
+      const db = readDb();
+      const courtIds = (session.courtIds || []).map(String);
+      const courtNames = session.courtNames || [];
+      if (!session.date || !courtIds.length || courtIds.length !== courtNames.length) {
+        throw new Error('Choose a date, valid courts, and a rotation mode before creating the session.');
+      }
+      const courtKey = [...courtIds].sort().join(',');
+      const mode = session.mode || 'doubles:balanced';
+      const existing = db.openPlayGameSessions.find(saved =>
+        saved.date === session.date &&
+        (saved.time_label || '') === (session.timeLabel || '') &&
+        (saved.court_ids || []).map(String).sort().join(',') === courtKey &&
+        saved.mode === mode &&
+        !['completed', 'cancelled'].includes(saved.status)
+      );
+      if (existing) return existing;
+      const row = {
+        id: localRef('gms'),
+        date: session.date,
+        time_label: session.timeLabel || null,
+        court_ids: courtIds,
+        court_names: courtNames,
+        mode,
+        status: 'draft',
+        current_round: 0,
+        location: session.location || null,
+        settings: session.settings || {},
+        share_enabled: session.shareEnabled !== false,
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      };
+      db.openPlayGameSessions.push(row);
       writeDb(db);
       return row;
     },
@@ -2805,10 +3312,35 @@ window.DB = {
           mode: updates.mode !== undefined ? updates.mode : s.mode,
           status: updates.status !== undefined ? updates.status : s.status,
           current_round: updates.currentRound !== undefined ? updates.currentRound : s.current_round,
+          location: updates.location !== undefined ? (updates.location || null) : s.location,
+          settings: updates.settings !== undefined ? (updates.settings || {}) : (s.settings || {}),
+          share_enabled: updates.shareEnabled !== undefined ? Boolean(updates.shareEnabled) : (s.share_enabled !== false),
           updated_at: nowIso(),
         };
         return saved;
       });
+      writeDb(db);
+      return saved;
+    },
+    async transitionOpenPlayGameSession(id, expectedStatus, nextStatus) {
+      const db = readDb();
+      const current = db.openPlayGameSessions.find(s => String(s.id) === String(id));
+      if (!current) throw new Error('The Open Play Rotation session was not found.');
+      if (['completed', 'cancelled'].includes(current.status)) {
+        throw new Error('Completed and cancelled rotation sessions cannot be reopened.');
+      }
+      if (current.status !== expectedStatus) {
+        throw new Error('The session status changed in another manager. Reload it and try again.');
+      }
+      const allowed = (
+        (['draft', 'active'].includes(current.status) && ['paused', 'completed'].includes(nextStatus)) ||
+        (current.status === 'paused' && ['active', 'completed'].includes(nextStatus))
+      );
+      if (!allowed) throw new Error('That rotation session status change is not allowed.');
+      const saved = { ...current, status: nextStatus, updated_at: nowIso() };
+      db.openPlayGameSessions = db.openPlayGameSessions.map(s =>
+        String(s.id) === String(id) ? saved : s
+      );
       writeDb(db);
       return saved;
     },
@@ -2819,17 +3351,76 @@ window.DB = {
     },
     async replaceOpenPlayGamePlayers(sessionId, players) {
       const db = readDb();
+      const session = db.openPlayGameSessions.find(s => String(s.id) === String(sessionId));
+      if (!session) throw new Error('The Open Play Rotation session was not found.');
+      if (['paused', 'completed', 'cancelled'].includes(session.status)) {
+        throw new Error('Resume the session or create a new session before changing its roster.');
+      }
+      const normalized = _normalizeOpenPlayGamePlayerRows(players, { allowLocalSourceIds: true });
+      const current = db.openPlayGamePlayers.filter(p => String(p.session_id) === String(sessionId));
+      const currentById = new Map(current.map(player => [String(player.id), player]));
+      const incomingIds = new Set(normalized.map(player => player.id).filter(Boolean).map(String));
+      const hasRounds = db.openPlayGameRounds.some(round => String(round.session_id) === String(sessionId));
+      if (hasRounds && current.some(player => !incomingIds.has(String(player.id)))) {
+        throw new Error('Saved rounds lock existing player IDs. Use the roster reset action to erase history first.');
+      }
+      const rows = normalized.map(p => {
+        const idMatch = p.id ? currentById.get(String(p.id)) : null;
+        if (p.id && !idMatch) {
+          throw new Error('A saved rotation player no longer belongs to this session. Refresh and try again.');
+        }
+        const existing = idMatch || null;
+        return {
+          ...(existing || {}),
+          id: existing ? String(existing.id) : localRef('gmp'),
+          session_id: sessionId,
+          full_name: p.full_name,
+          source_registration_id: p.source_registration_id,
+          status: p.status,
+          seed_order: p.seed_order,
+          profile: p.profile || {},
+          created_at: existing?.created_at || nowIso(),
+        };
+      });
       db.openPlayGamePlayers = db.openPlayGamePlayers.filter(p => String(p.session_id) !== String(sessionId));
-      const rows = players.map((p, i) => ({
-        id: localRef('gmp'),
-        session_id: sessionId,
-        full_name: p.fullName || p.full_name,
-        source_registration_id: p.sourceRegistrationId || p.source_registration_id || null,
-        status: p.status || 'active',
-        seed_order: i,
-        created_at: nowIso(),
-      }));
       db.openPlayGamePlayers.push(...rows);
+      writeDb(db);
+      return rows;
+    },
+    async resetOpenPlayGameRoster(sessionId, players) {
+      const db = readDb();
+      const session = db.openPlayGameSessions.find(s => String(s.id) === String(sessionId));
+      if (!session) throw new Error('The Open Play Rotation session was not found.');
+      if (['paused', 'completed', 'cancelled'].includes(session.status)) {
+        throw new Error('Resume the session or create a new session before resetting its roster.');
+      }
+      const normalized = _normalizeOpenPlayGamePlayerRows(players, { allowLocalSourceIds: true });
+      const current = db.openPlayGamePlayers.filter(p => String(p.session_id) === String(sessionId));
+      const currentById = new Map(current.map(player => [String(player.id), player]));
+      const rows = normalized.map(p => {
+        const idMatch = p.id ? currentById.get(String(p.id)) : null;
+        if (p.id && !idMatch) {
+          throw new Error('A saved rotation player no longer belongs to this session. Refresh and try again.');
+        }
+        const existing = idMatch || null;
+        return {
+          ...(existing || {}),
+          id: existing ? String(existing.id) : localRef('gmp'),
+          session_id: sessionId,
+          full_name: p.full_name,
+          source_registration_id: p.source_registration_id,
+          status: p.status,
+          seed_order: p.seed_order,
+          profile: p.profile || {},
+          created_at: existing?.created_at || nowIso(),
+        };
+      });
+      db.openPlayGamePlayers = db.openPlayGamePlayers.filter(p => String(p.session_id) !== String(sessionId));
+      db.openPlayGamePlayers.push(...rows);
+      db.openPlayGameRounds = db.openPlayGameRounds.filter(r => String(r.session_id) !== String(sessionId));
+      db.openPlayGameSessions = db.openPlayGameSessions.map(s => String(s.id) === String(sessionId)
+        ? { ...s, current_round: 0, status: 'draft', updated_at: nowIso() }
+        : s);
       writeDb(db);
       return rows;
     },
@@ -2838,14 +3429,93 @@ window.DB = {
         .filter(r => String(r.session_id) === String(sessionId))
         .sort((a, b) => Number(a.round_no || 0) - Number(b.round_no || 0));
     },
+    async getPublicOpenPlayGameSession(sessionId) {
+      const db = readDb();
+      const session = db.openPlayGameSessions.find(item => String(item.id) === String(sessionId));
+      if (!session || session.share_enabled === false) return null;
+      const rounds = db.openPlayGameRounds
+        .filter(round => String(round.session_id) === String(sessionId))
+        .sort((a, b) => Number(a.round_no || 0) - Number(b.round_no || 0));
+      const latestRound = rounds[rounds.length - 1];
+      const firstAssignment = Array.isArray(latestRound?.assignments) ? latestRound.assignments[0] : null;
+      return {
+        session,
+        players: db.openPlayGamePlayers
+          .filter(player => String(player.session_id) === String(sessionId))
+          .sort((a, b) => Number(a.seed_order || 0) - Number(b.seed_order || 0)),
+        rounds,
+        up_next: Array.isArray(firstAssignment?.stagedMatches) ? firstAssignment.stagedMatches : [],
+      };
+    },
+    async publicCheckInOpenPlayPlayer(sessionId, playerId) {
+      const db = readDb();
+      const session = db.openPlayGameSessions.find(item => String(item.id) === String(sessionId));
+      if (!session || session.share_enabled === false || !session.settings?.publicCheckIn ||
+          ['completed', 'cancelled'].includes(session.status)) {
+        throw new Error('Player self check-in is not enabled for this session.');
+      }
+      let saved = null;
+      db.openPlayGamePlayers = db.openPlayGamePlayers.map(player => {
+        if (String(player.id) !== String(playerId) || String(player.session_id) !== String(sessionId)) return player;
+        saved = {
+          ...player,
+          status: 'active',
+          profile: { ...(player.profile || {}), checkedInAt: nowIso() },
+        };
+        return saved;
+      });
+      if (!saved) throw new Error('That player was not found in this session.');
+      writeDb(db);
+      return saved;
+    },
+    async getOpenPlayGameAllPlayers() {
+      return [...readDb().openPlayGamePlayers];
+    },
+    async getOpenPlayGameAllRounds() {
+      return [...readDb().openPlayGameRounds];
+    },
     async addOpenPlayGameRound(round) {
       const db = readDb();
+      const session = db.openPlayGameSessions.find(s => String(s.id) === String(round.sessionId));
+      if (!session) throw new Error('The Open Play Rotation session was not found.');
+      if (['paused', 'completed', 'cancelled'].includes(session.status)) {
+        throw new Error('Resume the session or create a new session before adding a round.');
+      }
+      if (Number(round.roundNo) !== Number(session.current_round || 0) + 1) {
+        throw new Error('The rotation changed in another manager. Reload it before adding the next round.');
+      }
+      const assignments = Array.isArray(round.assignments) ? round.assignments : [];
+      const queueSnapshot = Array.isArray(round.queueSnapshot) ? round.queueSnapshot : [];
+      const teamSize = String(session.mode || '').split(':')[0] === 'singles' ? 1 : 2;
+      if (!assignments.length || assignments.some(game =>
+        !Array.isArray(game.teamA) ||
+        !Array.isArray(game.teamB) ||
+        game.teamA.length !== teamSize ||
+        game.teamB.length !== teamSize
+      )) {
+        throw new Error('The new rotation round has invalid assignment data.');
+      }
+      const queueIds = queueSnapshot.map(String);
+      const assignmentIds = assignments.flatMap(game => [...game.teamA, ...game.teamB]).map(String);
+      if (new Set(assignmentIds).size !== assignmentIds.length) {
+        throw new Error('A player cannot be assigned to two court positions in the same rotation round.');
+      }
+      if (new Set(queueIds).size !== queueIds.length) {
+        throw new Error('A player cannot appear twice in the saved rotation order.');
+      }
+      const referencedIds = [...queueIds, ...assignmentIds];
+      const activeIds = new Set(db.openPlayGamePlayers
+        .filter(player => String(player.session_id) === String(round.sessionId) && player.status === 'active')
+        .map(player => String(player.id)));
+      if (referencedIds.some(id => !activeIds.has(id))) {
+        throw new Error('The roster changed in another manager. Reload it before adding the next round.');
+      }
       const row = {
         id: localRef('gmr'),
         session_id: round.sessionId,
         round_no: round.roundNo,
-        assignments: round.assignments || [],
-        queue_snapshot: round.queueSnapshot || [],
+        assignments,
+        queue_snapshot: queueSnapshot,
         partner_history: round.partnerHistory || {},
         opponent_history: round.opponentHistory || {},
         created_at: nowIso(),
@@ -2860,26 +3530,98 @@ window.DB = {
       writeDb(db);
       return row;
     },
-    async updateOpenPlayGameRound(id, updates) {
+    async updateOpenPlayGameRound(id, updates, expected) {
       const db = readDb();
-      let saved = null;
-      db.openPlayGameRounds = db.openPlayGameRounds.map(r => {
-        if (String(r.id) !== String(id)) return r;
-        saved = {
-          ...r,
-          assignments: updates.assignments !== undefined ? updates.assignments : r.assignments,
-          queue_snapshot: updates.queueSnapshot !== undefined ? updates.queueSnapshot : r.queue_snapshot,
-          partner_history: updates.partnerHistory !== undefined ? updates.partnerHistory : r.partner_history,
-          opponent_history: updates.opponentHistory !== undefined ? updates.opponentHistory : r.opponent_history,
-          completed_at: updates.completedAt !== undefined ? updates.completedAt : r.completed_at,
-        };
-        return saved;
+      const current = db.openPlayGameRounds.find(round => String(round.id) === String(id));
+      if (!current) throw new Error('This rotation round no longer exists. Reload the session.');
+      const session = db.openPlayGameSessions.find(s => String(s.id) === String(current.session_id));
+      if (!session || session.status !== 'active') {
+        throw new Error('This rotation session is no longer active. Reload it before recording changes.');
+      }
+      if (Number(current.round_no) !== Number(session.current_round)) {
+        throw new Error('The live rotation changed in another manager. Reload it and try again.');
+      }
+      const sameJson = (left, right) => JSON.stringify(left || []) === JSON.stringify(right || []);
+      if (!expected ||
+          !sameJson(current.assignments, expected.assignments) ||
+          !sameJson(current.queue_snapshot, expected.queueSnapshot)) {
+        throw new Error('The live rotation changed in another manager. Reload it and try again.');
+      }
+      const saved = {
+        ...current,
+        assignments: updates.assignments !== undefined ? updates.assignments : current.assignments,
+        queue_snapshot: updates.queueSnapshot !== undefined ? updates.queueSnapshot : current.queue_snapshot,
+      };
+      const teamSize = String(session.mode || '').split(':')[0] === 'singles' ? 1 : 2;
+      if (!Array.isArray(saved.assignments) || !saved.assignments.length ||
+          saved.assignments.some(game =>
+            !Array.isArray(game.teamA) ||
+            !Array.isArray(game.teamB) ||
+            game.teamA.length !== teamSize ||
+            game.teamB.length !== teamSize
+          ) ||
+          !Array.isArray(saved.queue_snapshot)) {
+        throw new Error('The live rotation update has invalid teams or queue data.');
+      }
+      const assignedIds = saved.assignments
+        .flatMap(game => [...game.teamA, ...game.teamB])
+        .filter(Boolean)
+        .map(String);
+      const queueIds = saved.queue_snapshot.map(String);
+      if (new Set(assignedIds).size !== assignedIds.length) {
+        throw new Error('A player cannot be assigned to two court positions in the same rotation round.');
+      }
+      if (new Set(queueIds).size !== queueIds.length) {
+        throw new Error('A player cannot appear twice in the live rotation queue.');
+      }
+      const sessionPlayers = db.openPlayGamePlayers
+        .filter(player => String(player.session_id) === String(current.session_id));
+      const playerIds = new Set(sessionPlayers.map(player => String(player.id)));
+      const activeIds = new Set(sessionPlayers
+        .filter(player => player.status === 'active')
+        .map(player => String(player.id)));
+      if (assignedIds.some(playerId => !playerIds.has(playerId)) ||
+          queueIds.some(playerId => !activeIds.has(playerId))) {
+        throw new Error('The checked-in roster changed in another manager. Reload it and try again.');
+      }
+      db.openPlayGameRounds = db.openPlayGameRounds.map(round =>
+        String(round.id) === String(id) ? saved : round
+      );
+      writeDb(db);
+      return saved;
+    },
+    async correctOpenPlayGameResult(roundId, gameId) {
+      const db = readDb();
+      const round = db.openPlayGameRounds.find(item => String(item.id) === String(roundId));
+      if (!round) throw new Error('That saved rotation round was not found.');
+      let corrected = false;
+      const assignments = (round.assignments || []).map(court => {
+        const next = { ...court };
+        if (String(next.gameId || '') === String(gameId) && ['A', 'B'].includes(next.winner)) {
+          next.winner = next.winner === 'A' ? 'B' : 'A';
+          next.correctedAt = nowIso();
+          corrected = true;
+        }
+        next.completedGames = (next.completedGames || []).map(game => {
+          if (String(game.gameId || '') !== String(gameId) || !['A', 'B'].includes(game.winner)) return game;
+          corrected = true;
+          return { ...game, winner: game.winner === 'A' ? 'B' : 'A', correctedAt: nowIso() };
+        });
+        return next;
       });
+      if (!corrected) throw new Error('That saved match result was not found.');
+      const saved = { ...round, assignments };
+      db.openPlayGameRounds = db.openPlayGameRounds.map(item => String(item.id) === String(roundId) ? saved : item);
       writeDb(db);
       return saved;
     },
     async deleteLatestOpenPlayGameRound(sessionId) {
       const db = readDb();
+      const session = db.openPlayGameSessions.find(s => String(s.id) === String(sessionId));
+      if (!session) throw new Error('The Open Play Rotation session was not found.');
+      if (['paused', 'completed', 'cancelled'].includes(session.status)) {
+        throw new Error('Resume the session before undoing a round.');
+      }
       const rounds = db.openPlayGameRounds
         .filter(r => String(r.session_id) === String(sessionId))
         .sort((a, b) => Number(a.round_no || 0) - Number(b.round_no || 0));
@@ -2888,7 +3630,12 @@ window.DB = {
       db.openPlayGameRounds = db.openPlayGameRounds.filter(r => String(r.id) !== String(last.id));
       db.openPlayGameSessions = db.openPlayGameSessions.map(s =>
         String(s.id) === String(sessionId)
-          ? { ...s, current_round: Math.max(0, Number(last.round_no || 1) - 1), updated_at: nowIso() }
+          ? {
+              ...s,
+              current_round: Math.max(0, ...rounds.filter(round => String(round.id) !== String(last.id)).map(round => Number(round.round_no) || 0)),
+              status: rounds.length === 1 ? 'draft' : 'active',
+              updated_at: nowIso(),
+            }
           : s
       );
       writeDb(db);

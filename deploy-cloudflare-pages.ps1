@@ -20,7 +20,7 @@ if (-not $env:CLOUDFLARE_API_TOKEN -and $envMap["CLOUDFLARE_API_TOKEN"]) {
 }
 
 if (-not $env:CLOUDFLARE_API_TOKEN) {
-  throw "Set CLOUDFLARE_API_TOKEN in the environment or .env.local."
+  Write-Host "No API token found; using Wrangler's saved OAuth login."
 }
 
 $projectName = if ($envMap["CLOUDFLARE_PAGES_PROJECT"]) { $envMap["CLOUDFLARE_PAGES_PROJECT"] } else { "korte-dos-cdo-pickleball" }
@@ -46,6 +46,17 @@ $publicFiles = @(
   "korte-dos-logo.png",
   "korte-dos-logo.svg",
   "login.html",
+  "open-play-live.html",
+  "open-play-parity-ui.js",
+  "open-play-rating.js",
+  "open-play-rotation.js",
+  "play-manager.css",
+  "play-manager.js",
+  "player-live.css",
+  "player-live.html",
+  "player-live.js",
+  "qrcode-LICENSE.txt",
+  "qrcode.min.js",
   "script.js",
   "setup-db.js",
   "SETUP_NEW_SUPABASE.sql",
@@ -63,7 +74,7 @@ foreach ($file in $publicFiles) {
   }
 }
 
-npx wrangler pages deploy ".cf-pages-deploy" --project-name $projectName --branch $branchName
+npx wrangler@4.115.0 pages deploy ".cf-pages-deploy" --project-name $projectName --branch $branchName
 if ($LASTEXITCODE -ne 0) {
   throw "Cloudflare Pages deploy failed with exit code $LASTEXITCODE."
 }

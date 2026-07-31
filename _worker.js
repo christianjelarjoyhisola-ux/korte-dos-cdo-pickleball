@@ -12,6 +12,19 @@ export default {
     // canonical /host.html -> /host redirect and creates a redirect loop.
     const response = await env.ASSETS.fetch(request);
     if ([
+      "/play-manager.js",
+      "/play-manager.css",
+      "/open-play-rotation.js",
+    ].includes(url.pathname)) {
+      const headers = new Headers(response.headers);
+      headers.set("Cache-Control", "no-store, max-age=0");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
+    if ([
       "/host-balance-payment.js",
       "/host-balance-admin.js",
     ].includes(url.pathname)) {

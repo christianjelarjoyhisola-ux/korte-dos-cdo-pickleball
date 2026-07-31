@@ -18,6 +18,51 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-07-27] - Date-Free MariBank Verification
+
+### Changed
+- **No MariBank date/time requirement** - MariBank auto-verification now relies on the successful Realtime InstaPay state, exact receiver account, receiver identity, payment reference, and reconciled amount instead of requiring the receipt date and time to be readable.
+- **Stable replay protection** - MariBank duplicate detection now uses the provider-scoped six-digit reference plus exact principal amount, allowing shared screenshots with an obscured date/time row to remain safely verifiable.
+
+### Fixed
+- **Manual confirmation unblocked** - existing pending MariBank receipts with a readable reference and amount now have an authoritative replay key, so Payment Review can mark them received and confirm the booking.
+- **Current MariBank screen support** - the parser now recognizes the current **Transfer Result / Transfer Successful** layout and unmasked MariBank sender account format.
+
+**Files affected:** `supabase/functions/_shared/maribank-receipt.ts`, `supabase/functions/_shared/maribank-receipt_test.ts`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/migrations/20260727113000_maribank_date_free_verification.sql`, `SETUP_NEW_SUPABASE.sql`
+
+---
+
+## [2026-07-24] - Open Play Rotation
+
+### Added
+- **Three-step rotation workflow** - the former Game Manager now guides staff through session setup, player check-in, and live court rotation in one connected Korte DOS flow.
+- **Doubles and singles formats** - sessions can run four-player doubles or two-player singles without changing the saved rotation tables.
+- **Real rotation styles** - Balanced Rotation avoids repeat partners and opponents, Fair Queue follows the waiting order, and Winners / Challengers groups players with similar live results.
+- **Live queue assistance** - staff can see estimated rotation waits, call the next players with the device voice, check everyone in at once, and formally end a saved session.
+- **Full matchmaking set** - added Skill-separated, Mixed Doubles, Skill Courts, King / Queen of Court, Club Wars, Tournament Schedule, and locked-partner matching alongside the existing balanced, queue, winners/losers, and singles flows.
+- **Staged live operations** - Up Next matches are editable and manually started, courts have timers, scores, announcements, rename/close/replace controls, and recording a winner intentionally leaves the court ready for staff.
+- **Player profiles and imports** - added six skill levels, gender, Club Wars group, partner locks, DUPR IDs, saved-roster autocomplete, Reclub-style paste parsing, breaks, late check-in, and cloud-backed lifetime history.
+- **Public live session** - added a shareable responsive player board with live courts, Up Next, queue waits, standings, 10-second refresh, self-selection alerts, vibration/chime, and optional public/kiosk check-in.
+- **Results and sharing** - added a 10-second result undo, full Match Log winner correction, session and lifetime leaderboards, shareable/downloadable player stat cards, and score/DUPR-ready CSV export.
+- **Rotation tests** - added deterministic coverage for all matching modes, partner locks, null live slots, queue order, singles, fair court time, repeat-partner avoidance, and wait estimates.
+
+### Changed
+- **Clear feature name** - renamed the admin feature to **Open Play Rotation**, which describes its queue-and-court purpose more clearly than Game Manager or Paddle Range Manager.
+- **Korte DOS visual system** - the live board uses the existing navy, court-blue, court-red, and pickle-lime palette with a board-first responsive layout instead of copying PickleQ branding.
+- **Check-in language** - player states now read Not here yet, Checked in, On break, and Checked out.
+- **Reliable deep links** - copied rotation links explicitly reopen the Open Play Rotation section and retain unsaved format/style choices.
+
+### Fixed
+- **Stable player history** - saving check-in changes now uses an atomic database action that preserves existing player IDs, so prior rounds, wins, partner history, and standings remain connected throughout the session.
+- **Safe roster resets** - replacing a roster after play starts now requires confirmation and clears rounds plus players in one transaction; paused and ended sessions remain locked.
+- **Concurrent manager safety** - session creation, status changes, rounds, results, queue edits, and undo now use locks or stale-write checks; realtime refresh keeps multiple staff screens in sync.
+- **Working mode selection** - the saved rotation style now controls assignment behavior instead of every option using the same mixer.
+- **Accurate public queue** - the player board now mirrors the organizer's exact staged Up Next match, estimates waits from observed game duration, and keeps tournament and King / Queen rotations on their required all-court progression.
+
+**Files affected:** `admin.html`, `open-play-live.html`, `open-play-parity-ui.js`, `open-play-rotation.js`, `open-play-rotation.test.js`, `supabase-config.js`, `supabase/migrations/20260724150000_open_play_rotation_player_replace.sql`, `supabase/migrations/20260724190000_open_play_rotation_parity.sql`, `SETUP_NEW_SUPABASE.sql`, `deploy-cloudflare-pages.ps1`, `package.json`, `CHANGELOG.md`
+
+---
+
 ## [2026-07-24] - Business Website Contact Footer
 
 ### Changed

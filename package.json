@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "test": "node --test booking-balance.test.js booking-write-routing.test.js"
+    "test": "node --test booking-balance.test.js booking-write-routing.test.js open-play-rotation.test.js open-play-rating.test.js",
+    "check": "node --check open-play-rating.js && node --check play-manager.js && node --check player-live.js && node --check supabase-config.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",

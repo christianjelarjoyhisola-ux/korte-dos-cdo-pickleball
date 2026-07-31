@@ -7,6 +7,8 @@
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="chart.min.js"></script>
 <script src="booking-balance.js?v=20260716-court-revenue-v2"></script>
+<script src="open-play-rotation.js?v=20260729-adaptive-competitive-v1"></script>
+<link rel="stylesheet" href="play-manager.css?v=20260729-adaptive-competitive-v1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -1552,11 +1554,40 @@ tr:hover td { background: var(--bg2); }
   white-space: nowrap;
 }
 
-/* OPEN PLAY GAME MANAGER */
+/* OPEN PLAY ROTATION */
+#sec-gamemgr {
+  --gm-chrome: var(--navy-dark);
+  --gm-team-a: var(--court-blue);
+  --gm-team-b: var(--pickle-lime);
+  --gm-live: var(--court-red);
+  --gm-canvas: var(--bg);
+  --gm-card: var(--surface);
+}
+#sec-gamemgr :is(button,input,select,textarea,a):focus-visible {
+  outline: 3px solid rgba(var(--green-rgb),.28);
+  outline-offset: 2px;
+}
 .gm-shell { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 14px; align-items: start; }
 .gm-stack { display: flex; flex-direction: column; gap: 14px; }
+#sec-gamemgr.gm-has-live .gm-shell > .gm-stack:nth-child(2) > .gm-panel:nth-child(2) { order: -1; }
 .gm-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; }
 .gm-panel h3 { font-family: 'DM Sans', sans-serif; font-size: .92rem; margin-bottom: 12px; letter-spacing: 0; }
+.gm-heading { min-width: 0; }
+.gm-heading-kicker { color: var(--green); font-size: .68rem; font-weight: 900; letter-spacing: .9px; text-transform: uppercase; margin-bottom: 2px; }
+.gm-heading h2 { margin: 0; }
+.gm-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 14px; }
+.gm-flow-step { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 11px 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
+.gm-flow-no { width: 28px; height: 28px; flex: 0 0 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--green); color: #fff; font-size: .78rem; font-weight: 900; }
+.gm-flow-step b { display: block; font-size: .78rem; color: var(--text); }
+.gm-flow-step span:last-child { display: block; min-width: 0; color: var(--text3); font-size: .67rem; line-height: 1.35; }
+.gm-step-title { display: flex; align-items: center; gap: 8px; }
+.gm-step-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px; background: var(--green-bg); color: var(--green); font-size: .7rem; font-weight: 900; }
+.gm-control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gm-control-grid .fg { min-width: 0; }
+.gm-mode-note { margin-top: -2px; margin-bottom: 12px; padding: 9px 10px; border-radius: 9px; background: var(--bg2); color: var(--text2); font-size: .72rem; line-height: 1.45; }
+.gm-player-row.is-removed, .gm-player-row.is-break { opacity: .62; }
+.gm-player-row.is-removed .gm-player-name { text-decoration: line-through; }
+.gm-call-btn { border-color: rgba(var(--yellow-rgb),.42) !important; background: var(--yellow-bg) !important; color: var(--yellow) !important; }
 .gm-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .gm-mini { font-size: .75rem; color: var(--text3); line-height: 1.45; }
 .gm-stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -1564,42 +1595,58 @@ tr:hover td { background: var(--bg2); }
 .gm-stat b { display: block; font-size: 1.3rem; color: var(--green); line-height: 1; }
 .gm-stat span { display: block; margin-top: 4px; font-size: .68rem; text-transform: uppercase; letter-spacing: .6px; color: var(--text3); font-weight: 800; }
 .gm-score-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-.gm-playbar { display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--green); color:#fff; border-radius:12px; padding:11px 14px; margin-bottom:12px; }
+.gm-playbar { position:sticky; top:8px; z-index:18; display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--gm-chrome); color:#fff; border-radius:14px; padding:12px 14px; margin-bottom:12px; box-shadow:0 10px 28px rgba(11,39,68,.24); }
 .gm-playbar-title { min-width:0; }
 .gm-playbar-kicker { font-size:.66rem; opacity:.7; text-transform:uppercase; letter-spacing:.7px; font-weight:900; }
 .gm-playbar-name { font-weight:900; font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .gm-playbar-stats { display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end; font-size:.72rem; font-weight:900; text-transform:uppercase; letter-spacing:.5px; }
 .gm-playbar-stats b { font-size:.92rem; margin-left:3px; }
-.gm-player-list { display: grid; gap: 7px; max-height: 420px; overflow: auto; padding-right: 2px; }
-.gm-player-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) 84px 34px; gap: 7px; align-items: center; }
+.gm-player-list { display: grid; gap: 8px; max-height: 520px; overflow: auto; padding-right: 2px; }
+.gm-player-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) 118px 38px 34px; gap: 7px; align-items: center; padding:7px; border:1px solid var(--border); border-radius:11px; background:var(--bg); }
 .gm-player-no { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--bg2); color: var(--text3); font-size: .72rem; font-weight: 800; }
 .gm-player-row.dup .fi { border-color: var(--red); background: var(--red-bg); }
 .gm-player-status { padding: 8px 6px; font-size: .76rem; }
-.gm-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 12px; }
-.gm-court-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.04); }
-.gm-court-hd { display: flex; justify-content: space-between; gap: 8px; padding: 11px 12px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg,var(--bg2),var(--surface2)); }
-.gm-court-hd strong { font-size: .86rem; }
-.gm-court-hd span { font-size: .72rem; color: var(--text3); font-weight: 800; text-transform: uppercase; letter-spacing: .5px; }
+.gm-player-details { display:none; grid-column:2 / -1; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding:6px 0 2px; }
+.gm-player-row.details-open .gm-player-details { display:grid; }
+.gm-player-details .fl { font-size:.62rem; }
+.gm-player-detail-stat { display:flex; align-items:center; min-height:38px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text2); font-size:.72rem; font-weight:800; }
+.gm-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.gm-court-card { border: 1px solid var(--border); border-radius: 15px; background: var(--gm-card); overflow: hidden; box-shadow: 0 12px 30px rgba(11,39,68,.1); }
+.gm-court-hd { display: flex; align-items:center; justify-content: space-between; gap: 8px; padding: 11px 12px; border-bottom: 1px solid rgba(255,255,255,.12); background:var(--gm-chrome); color:#fff; }
+.gm-court-name-input { width:min(180px,52vw); border:0; border-bottom:1px dashed rgba(255,255,255,.45); background:transparent; color:#fff; font:800 .9rem 'DM Sans',sans-serif; padding:3px 2px; }
+.gm-court-hd-meta { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+.gm-live-badge { display:inline-flex; align-items:center; gap:4px; border-radius:999px; padding:4px 7px; background:var(--gm-live); color:#fff; font-size:.61rem; font-weight:900; letter-spacing:.6px; }
+.gm-timer { color:rgba(255,255,255,.82); font:800 .7rem 'DM Mono',monospace; }
 .gm-teams { display: grid; gap: 8px; padding: 12px; }
 .gm-matchup { display:grid; grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr); gap:8px; align-items:stretch; padding:12px; }
 .gm-vs { display:flex; align-items:center; justify-content:center; color:var(--text3); font-size:.7rem; font-weight:900; }
 .gm-team { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg); }
 .gm-team.win { border-color: rgba(var(--green-rgb),.7); background: rgba(var(--green-rgb),.12); box-shadow: inset 0 0 0 1px rgba(var(--green-rgb),.18); }
-.gm-team-label { font-size: .64rem; color: var(--text3); text-transform: uppercase; letter-spacing: .8px; font-weight: 900; margin-bottom: 6px; }
+.gm-team-a { border-top:4px solid var(--gm-team-a); }
+.gm-team-b { border-top:4px solid var(--gm-team-b); }
+.gm-team-label { display:flex; align-items:center; justify-content:space-between; gap:6px; font-size: .64rem; color: var(--text3); text-transform: uppercase; letter-spacing: .8px; font-weight: 900; margin-bottom: 6px; }
 .gm-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.gm-player-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 5px 9px; border-radius: 999px; background: var(--green-bg); color: var(--green); border: 1px solid var(--border); font-size: .78rem; font-weight: 800; overflow-wrap: anywhere; }
+.gm-player-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 5px 9px; border-radius: 999px; background: var(--surface); color: var(--text); border: 1px solid var(--border); font-size: .78rem; font-weight: 800; overflow-wrap: anywhere; }
 .gm-player-chip.playing { background: rgba(var(--green-rgb),.14); border-color: rgba(var(--green-rgb),.4); }
 .gm-player-chip.waiting { background: var(--surface); color: var(--text); }
 .gm-player-chip.out { opacity: .58; color: var(--text3); }
 .gm-chip-action { border: 0; background: rgba(0,0,0,.08); color: inherit; border-radius: 999px; padding: 2px 6px; font-size: .68rem; font-weight: 900; cursor: pointer; }
 .gm-result-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px 12px; }
-.gm-result-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 9px; padding: 8px 10px; font-size: .76rem; font-weight: 900; cursor: pointer; transition: all .15s ease; }
+.gm-result-btn { min-height:46px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 9px; padding: 8px 10px; font-size: .76rem; font-weight: 900; cursor: pointer; transition: all .15s ease; }
+.gm-result-btn.team-a { border-color:var(--gm-team-a); color:var(--gm-team-a); }
+.gm-result-btn.team-b { border-color:var(--gm-team-b); color:var(--navy-dark); background:var(--pickle-lime-bg); }
 .gm-result-btn:hover { border-color: var(--green); transform: translateY(-1px); }
 .gm-result-btn.on { background: var(--green); border-color: var(--green); color: #fff; }
 .gm-result-note { padding: 0 12px 10px; margin-top: -2px; font-size: .72rem; font-weight: 800; color: var(--green); }
+.gm-court-tools { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 12px; }
+.gm-court-tools .btn { min-height:38px; }
+.gm-slot-select { width:100%; min-width:0; padding:7px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font:700 .76rem 'DM Sans',sans-serif; }
+.gm-score-row { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; padding:0 12px 10px; }
+.gm-score-input { width:100%; min-width:0; text-align:center; font:900 1rem 'DM Mono',monospace; padding:8px; border:1px solid var(--border); border-radius:9px; background:var(--bg); color:var(--text); }
 .gm-next-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-.gm-next-card { border: 1px dashed var(--border); background: var(--bg); border-radius: 12px; padding: 10px; }
+.gm-next-card { border: 1px solid var(--border); border-left:4px solid var(--pickle-lime); background: var(--bg); border-radius: 12px; padding: 10px; }
 .gm-next-title { display: flex; justify-content: space-between; gap: 8px; color: var(--text3); font-size: .68rem; font-weight: 900; text-transform: uppercase; letter-spacing: .7px; margin-bottom: 8px; }
+.gm-next-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .gm-live-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(240px, .9fr); gap: 12px; margin-top: 12px; }
 .gm-wait { min-height: 82px; display: flex; flex-wrap: wrap; gap: 7px; align-content: flex-start; padding: 12px; background: var(--bg); border: 1px dashed var(--border); border-radius: 12px; }
 .gm-queue-list { display:grid; gap:0; overflow:hidden; padding:0; }
@@ -1613,6 +1660,25 @@ tr:hover td { background: var(--bg2); }
 .gm-standing-rank { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--green-bg); color: var(--green); font-size: .72rem; font-weight: 900; }
 .gm-standing-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 900; font-size: .82rem; }
 .gm-standing-meta { font-size: .72rem; color: var(--text3); font-weight: 800; white-space: nowrap; }
+.gm-match-log { display:grid; gap:7px; }
+.gm-log-row { display:grid; grid-template-columns:38px minmax(0,1fr) auto; gap:9px; align-items:center; padding:9px 10px; border:1px solid var(--border); border-radius:10px; background:var(--bg); }
+.gm-log-no { color:var(--text3); font:800 .7rem 'DM Mono',monospace; }
+.gm-log-copy { min-width:0; font-size:.76rem; line-height:1.35; }
+.gm-log-copy b { display:block; color:var(--text); }
+.gm-log-copy span { color:var(--text3); }
+.gm-undo-result { display:none; align-items:center; justify-content:space-between; gap:10px; position:sticky; bottom:10px; z-index:22; margin:10px 0; padding:10px 12px; border-radius:11px; background:var(--gm-chrome); color:#fff; box-shadow:0 12px 30px rgba(0,0,0,.24); font-size:.78rem; font-weight:800; }
+.gm-undo-result.show { display:flex; }
+.gm-live-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.gm-modal-wide { max-width:760px; }
+.gm-leader-grid { display:grid; gap:8px; }
+.gm-leader-row { display:grid; grid-template-columns:38px minmax(0,1fr) auto; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--border); border-radius:11px; background:var(--bg); }
+.gm-leader-rank { font-size:1.25rem; text-align:center; }
+.gm-share-card { border-radius:16px; padding:18px; background:linear-gradient(145deg,var(--navy-dark),var(--court-blue)); color:#fff; }
+.gm-share-card h3 { color:#fff; font-size:1.35rem; margin:0; }
+.gm-share-card-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:14px; }
+.gm-share-card-stats div { padding:10px 8px; border-radius:10px; background:rgba(255,255,255,.1); text-align:center; }
+.gm-share-card-stats b { display:block; font-size:1.2rem; }
+.gm-share-card-stats span { font-size:.62rem; text-transform:uppercase; letter-spacing:.5px; opacity:.72; }
 .gm-empty { color: var(--text3); font-style: italic; font-size: .84rem; padding: 12px 0; }
 .gm-warn { border: 1px solid rgba(229,57,53,.35); background: rgba(229,57,53,.08); color: var(--red); border-radius: 10px; padding: 10px 12px; font-size: .8rem; font-weight: 700; }
 .gm-ready { border: 1px solid rgba(var(--green-rgb),.35); background: rgba(var(--green-rgb),.1); color: var(--green); border-radius: 10px; padding: 10px 12px; font-size: .8rem; font-weight: 700; }
@@ -1639,11 +1705,17 @@ tr:hover td { background: var(--bg2); }
 .host-court-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 @media (max-width:980px) { .host-shell { grid-template-columns:1fr; } .host-feature-grid { grid-template-columns:1fr; } }
 @media (max-width:700px) { .host-panel { padding:13px; } .host-court-grid { grid-template-columns:1fr; } }
-@media (max-width: 980px) { .gm-shell, .gm-live-grid { grid-template-columns: 1fr; } }
+@media (max-width: 980px) {
+  .gm-shell, .gm-live-grid { grid-template-columns: 1fr; }
+  #sec-gamemgr.gm-has-live .gm-shell { display:flex; flex-direction:column; }
+  #sec-gamemgr.gm-has-live .gm-shell > .gm-stack:nth-child(2) { order:-1; }
+}
 @media (max-width: 700px) {
+  .gm-flow { grid-template-columns: 1fr; }
+  .gm-control-grid { grid-template-columns: 1fr; gap: 0; }
   .gm-panel { padding: 13px; }
   .gm-stat-grid, .gm-score-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .gm-player-row { grid-template-columns: 28px minmax(0, 1fr) 76px 32px; gap: 5px; }
+  .gm-player-row { grid-template-columns: 28px minmax(0, 1fr) 104px 36px 32px; gap: 5px; }
   .gm-board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .gm-court-hd { padding: 9px 10px; }
   .gm-court-hd strong { font-size: .78rem; }
@@ -1661,6 +1733,23 @@ tr:hover td { background: var(--bg2); }
   .gm-queue-row { grid-template-columns:28px minmax(0,1fr); }
   .gm-queue-row .gm-chip-action { grid-column:2; width:max-content; }
   .gm-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .op-court-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .gm-live-actions { position:sticky; bottom:0; z-index:24; padding:9px 8px calc(9px + env(safe-area-inset-bottom)); margin:0 -8px; border-top:1px solid var(--border); background:color-mix(in srgb,var(--surface) 94%,transparent); backdrop-filter:blur(12px); }
+  .gm-live-actions .btn { min-height:44px; flex:1 1 calc(33.333% - 8px); }
+}
+@media (max-width: 600px) {
+  .gm-board { grid-template-columns:1fr; }
+}
+@media (max-width: 520px) {
+  .gm-player-list { max-height:none; overflow:visible; }
+  .gm-player-row { grid-template-columns:28px minmax(0,1fr) 36px 32px; grid-template-areas:"no name detail remove" ". status status status" ". details details details"; }
+  .gm-player-no { grid-area:no; }
+  .gm-player-name { grid-area:name; }
+  .gm-player-status { grid-area:status; }
+  .gm-player-detail-btn { grid-area:detail; }
+  .gm-player-remove-btn { grid-area:remove; }
+  .gm-player-details { grid-area:details; grid-column:auto; grid-template-columns:1fr 1fr; }
+  .gm-share-card-stats { grid-template-columns:repeat(2,1fr); }
 }
 
 /* ── ADMIN SLOT GRID ───────────────────────────────────── */
@@ -2080,7 +2169,7 @@ tr:hover td { background: var(--bg2); }
       <div class="nav-item" data-s="courts" data-perm="courts" onclick="goto('courts')"><span>&#127967;</span> Courts</div>
       <div class="nav-item" data-s="blocked" data-perm="open_play" onclick="goto('blocked')"><span>&#127934;</span> Open Play</div>
       <div class="nav-item" data-s="hosts" data-perm="host_open_play" onclick="goto('hosts')"><span>&#128101;</span> Host Center</div>
-      <div class="nav-item" data-s="gamemgr" data-perm="open_play" onclick="goto('gamemgr')"><span>&#127955;</span> Game Manager</div>
+      <div class="nav-item" data-s="gamemgr" data-perm="open_play" onclick="goto('gamemgr')"><span>&#127955;</span> Play Manager</div>
       <div class="nav-item" data-s="maintenance" data-perm="maintenance" onclick="goto('maintenance')"><span>&#128295;</span> Maintenance</div>
       <div class="nav-item" data-s="payments" data-perm="payments" onclick="goto('payments')"><span>&#128179;</span> Payments</div>
     </div>
@@ -2717,7 +2806,7 @@ tr:hover td { background: var(--bg2); }
               <option value="">All Courts</option>
             </select>
             <input type="date" class="fi" id="opRegDate" style="max-width:160px" onchange="renderOpRegistrations()"/>
-            <button class="btn btn-p btn-sm" onclick="gmOpenFromReservations()">Game Manager</button>
+            <button class="btn btn-p btn-sm" onclick="pmOpenFromReservations()">Play Manager</button>
             <button class="btn btn-g btn-sm" onclick="gmCopyReservationManagerLink()">Copy Link</button>
             <button class="btn btn-sm" style="border:1px solid var(--border);color:var(--muted);background:transparent;font-size:.78rem" onclick="$('opRegDate').value='';$('opRegCourt').value='';renderOpRegistrations()">Clear</button>
           </div>
@@ -2817,33 +2906,86 @@ tr:hover td { background: var(--bg2); }
       </div>
     </div>
 
-    <!-- GAME MANAGER -->
+    <!-- OPEN PLAY ROTATION -->
     <div id="sec-gamemgr" class="adm-sec">
+      <div id="playManagerRoot"></div>
       <div class="toolbar">
-        <h2>OPEN PLAY GAME MANAGER</h2>
+        <div class="gm-heading">
+          <div class="gm-heading-kicker">Queue + court manager</div>
+          <h2>OPEN PLAY ROTATION</h2>
+        </div>
         <div class="gm-actions">
           <button class="btn btn-g btn-sm" onclick="renderGameManager()">Refresh</button>
-          <button class="btn btn-p btn-sm" onclick="gmCopyManagerLink()">Copy Manager Link</button>
+          <button class="btn btn-p btn-sm" onclick="gmCopyManagerLink()">Copy Rotation Link</button>
         </div>
+      </div>
+
+      <div class="gm-flow" aria-label="Open Play Rotation workflow">
+        <div class="gm-flow-step"><span class="gm-flow-no">1</span><span><b>Set the session</b><span>Choose courts, format, and rotation style.</span></span></div>
+        <div class="gm-flow-step"><span class="gm-flow-no">2</span><span><b>Check in players</b><span>Import paid players and add walk-ins.</span></span></div>
+        <div class="gm-flow-step"><span class="gm-flow-no">3</span><span><b>Run the courts</b><span>Start play, call next, and record winners.</span></span></div>
       </div>
 
       <div class="gm-shell">
         <div class="gm-stack">
           <div class="gm-panel">
-            <h3>Session Setup</h3>
+            <h3 class="gm-step-title"><span class="gm-step-pill">1</span> Session &amp; Courts</h3>
             <div class="fg">
               <label class="fl">Open Play Date</label>
               <input type="date" class="fi" id="gmDate" onchange="gmRefreshSourceSummary()"/>
+            </div>
+            <div class="gm-control-grid">
+              <div class="fg">
+                <label class="fl">Location / Session Name</label>
+                <input type="text" class="fi" id="gmLocation" maxlength="80" placeholder="Korte DOS Open Play" onchange="gmPreferenceChanged()"/>
+              </div>
+              <div class="fg">
+                <label class="fl">Organizer Type</label>
+                <select class="fi" id="gmOrganizerType" onchange="gmPreferenceChanged()">
+                  <option value="club">Club / Venue</option>
+                  <option value="group">Community Group</option>
+                  <option value="friends">Friends</option>
+                </select>
+              </div>
             </div>
             <div class="fg">
               <label class="fl">Open Play Courts</label>
               <div id="gmCourtList" class="op-court-grid"></div>
               <div class="gm-mini" style="margin-top:8px">Uses the Open Play courts by default. You can override this for a busy or reduced-court session.</div>
+              <button class="btn btn-g btn-sm" style="margin-top:8px" type="button" onclick="gmAddTemporaryCourt()">+ Add Temporary Court</button>
             </div>
             <div class="fg">
               <label class="fl">Time Label</label>
               <input type="text" class="fi" id="gmTimeLabel" placeholder="e.g. 5PM-12AM"/>
             </div>
+            <div class="gm-control-grid">
+              <div class="fg">
+                <label class="fl">Game Format</label>
+                <select class="fi" id="gmFormat" onchange="gmHandleRotationOptionChange()">
+                  <option value="doubles">Doubles · 4 players</option>
+                  <option value="singles">Singles · 2 players</option>
+                </select>
+              </div>
+              <div class="fg">
+                <label class="fl">Rotation Style</label>
+                <select class="fi" id="gmMode" onchange="gmHandleRotationOptionChange()">
+                  <option value="balanced">Auto-balanced</option>
+                  <option value="skill_separated">Skill-separated</option>
+                  <option value="winners_losers">Winners vs Losers</option>
+                  <option value="mixed_doubles">Mixed Doubles</option>
+                  <option value="skill_courts">Skill Courts</option>
+                  <option value="king_court">King / Queen of Court</option>
+                  <option value="club_wars">Club Wars</option>
+                  <option value="tournament">Tournament Schedule</option>
+                  <option value="queue">Strict Fair Queue</option>
+                </select>
+              </div>
+            </div>
+            <div class="gm-mode-note" id="gmModeHelp">Balances court time while avoiding repeat partners and opponents.</div>
+            <label style="display:flex;align-items:flex-start;gap:9px;margin:-2px 0 12px;padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--bg)">
+              <input type="checkbox" id="gmPublicCheckIn" onchange="gmPreferenceChanged()" style="margin-top:2px;accent-color:var(--navy)"/>
+              <span><b style="display:block;font-size:.78rem">Player self check-in</b><span class="gm-mini">Allow players to check in from the shared live link or a venue kiosk.</span></span>
+            </label>
             <div class="fg">
               <label class="fl">Open Existing Session</label>
               <select class="fi" id="gmSessionSelect" onchange="gmLoadSelectedSession()">
@@ -2851,19 +2993,19 @@ tr:hover td { background: var(--bg2); }
               </select>
             </div>
             <div class="gm-actions">
-              <button class="btn btn-p btn-sm" onclick="gmCreateOrOpenSession()">Create / Open</button>
+              <button class="btn btn-p btn-sm" onclick="gmCreateOrOpenSession()">Create / Open Session</button>
               <button class="btn btn-g btn-sm" onclick="gmImportPaidPlayers()">Import Paid Players</button>
             </div>
           </div>
 
           <div class="gm-panel">
-            <h3>Paste Link or Names</h3>
-            <textarea class="fi gm-textarea" id="gmPasteBox" placeholder="Paste a manager link, or paste player names separated by lines or commas."></textarea>
+            <h3 class="gm-step-title"><span class="gm-step-pill">2</span> Quick Add</h3>
+            <textarea class="fi gm-textarea" id="gmPasteBox" placeholder="Paste a rotation link, a Reclub roster, or player names separated by lines or commas."></textarea>
             <div class="gm-actions" style="margin-top:10px">
-              <button class="btn btn-g btn-sm" onclick="gmLoadPaste()">Load Paste</button>
+              <button class="btn btn-g btn-sm" onclick="gmLoadPaste()">Load Players / Link</button>
               <button class="btn btn-g btn-sm" onclick="$('gmPasteBox').value=''">Clear</button>
             </div>
-            <div class="gm-mini" style="margin-top:8px">Links identify the session only. Player names are saved in the manager after import.</div>
+            <div class="gm-mini" style="margin-top:8px">Reclub organizer headings are ignored and participants are reviewed in Player Check-in before play starts.</div>
           </div>
 
           <div class="gm-panel">
@@ -2881,32 +3023,33 @@ tr:hover td { background: var(--bg2); }
         <div class="gm-stack">
           <div class="gm-panel">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-              <h3 style="margin:0">Prepare Players</h3>
+              <h3 class="gm-step-title" style="margin:0"><span class="gm-step-pill">2</span> Player Check-in</h3>
               <div class="gm-actions">
                 <button class="btn btn-g btn-sm" onclick="gmAddWalkIn()">Add Walk-in</button>
-                <button class="btn btn-p btn-sm" onclick="gmSavePlayers()">Save Players</button>
+                <button class="btn btn-g btn-sm" onclick="gmCheckInAll()">Check In All</button>
+                <button class="btn btn-p btn-sm" onclick="gmSavePlayers()">Save Check-in</button>
                 <button class="btn btn-g btn-sm" onclick="gmResetFromPaid()">Reset From Paid</button>
               </div>
             </div>
             <div id="gmPlayerWarnings"></div>
+            <datalist id="gmSavedRosterNames"></datalist>
             <div id="gmPlayerList" class="gm-player-list"><div class="gm-empty">Create or open a session first.</div></div>
           </div>
 
           <div class="gm-panel">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
               <div>
-                <h3 style="margin:0">Live Game Board</h3>
-                <div class="gm-mini" id="gmSessionMeta">No active game session.</div>
+                <h3 class="gm-step-title" style="margin:0"><span class="gm-step-pill">3</span> Live Court Board</h3>
+                <div class="gm-mini" id="gmSessionMeta">No active rotation session.</div>
               </div>
-              <div class="gm-actions">
-                <select class="fi" id="gmMode" style="width:auto;min-width:180px" onchange="gmSaveSessionMeta()">
-                  <option value="smart_random_mixer">Smart Random Mixer</option>
-                  <option value="all_rotate">All Rotate Queue</option>
-                  <option value="manual">Manual Assign</option>
-                </select>
-                <button class="btn btn-p btn-sm" onclick="gmGenerateNextRound()">Start / Next Round</button>
-                <button class="btn btn-g btn-sm" onclick="gmUndoRound()">Undo</button>
+              <div class="gm-actions gm-live-actions">
+                <button class="btn btn-p btn-sm" onclick="gmGenerateNextRound()">Start / Next Rotation</button>
+                <button class="btn btn-g btn-sm" onclick="gmAddStagedMatch()">+ Add Match</button>
+                <button class="btn btn-g btn-sm" onclick="gmAddLiveCourt()">+ Add Court</button>
+                <button class="btn btn-g btn-sm gm-call-btn" onclick="gmCallNextPlayers()">Call Up Next</button>
+                <button class="btn btn-g btn-sm" onclick="gmUndoRound()">Undo Last</button>
                 <button class="btn btn-g btn-sm" onclick="gmTogglePause()">Pause / Resume</button>
+                <button class="btn btn-d btn-sm" onclick="gmCompleteSession()">End Session</button>
               </div>
             </div>
             <div class="gm-playbar">
@@ -2915,9 +3058,12 @@ tr:hover td { background: var(--bg2); }
                 <div class="gm-playbar-name" id="gmPlaybarName">No active session</div>
               </div>
               <div class="gm-playbar-stats">
-                <span>Games <b id="gmBarGames">0</b></span>
+                <span id="gmBarStatus">SETUP</span>
                 <span>Courts <b id="gmBarCourts">0</b></span>
+                <span>Players <b id="gmBarPlayers">0</b></span>
                 <span>Queue <b id="gmBarQueue">0</b></span>
+                <button class="gm-chip-action" style="background:rgba(255,255,255,.14)" type="button" onclick="gmToggleMute()" id="gmMuteBtn">Sound on</button>
+                <button class="gm-chip-action" style="background:rgba(255,255,255,.14)" type="button" onclick="gmShareLive()">Share live</button>
               </div>
             </div>
             <div class="gm-score-strip">
@@ -2927,6 +3073,10 @@ tr:hover td { background: var(--bg2); }
               <div class="gm-stat"><b id="gmLiveResults">0</b><span>Results</span></div>
             </div>
             <div id="gmBoard" class="gm-board"><div class="gm-empty">No round generated yet.</div></div>
+            <div class="gm-undo-result" id="gmUndoResultBar" role="status" aria-live="polite">
+              <span id="gmUndoResultText">Result saved.</span>
+              <button class="btn btn-g btn-sm" type="button" onclick="gmUndoRecentResult()">Undo result</button>
+            </div>
             <div style="margin-top:12px">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
                 <h3 style="margin:0">Next Up</h3>
@@ -2938,13 +3088,14 @@ tr:hover td { background: var(--bg2); }
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
                 <h3 style="margin:0">Players + Results</h3>
                 <div class="gm-actions">
-                  <button class="btn btn-g btn-sm" onclick="gmCopyOrder()">Copy Names + Order</button>
+                  <button class="btn btn-g btn-sm" onclick="gmCopyOrder()">Copy Court Order</button>
+                  <button class="btn btn-g btn-sm" onclick="gmOpenLifetimeLeaderboard()">Lifetime Leaderboard</button>
                   <button class="btn btn-g btn-sm" onclick="gmExportCsv()">Export CSV</button>
                 </div>
               </div>
               <div class="gm-live-grid">
                 <div>
-                  <div class="gm-mini" style="margin-bottom:6px;font-weight:900;color:var(--text2)">Player Queue</div>
+                  <div class="gm-mini" style="margin-bottom:6px;font-weight:900;color:var(--text2)">Waiting Queue</div>
                   <div id="gmQueue" class="gm-wait"><span class="gm-empty">Waiting players appear here.</span></div>
                 </div>
                 <div>
@@ -2952,6 +3103,13 @@ tr:hover td { background: var(--bg2); }
                   <div id="gmStandings" class="gm-standing-list"><div class="gm-empty">Results appear after winner clicks.</div></div>
                 </div>
               </div>
+            </div>
+            <div style="margin-top:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+                <h3 style="margin:0">Match Log</h3>
+                <span class="gm-mini">Correct an older result with Swap Winner.</span>
+              </div>
+              <div id="gmMatchLog" class="gm-match-log"><div class="gm-empty">Completed matches appear here.</div></div>
             </div>
           </div>
         </div>
@@ -3223,6 +3381,50 @@ tr:hover td { background: var(--bg2); }
   </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /admin-layout -->
+
+<!-- OPEN PLAY ROTATION SUMMARY -->
+<div class="overlay" id="gmSummaryModal" hidden aria-hidden="true">
+  <div class="modal gm-modal-wide" role="dialog" aria-modal="true" aria-labelledby="gmSummaryTitle" tabindex="-1">
+    <div class="m-hd">
+      <div>
+        <h2 id="gmSummaryTitle">SESSION LEADERBOARD</h2>
+        <div class="gm-mini" id="gmSummarySubtitle">Open Play results</div>
+      </div>
+      <button class="m-x" type="button" aria-label="Close leaderboard" onclick="gmCloseOverlay('gmSummaryModal')">&#10005;</button>
+    </div>
+    <div class="m-body">
+      <div id="gmSummaryLeaders" class="gm-leader-grid"></div>
+      <div id="gmPlayerShareCard" class="gm-share-card" style="display:none;margin-top:16px"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-g" type="button" onclick="gmNewSessionFromCurrent()">New Session</button>
+      <button class="btn btn-g" type="button" id="gmDownloadCardBtn" onclick="gmDownloadSelectedPlayerCard()" style="display:none">Download Player Card</button>
+      <button class="btn btn-p" type="button" onclick="gmCloseOverlay('gmSummaryModal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- OPEN PLAY LIVE LINK -->
+<div class="overlay" id="gmShareModal" hidden aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gmShareTitle" tabindex="-1">
+    <div class="m-hd">
+      <div>
+        <h2 id="gmShareTitle">SHARE LIVE SESSION</h2>
+        <div class="gm-mini">Players can watch courts, Up Next, queue, and standings.</div>
+      </div>
+      <button class="m-x" type="button" aria-label="Close share dialog" onclick="gmCloseOverlay('gmShareModal')">&#10005;</button>
+    </div>
+    <div class="m-body">
+      <label class="fl" for="gmShareUrl">Public live link</label>
+      <input class="fi" id="gmShareUrl" type="text" readonly/>
+      <div class="gm-ready" style="margin-top:12px">The session link uses an unguessable ID. Turn off public sharing from this dialog when the board should no longer be visible.</div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-d" type="button" id="gmShareToggleBtn" onclick="gmTogglePublicSharing()">Disable Sharing</button>
+      <button class="btn btn-p" type="button" onclick="gmCopyPublicLink()">Copy Link</button>
+    </div>
+  </div>
+</div>
 
 <!-- COURT MODAL -->
 <div class="overlay" id="courtModal">
@@ -4588,9 +4790,9 @@ let sess;
 /* ==============================================
    NAVIGATION
    ============================================== */
-const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Game Manager',maintenance:'Maintenance',payments:'Payments'};
+const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments'};
 const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
-const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:renderGameManager,maintenance:renderMaintenance,payments:renderPaymentSettings};
+const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings};
 let _curSection=null;
 async function goto(s){
   // Block navigation to sections the current role can't access
@@ -4658,9 +4860,15 @@ function startAdminRealtime(){
     _admRtDebounce=setTimeout(async ()=>{
       // Never clobber a form the admin is actively editing (e.g. payment settings).
       const ae=document.activeElement;
-      if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+      if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){
+        _admRtDebounce=setTimeout(rerender,1000);
+        return;
+      }
       // Don't yank content out from under an open modal dialog.
-      if(document.querySelector('.overlay.show')) return;
+      if(document.querySelector('.overlay.show')){
+        _admRtDebounce=setTimeout(rerender,1000);
+        return;
+      }
       try{
         if(_curSection && SECTION_LOADERS[_curSection]) await SECTION_LOADERS[_curSection]();
       }catch(_){}
@@ -10763,7 +10971,7 @@ async function rejectOpPayment() {
 }
 
 /* ==============================================
-   OPEN PLAY GAME MANAGER
+   OPEN PLAY ROTATION
    ============================================== */
 let _gm = {
   courts: [],
@@ -10775,6 +10983,83 @@ let _gm = {
   source: { paid: [], excluded: [] },
   loadedUrl: false,
 };
+
+function gmRotationApi() {
+  if (!window.OpenPlayRotation) throw new Error('Open Play Rotation helper did not load.');
+  return window.OpenPlayRotation;
+}
+
+function gmRotationOptions(session = _gm.session) {
+  const saved = gmRotationApi().parseMode(session?.mode || 'doubles:balanced');
+  return {
+    format: $('gmFormat')?.value || saved.format,
+    style: $('gmMode')?.value || saved.style,
+  };
+}
+
+function gmStoredMode() {
+  const options = gmRotationOptions();
+  return gmRotationApi().encodeMode(options.format, options.style);
+}
+
+function gmNormalizedMode(mode) {
+  const options = gmRotationApi().parseMode(mode);
+  return gmRotationApi().encodeMode(options.format, options.style);
+}
+
+function gmPlayersPerGame() {
+  return gmRotationApi().playersPerGame(gmRotationOptions().format);
+}
+
+function gmApplyRotationOptions(mode) {
+  const options = gmRotationApi().parseMode(mode);
+  if ($('gmFormat')) $('gmFormat').value = options.format;
+  if ($('gmMode')) $('gmMode').value = options.style;
+  gmUpdateModeHelp();
+}
+
+function gmUpdateModeHelp() {
+  const note = $('gmModeHelp');
+  if (!note) return;
+  const { format, style } = gmRotationOptions();
+  const formatText = format === 'singles' ? 'two players per court' : 'four players per court';
+  const styleText = {
+    balanced: 'Balances court time while avoiding repeat partners and opponents.',
+    queue: 'Uses a strict first-in queue; completed players return to the back.',
+    winners_losers: 'Keeps recent winners with winners and challengers with challengers when full groups are available.',
+  }[style] || 'Balances court time and keeps the waiting queue moving.';
+  note.textContent = `${styleText} Uses ${formatText}.`;
+}
+
+async function gmHandleRotationOptionChange() {
+  if (_gm.session && ['completed', 'cancelled'].includes(_gm.session.status)) {
+    gmApplyRotationOptions(_gm.session.mode);
+    toast('This rotation session has ended. Its format and style are locked.', 'inf');
+    return;
+  }
+  const savedFormat = gmRotationApi().parseMode(_gm.session?.mode).format;
+  if (_gm.rounds.length && $('gmFormat')?.value !== savedFormat) {
+    gmApplyRotationOptions(gmRotationApi().encodeMode(savedFormat, $('gmMode')?.value || 'balanced'));
+    toast('Game format is locked after the first rotation starts.', 'inf');
+    return;
+  }
+  gmUpdateModeHelp();
+  await gmRefreshSourceSummary();
+  if (_gm.session) await gmSaveSessionMeta();
+}
+
+function gmLiveMutationBlocked() {
+  if (!_gm.session) return false;
+  if (['completed', 'cancelled'].includes(_gm.session.status)) {
+    toast('This rotation session has ended.', 'inf');
+    return true;
+  }
+  if (_gm.session.status === 'paused') {
+    toast('Resume the rotation session before changing live courts or the queue.', 'inf');
+    return true;
+  }
+  return false;
+}
 
 function gmToday() {
   const d = new Date();
@@ -10827,12 +11112,25 @@ function gmSessionTitle(s) {
   return `${fmtD(s.date)} - ${s.time_label || 'Open Play'} - ${courts}`;
 }
 
+function gmSessionModeLabel(s) {
+  const mode = gmRotationApi().parseMode(s?.mode);
+  const style = {
+    balanced: 'Balanced',
+    queue: 'Fair Queue',
+    winners_losers: 'Winners / Challengers',
+  }[mode.style] || 'Balanced';
+  return `${mode.format === 'singles' ? 'Singles' : 'Doubles'} · ${style}`;
+}
+
 function gmManagerUrl(params = {}) {
   const url = new URL(location.href);
+  url.searchParams.set('section', 'gamemgr');
   url.searchParams.delete('gm');
   url.searchParams.delete('gmDate');
   url.searchParams.delete('gmCourt');
   url.searchParams.delete('gmCourts');
+  url.searchParams.delete('gmFormat');
+  url.searchParams.delete('gmStyle');
   Object.entries(params).forEach(([k, v]) => {
     if (Array.isArray(v)) url.searchParams.set(k, v.join(','));
     else if (v) url.searchParams.set(k, v);
@@ -10856,17 +11154,28 @@ async function gmClipboard(text, ok = 'Copied.') {
 }
 
 async function renderGameManager() {
-  [_gm.settings, _gm.courts, _gm.sessions] = await Promise.all([DB.getSettings(), DB.getCourts(), DB.getOpenPlayGameSessions()]);
+  try {
+    [_gm.settings, _gm.courts, _gm.sessions] = await Promise.all([DB.getSettings(), DB.getCourts(), DB.getOpenPlayGameSessions()]);
+  } catch (error) {
+    console.error('renderGameManager:', error);
+    toast('Could not load Open Play Rotation. Please refresh and try again.', 'err');
+    return;
+  }
   const params = new URLSearchParams(location.search);
   const date = params.get('gmDate') || $('gmDate')?.value || gmToday();
   if ($('gmDate')) $('gmDate').value = date;
   if ($('gmTimeLabel') && !$('gmTimeLabel').value) $('gmTimeLabel').value = params.get('gmTime') || gmDefaultTimeLabel();
+  if (!_gm.session) {
+    gmApplyRotationOptions(gmRotationApi().encodeMode(params.get('gmFormat') || 'doubles', params.get('gmStyle') || 'balanced'));
+  }
   const urlCourts = (params.get('gmCourts') || params.get('gmCourt') || '').split(',').map(s => s.trim()).filter(Boolean);
   gmRenderCourtPicker(urlCourts.length ? urlCourts : (_gm.session?.court_ids || []));
   gmRenderSessionSelect();
   if (params.get('gm') && !_gm.loadedUrl) {
-    _gm.loadedUrl = true;
-    await gmLoadSession(params.get('gm'));
+    _gm.loadedUrl = await gmLoadSession(params.get('gm'));
+  } else if (_gm.session) {
+    await gmLoadSession(_gm.session.id);
+    return;
   } else {
     gmRenderPlayers();
     gmRenderBoard();
@@ -10878,68 +11187,121 @@ function gmRenderSessionSelect() {
   const sel = $('gmSessionSelect');
   if (!sel) return;
   sel.innerHTML = '<option value="">New session</option>' + _gm.sessions.map(s =>
-    `<option value="${esc(s.id)}" ${_gm.session && String(_gm.session.id) === String(s.id) ? 'selected' : ''}>${esc(gmSessionTitle(s))}</option>`
+    `<option value="${esc(s.id)}" ${_gm.session && String(_gm.session.id) === String(s.id) ? 'selected' : ''}>${esc(gmSessionTitle(s))} · ${esc(gmSessionModeLabel(s))}</option>`
   ).join('');
+}
+
+function gmResetSessionState() {
+  _gm.session = null;
+  _gm.players = [];
+  _gm.rounds = [];
+  if ($('gmSessionSelect')) $('gmSessionSelect').value = '';
+  gmRenderPlayers();
+  gmRenderBoard();
 }
 
 async function gmLoadSelectedSession() {
   const id = $('gmSessionSelect')?.value;
   if (!id) {
-    _gm.session = null; _gm.players = []; _gm.rounds = [];
-    gmRenderPlayers(); gmRenderBoard(); return;
+    gmResetSessionState();
+    return;
   }
   await gmLoadSession(id);
 }
 
 async function gmLoadSession(id) {
-  _gm.sessions = await DB.getOpenPlayGameSessions();
+  try {
+    _gm.sessions = await DB.getOpenPlayGameSessions();
+  } catch (error) {
+    console.error('gmLoadSession sessions:', error);
+    toast('Could not refresh rotation sessions. No changes were made.', 'err');
+    return false;
+  }
   const s = _gm.sessions.find(x => String(x.id) === String(id));
-  if (!s) { toast('Game session not found.', 'err'); return; }
+  if (!s) { toast('Rotation session not found.', 'err'); return false; }
+  let players;
+  let rounds;
+  try {
+    [players, rounds] = await Promise.all([DB.getOpenPlayGamePlayers(s.id), DB.getOpenPlayGameRounds(s.id)]);
+  } catch (error) {
+    console.error('gmLoadSession:', error);
+    gmResetSessionState();
+    toast('Could not load the complete rotation session. No changes were made.', 'err');
+    return false;
+  }
   _gm.session = s;
-  [_gm.players, _gm.rounds] = await Promise.all([DB.getOpenPlayGamePlayers(s.id), DB.getOpenPlayGameRounds(s.id)]);
+  _gm.players = players;
+  _gm.rounds = rounds;
   if ($('gmDate')) $('gmDate').value = s.date;
   if ($('gmTimeLabel')) $('gmTimeLabel').value = s.time_label || '';
-  if ($('gmMode')) $('gmMode').value = s.mode || 'smart_random_mixer';
+  gmApplyRotationOptions(s.mode);
   gmRenderCourtPicker(s.court_ids || []);
   gmRenderSessionSelect();
   gmRenderPlayers();
   gmRenderBoard();
   await gmRefreshSourceSummary();
+  return true;
 }
 
 async function gmCreateOrOpenSession() {
+  try {
+    _gm.sessions = await DB.getOpenPlayGameSessions();
+  } catch (error) {
+    console.error('gmCreateOrOpenSession:', error);
+    toast('Could not check existing rotation sessions. No session was created.', 'err');
+    return null;
+  }
   const date = $('gmDate')?.value || gmToday();
   const courtIds = gmSelectedCourtIds();
   if (!date) { toast('Choose an Open Play date.', 'err'); return null; }
   if (!courtIds.length) { toast('Choose at least one court.', 'err'); return null; }
   const timeLabel = ($('gmTimeLabel')?.value || gmDefaultTimeLabel() || 'Open Play').trim();
   const existingId = $('gmSessionSelect')?.value;
-  if (existingId) { await gmLoadSession(existingId); return _gm.session; }
+  if (existingId) return await gmLoadSession(existingId) ? _gm.session : null;
   const courtKey = courtIds.slice().sort().join(',');
-  const found = _gm.sessions.find(s => s.date === date && (s.time_label || '') === timeLabel && (s.court_ids || []).slice().sort().join(',') === courtKey);
-  if (found) { await gmLoadSession(found.id); return _gm.session; }
-  const created = await DB.createOpenPlayGameSession({
-    date,
-    timeLabel,
-    courtIds,
-    courtNames: gmCourtNames(courtIds),
-    mode: $('gmMode')?.value || 'smart_random_mixer',
-    status: 'draft',
-  });
-  toast('Game manager session created.');
-  await gmLoadSession(created.id);
-  return _gm.session;
+  const mode = gmStoredMode();
+  const found = _gm.sessions.find(s =>
+    s.date === date &&
+    (s.time_label || '') === timeLabel &&
+    (s.court_ids || []).slice().sort().join(',') === courtKey &&
+    gmNormalizedMode(s.mode) === mode &&
+    !['completed', 'cancelled'].includes(s.status)
+  );
+  if (found) return await gmLoadSession(found.id) ? _gm.session : null;
+  let ready;
+  try {
+    ready = await DB.createOrOpenPlayGameSession({
+      date,
+      timeLabel,
+      courtIds,
+      courtNames: gmCourtNames(courtIds),
+      mode,
+    });
+  } catch (error) {
+    console.error('gmCreateOrOpenSession create:', error);
+    toast(error?.message || 'Could not create the rotation session.', 'err');
+    return null;
+  }
+  toast('Open Play Rotation session ready.');
+  return await gmLoadSession(ready.id) ? _gm.session : null;
 }
 
 async function gmSaveSessionMeta() {
   if (!_gm.session) return;
+  if (['completed', 'cancelled'].includes(_gm.session.status)) return;
   const courtIds = gmSelectedCourtIds();
+  const selectedMode = gmRotationOptions();
+  const savedMode = gmRotationApi().parseMode(_gm.session.mode);
+  const mode = gmRotationApi().encodeMode(
+    _gm.rounds.length ? savedMode.format : selectedMode.format,
+    selectedMode.style
+  );
   const saved = await DB.updateOpenPlayGameSession(_gm.session.id, {
     date: $('gmDate')?.value || _gm.session.date,
     timeLabel: ($('gmTimeLabel')?.value || _gm.session.time_label || 'Open Play').trim(),
     courtIds,
     courtNames: gmCourtNames(courtIds),
-    mode: $('gmMode')?.value || 'smart_random_mixer',
+    mode,
   });
   _gm.session = saved || _gm.session;
   gmRenderBoard();
@@ -10959,23 +11321,42 @@ async function gmGetSourcePlayers() {
 async function gmRefreshSourceSummary() {
   const { paid, excluded } = await gmGetSourcePlayers();
   const courts = gmSelectedCourtIds().length;
-  const games = Math.min(courts, Math.floor(paid.length / 4));
+  const playersPerGame = gmPlayersPerGame();
+  const games = Math.min(courts, Math.floor(paid.length / playersPerGame));
   if ($('gmPaidCount')) $('gmPaidCount').textContent = paid.length;
   if ($('gmExcludedCount')) $('gmExcludedCount').textContent = excluded.length;
   if ($('gmCourtCount')) $('gmCourtCount').textContent = courts;
   if ($('gmGameCount')) $('gmGameCount').textContent = games;
   const note = $('gmReadyNote');
   if (note) {
-    note.className = paid.length >= 4 && courts ? 'gm-ready' : 'gm-warn';
-    note.textContent = paid.length >= 4 && courts
+    note.className = paid.length >= playersPerGame && courts ? 'gm-ready' : 'gm-warn';
+    note.textContent = paid.length >= playersPerGame && courts
       ? `${games} game${games === 1 ? '' : 's'} can start now. Pending/rejected players stay out until paid.`
-      : 'Need at least 4 paid players and 1 court to generate games.';
+      : `Need at least ${playersPerGame} paid players and 1 court to generate games.`;
   }
 }
 
-async function gmImportPaidPlayers() {
-  const s = await gmCreateOrOpenSession();
+async function gmReplaceRoster(session, players, resetHistory = false) {
+  try {
+    _gm.players = resetHistory
+      ? await DB.resetOpenPlayGameRoster(session.id, players)
+      : await DB.replaceOpenPlayGamePlayers(session.id, players);
+    if (resetHistory) {
+      _gm.rounds = [];
+      _gm.session = { ...session, status: 'draft', current_round: 0 };
+    }
+    return true;
+  } catch (error) {
+    console.error('gmReplaceRoster:', error);
+    toast(error?.message || 'Could not update the rotation roster.', 'err');
+    return false;
+  }
+}
+
+async function gmImportPaidPlayers({ resetHistory = false, session = null } = {}) {
+  const s = session || await gmCreateOrOpenSession();
   if (!s) return;
+  if (gmLiveMutationBlocked()) return;
   const { paid } = await gmGetSourcePlayers();
   if (!paid.length) { toast('No paid Open Play players found for this date/court.', 'err'); return; }
   const names = paid.map((r, i) => ({
@@ -10984,17 +11365,22 @@ async function gmImportPaidPlayers() {
     status: 'active',
     seedOrder: i,
   })).filter(p => p.fullName);
-  if ((_gm.rounds || []).length) await DB.clearOpenPlayGameRounds(s.id);
-  _gm.players = await DB.replaceOpenPlayGamePlayers(s.id, names);
-  _gm.rounds = [];
+  const hasRounds = Boolean((_gm.rounds || []).length);
+  if (hasRounds && !resetHistory) {
+    toast('Games are already saved. Use Reset From Paid or create a new session.', 'inf');
+    return;
+  }
+  if (!await gmReplaceRoster(s, names, resetHistory || hasRounds)) return;
   toast(`Imported ${_gm.players.length} paid players.`);
   gmRenderPlayers();
   gmRenderBoard();
 }
 
 async function gmResetFromPaid() {
-  if (!confirm('Reset the player list from paid registrations? Walk-ins and edits will be replaced.')) return;
-  await gmImportPaidPlayers();
+  const s = await gmCreateOrOpenSession();
+  if (!s || gmLiveMutationBlocked()) return;
+  if (!confirm('Reset this session from paid registrations? Walk-ins and edits will be replaced, and any saved rounds will be permanently erased. Create a new session instead if you need to keep its history.')) return;
+  await gmImportPaidPlayers({ resetHistory: true, session: s });
 }
 
 function gmNormalizePlayer(p, i) {
@@ -11025,9 +11411,10 @@ function gmRenderPlayers() {
   const warn = $('gmPlayerWarnings');
   if (warn) {
     const active = players.filter(p => p.status === 'active');
+    const minimum = gmPlayersPerGame();
     warn.innerHTML = [
       dups.size ? `<div class="gm-warn" style="margin-bottom:8px">Duplicate names found. Please confirm they are different players.</div>` : '',
-      active.length && active.length < 4 ? `<div class="gm-warn" style="margin-bottom:8px">Only ${active.length} active player${active.length === 1 ? '' : 's'}. You need 4 to start a game.</div>` : '',
+      active.length && active.length < minimum ? `<div class="gm-warn" style="margin-bottom:8px">Only ${active.length} checked-in player${active.length === 1 ? '' : 's'}. You need ${minimum} to start ${gmRotationOptions().format}.</div>` : '',
     ].join('');
   }
   if (!players.length) {
@@ -11036,42 +11423,61 @@ function gmRenderPlayers() {
   }
   wrap.innerHTML = players.map((p, i) => {
     const key = String(p.full_name || '').trim().toLowerCase();
-    return `<div class="gm-player-row ${dups.has(key) ? 'dup' : ''}" data-id="${esc(p.id || '')}" data-source="${esc(p.source_registration_id || '')}">
+    return `<div class="gm-player-row ${dups.has(key) ? 'dup' : ''} ${p.status === 'removed' ? 'is-removed' : ''}" data-id="${esc(p.id || '')}" data-source="${esc(p.source_registration_id || '')}" data-original-name="${esc(p.full_name)}">
       <span class="gm-player-no">${i + 1}</span>
       <input class="fi gm-player-name" value="${esc(p.full_name)}" placeholder="Player name"/>
-      <select class="fi gm-player-status">
-        <option value="active" ${p.status === 'active' ? 'selected' : ''}>Active</option>
-        <option value="no_show" ${p.status === 'no_show' ? 'selected' : ''}>No-show</option>
+      <select class="fi gm-player-status" onchange="gmPlayerStatusChanged(this)">
+        <option value="active" ${p.status === 'active' ? 'selected' : ''}>Checked in</option>
+        <option value="no_show" ${p.status === 'no_show' ? 'selected' : ''}>Not checked in</option>
         <option value="removed" ${p.status === 'removed' ? 'selected' : ''}>Removed</option>
       </select>
-      <button class="btn btn-d btn-sm" onclick="gmRemovePlayerRow(this)" title="Remove">X</button>
+      <button class="btn btn-d btn-sm" onclick="gmRemovePlayerRow(this)" title="Mark removed">X</button>
     </div>`;
   }).join('');
 }
 
 function gmCollectPlayers() {
-  return [...document.querySelectorAll('.gm-player-row')].map((row, i) => ({
-    fullName: row.querySelector('.gm-player-name')?.value.trim() || '',
-    sourceRegistrationId: row.dataset.source || null,
-    status: row.querySelector('.gm-player-status')?.value || 'active',
-    seedOrder: i,
-  })).filter(p => p.fullName || p.status !== 'removed');
+  return [...document.querySelectorAll('.gm-player-row')].map((row, i) => {
+    const id = row.dataset.id || null;
+    const enteredName = row.querySelector('.gm-player-name')?.value.trim() || '';
+    return {
+      id,
+      fullName: enteredName || (id ? row.dataset.originalName || '' : ''),
+      sourceRegistrationId: row.dataset.source || null,
+      status: row.querySelector('.gm-player-status')?.value || 'active',
+      seedOrder: i,
+    };
+  }).filter(player => player.id || player.fullName || player.status !== 'removed');
 }
 
 async function gmSavePlayers() {
+  if (gmLiveMutationBlocked()) return false;
   const players = gmCollectPlayers();
   if (players.some(p => !p.fullName)) { toast('Remove blank player rows before saving.', 'err'); return false; }
   const s = await gmCreateOrOpenSession();
   if (!s) return false;
-  _gm.players = await DB.replaceOpenPlayGamePlayers(s.id, players);
-  toast('Players saved.');
+  if (gmLiveMutationBlocked()) return false;
+  if (!await gmReplaceRoster(s, players)) return false;
+  toast('Player check-in saved.');
   gmRenderPlayers();
   return true;
 }
 
+function gmCheckInAll() {
+  document.querySelectorAll('.gm-player-status').forEach(select => {
+    if (select.value !== 'removed') select.value = 'active';
+    gmPlayerStatusChanged(select);
+  });
+  toast('All available players marked checked in.');
+}
+
+function gmPlayerStatusChanged(select) {
+  select.closest('.gm-player-row')?.classList.toggle('is-removed', select.value === 'removed');
+}
+
 function gmAddWalkIn() {
   const currentPlayers = document.querySelectorAll('.gm-player-row').length
-    ? gmCollectPlayers().map((p, i) => ({ id: '', full_name: p.fullName, source_registration_id: p.sourceRegistrationId, status: p.status, seed_order: i }))
+    ? gmCollectPlayers().map((p, i) => ({ id: p.id || '', full_name: p.fullName, source_registration_id: p.sourceRegistrationId, status: p.status, seed_order: i }))
     : (_gm.players || []);
   _gm.players = [...currentPlayers, {
     id: '',
@@ -11088,104 +11494,42 @@ function gmAddWalkIn() {
 }
 
 function gmRemovePlayerRow(btn) {
-  btn.closest('.gm-player-row')?.remove();
-  _gm.players = gmCollectPlayers().map((p, i) => ({ id: '', full_name: p.fullName, source_registration_id: p.sourceRegistrationId, status: p.status, seed_order: i }));
-  gmRenderPlayers();
+  const row = btn.closest('.gm-player-row');
+  if (!row) return;
+  if (!row.dataset.id) {
+    row.remove();
+    _gm.players = gmCollectPlayers().map((p, i) => ({ id: p.id || '', full_name: p.fullName, source_registration_id: p.sourceRegistrationId, status: p.status, seed_order: i }));
+    gmRenderPlayers();
+    return;
+  }
+  const status = row.querySelector('.gm-player-status');
+  if (status) status.value = 'removed';
+  row.classList.add('is-removed');
 }
-
-function gmPairKey(a, b) { return [String(a), String(b)].sort().join('|'); }
 
 function gmBuildHistory(rounds = _gm.rounds) {
-  const partner = {}, opponent = {}, playCount = {}, winCount = {}, lastRound = {};
-  const processGame = (g, rn) => {
-    const a = (g.teamA || []).map(String), b = (g.teamB || []).map(String);
-    if (a.length === 2) partner[gmPairKey(a[0], a[1])] = (partner[gmPairKey(a[0], a[1])] || 0) + 1;
-    if (b.length === 2) partner[gmPairKey(b[0], b[1])] = (partner[gmPairKey(b[0], b[1])] || 0) + 1;
-    a.forEach(x => b.forEach(y => { opponent[gmPairKey(x, y)] = (opponent[gmPairKey(x, y)] || 0) + 1; }));
-    [...a, ...b].forEach(id => { playCount[id] = (playCount[id] || 0) + 1; lastRound[id] = rn; });
-    if (g.winner === 'A') a.forEach(id => { winCount[id] = (winCount[id] || 0) + 1; });
-    if (g.winner === 'B') b.forEach(id => { winCount[id] = (winCount[id] || 0) + 1; });
-  };
-  rounds.forEach(r => {
-    const rn = Number(r.round_no || 0);
-    (r.assignments || []).forEach(g => {
-      (g.completedGames || []).forEach(done => processGame(done, rn));
-      processGame(g, rn);
-    });
-  });
-  return { partner, opponent, playCount, winCount, lastRound };
-}
-
-function gmShuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+  return gmRotationApi().buildHistory(rounds);
 }
 
 function gmBestSplit(group, hist) {
-  const combos = [
-    [[0, 1], [2, 3]],
-    [[0, 2], [1, 3]],
-    [[0, 3], [1, 2]],
-  ];
-  let best = null;
-  combos.forEach(([ai, bi]) => {
-    const teamA = ai.map(i => group[i]);
-    const teamB = bi.map(i => group[i]);
-    const partnerRepeats = (hist.partner[gmPairKey(teamA[0].id, teamA[1].id)] || 0) + (hist.partner[gmPairKey(teamB[0].id, teamB[1].id)] || 0);
-    let opponentRepeats = 0;
-    teamA.forEach(a => teamB.forEach(b => { opponentRepeats += hist.opponent[gmPairKey(a.id, b.id)] || 0; }));
-    const playSpread = Math.max(...group.map(p => hist.playCount[p.id] || 0)) - Math.min(...group.map(p => hist.playCount[p.id] || 0));
-    const score = partnerRepeats * 100 + opponentRepeats * 25 + playSpread * 3 + Math.random();
-    if (!best || score < best.score) best = { teamA, teamB, score };
-  });
-  return best;
+  return gmRotationApi().bestSplit(group, hist, () => 0);
 }
 
 function gmGenerateAssignments(active, courtIds, rounds) {
-  const hist = gmBuildHistory(rounds);
-  const lastQueue = rounds.length ? (rounds[rounds.length - 1].queue_snapshot || []) : active.map(p => p.id);
-  const qIndex = {};
-  lastQueue.forEach((id, i) => { qIndex[String(id)] = i; });
-  const courtCount = Math.min(courtIds.length, Math.floor(active.length / 4));
-  const playSlots = courtCount * 4;
-  const fairOrder = [...active].sort((a, b) =>
-    (hist.playCount[a.id] || 0) - (hist.playCount[b.id] || 0) ||
-    (qIndex[a.id] ?? 9999) - (qIndex[b.id] ?? 9999) ||
-    a.seed_order - b.seed_order
-  );
-  const mustPlay = fairOrder.slice(0, playSlots);
-  const waitingBase = fairOrder.slice(playSlots);
-  let best = null;
-  const samples = Math.max(120, Math.min(420, active.length * 24));
-  for (let s = 0; s < samples; s++) {
-    const shuffled = gmShuffle(mustPlay);
-    const assignments = [];
-    let score = 0;
-    for (let i = 0; i < courtCount; i++) {
-      const group = shuffled.slice(i * 4, i * 4 + 4);
-      const split = gmBestSplit(group, hist);
-      score += split.score;
-      const courtId = courtIds[i];
-      assignments.push({
-        courtId,
-        courtName: gmCourtNames([courtId])[0],
-        teamA: split.teamA.map(p => p.id),
-        teamB: split.teamB.map(p => p.id),
-      });
-    }
-    if (!best || score < best.score) best = { assignments, score };
-  }
-  const playedIds = new Set((best?.assignments || []).flatMap(g => [...g.teamA, ...g.teamB]));
-  const queueSnapshot = [...waitingBase.map(p => p.id), ...fairOrder.filter(p => playedIds.has(p.id)).map(p => p.id)];
-  const newHist = gmBuildHistory([...rounds, { assignments: best?.assignments || [], round_no: (rounds.length + 1) }]);
-  return { assignments: best?.assignments || [], queueSnapshot, partnerHistory: newHist.partner, opponentHistory: newHist.opponent };
+  const { format, style } = gmRotationOptions();
+  const courtNames = Object.fromEntries(courtIds.map(id => [String(id), gmCourtNames([id])[0]]));
+  return gmRotationApi().generateAssignments({
+    active,
+    courtIds,
+    courtNames,
+    rounds,
+    format,
+    style,
+  });
 }
 
 async function gmGenerateNextRound() {
+  if (gmLiveMutationBlocked()) return;
   const saved = await gmSavePlayers();
   if (!saved) return;
   await gmSaveSessionMeta();
@@ -11195,37 +11539,87 @@ async function gmGenerateNextRound() {
     seed_order: p.seed_order,
   }));
   const courtIds = gmSelectedCourtIds();
-  if (active.length < 4) { toast('Need at least 4 active players.', 'err'); return; }
+  const playersPerGame = gmPlayersPerGame();
+  if (active.length < playersPerGame) { toast(`Need at least ${playersPerGame} checked-in players.`, 'err'); return; }
   if (!courtIds.length) { toast('Choose at least one court.', 'err'); return; }
   const result = gmGenerateAssignments(active, courtIds, _gm.rounds);
   if (!result.assignments.length) { toast('Not enough players for a game.', 'err'); return; }
   const roundNo = (_gm.rounds[_gm.rounds.length - 1]?.round_no || 0) + 1;
-  await DB.addOpenPlayGameRound({
-    sessionId: _gm.session.id,
-    roundNo,
-    assignments: result.assignments,
-    queueSnapshot: result.queueSnapshot,
-    partnerHistory: result.partnerHistory,
-    opponentHistory: result.opponentHistory,
-    completedAt: new Date().toISOString(),
-  });
+  const sessionId = _gm.session.id;
+  try {
+    await DB.addOpenPlayGameRound({
+      sessionId,
+      roundNo,
+      assignments: result.assignments,
+      queueSnapshot: result.queueSnapshot,
+      partnerHistory: result.partnerHistory,
+      opponentHistory: result.opponentHistory,
+      completedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('gmGenerateNextRound:', error);
+    toast(error?.message || 'Could not add the next rotation round.', 'err');
+    await gmLoadSession(sessionId);
+    return;
+  }
   toast(`Round ${roundNo} generated.`);
-  await gmLoadSession(_gm.session.id);
+  await gmLoadSession(sessionId);
 }
 
 async function gmUndoRound() {
   if (!_gm.session || !_gm.rounds.length) { toast('No round to undo.', 'inf'); return; }
-  await DB.deleteLatestOpenPlayGameRound(_gm.session.id);
+  if (gmLiveMutationBlocked()) return;
+  const sessionId = _gm.session.id;
+  try {
+    const undone = await DB.deleteLatestOpenPlayGameRound(sessionId);
+    if (!undone) { toast('No round to undo.', 'inf'); return; }
+  } catch (error) {
+    console.error('gmUndoRound:', error);
+    toast(error?.message || 'Could not undo the last round.', 'err');
+    await gmLoadSession(sessionId);
+    return;
+  }
   toast('Last round undone.');
-  await gmLoadSession(_gm.session.id);
+  await gmLoadSession(sessionId);
 }
 
 async function gmTogglePause() {
   if (!_gm.session) { toast('Open or create a session first.', 'err'); return; }
-  const next = _gm.session.status === 'paused' ? 'active' : 'paused';
-  await DB.updateOpenPlayGameSession(_gm.session.id, { status: next });
-  await gmLoadSession(_gm.session.id);
+  if (['completed', 'cancelled'].includes(_gm.session.status)) {
+    toast('This rotation session has ended.', 'inf');
+    return;
+  }
+  const sessionId = _gm.session.id;
+  const expected = _gm.session.status;
+  const next = expected === 'paused' ? 'active' : 'paused';
+  try {
+    await DB.transitionOpenPlayGameSession(sessionId, expected, next);
+  } catch (error) {
+    console.error('gmTogglePause:', error);
+    toast(error?.message || 'The session status changed. Reloaded; please try again.', 'err');
+    await gmLoadSession(sessionId);
+    return;
+  }
+  await gmLoadSession(sessionId);
   toast(next === 'paused' ? 'Session paused.' : 'Session resumed.');
+}
+
+async function gmCompleteSession() {
+  if (!_gm.session) { toast('Open or create a session first.', 'err'); return; }
+  if (['completed', 'cancelled'].includes(_gm.session.status)) { toast('This rotation session has already ended.', 'inf'); return; }
+  if (!confirm('End this Open Play Rotation session? The court history and standings will stay saved.')) return;
+  const sessionId = _gm.session.id;
+  const expected = _gm.session.status;
+  try {
+    await DB.transitionOpenPlayGameSession(sessionId, expected, 'completed');
+  } catch (error) {
+    console.error('gmCompleteSession:', error);
+    toast(error?.message || 'The session status changed. Reloaded; please try again.', 'err');
+    await gmLoadSession(sessionId);
+    return;
+  }
+  await gmLoadSession(sessionId);
+  toast('Open Play Rotation session completed.');
 }
 
 function gmPlayerName(id) {
@@ -11253,11 +11647,22 @@ function gmQueueIds(round) {
   return [...fromRound, ...missing];
 }
 
+function gmNextQueueIds(round, history = gmBuildHistory(), playersPerGame = gmPlayersPerGame(), queueOverride = null) {
+  const queue = queueOverride || gmQueueIds(round);
+  return gmRotationApi().selectNextPlayers(
+    queue,
+    history,
+    playersPerGame,
+    gmRotationOptions().style
+  );
+}
+
 function gmPlayerChip(id, cls = '', extra = '') {
   return `<span class="gm-player-chip ${cls}">${esc(gmPlayerName(id))}${extra}</span>`;
 }
 
 async function gmSetWinner(assignmentIndex, winner) {
+  if (gmLiveMutationBlocked()) return;
   const last = _gm.rounds[_gm.rounds.length - 1];
   if (!last) { toast('Generate a round first.', 'err'); return; }
   const current = (last.assignments || [])[assignmentIndex];
@@ -11267,14 +11672,20 @@ async function gmSetWinner(assignmentIndex, winner) {
   const completedGame = { ...current, winner, resultAt };
   delete completedGame.completedGames;
   const waitingBefore = gmQueueIds(last);
-  const nextIds = waitingBefore.slice(0, 4);
-  const finishedIds = [...(current.teamA || []), ...(current.teamB || [])].map(String);
+  const playersPerGame = Math.max(2, (current.teamA || []).length + (current.teamB || []).length);
+  const activeIdSet = new Set(gmActivePlayers().map(player => String(player.id)));
+  const finishedIds = [...(current.teamA || []), ...(current.teamB || [])]
+    .map(String)
+    .filter(id => activeIdSet.has(id));
   const histWithResult = gmBuildHistory([..._gm.rounds.slice(0, -1), {
     ...last,
-    assignments: (last.assignments || []).map((g, i) => i === assignmentIndex ? completedGame : g),
+    assignments: (last.assignments || []).map((g, i) => i === assignmentIndex
+      ? { ...completedGame, completedGames: current.completedGames || [] }
+      : g),
   }]);
+  const nextIds = gmNextQueueIds(last, histWithResult, playersPerGame, waitingBefore);
   let nextAssignment = null;
-  if (nextIds.length === 4) {
+  if (nextIds.length === playersPerGame) {
     const group = nextIds.map((id, i) => ({ id: String(id), seed_order: i }));
     const split = gmBestSplit(group, histWithResult);
     nextAssignment = {
@@ -11289,25 +11700,52 @@ async function gmSetWinner(assignmentIndex, winner) {
     if (i !== assignmentIndex) return g;
     return nextAssignment || { ...completedGame, completedGames: current.completedGames || [] };
   });
+  const selectedIds = new Set(nextIds.map(String));
+  const remainingWaiting = waitingBefore.filter(id => !selectedIds.has(String(id)));
   const queueSnapshot = nextAssignment
-    ? [...waitingBefore.slice(4), ...finishedIds]
+    ? [...remainingWaiting, ...finishedIds]
     : waitingBefore;
-  const saved = await DB.updateOpenPlayGameRound(last.id, { assignments, queueSnapshot });
-  if (saved) _gm.rounds[_gm.rounds.length - 1] = saved;
-  else _gm.rounds[_gm.rounds.length - 1] = { ...last, assignments, queue_snapshot: queueSnapshot };
+  const sessionId = _gm.session.id;
+  let saved;
+  try {
+    saved = await DB.updateOpenPlayGameRound(
+      last.id,
+      { assignments, queueSnapshot },
+      { assignments: last.assignments || [], queueSnapshot: last.queue_snapshot || [] }
+    );
+  } catch (error) {
+    console.error('gmSetWinner:', error);
+    toast(error?.message || 'The live rotation changed. Reloaded; please record the result again.', 'err');
+    await gmLoadSession(sessionId);
+    return;
+  }
+  _gm.rounds[_gm.rounds.length - 1] = saved;
   gmRenderBoard();
   const winnerText = winner === 'A' ? 'Left side won.' : 'Right side won.';
   toast(nextAssignment ? `${winnerText} Next queue loaded.` : `${winnerText} No full next group yet.`);
 }
 
 async function gmSkipQueuePlayer(id) {
+  if (gmLiveMutationBlocked()) return;
   const last = _gm.rounds[_gm.rounds.length - 1];
   if (!last) { toast('Start a round before editing the queue.', 'inf'); return; }
   const q = gmQueueIds(last);
   const next = [...q.filter(x => String(x) !== String(id)), String(id)];
-  const saved = await DB.updateOpenPlayGameRound(last.id, { queueSnapshot: next });
-  if (saved) _gm.rounds[_gm.rounds.length - 1] = saved;
-  else _gm.rounds[_gm.rounds.length - 1] = { ...last, queue_snapshot: next };
+  const sessionId = _gm.session.id;
+  let saved;
+  try {
+    saved = await DB.updateOpenPlayGameRound(
+      last.id,
+      { queueSnapshot: next },
+      { assignments: last.assignments || [], queueSnapshot: last.queue_snapshot || [] }
+    );
+  } catch (error) {
+    console.error('gmSkipQueuePlayer:', error);
+    toast(error?.message || 'The live rotation changed. Reloaded; please try again.', 'err');
+    await gmLoadSession(sessionId);
+    return;
+  }
+  _gm.rounds[_gm.rounds.length - 1] = saved;
   gmRenderBoard();
 }
 
@@ -11317,17 +11755,29 @@ function gmRenderNextUp(round) {
   const q = gmQueueIds(round);
   const courtIds = gmSelectedCourtIds();
   const groups = [];
+  const playersPerGame = gmPlayersPerGame();
+  const history = gmBuildHistory();
   const maxGroups = Math.max(1, courtIds.length || 1);
-  for (let i = 0; i < Math.min(maxGroups, Math.floor(q.length / 4)); i++) groups.push(q.slice(i * 4, i * 4 + 4));
+  let remaining = [...q];
+  while (groups.length < maxGroups && remaining.length >= playersPerGame) {
+    const group = gmNextQueueIds(round, history, playersPerGame, remaining);
+    if (group.length < playersPerGame) break;
+    groups.push(group);
+    const selected = new Set(group.map(String));
+    remaining = remaining.filter(id => !selected.has(String(id)));
+  }
   wrap.innerHTML = groups.length
-    ? groups.map((group, i) => `<div class="gm-next-card">
-        <div class="gm-next-title"><span>Next Game ${i + 1}</span><span>${group.length}/4</span></div>
-        <div class="gm-matchup" style="padding:0;grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr)">
-          <div class="gm-team"><div class="gm-team-label">Left</div><div class="gm-chip-row">${group.slice(0, 2).map(id => gmPlayerChip(id, 'waiting')).join('')}</div></div>
-          <div class="gm-vs">VS</div>
-          <div class="gm-team"><div class="gm-team-label">Right</div><div class="gm-chip-row">${group.slice(2, 4).map(id => gmPlayerChip(id, 'waiting')).join('')}</div></div>
-        </div>
-      </div>`).join('')
+    ? groups.map((group, i) => {
+        const split = gmBestSplit(group.map((id, seed_order) => ({ id, seed_order })), history);
+        return `<div class="gm-next-card">
+          <div class="gm-next-title"><span>Next Game ${i + 1}</span><span>${group.length}/${playersPerGame}</span></div>
+          <div class="gm-matchup" style="padding:0;grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr)">
+            <div class="gm-team"><div class="gm-team-label">Left</div><div class="gm-chip-row">${split.teamA.map(player => gmPlayerChip(player.id, 'waiting')).join('')}</div></div>
+            <div class="gm-vs">VS</div>
+            <div class="gm-team"><div class="gm-team-label">Right</div><div class="gm-chip-row">${split.teamB.map(player => gmPlayerChip(player.id, 'waiting')).join('')}</div></div>
+          </div>
+        </div>`;
+      }).join('')
     : '<div class="gm-empty">No full next-up group yet.</div>';
 }
 
@@ -11336,17 +11786,40 @@ function gmRenderQueue(round) {
   if (!queue) return;
   const q = gmQueueIds(round);
   const hist = gmBuildHistory();
+  const courtCount = Math.max(1, (round?.assignments || []).length || gmSelectedCourtIds().length);
+  const format = gmRotationOptions().format;
   queue.classList.toggle('gm-queue-list', q.length > 0);
   queue.innerHTML = q.length
     ? q.map((id, i) => `<div class="gm-queue-row">
         <span class="gm-queue-no">${i + 1}</span>
         <div>
           <div class="gm-queue-name">${esc(gmPlayerName(id))}</div>
-          <div class="gm-queue-meta">${hist.winCount[id] || 0}W / ${hist.playCount[id] || 0}G</div>
+          <div class="gm-queue-meta">${hist.winCount[id] || 0}W / ${hist.resultCount[id] || 0}G · ${gmRotationApi().queueWaitLabel(i, courtCount, format)}</div>
         </div>
         <button class="gm-chip-action" onclick="gmSkipQueuePlayer('${esc(id)}')" title="Move to back">${i + 1 === q.length ? 'last' : 'skip'}</button>
       </div>`).join('')
     : '<span class="gm-empty">No waiting players right now.</span>';
+}
+
+function gmCallNextPlayers() {
+  if (gmLiveMutationBlocked()) return;
+  const last = _gm.rounds[_gm.rounds.length - 1];
+  if (!last) { toast('Start the rotation before calling the next players.', 'inf'); return; }
+  const playersPerGame = gmPlayersPerGame();
+  const ids = gmNextQueueIds(last, gmBuildHistory(), playersPerGame);
+  if (ids.length < playersPerGame) { toast('No full next-up group is waiting right now.', 'inf'); return; }
+  const names = ids.map(gmPlayerName);
+  const message = `Next up: ${names.join(', ')}. Please get ready.`;
+  if ('speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined') {
+    window.speechSynthesis.cancel();
+    const call = new SpeechSynthesisUtterance(message);
+    call.rate = 0.92;
+    call.pitch = 1;
+    window.speechSynthesis.speak(call);
+    toast(`Calling ${names.join(', ')}.`);
+    return;
+  }
+  gmClipboard(message, `Next up: ${names.join(', ')}`);
 }
 
 function gmRenderStandings(rounds = _gm.rounds) {
@@ -11355,7 +11828,7 @@ function gmRenderStandings(rounds = _gm.rounds) {
   const hist = gmBuildHistory(rounds);
   const rows = gmActivePlayers().map(p => {
     const id = String(p.id);
-    const games = hist.playCount[id] || 0;
+    const games = hist.resultCount[id] || 0;
     const wins = hist.winCount[id] || 0;
     return { id, name: p.full_name, games, wins, pct: games ? wins / games : 0 };
   }).sort((a, b) => b.wins - a.wins || b.pct - a.pct || a.games - b.games || a.name.localeCompare(b.name));
@@ -11385,8 +11858,19 @@ function gmRenderLiveStats(round) {
 
 function gmRenderBoard() {
   const board = $('gmBoard'), meta = $('gmSessionMeta');
-  if (meta) meta.textContent = _gm.session ? `${gmSessionTitle(_gm.session)} - ${_gm.session.status || 'draft'} - Round ${_gm.rounds.length}` : 'No active game session.';
-  if ($('gmMode') && _gm.session) $('gmMode').value = _gm.session.mode || 'smart_random_mixer';
+  const ended = Boolean(_gm.session && ['completed', 'cancelled'].includes(_gm.session.status));
+  if ($('gmFormat')) {
+    $('gmFormat').disabled = ended || _gm.rounds.length > 0;
+    $('gmFormat').title = _gm.rounds.length ? 'Format is locked after the first rotation starts.' : '';
+  }
+  if ($('gmMode')) $('gmMode').disabled = ended;
+  if (meta) {
+    const mode = gmRotationOptions(_gm.session);
+    const styleLabel = { balanced: 'Balanced', queue: 'Fair Queue', winners_losers: 'Winners / Challengers' }[mode.style] || 'Balanced';
+    meta.textContent = _gm.session
+      ? `${gmSessionTitle(_gm.session)} · ${mode.format === 'singles' ? 'Singles' : 'Doubles'} · ${styleLabel} · ${_gm.session.status || 'draft'} · Round ${_gm.rounds.length}`
+      : 'No active rotation session.';
+  }
   if (!board) return;
   const last = _gm.rounds[_gm.rounds.length - 1];
   if (!last) {
@@ -11420,7 +11904,7 @@ function gmRenderBoard() {
 function gmOrderText() {
   const s = _gm.session;
   const last = _gm.rounds[_gm.rounds.length - 1];
-  const lines = [`Open Play Game Manager`, s ? gmSessionTitle(s) : '', ''].filter(Boolean);
+  const lines = [`Open Play Rotation`, s ? gmSessionTitle(s) : '', ''].filter(Boolean);
   if (last) {
     lines.push(`Round ${last.round_no}`);
     (last.assignments || []).forEach((g, i) => {
@@ -11443,18 +11927,22 @@ async function gmCopyOrder() {
 }
 
 async function gmCopyManagerLink() {
-  const params = _gm.session ? { gm: _gm.session.id } : { gmDate: $('gmDate')?.value || gmToday(), gmCourts: gmSelectedCourtIds() };
-  await gmClipboard(gmManagerUrl(params), 'Manager link copied.');
+  const options = gmRotationOptions();
+  const params = _gm.session
+    ? { gm: _gm.session.id }
+    : { gmDate: $('gmDate')?.value || gmToday(), gmCourts: gmSelectedCourtIds(), gmFormat: options.format, gmStyle: options.style };
+  await gmClipboard(gmManagerUrl(params), 'Rotation link copied.');
 }
 
 async function gmCopyReservationManagerLink() {
   const date = $('opRegDate')?.value || gmToday();
   const court = $('opRegCourt')?.value || '';
-  await gmClipboard(gmManagerUrl({ gmDate: date, gmCourt: court }), 'Manager link copied.');
+  await gmClipboard(gmManagerUrl({ gmDate: date, gmCourt: court }), 'Rotation link copied.');
 }
 
 async function gmOpenFromReservations() {
   await goto('gamemgr');
+  gmResetSessionState();
   if ($('opRegDate')?.value) $('gmDate').value = $('opRegDate').value;
   if ($('opRegCourt')?.value) gmRenderCourtPicker([$('opRegCourt').value]);
   await gmRefreshSourceSummary();
@@ -11467,23 +11955,30 @@ async function gmLoadPaste() {
     const u = new URL(raw);
     const id = u.searchParams.get('gm');
     if (id) { await gmLoadSession(id); return; }
+    gmResetSessionState();
     const date = u.searchParams.get('gmDate');
     const courts = (u.searchParams.get('gmCourts') || u.searchParams.get('gmCourt') || '').split(',').filter(Boolean);
     if (date && $('gmDate')) $('gmDate').value = date;
     if (courts.length) gmRenderCourtPicker(courts);
+    if (u.searchParams.get('gmFormat') || u.searchParams.get('gmStyle')) {
+      gmApplyRotationOptions(gmRotationApi().encodeMode(u.searchParams.get('gmFormat') || 'doubles', u.searchParams.get('gmStyle') || 'balanced'));
+    }
     await gmRefreshSourceSummary();
-    toast('Manager link loaded.');
+    toast('Rotation link loaded.');
     return;
   } catch(_) {}
   const names = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
   if (!names.length) return;
   const s = await gmCreateOrOpenSession();
   if (!s) return;
-  if ((_gm.rounds || []).length) await DB.clearOpenPlayGameRounds(s.id);
-  _gm.players = await DB.replaceOpenPlayGamePlayers(s.id, names.map((name, i) => ({ fullName: name, status: 'active', seedOrder: i })));
-  _gm.rounds = [];
+  if (gmLiveMutationBlocked()) return;
+  const hasRounds = Boolean((_gm.rounds || []).length);
+  if (hasRounds && !confirm('Replace this roster and permanently erase every saved round? Create a new session instead if you need to keep the history.')) return;
+  const players = names.map((name, i) => ({ fullName: name, status: 'active', seedOrder: i }));
+  if (!await gmReplaceRoster(s, players, hasRounds)) return;
   toast(`${names.length} pasted player names loaded.`);
   gmRenderPlayers();
+  gmRenderBoard();
 }
 
 function gmExportCsv() {
@@ -11508,10 +12003,10 @@ function gmExportCsv() {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `open-play-game-manager-${_gm.session.date}.csv`;
+  a.download = `open-play-rotation-${_gm.session.date}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast('Game manager CSV exported.');
+  toast('Open Play Rotation CSV exported.');
 }
 
 
@@ -12115,9 +12610,13 @@ async function checkAgreementGate(session) {
 </script>
 
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260723-payment-review-v1"></script>
+<script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
+<script src="supabase-config.js?v=20260729-korte-dos-two-games-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
+<script src="open-play-parity-ui.js?v=20260724-parity-v1"></script>
+<script src="qrcode.min.js?v=1.5.4"></script>
+<script src="play-manager.js?v=20260729-result-header-organized-v1"></script>
 </body>
 </html>

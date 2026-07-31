@@ -1,6 +1,7 @@
 # Secret / API key files
 *.txt
 !ads.txt
+!qrcode-LICENSE.txt
 resendAPIKEY.txt
 .env
 .env.local

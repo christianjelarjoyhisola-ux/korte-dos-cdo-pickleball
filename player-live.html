@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="theme-color" content="#111827">
+  <title>Korte DOS Live Match Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="player-live.css?v=20260728-competitive-v1">
+</head>
+<body>
+  <a class="plb-skip" href="#playerLiveMain">Skip to live board</a>
+  <header class="plb-header">
+    <div class="plb-header-inner">
+      <a class="plb-brand" href="index.html" aria-label="Korte DOS home">
+        <img class="plb-brand-mark" src="korte-dos-logo.png" alt="" width="48" height="48" aria-hidden="true">
+        <span class="plb-brand-copy">
+          <span>Korte DOS</span>
+          <strong>Live Match Center</strong>
+        </span>
+      </a>
+      <div class="plb-header-session" id="plbHeaderSession" aria-label="Current session">
+        <strong>Open Play</strong>
+        <span>Waiting for session</span>
+      </div>
+      <div class="plb-header-stats" id="plbHeaderStats" aria-label="Session totals">
+        <div><strong>–</strong><span>Courts</span></div>
+        <div><strong>–</strong><span>Players</span></div>
+        <div><strong>–</strong><span>Waiting</span></div>
+        <div><strong>–</strong><span>Results</span></div>
+      </div>
+      <div class="plb-header-actions">
+        <div class="plb-header-state">
+          <span class="plb-status-pill is-loading" id="plbStatusPill">CONNECTING</span>
+          <span class="plb-freshness" id="plbFreshness">Opening live board…</span>
+        </div>
+        <button class="plb-share-button" type="button" data-plb-action="share" aria-label="Share this live match center">
+          <span class="plb-share-icon" aria-hidden="true"></span>
+          <span data-plb-share-label>Share</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="plb-sr-only" id="plbAnnouncements" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <main class="plb-main" id="playerLiveMain">
+    <div class="plb-loading-card" id="playerLiveRoot" aria-busy="true">
+      <span class="plb-loader" aria-hidden="true"></span>
+      <strong>Loading the courts…</strong>
+      <span>Connecting to the Korte DOS live session.</span>
+    </div>
+  </main>
+
+  <nav class="plb-mobile-nav" aria-label="Live match center sections">
+    <a href="#plbCourts">Courts</a>
+    <a href="#plbDispatch">Up Next</a>
+    <a href="#plbQueue">Queue</a>
+    <a href="#plbStandings">Standings</a>
+  </nav>
+
+  <footer class="plb-footer">
+    Korte DOS CDO Pickleball · Read-only live session
+  </footer>
+
+  <script src="supabase.min.js"></script>
+  <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
+  <script src="supabase-config.js?v=20260729-korte-dos-two-games-v1"></script>
+  <script src="player-live.js?v=20260729-result-safeguards-v1"></script>
+</body>
+</html>
