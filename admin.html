@@ -8079,6 +8079,7 @@ async function renderPaymentSettings() {
   if (!Auth.can('payments', sess.role)) { toast('You do not have access to this section.', 'err'); return; }
   const settings = await DB.getSettings();
   await renderPaymentReviewNotificationSettings();
+  await window.TelegramAdmin?.render();
   const cashOn = settings.payment_method_cash !== '0';
   const gcashOn = settings.payment_method_gcash !== '0';
   const bdopayOn = settings.payment_method_bdopay !== '0';
@@ -12115,6 +12116,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="supabase-config.js?v=20260723-payment-review-v1"></script>
+<script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
 </body>
