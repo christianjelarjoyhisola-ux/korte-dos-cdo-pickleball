@@ -1,6 +1,11 @@
+import {
+  handleHostBookingBalancePayment,
+} from "../host-booking-balance-payment/index.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -13,6 +18,8 @@ type ServiceStatus = {
   missing: string[];
   note?: string;
 };
+
+const HOST_BALANCE_API = "host_booking_balance_payment";
 
 function hasEnv(name: string): boolean {
   return Boolean((Deno.env.get(name) || "").trim());
@@ -57,19 +64,58 @@ function receiptOcrService(): ServiceStatus {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (!["GET", "POST"].includes(req.method)) {
-    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: "Method not allowed" }),
+      {
+        status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
+  }
+  if (req.method === "POST") {
+    const contentLength = Number(req.headers.get("content-length") || 0);
+    if (Number.isFinite(contentLength) && contentLength > 32_768) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Request too large",
+        }),
+        {
+          status: 413,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    let routedBody: { api?: unknown } | null = null;
+    try {
+      routedBody = await req.clone().json();
+    } catch {
+      // Keep the existing public status response for empty or non-JSON POSTs.
+    }
+    if (
+      String(routedBody?.api || "").trim().toLowerCase() === HOST_BALANCE_API
+    ) {
+      return handleHostBookingBalancePayment(req);
+    }
   }
 
-  const serviceRoleConfigured = hasEnv("SERVICE_ROLE_KEY") || hasEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRoleConfigured = hasEnv("SERVICE_ROLE_KEY") ||
+    hasEnv("SUPABASE_SERVICE_ROLE_KEY");
   const services: ServiceStatus[] = [
     service("email", "Email confirmations", ["RESEND_API_KEY"], ["EMAIL_FROM"]),
-    service("telegram", "Telegram admin alerts", ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"], ["APP_ADMIN_URL"]),
-    service("payments", "PayMongo checkout", ["PAYMONGO_SECRET_KEY", "PAYMENT_SUCCESS_URL", "PAYMENT_CANCEL_URL"], ["PAYMENT_WEBHOOK_SECRET"]),
+    service("telegram", "Telegram admin alerts", [
+      "TELEGRAM_BOT_TOKEN",
+      "TELEGRAM_CHAT_ID",
+    ], ["APP_ADMIN_URL"]),
+    service("payments", "PayMongo checkout", [
+      "PAYMONGO_SECRET_KEY",
+      "PAYMENT_SUCCESS_URL",
+      "PAYMENT_CANCEL_URL",
+    ], ["PAYMENT_WEBHOOK_SECRET"]),
     receiptOcrService(),
     {
       id: "service_role",
@@ -77,19 +123,24 @@ Deno.serve(async (req) => {
       configured: serviceRoleConfigured,
       required: ["SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"],
       recommended: [],
-      missing: serviceRoleConfigured ? [] : ["SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"],
+      missing: serviceRoleConfigured
+        ? []
+        : ["SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"],
       note: "Needed by payment sessions, webhooks, and receipt storage.",
     },
   ];
 
-  return new Response(JSON.stringify({
-    ok: true,
-    generatedAt: new Date().toISOString(),
-    readyCount: services.filter((s) => s.configured).length,
-    totalCount: services.length,
-    services,
-  }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      readyCount: services.filter((s) => s.configured).length,
+      totalCount: services.length,
+      services,
+    }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
 });

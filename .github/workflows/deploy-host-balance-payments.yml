@@ -7,6 +7,7 @@ on:
       - ".github/workflows/deploy-host-balance-payments.yml"
       - "supabase/migrations/20260731120000_host_booking_balance_payments.sql"
       - "supabase/functions/host-booking-balance-payment/**"
+      - "supabase/functions/integration-status/**"
       - "supabase/functions/verify-gcash-receipt/**"
   workflow_dispatch:
 
@@ -174,6 +175,9 @@ jobs:
           supabase functions deploy verify-gcash-receipt \
             --project-ref "$SUPABASE_PROJECT_REF" \
             --no-verify-jwt
-          supabase functions deploy host-booking-balance-payment \
+          # This account can update existing functions but cannot create a new
+          # function slug. integration-status safely multiplexes the balance
+          # API through its explicit request discriminator.
+          supabase functions deploy integration-status \
             --project-ref "$SUPABASE_PROJECT_REF" \
             --no-verify-jwt

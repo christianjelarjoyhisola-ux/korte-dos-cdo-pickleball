@@ -294,7 +294,9 @@ async function signedReceipt(
   return { url: signed.signedUrl, expiresIn };
 }
 
-Deno.serve(async (req) => {
+export async function handleHostBookingBalancePayment(
+  req: Request,
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -548,4 +550,8 @@ Deno.serve(async (req) => {
         : {}),
     }, status);
   }
-});
+}
+
+if (import.meta.main) {
+  Deno.serve(handleHostBookingBalancePayment);
+}

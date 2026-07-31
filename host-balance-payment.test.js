@@ -202,7 +202,7 @@ test('normalizes camel/snake quote fields together with a current grouped attemp
   assert.equal(balancePayment.statusState({ current_attempt: { status: 'submitted' } }), 'pending');
 });
 
-test('invokes the dedicated balance function with the supplied action body', async () => {
+test('invokes the existing compatibility function with a strict balance API marker', async () => {
   const calls = [];
   const response = await balancePayment.invoke({
     functions: {
@@ -217,11 +217,12 @@ test('invokes the dedicated balance function with the supplied action body', asy
   });
 
   assert.deepEqual(calls, [{
-    name: 'host-booking-balance-payment',
+    name: 'integration-status',
     options: {
       body: {
         action: 'quote',
         bookingRef: 'BK-001',
+        api: 'host_booking_balance_payment',
       },
     },
   }]);

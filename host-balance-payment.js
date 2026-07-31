@@ -5,7 +5,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const FUNCTION_NAME = 'host-booking-balance-payment';
+  const FUNCTION_NAME = 'integration-status';
+  const API_NAME = 'host_booking_balance_payment';
   const BALANCE_LEAD_DAYS = 5;
   const DAY_MS = 24 * 60 * 60 * 1000;
   const APPROVED_STATES = new Set(['approved', 'auto_approved', 'paid', 'completed', 'confirmed']);
@@ -320,7 +321,9 @@
 
   async function invoke(client, payload) {
     if (!client?.functions?.invoke) throw new Error('Secure balance payment is unavailable.');
-    const { data, error } = await client.functions.invoke(FUNCTION_NAME, { body: payload });
+    const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
+      body: { ...(payload || {}), api: API_NAME },
+    });
     if (error) throw new Error(errorMessage(error));
     if (!data || data.ok === false) throw new Error(errorMessage(data?.error ?? data, 'Balance payment request was not accepted.'));
     return data;
@@ -328,6 +331,7 @@
 
   return {
     FUNCTION_NAME,
+    API_NAME,
     money,
     paidAmount,
     balanceAmount,

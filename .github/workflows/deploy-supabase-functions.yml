@@ -106,6 +106,7 @@ jobs:
                     /^supabase\/functions\/[^/]+\// &&
                     $3 != "_shared" &&
                     $3 != "verify-gcash-receipt" &&
+                    $3 != "host-booking-balance-payment" &&
                     $3 != "manage-payment-review-notification" &&
                     $3 != "process-payment-review-notifications" &&
                     $3 != "review-payment-receipt" {
