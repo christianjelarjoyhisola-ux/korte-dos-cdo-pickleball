@@ -19,3 +19,9 @@
 
 /supabase-config.js
   Cache-Control: no-cache
+
+/host-balance-payment.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/host-balance-admin.js
+  Cache-Control: no-cache, max-age=0, must-revalidate

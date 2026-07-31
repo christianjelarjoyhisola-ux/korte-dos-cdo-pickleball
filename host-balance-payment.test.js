@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const test = require('node:test');
 const balancePayment = require('./host-balance-payment.js');
 
@@ -227,4 +228,16 @@ test('invokes the existing compatibility function with a strict balance API mark
     },
   }]);
   assert.equal(response.quote.balanceAmount, 700);
+});
+
+test('serves critical balance scripts through the current cache-busted release', () => {
+  const indexHtml = fs.readFileSync('./index.html', 'utf8');
+  const adminHtml = fs.readFileSync('./admin.html', 'utf8');
+  const headers = fs.readFileSync('./_headers', 'utf8');
+
+  assert.match(indexHtml, /host-balance-payment\.js\?v=20260731-host-balance-payment-v2/);
+  assert.match(adminHtml, /host-balance-payment\.js\?v=20260731-host-balance-payment-v2/);
+  assert.match(adminHtml, /host-balance-admin\.js\?v=20260731-host-balance-payment-v2/);
+  assert.match(headers, /\/host-balance-payment\.js\s+Cache-Control: no-cache, max-age=0, must-revalidate/);
+  assert.match(headers, /\/host-balance-admin\.js\s+Cache-Control: no-cache, max-age=0, must-revalidate/);
 });
