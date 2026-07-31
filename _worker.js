@@ -1,5 +1,5 @@
 export default {
-  fetch(request, env) {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.hostname === 'www.kortedoscdo.club') {
@@ -10,6 +10,19 @@ export default {
     // Cloudflare Pages resolves extensionless HTML routes through the asset
     // binding. Redirecting /host to /host.html here conflicts with Pages'
     // canonical /host.html -> /host redirect and creates a redirect loop.
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    if ([
+      "/host-balance-payment.js",
+      "/host-balance-admin.js",
+    ].includes(url.pathname)) {
+      const headers = new Headers(response.headers);
+      headers.set("Cache-Control", "no-cache, max-age=0, must-revalidate");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
+    return response;
   },
 };
