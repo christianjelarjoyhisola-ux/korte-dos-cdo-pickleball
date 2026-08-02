@@ -97,6 +97,31 @@ Deno.test("valid pending court booking produces one authoritative alert", async 
     alert.message,
     "section=payreview&amp;review=PB-TEST-001",
   );
+  assertStringIncludes(
+    alert.message,
+    "https://kortedoscdo.club/admin?section=payreview",
+  );
+});
+
+Deno.test("stale dashboard overrides cannot replace the live admin link", async () => {
+  for (
+    const staleUrl of [
+      "https://kortedoscdo.pages.dev/admin.html",
+      "https://repickleballhaven.com/admin",
+    ]
+  ) {
+    const alert = await buildAuthoritativeTelegramAlert(
+      [booking()],
+      "new_booking",
+      staleUrl,
+    );
+    assert(alert);
+    assertStringIncludes(
+      alert.message,
+      "https://kortedoscdo.club/admin?section=payreview",
+    );
+    assertEquals(alert.message.includes(new URL(staleUrl).hostname), false);
+  }
 });
 
 Deno.test("browser-forged status cannot override authoritative booking state", async () => {
@@ -244,5 +269,5 @@ Deno.test("all Telegram HTML fields are escaped", async () => {
   assertEquals(alert.message.includes("<script>"), false);
   assertStringIncludes(alert.message, "&lt;script&gt;");
   assertStringIncludes(alert.message, "Court &amp; &lt;One&gt;");
-  assertStringIncludes(alert.message, "https://kortedoscdo.club/admin.html");
+  assertStringIncludes(alert.message, "https://kortedoscdo.club/admin?");
 });

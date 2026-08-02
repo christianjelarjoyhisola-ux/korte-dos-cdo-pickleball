@@ -9,6 +9,7 @@ import {
 } from "../_shared/telegram-owner-link.ts";
 import {
   buildAuthoritativeTelegramAlert,
+  LIVE_TELEGRAM_ADMIN_URL,
   normalizeTelegramAlertEvent,
 } from "./logic.ts";
 
@@ -328,12 +329,11 @@ Deno.serve(async (req) => {
     }, 500);
   }
 
-  const adminUrl = String(
-    Deno.env.get("APP_ADMIN_URL") ||
-      Deno.env.get("PAYMENT_REVIEW_ADMIN_URL") ||
-      "https://kortedoscdo.club/admin.html",
-  ).trim();
-  const alert = await buildAuthoritativeTelegramAlert(rows, event, adminUrl);
+  const alert = await buildAuthoritativeTelegramAlert(
+    rows,
+    event,
+    LIVE_TELEGRAM_ADMIN_URL,
+  );
   if (!alert) {
     return json({
       ok: true,

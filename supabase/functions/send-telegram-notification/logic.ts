@@ -11,6 +11,8 @@ export type AuthoritativeTelegramAlert = {
 
 type BookingRow = Record<string, unknown>;
 
+export const LIVE_TELEGRAM_ADMIN_URL = "https://kortedoscdo.club/admin";
+
 const TERMINAL_BOOKING_STATUSES = new Set([
   "cancelled",
   "completed",
@@ -165,18 +167,18 @@ function scheduleLine(row: BookingRow): string {
 }
 
 function safeAdminReviewUrl(baseUrl: string, bookingRef: string): string {
+  const liveAdmin = new URL(LIVE_TELEGRAM_ADMIN_URL);
   try {
-    const url = new URL(baseUrl);
-    if (url.protocol !== "https:") throw new Error("HTTPS is required");
-    url.searchParams.set("section", "payreview");
-    url.searchParams.set("review", bookingRef);
-    return url.toString();
+    const configured = new URL(baseUrl);
+    if (configured.origin !== liveAdmin.origin) {
+      throw new Error("Only the live admin origin is allowed");
+    }
   } catch {
-    const url = new URL("https://kortedoscdo.club/admin.html");
-    url.searchParams.set("section", "payreview");
-    url.searchParams.set("review", bookingRef);
-    return url.toString();
+    // Ignore stale Pages previews and invalid environment overrides.
   }
+  liveAdmin.searchParams.set("section", "payreview");
+  liveAdmin.searchParams.set("review", bookingRef);
+  return liveAdmin.toString();
 }
 
 function canonicalRows(rows: BookingRow[]): string {
