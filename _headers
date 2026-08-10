@@ -12,7 +12,16 @@
   Cache-Control: no-cache
 
 /admin.html
-  Cache-Control: no-cache
+  Cache-Control: no-store, max-age=0, must-revalidate
+
+/admin
+  Cache-Control: no-store, max-age=0, must-revalidate
+
+/admin/*
+  Cache-Control: no-store, max-age=0, must-revalidate
+
+/voucher-admin.js
+  Cache-Control: no-store, max-age=0, must-revalidate
 
 /login.html
   Cache-Control: no-cache
