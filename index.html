@@ -7,6 +7,7 @@
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="booking-balance.js?v=20260716-host-balance-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
+<script src="voucher-booking.js?v=20260810-v1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
 <style>
@@ -1229,6 +1230,13 @@ select.fi option { background:var(--card); }
 }
 .booking-pay-summary .bps-total .bps-label { margin-bottom:0; }
 .booking-pay-summary .bps-total .bps-value { color:var(--accent); font-size:1.28rem; white-space:nowrap; }
+.voucher-entry { margin-top:12px; padding:12px; border:1px dashed rgba(var(--ac),.35); border-radius:12px; background:rgba(var(--ac),.035); }
+.voucher-entry-row { display:flex; gap:8px; align-items:center; }
+.voucher-entry-row .fi { flex:1; text-transform:uppercase; letter-spacing:.6px; }
+.voucher-status { display:none; margin-top:8px; font-size:.76rem; line-height:1.4; }
+.voucher-status.show { display:block; }
+.voucher-status.ok { color:var(--lime-ink); font-weight:800; }
+.voucher-status.err { color:var(--red); }
 
 /* 3-column payment options */
 .pay-opts-3 { grid-template-columns:1fr 1fr 1fr; }
@@ -3371,6 +3379,15 @@ body.host-mode .courts { padding-bottom:140px; }
             <div class="wiz-summary-lbl">Booking Summary</div>
             <div id="wiz3Summary" style="font-size:.84rem;line-height:1.55"></div>
           </div>
+          <div class="voucher-entry" id="bookingVoucherEntry">
+            <label class="fl" for="bVoucherCode">Have a voucher?</label>
+            <div class="voucher-entry-row">
+              <input type="text" class="fi" id="bVoucherCode" maxlength="24" placeholder="Enter voucher code" autocomplete="off" oninput="BookingVoucher.codeInput(this)" />
+              <button type="button" class="btn btn-g" id="bVoucherApply" onclick="BookingVoucher.apply()">Apply</button>
+              <button type="button" class="btn btn-d" id="bVoucherRemove" style="display:none" onclick="BookingVoucher.remove()">Remove</button>
+            </div>
+            <div class="voucher-status" id="bVoucherStatus" aria-live="polite"></div>
+          </div>
         </div>
 
         <!-- ── STEP 5: PAYMENT ── -->
@@ -3699,6 +3716,7 @@ body.host-mode .courts { padding-bottom:140px; }
     <!-- Amount -->
     <div class="inv-amount-wrap">
       <div class="inv-amt-total">Total Amount</div>
+      <div id="iVoucherRow" style="display:none;font-size:.78rem;color:var(--lime-ink);font-weight:800;margin:4px 0"><span id="iVoucherCode"></span> <span id="iVoucherDiscount"></span></div>
       <div class="inv-amt-val" id="iTot">₱0.00</div>
       <div class="inv-amt-down-wrap">
         <div class="inv-amt-down-label" id="iDownLabel">Booking Fee + 50% Court Fee Due</div>
@@ -4723,6 +4741,10 @@ function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
     courtFee,
     serviceFee,
     total: courtFee + serviceFee,
+    grossTotal: null,
+    voucherDiscountAmount: 0,
+    voucherCode: null,
+    voucherId: null,
   };
 }
 
@@ -4765,6 +4787,10 @@ function activeBookingItems() {
 }
 
 function bookingItemsCourtFee(items = activeBookingItems()) {
+  return items.reduce((sum, item) => sum + (window.BookingVoucher?.netCourtFee(item) ?? Number(item.courtFee || 0)), 0);
+}
+
+function bookingItemsGrossCourtFee(items = activeBookingItems()) {
   return items.reduce((sum, item) => sum + Number(item.courtFee || 0), 0);
 }
 
@@ -4841,6 +4867,8 @@ function bookingItemsSummaryHtml(items = uniqueBookingSelections(activeBookingIt
   if (isVerifiedHostBooking()) return hostBookingItemsSummaryHtml(items);
   const total = bookingItemsTotal(items);
   const svcFee = bookingItemsServiceFee(items);
+  const grossCourtFee = bookingItemsGrossCourtFee(items);
+  const voucherDiscount = window.BookingVoucher?.discount(items) || 0;
   const hrs = bookingItemsDuration(items);
   const dates = [...new Set(items.map(item => item.date).filter(Boolean))];
   const dateStr = dates.length > 1 ? dates.map(fmtD).join(' + ') : bookingItemsDate(items) ? fmtD(bookingItemsDate(items)) : '-';
@@ -4853,8 +4881,9 @@ function bookingItemsSummaryHtml(items = uniqueBookingSelections(activeBookingIt
     const datePart = dates.length > 1 ? ` (${fmtDc(item.date)})` : '';
     rows.push(`Time: ${item.courtName}${datePart}: ${item.timeLabel || itemTimeLabel(item)} &nbsp;(${item.duration} hr${item.duration !== 1 ? 's' : ''})${separateNote}`);
   });
-  rows.push(`Court Fee: <strong style="color:var(--muted)">${fmt(bookingItemsCourtFee(items))}</strong>`);
+  rows.push(`Court Fee: <strong style="color:var(--muted)">${fmt(grossCourtFee)}</strong>`);
   if (svcFee > 0) rows.push(`Booking Fee: <strong style="color:var(--muted)">${bookingFeeDisplay(svcFee, hrs)}</strong>`);
+  if (voucherDiscount > 0) rows.push(`Voucher (${esc(window.BookingVoucher?.current()?.code || items.find(item => item.voucherCode)?.voucherCode || '')}): <strong style="color:var(--lime-ink)">−${fmt(voucherDiscount)}</strong>`);
   rows.push(`Total: <strong style="color:var(--accent)">${fmt(total)}</strong>`);
   return rows.filter(Boolean).map(s => `<div>${s}</div>`).join('');
 }
@@ -5923,8 +5952,10 @@ function clearGuestBookingResume() {
 function bookingItemFromReservedBooking(b) {
   const slots = [...(b.slots || [])].map(Number).filter(Number.isFinite).sort((a, c) => a - c);
   const duration = Number(b.duration || slots.length || 0);
-  const serviceFee = calcSvcFee(duration);
+  const serviceFee = b.bookingFeeAmountSnapshot != null ? Number(b.bookingFeeAmountSnapshot) : calcSvcFee(duration);
   const total = Number(b.total || 0);
+  const grossTotal = Number(b.grossTotal ?? total);
+  const voucherDiscountAmount = Number(b.voucherDiscountAmount || 0);
   return {
     ref: b.ref,
     groupRef: b.groupRef || null,
@@ -5937,9 +5968,13 @@ function bookingItemFromReservedBooking(b) {
     timeLabel: b.timeLabel || slotsTimeLabel(slots),
     duration,
     rate: Number(b.rate || 0),
-    courtFee: Math.max(0, total - serviceFee),
+    courtFee: Math.max(0, grossTotal - serviceFee),
     serviceFee,
     total,
+    grossTotal: voucherDiscountAmount > 0 ? grossTotal : null,
+    voucherDiscountAmount,
+    voucherCode: b.voucherCode || null,
+    voucherId: b.voucherId || null,
   };
 }
 
@@ -5995,6 +6030,7 @@ async function maybeResumeGuestBooking() {
   }
 
   bookingItems = rows.map(bookingItemFromReservedBooking);
+  window.BookingVoucher?.hydrate(bookingItems);
   _reservedRefs = rows.map(b => b.ref);
   _reservedRef = _reservedRefs[0] || null;
   _reservationStartedAt = resume.startedAt;
@@ -6055,6 +6091,7 @@ async function releaseReservedBookingViews(items = activeBookingItems()) {
     courtId: item.courtId,
     date: item.date,
   })).filter(item => item.courtId && item.date);
+  if (window.BookingVoucher?.current()) await window.BookingVoucher.remove({ silent: true }).catch(() => {});
   await cancelReservedBookings();
   clearSelectedBookingUi();
   if (refreshItems.length) await refreshBookingItemViews(refreshItems);
@@ -7599,6 +7636,7 @@ async function submitBookingLegacy(e) {
     [!/^(09|\+639)\d{9}$/.test($('bPhone').value.replace(/\s|-/g,'')), 'Enter a valid PH number (e.g. 09XX XXX XXXX).', 'bPhone', 3],
     [!$('bEmail').value.trim(), 'Please enter your email.', 'bEmail', 3],
     [!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('bEmail').value), 'Please enter a valid email address.', 'bEmail', 3],
+    [!!$('bVoucherCode')?.value.trim() && !window.BookingVoucher?.current(), 'Tap Apply to validate the voucher code, or clear the voucher field.', 'bookingVoucherEntry', 3],
     [!hasPaymentMethod, 'No payment method is enabled right now. Please contact admin.', 'payMethodBlock', 4],
     [!payMethod, 'Please select a payment method.', 'payMethodBlock', 4],
     [!!payMethod && !paymentMethods[payMethod], 'Selected payment method is no longer available.', 'payMethodBlock', 4],
@@ -7843,6 +7881,7 @@ async function submitBooking(e) {
     [!/^(09|\+639)\d{9}$/.test($('bPhone').value.replace(/\s|-/g,'')), 'Enter a valid PH number (e.g. 09XX XXX XXXX).', 'bPhone', 3],
     [!$('bEmail').value.trim(), 'Please enter your email.', 'bEmail', 3],
     [!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('bEmail').value), 'Please enter a valid email address.', 'bEmail', 3],
+    [!!$('bVoucherCode')?.value.trim() && !window.BookingVoucher?.current(), 'Tap Apply to validate the voucher code, or clear the voucher field.', 'bookingVoucherEntry', 3],
     [!hasPaymentMethod, 'No payment method is enabled right now. Please contact admin.', 'payMethodBlock', 4],
     [!payMethod, 'Please select a payment method.', 'payMethodBlock', 4],
     [!!payMethod && !paymentMethods[payMethod], 'Selected payment method is no longer available.', 'payMethodBlock', 4],
@@ -7900,10 +7939,14 @@ async function submitBooking(e) {
     duration: item.duration,
     rate: item.rate,
     total: item.total,
+    grossTotal: Number(item.grossTotal ?? item.total),
+    voucherId: item.voucherId || null,
+    voucherCode: item.voucherCode || null,
+    voucherDiscountAmount: Number(item.voucherDiscountAmount || 0),
     paymentMethod: payMethod,
     gcashRef: gcashRef || null,
     paymentFlow: payMethod,
-    downpayment: downpaymentAmount(item.total, item.courtFee, item.serviceFee),
+    downpayment: downpaymentAmount(item.total, Math.max(0, item.courtFee - Number(item.voucherDiscountAmount || 0)), item.serviceFee),
     ...bookingIdentity,
     balanceDueAt: bookingIdentity.hostBooking ? hostBookingBalanceDeadline(items)?.toISOString() || null : null,
     paymentStatus,
@@ -7921,6 +7964,9 @@ async function submitBooking(e) {
     duration: bookingItemsDuration(itemBookings),
     total: groupTotal,
     downpayment: groupDownpayment,
+    grossTotal: itemBookings.reduce((sum, item) => sum + Number(item.grossTotal || item.total || 0), 0),
+    voucherCode: window.BookingVoucher?.current()?.code || null,
+    voucherDiscountAmount: itemBookings.reduce((sum, item) => sum + Number(item.voucherDiscountAmount || 0), 0),
   };
 
   stopSlotCountdown();
@@ -7962,6 +8008,7 @@ async function submitBooking(e) {
         }
       }
     }
+    await window.BookingVoucher?.finalize($('bEmail').value.trim());
     booking.createdAt = authoritativeCreatedAt;
     _reservedRefs = itemBookings.map(row => row.ref);
     _reservedRef = _reservedRefs[0] || null;
@@ -8158,6 +8205,7 @@ function resetForm() {
   selSlots = [];
   cardSelections = {};
   bookingItems = [];
+  window.BookingVoucher?.reset();
   cardSel = emptyCardSelection();
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
   document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
@@ -8241,6 +8289,9 @@ function showInvoice(b) {
   }
 
   // Amount
+  if ($('iVoucherRow')) $('iVoucherRow').style.display = Number(b.voucherDiscountAmount || 0) > 0 ? '' : 'none';
+  set('iVoucherCode', b.voucherCode ? `${b.voucherCode} applied` : 'Voucher applied');
+  set('iVoucherDiscount', Number(b.voucherDiscountAmount || 0) > 0 ? `−${fmt(b.voucherDiscountAmount)}` : '');
   set('iTot', fmt(b.total));
   set('iDown', fmt(b.downpayment));
   const invoiceDownLabel = (!isFullPay && b.hostBooking) ? 'Full Booking Fee + 25% Court Fee Due' : 'Full Booking Fee + 50% Court Fee Due';

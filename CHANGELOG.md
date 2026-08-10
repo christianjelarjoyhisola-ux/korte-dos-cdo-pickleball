@@ -362,8 +362,19 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 - **Generic spinner styling** - the shared spinner class now renders as a mini pickleball loader for consistency.
 - **Public booking data reads** - court-card and slot availability views now request only the needed court/date booking rows instead of repeatedly reading all bookings.
 - **Realtime refresh speed** - live booking refreshes now clear cached reads and use a shorter debounce so updates appear faster without sending duplicate requests.
+- **Open Play payment trust boundary** - public Open Play signups now save digital payments as pending review, even when OCR can read the receipt, so paid status is set only by trusted admin/server actions.
+- **Legacy auth cleanup** - removed browser-local demo credentials from the deprecated `auth.js` shim and replaced the localhost local-data seed password with a per-browser generated value.
 
-**Files affected:** `index.html`, `admin.html`, `style.css`, `supabase-config.js`
+### Security
+- **Public data minimization** - public pages now read masked booking availability, Open Play counts, and whitelisted display settings instead of full player, receipt, payment, or account rows.
+- **Role-based database lockdown** - Supabase RLS now separates system owner, court owner, staff, and anonymous access at the database layer, including billing statements and signed agreements.
+- **Safer anonymous booking holds** - anonymous users can only update a fresh reservation hold into pending/cancelled/verifying states and cannot move slots, alter pricing, or mark payments paid.
+- **Audit and retention foundation** - sensitive table changes are written to a security audit log, and a retention helper can scrub old receipt/payment metadata.
+
+### DB
+- `20260625120000_security_lockdown.sql` - added safe public RPCs for booking slots, Open Play counts, whitelisted settings, and stale hold expiry; replaced permissive public RLS policies with role-aware policies; locked payment internals to service-role writes; added audit and retention helpers.
+
+**Files affected:** `index.html`, `admin.html`, `style.css`, `supabase-config.js`, `auth.js`, `supabase/migrations/20260625120000_security_lockdown.sql`
 
 ---
 

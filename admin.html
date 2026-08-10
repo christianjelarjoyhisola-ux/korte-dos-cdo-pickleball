@@ -8,6 +8,7 @@
 <script src="chart.min.js"></script>
 <script src="booking-balance.js?v=20260716-court-revenue-v2"></script>
 <script src="open-play-rotation.js?v=20260729-adaptive-competitive-v1"></script>
+<script src="voucher-admin.js?v=20260810-v1"></script>
 <link rel="stylesheet" href="play-manager.css?v=20260729-adaptive-competitive-v1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -2172,6 +2173,7 @@ tr:hover td { background: var(--bg2); }
       <div class="nav-item" data-s="gamemgr" data-perm="open_play" onclick="goto('gamemgr')"><span>&#127955;</span> Play Manager</div>
       <div class="nav-item" data-s="maintenance" data-perm="maintenance" onclick="goto('maintenance')"><span>&#128295;</span> Maintenance</div>
       <div class="nav-item" data-s="payments" data-perm="payments" onclick="goto('payments')"><span>&#128179;</span> Payments</div>
+      <div class="nav-item" data-s="vouchers" data-perm="vouchers" onclick="goto('vouchers')"><span>&#127991;</span> Vouchers</div>
     </div>
     <div class="sb-section" data-perm="host_accounts_view">
       <div class="nav-grp">People &amp; Finance</div>
@@ -3113,6 +3115,39 @@ tr:hover td { background: var(--bg2); }
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- VOUCHERS -->
+    <div id="sec-vouchers" class="adm-sec">
+      <div class="toolbar">
+        <div>
+          <h2 style="margin:0">Vouchers</h2>
+          <div style="color:var(--muted);font-size:.82rem;margin-top:4px">Create court-booking discounts before players pay.</div>
+        </div>
+        <button class="btn btn-p" type="button" onclick="openVoucherEditor()">+ Create Voucher</button>
+      </div>
+      <div id="voucherStats" class="stat-cards" style="margin-bottom:16px"></div>
+      <div class="panel" style="margin-bottom:16px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input class="fi" id="voucherSearch" type="search" placeholder="Search code or name" style="max-width:300px" oninput="renderVouchers()" />
+          <select class="fi" id="voucherStatusFilter" style="width:auto" onchange="renderVouchers()">
+            <option value="">All statuses</option><option value="active">Active</option><option value="scheduled">Scheduled</option><option value="paused">Paused</option><option value="expired">Expired</option><option value="exhausted">Exhausted</option>
+          </select>
+          <button class="btn btn-g btn-sm" type="button" onclick="renderVouchers()">Refresh</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <div class="tbl-scroll">
+          <table>
+            <thead><tr><th>Code</th><th>Voucher</th><th>Discount</th><th>Minimum</th><th>Validity</th><th>Uses</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="voucherTableBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Loading vouchers...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h3 style="margin:0 0 12px">Recent Redemptions</h3>
+        <div id="voucherRedemptions" style="color:var(--muted);font-size:.84rem">Loading...</div>
       </div>
     </div>
 
@@ -4790,9 +4825,9 @@ let sess;
 /* ==============================================
    NAVIGATION
    ============================================== */
-const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments'};
-const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments'};
-const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings};
+const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments',vouchers:'Vouchers'};
+const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments',vouchers:'vouchers'};
+const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings,vouchers:renderVouchers};
 let _curSection=null;
 async function goto(s){
   // Block navigation to sections the current role can't access
@@ -4879,6 +4914,8 @@ function startAdminRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'deleted_booking_archive'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'courts'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'settings'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'vouchers'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'voucher_redemptions'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'blocked_dates'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'open_play_registrations'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'open_play_host_applications'},rerender)
@@ -12307,24 +12344,15 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   const gated = await checkAgreementGate(sess);
   if (!gated) await openInitialAdminRoute(firstAllowed);
   startAdminRealtime();
-  // Housekeeping: purge old abandoned slot-holds so the table stays tidy.
-  // Runs in the background (admin is authenticated, so DELETE is permitted by RLS).
+  // Housekeeping: expire old slot-holds so abandoned payment attempts do not
+  // keep courts blocked.
   cleanupAbandonedHolds();
 });
 
-/* Delete leftover "Reserving…" holds that were abandoned (cancelled) more than
-   1 day ago. Active/recent holds are left untouched. Best-effort, non-blocking. */
+/* Best-effort, non-blocking stale hold cleanup. */
 async function cleanupAbandonedHolds() {
   try {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const all = await DB.getBookings();
-    const stale = all.filter(b =>
-      b.email === 'reserve@hold.internal' &&
-      b.status === 'cancelled' &&
-      b.createdAt && new Date(b.createdAt).getTime() < cutoff
-    );
-    if (stale.length === 0) return;
-    await Promise.all(stale.map(b => DB.deleteBooking(b.ref).catch(() => {})));
+    if (DB.expireStaleVerifyingBookings) await DB.expireStaleVerifyingBookings();
   } catch (e) { /* non-critical */ }
 }
 

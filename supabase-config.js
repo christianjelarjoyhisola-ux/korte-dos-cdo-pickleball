@@ -116,6 +116,7 @@ if (PB_IS_LOCAL_HOST) {
 window.PB_USE_LOCAL_DATA = !PB_IS_KORTE_PRODUCTION &&
   PB_IS_LOCAL_HOST &&
   localStorage.getItem(PB_DATA_MODE_KEY) === 'local';
+const PB_PRIVATE_DATA_SURFACE = /\/(?:admin|signature-view)\.html$/i.test(location.pathname);
 
 const PB_FAST_CACHE_MS = {
   courts: 60000,
@@ -170,6 +171,29 @@ function _pbClearFastCache(scopes = []) {
   for (const key of [..._pbFastCache.keys()]) {
     if (list.some(scope => key === scope || key.startsWith(`${scope}:`))) _pbFastCache.delete(key);
   }
+}
+
+async function _pbHasAuthSession() {
+  try {
+    const { data } = await _sb.auth.getSession();
+    return !!data?.session?.access_token;
+  } catch(_) {
+    return false;
+  }
+}
+
+async function _pbCanReadPrivateData() {
+  return PB_PRIVATE_DATA_SURFACE && await _pbHasAuthSession();
+}
+
+async function _pbRestHeaders(extra = {}) {
+  const { data } = await _sb.auth.getSession();
+  const accessToken = data?.session?.access_token || SUPABASE_ANON_KEY;
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${accessToken}`,
+    ...extra,
+  };
 }
 
 function _safeJsonParse(v) {
@@ -468,6 +492,11 @@ function rowToBooking(r) {
     duration:      r.duration,
     rate:          r.rate,
     total:         r.total,
+    grossTotal:    r.voucher_gross_total != null ? Number(r.voucher_gross_total) : Number(r.total || 0),
+    voucherId:     r.voucher_id || null,
+    voucherCode:   r.voucher_code_snapshot || null,
+    voucherDiscountAmount: Number(r.voucher_discount_amount || 0),
+    bookingFeeAmountSnapshot: r.booking_fee_amount_snapshot != null ? Number(r.booking_fee_amount_snapshot) : null,
     paymentMethod: r.payment_method,
     receivedAccount: receivedAccountForBooking(r),
     paymentFlow:   r.payment_flow || null,
@@ -534,6 +563,49 @@ function rowToDeletedBookingArchive(r) {
     restoredAt: r.restored_at,
     restoredBy: r.restored_by,
     createdAt: r.created_at,
+  };
+}
+
+function publicSlotToBooking(r) {
+  const hour = Number(r.hour);
+  const status = r.status === 'processing'
+    ? 'verifying'
+    : r.status === 'booked'
+    ? 'confirmed'
+    : (r.status || 'confirmed');
+  return {
+    ref:           `public:${r.court_id}:${r.date}:${hour}`,
+    fullName:      '',
+    contactNumber: '',
+    email:         '',
+    courtId:       String(r.court_id || ''),
+    courtName:     '',
+    date:          r.date,
+    slots:         [hour],
+    startTime:     '',
+    endTime:       '',
+    duration:      1,
+    rate:          0,
+    total:         0,
+    paymentMethod: '',
+    paymentFlow:   null,
+    paymentStatus: '',
+    paymentProvider: null,
+    paymentSessionId: null,
+    paymentCheckoutUrl: null,
+    paidAt:        null,
+    gcashRef:      null,
+    downpayment:   null,
+    receiptStatus: 'none',
+    receiptFlags:  [],
+    receiptExtracted: null,
+    receiptConfidence: null,
+    receiptImageUrl: null,
+    receiptVerifiedAt: null,
+    billedAt:      null,
+    weeklyFeeId:   null,
+    status,
+    createdAt:     new Date().toISOString(),
   };
 }
 
@@ -919,6 +991,20 @@ window.DB = {
   // ---- BOOKINGS ----
   async getBookings(filters = {}) {
     const opts = filters || {};
+    if (!(await _pbCanReadPrivateData())) {
+      if (!opts.date) return [];
+      return _pbCached('publicBookingSlots', {
+        date: opts.date,
+        courtId: opts.courtId ? String(opts.courtId) : '',
+      }, PB_FAST_CACHE_MS.bookings, async () => {
+        const { data, error } = await _sb.rpc('public_booking_slots', {
+          p_date: opts.date,
+          p_court_id: opts.courtId ? String(opts.courtId) : null,
+        });
+        if (error) { console.error('public_booking_slots:', error); return []; }
+        return (data || []).map(publicSlotToBooking);
+      });
+    }
     return _pbCached('bookings', opts, PB_FAST_CACHE_MS.bookings, async () => {
       let query = _sb.from('bookings').select('*').order('created_at', { ascending: false });
       if (opts.date) query = query.eq('date', opts.date);
@@ -975,9 +1061,80 @@ window.DB = {
   },
 
   async getBookingByRef(ref) {
+    if (!(await _pbCanReadPrivateData())) return null;
     const { data, error } = await _sb.from('bookings').select('*').eq('ref', ref).single();
     if (error) { console.error('getBookingByRef:', error); return null; }
     return rowToBooking(data);
+  },
+
+  // ---- BOOKING VOUCHERS ----
+  async getVouchers() {
+    const { data, error } = await _sb.from('vouchers').select('*').order('created_at', { ascending: false });
+    if (error) { console.error('getVouchers:', error); throw error; }
+    return data || [];
+  },
+
+  async saveVoucher(voucher) {
+    const row = {
+      code: String(voucher.code || '').trim().toUpperCase(),
+      name: String(voucher.name || '').trim(),
+      description: String(voucher.description || '').trim() || null,
+      discount_type: voucher.discountType,
+      discount_value: Number(voucher.discountValue),
+      max_discount: voucher.maxDiscount == null || voucher.maxDiscount === '' ? null : Number(voucher.maxDiscount),
+      minimum_spend: Number(voucher.minimumSpend || 0),
+      usage_limit: voucher.usageLimit == null || voucher.usageLimit === '' ? null : Number(voucher.usageLimit),
+      applicable_court_ids: Array.isArray(voucher.courtIds) ? voucher.courtIds.map(String) : [],
+      starts_at: voucher.startsAt || null,
+      ends_at: voucher.endsAt || null,
+      active: voucher.active !== false,
+      archived_at: voucher.archivedAt || null,
+    };
+    const request = voucher.id
+      ? _sb.from('vouchers').update(row).eq('id', voucher.id)
+      : _sb.from('vouchers').insert(row);
+    const { data, error } = await request.select('*').single();
+    if (error) { console.error('saveVoucher:', error); throw error; }
+    return data;
+  },
+
+  async setVoucherActive(id, active) {
+    const { data, error } = await _sb.from('vouchers').update({ active: !!active }).eq('id', id).select('*').single();
+    if (error) { console.error('setVoucherActive:', error); throw error; }
+    return data;
+  },
+
+  async getVoucherRedemptions(voucherId = null) {
+    let query = _sb.from('voucher_redemptions').select('*').order('created_at', { ascending: false }).limit(500);
+    if (voucherId) query = query.eq('voucher_id', voucherId);
+    const { data, error } = await query;
+    if (error) { console.error('getVoucherRedemptions:', error); throw error; }
+    return data || [];
+  },
+
+  async applyBookingVoucher(code, bookingRefs) {
+    const { data, error } = await _publicBookingSb.rpc('apply_booking_voucher', {
+      p_code: String(code || '').trim().toUpperCase(),
+      p_booking_refs: bookingRefs,
+    });
+    if (error) throw error;
+    _pbClearFastCache(['bookings', 'publicBookingSlots']);
+    return data;
+  },
+
+  async removeBookingVoucher(bookingRefs) {
+    const { data, error } = await _publicBookingSb.rpc('remove_booking_voucher', { p_booking_refs: bookingRefs });
+    if (error) throw error;
+    _pbClearFastCache(['bookings', 'publicBookingSlots']);
+    return data;
+  },
+
+  async finalizeBookingVoucher(bookingRefs, customerEmail) {
+    const { error } = await _publicBookingSb.rpc('finalize_booking_voucher', {
+      p_booking_refs: bookingRefs,
+      p_customer_email: customerEmail,
+    });
+    if (error) throw error;
   },
 
   async updateBooking(ref, updates, options = {}) {
@@ -1088,6 +1245,7 @@ window.DB = {
 
   // ---- OPEN PLAY REGISTRATIONS ----
   async getOpenPlayRegistrations() {
+    if (!(await _pbCanReadPrivateData())) return [];
     return _pbCached('openPlayRegistrations', {}, PB_FAST_CACHE_MS.openPlay, async () => {
       const { data, error } = await _sb.from('open_play_registrations').select('*').order('created_at', { ascending: false });
       if (error) { console.error('getOpenPlayRegistrations:', error); return []; }
@@ -1203,14 +1361,11 @@ window.DB = {
 
   async getOpenPlayCountsForDate(date) {
     return _pbCached('openPlayCounts', { date }, PB_FAST_CACHE_MS.openPlay, async () => {
-      const { data, error } = await _sb.from('open_play_registrations')
-        .select('court_id')
-        .eq('date', date)
-        .or('payment_status.is.null,payment_status.neq.rejected');
-      if (error) { console.error('getOpenPlayCountsForDate:', error); return {}; }
+      const { data, error } = await _sb.rpc('public_open_play_counts', { p_date: date });
+      if (error) { console.error('public_open_play_counts:', error); return {}; }
       return (data || []).reduce((counts, row) => {
         const key = String(row.court_id || '');
-        counts[key] = (counts[key] || 0) + 1;
+        counts[key] = Number(row.player_count || 0);
         return counts;
       }, {});
     });
@@ -1904,8 +2059,12 @@ window.DB = {
   // ---- SETTINGS ----
   async getSettings() {
     return _pbCached('settings', {}, PB_FAST_CACHE_MS.settings, async () => {
-      const { data, error } = await _sb.from('settings').select('*');
-      if (error) { console.error('getSettings:', error); return {}; }
+      const canReadPrivate = await _pbCanReadPrivateData();
+      const request = canReadPrivate
+        ? _sb.from('settings').select('*')
+        : _sb.rpc('public_settings');
+      const { data, error } = await request;
+      if (error) { console.error(canReadPrivate ? 'getSettings:' : 'public_settings:', error); return {}; }
       const out = {};
       data.forEach(r => out[r.key] = r.value);
       return out;
@@ -1991,6 +2150,12 @@ window.DB = {
 
   clearCache(scopes = []) {
     _pbClearFastCache(scopes);
+  },
+
+  async expireStaleVerifyingBookings() {
+    const { error } = await _sb.rpc('expire_stale_verifying_bookings');
+    if (error) console.error('expireStaleVerifyingBookings:', error);
+    _pbClearFastCache(['bookings', 'publicBookingSlots']);
   },
 
   async createPaymentSession(payload) {
@@ -2569,8 +2734,18 @@ window.DB = {
   if (!window.PB_USE_LOCAL_DATA) return;
 
   const STORE_KEY = 'pb_local_db_v1';
+  const LOCAL_DEMO_PASSWORD_KEY = 'pb_local_demo_owner_password';
   const nowIso = () => new Date().toISOString();
   const localRef = prefix => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
+  const localDemoPassword = () => {
+    let password = localStorage.getItem(LOCAL_DEMO_PASSWORD_KEY);
+    if (!password) {
+      password = `local-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(LOCAL_DEMO_PASSWORD_KEY, password);
+      console.info(`[Korte DOS] Local data owner password: ${password}`);
+    }
+    return password;
+  };
 
   const defaultCourts = () => Array.from({ length: 10 }, (_, i) => {
     const n = i + 1;
@@ -2624,7 +2799,7 @@ window.DB = {
     {
       id: 'owner_001',
       username: 'developer',
-      password: 'dev123',
+      password: localDemoPassword(),
       role: 'owner',
       status: 'active',
       fullName: 'System Owner',
@@ -2634,7 +2809,7 @@ window.DB = {
     {
       id: 'host_test_001',
       username: 'host.test',
-      password: 'HostTest123!',
+      password: localDemoPassword(),
       role: 'host',
       status: 'active',
       fullName: 'Open Play Test Host',
@@ -2708,6 +2883,8 @@ window.DB = {
       blockedDates: [],
       deletedBookingArchive: [],
       accounts: defaultAccounts(),
+      vouchers: [],
+      voucherRedemptions: [],
       settings: defaultSettings(),
       agreements: [],
       weeklyFees: [],
@@ -2752,6 +2929,8 @@ window.DB = {
       blockedDates: Array.isArray(parsed.blockedDates) ? parsed.blockedDates : [],
       deletedBookingArchive: Array.isArray(parsed.deletedBookingArchive) ? parsed.deletedBookingArchive : [],
       accounts,
+      vouchers: Array.isArray(parsed.vouchers) ? parsed.vouchers : [],
+      voucherRedemptions: Array.isArray(parsed.voucherRedemptions) ? parsed.voucherRedemptions : [],
       agreements: Array.isArray(parsed.agreements) ? parsed.agreements : [],
       weeklyFees: Array.isArray(parsed.weeklyFees) ? parsed.weeklyFees : [],
     };
@@ -2805,6 +2984,96 @@ window.DB = {
       writeDb(db);
     },
     async getBookingByRef(ref) { return readDb().bookings.find(b => String(b.ref) === String(ref)) || null; },
+    async getVouchers() { return readDb().vouchers.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); },
+    async saveVoucher(voucher) {
+      const db = readDb();
+      const now = nowIso();
+      const id = voucher.id || localRef('voucher').toLowerCase();
+      const row = {
+        id,
+        code: String(voucher.code || '').trim().toUpperCase(),
+        name: String(voucher.name || '').trim(),
+        description: String(voucher.description || '').trim() || null,
+        discount_type: voucher.discountType,
+        discount_value: Number(voucher.discountValue),
+        max_discount: voucher.maxDiscount == null || voucher.maxDiscount === '' ? null : Number(voucher.maxDiscount),
+        minimum_spend: Number(voucher.minimumSpend || 0),
+        usage_limit: voucher.usageLimit == null || voucher.usageLimit === '' ? null : Number(voucher.usageLimit),
+        applicable_court_ids: Array.isArray(voucher.courtIds) ? voucher.courtIds.map(String) : [],
+        starts_at: voucher.startsAt || null,
+        ends_at: voucher.endsAt || null,
+        active: voucher.active !== false,
+        archived_at: voucher.archivedAt || null,
+        created_at: db.vouchers.find(v => v.id === id)?.created_at || now,
+        updated_at: now,
+      };
+      if (db.vouchers.some(v => v.id !== id && v.code === row.code)) throw new Error('Voucher code already exists.');
+      const index = db.vouchers.findIndex(v => v.id === id);
+      if (index >= 0) db.vouchers[index] = row; else db.vouchers.push(row);
+      writeDb(db);
+      return row;
+    },
+    async setVoucherActive(id, active) {
+      const db = readDb();
+      const row = db.vouchers.find(v => v.id === id);
+      if (!row) throw new Error('Voucher not found.');
+      row.active = !!active; row.updated_at = nowIso(); writeDb(db); return row;
+    },
+    async getVoucherRedemptions(voucherId = null) {
+      return readDb().voucherRedemptions.filter(row => !voucherId || row.voucher_id === voucherId).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    },
+    async applyBookingVoucher(code, bookingRefs) {
+      const db = readDb();
+      const voucher = db.vouchers.find(v => v.code === String(code || '').trim().toUpperCase());
+      const now = Date.now();
+      if (!voucher) throw new Error('Code is not valid for this booking.');
+      if (!voucher.active || voucher.archived_at) throw new Error('This voucher is not active.');
+      if (voucher.starts_at && new Date(voucher.starts_at).getTime() > now) throw new Error('This voucher is not active yet.');
+      if (voucher.ends_at && new Date(voucher.ends_at).getTime() <= now) throw new Error('This voucher has expired.');
+      const selected = bookingRefs.map(ref => db.bookings.find(b => String(b.ref) === String(ref))).filter(Boolean);
+      if (selected.length !== bookingRefs.length || selected.some(b => b.status !== 'verifying')) throw new Error('The booking reservation expired or changed.');
+      if (selected.some(b => b.voucherId && b.voucherId !== voucher.id)) throw new Error('Remove the current voucher before applying a different code.');
+      const courtIds = new Set((voucher.applicable_court_ids || []).map(String));
+      if (courtIds.size && selected.some(b => !courtIds.has(String(b.courtId)))) throw new Error('This voucher does not apply to one or more selected courts.');
+      const feeRate = Number(db.settings.maintenance_fee ?? db.settings.service_fee_rate ?? 0);
+      const flatFee = String(db.settings.fee_type || 'per_hour') === 'flat';
+      const basis = selected.map(b => {
+        const gross = Number(b.grossTotal ?? b.total ?? 0);
+        const fee = Math.min(gross, flatFee ? feeRate : feeRate * Number(b.duration || b.slots?.length || 0));
+        return { booking: b, gross, eligible: Math.max(0, gross - fee) };
+      });
+      const grossAmount = basis.reduce((sum, row) => sum + row.gross, 0);
+      const eligibleAmount = basis.reduce((sum, row) => sum + row.eligible, 0);
+      if (eligibleAmount < Number(voucher.minimum_spend || 0)) throw new Error('This voucher requires a higher minimum court spend.');
+      const used = db.voucherRedemptions.filter(r => r.voucher_id === voucher.id && ['reserved', 'redeemed'].includes(r.status)).length;
+      if (voucher.usage_limit != null && used >= voucher.usage_limit) throw new Error('This voucher has reached its redemption limit.');
+      let discount = voucher.discount_type === 'fixed' ? Number(voucher.discount_value) : eligibleAmount * Number(voucher.discount_value) / 100;
+      if (voucher.max_discount != null) discount = Math.min(discount, Number(voucher.max_discount));
+      discount = Math.round(Math.min(discount, eligibleAmount) * 100) / 100;
+      let allocated = 0;
+      const allocations = basis.map((row, index) => {
+        const itemDiscount = index === basis.length - 1 ? discount - allocated : Math.round(discount * row.eligible / eligibleAmount * 100) / 100;
+        allocated += itemDiscount;
+        Object.assign(row.booking, { grossTotal: row.gross, voucherId: voucher.id, voucherCode: voucher.code, voucherDiscountAmount: itemDiscount, total: row.gross - itemDiscount });
+        return { ref: row.booking.ref, grossTotal: row.gross, discountAmount: itemDiscount, total: row.booking.total };
+      });
+      db.voucherRedemptions.push({ id: localRef('redemption'), voucher_id: voucher.id, booking_group_key: bookingRefs.slice().sort().join('|'), booking_refs: bookingRefs, customer_email: null, gross_amount: grossAmount, discount_amount: discount, status: 'reserved', created_at: nowIso(), reserved_until: new Date(now + 15 * 60000).toISOString() });
+      writeDb(db);
+      return { id: voucher.id, code: voucher.code, name: voucher.name, discountAmount: discount, grossAmount, total: grossAmount - discount, allocations };
+    },
+    async removeBookingVoucher(bookingRefs) {
+      const db = readDb();
+      db.bookings.filter(b => bookingRefs.includes(b.ref)).forEach(b => { b.total = Number(b.grossTotal ?? b.total); b.grossTotal = null; b.voucherId = null; b.voucherCode = null; b.voucherDiscountAmount = 0; });
+      const key = bookingRefs.slice().sort().join('|');
+      db.voucherRedemptions.filter(r => r.booking_group_key === key && r.status === 'reserved').forEach(r => { r.status = 'released'; r.released_at = nowIso(); });
+      writeDb(db); return { removed: true };
+    },
+    async finalizeBookingVoucher(bookingRefs, customerEmail) {
+      const db = readDb();
+      const key = bookingRefs.slice().sort().join('|');
+      db.voucherRedemptions.filter(r => r.booking_group_key === key && r.status === 'reserved').forEach(r => { r.status = 'redeemed'; r.customer_email = String(customerEmail || '').trim().toLowerCase(); r.redeemed_at = nowIso(); });
+      writeDb(db);
+    },
     async updateBooking(ref, updates) {
       const db = readDb();
       let updated = false;
@@ -3734,6 +4003,16 @@ window.DB = {
       return { ok: true, sent: true, skipped: true };
     },
     clearCache() {},
+    async expireStaleVerifyingBookings() {
+      const db = readDb();
+      const cutoff = Date.now() - PB_RESERVATION_HOLD_MINUTES * 60 * 1000;
+      db.bookings = db.bookings.map(b =>
+        b.status === 'verifying' && b.createdAt && new Date(b.createdAt).getTime() < cutoff
+          ? { ...b, status: 'cancelled', paymentStatus: 'rejected' }
+          : b
+      );
+      writeDb(db);
+    },
 
     async createPaymentSession() { throw new Error('Online checkout is disabled in local data mode.'); },
     async sendConfirmationEmail() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
@@ -4057,8 +4336,8 @@ window.Auth = {
   ROLES: ['owner', 'court_owner', 'staff', 'host'],
   ROLE_LABELS: { owner: 'System Owner', court_owner: 'Court Owner', staff: 'Court Staff', host: 'Open Play Host' },
   ROLE_PERMISSIONS: {
-    owner:       ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'host_accounts_view', 'remittances', 'maintenance', 'payments', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
-    court_owner: ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'host_accounts_view', 'remittances', 'maintenance', 'payments', 'export', 'settings', 'court_owner_only'],
+    owner:       ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'host_accounts_view', 'remittances', 'maintenance', 'payments', 'vouchers', 'accounts', 'booking_delete', 'export', 'settings', 'owner_only'],
+    court_owner: ['dashboard', 'bookings', 'payment_review', 'reports', 'courts', 'open_play', 'host_open_play', 'host_accounts_view', 'remittances', 'maintenance', 'payments', 'vouchers', 'export', 'settings', 'court_owner_only'],
     staff:       ['bookings', 'open_play', 'payment_review'],
     host:        ['host_open_play'],
   },

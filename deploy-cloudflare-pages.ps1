@@ -64,6 +64,8 @@ $publicFiles = @(
   "signature-view.png",
   "style.css",
   "supabase-config.js",
+  "voucher-admin.js",
+  "voucher-booking.js",
   "supabase.min.js"
 )
 

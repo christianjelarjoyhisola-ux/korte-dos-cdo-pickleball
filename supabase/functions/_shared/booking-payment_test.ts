@@ -43,6 +43,33 @@ Deno.test("regular booking still permits full payment", () => {
   assertEquals(amounts.due, 840, "full payment");
 });
 
+Deno.test("voucher reduces only the court charge and keeps the booking fee", () => {
+  const amounts = calculateCourtPayment({
+    ...base,
+    storedTotal: 740,
+    storedDownpayment: 390,
+    voucherDiscountAmount: 100,
+    bookingFeeSnapshot: 40,
+  });
+  assertEquals(amounts.courtTotal, 700, "discounted court total");
+  assertEquals(amounts.serviceFee, 40, "protected booking fee");
+  assertEquals(amounts.total, 740, "net booking total");
+  assertEquals(amounts.due, 390, "fee plus half of discounted court charge");
+});
+
+Deno.test("voucher cannot discount more than the court charge", () => {
+  assertThrows(
+    () => calculateCourtPayment({
+      ...base,
+      storedTotal: 20,
+      storedDownpayment: 20,
+      voucherDiscountAmount: 820,
+      bookingFeeSnapshot: 40,
+    }),
+    "voucher must not consume the booking fee",
+  );
+});
+
 Deno.test("host due is 25% of court charges plus the full service fee", () => {
   const amounts = calculateCourtPayment({
     ...base,

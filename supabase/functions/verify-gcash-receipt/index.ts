@@ -859,6 +859,9 @@ async function expectedBookingAmounts(
       settings.booking_fee,
     feeType: settings.fee_type,
     storedDownpayment: booking.downpayment,
+    storedTotal: booking.total,
+    voucherDiscountAmount: booking.voucher_discount_amount,
+    bookingFeeSnapshot: booking.booking_fee_amount_snapshot,
     hostBooking: booking.host_booking === true,
     paymentAcceptanceMode: settings.payment_acceptance_mode,
   });
@@ -873,7 +876,7 @@ async function loadBookingGroup(
   const { data, error } = await db
     .from("bookings")
     .select(
-      "ref, booking_group_ref, court_id, court_name, slots, start_time, end_time, duration, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at",
+      "ref, booking_group_ref, court_id, court_name, slots, start_time, end_time, duration, total, downpayment, booking_fee_amount_snapshot, voucher_discount_amount, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at",
     )
     .eq("booking_group_ref", groupRef)
     .neq("status", "cancelled");
@@ -1232,7 +1235,7 @@ async function alertStoredPendingReceiptAfterFailure(
     const { data: row, error } = await db
       .from("bookings")
       .select(
-        "ref,booking_group_ref,court_id,court_name,slots,start_time,end_time,duration,total,downpayment,gcash_ref,payment_method,date,payment_status,status,full_name,created_at,receipt_image_url,receipt_image_hash",
+        "ref,booking_group_ref,court_id,court_name,slots,start_time,end_time,duration,total,downpayment,booking_fee_amount_snapshot,voucher_discount_amount,gcash_ref,payment_method,date,payment_status,status,full_name,created_at,receipt_image_url,receipt_image_hash",
       )
       .eq("ref", bookingRef)
       .maybeSingle();
@@ -2593,7 +2596,7 @@ Deno.serve(async (req) => {
     const { data: persistedRow, error: bookingErr } = await db
       .from("bookings")
       .select(
-        "ref, booking_group_ref, court_id, court_name, slots, start_time, end_time, duration, total, downpayment, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at, receipt_image_url, receipt_image_hash, receipt_phash, receipt_status, receipt_flags, receipt_extracted, receipt_confidence, receipt_verified_at",
+        "ref, booking_group_ref, court_id, court_name, slots, start_time, end_time, duration, total, downpayment, booking_fee_amount_snapshot, voucher_discount_amount, host_booking, gcash_ref, payment_method, date, payment_status, status, full_name, created_at, receipt_image_url, receipt_image_hash, receipt_phash, receipt_status, receipt_flags, receipt_extracted, receipt_confidence, receipt_verified_at",
       )
       .eq("ref", bookingRef)
       .maybeSingle();

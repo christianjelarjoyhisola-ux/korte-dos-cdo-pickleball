@@ -12,6 +12,9 @@ export type CourtPaymentInput = {
   feeRate?: unknown;
   feeType?: unknown;
   storedDownpayment: unknown;
+  storedTotal?: unknown;
+  voucherDiscountAmount?: unknown;
+  bookingFeeSnapshot?: unknown;
   hostBooking?: unknown;
   paymentAcceptanceMode?: unknown;
 };
@@ -112,10 +115,20 @@ export function calculateCourtPayment(
   );
 
   const feeRate = toNumber(input.feeRate);
-  const serviceFee = roundMoney(
+  const calculatedServiceFee = roundMoney(
     isFlatFeeType(input.feeType) ? feeRate : feeRate * slots.length,
   );
-  const total = roundMoney(courtTotal + serviceFee);
+  const snapshotFee = toNumber(input.bookingFeeSnapshot, -1);
+  const serviceFee = snapshotFee >= 0 ? roundMoney(snapshotFee) : calculatedServiceFee;
+  const grossTotal = roundMoney(courtTotal + serviceFee);
+  const voucherDiscount = roundMoney(toNumber(input.voucherDiscountAmount));
+  if (voucherDiscount < 0 || voucherDiscount > courtTotal + 0.01) {
+    throw new Error("Stored voucher discount exceeds the court charge");
+  }
+  const total = roundMoney(grossTotal - voucherDiscount);
+  if (voucherDiscount > 0 && !closeMoney(toNumber(input.storedTotal, -1), total)) {
+    throw new Error("Stored voucher total does not match current pricing");
+  }
   const storedDownpayment = toNumber(input.storedDownpayment, -1);
 
   if (input.hostBooking === true) {
@@ -132,6 +145,22 @@ export function calculateCourtPayment(
     throw new Error(
       "Stored host payment amount does not match current pricing",
     );
+  }
+
+  if (voucherDiscount > 0) {
+    const discountedCourtTotal = roundMoney(courtTotal - voucherDiscount);
+    const partialDue = roundMoney(serviceFee + discountedCourtTotal * 0.50);
+    const mode = String(input.paymentAcceptanceMode || "both");
+    const due = mode === "full_payment_only"
+      ? total
+      : mode === "downpayment_only"
+      ? partialDue
+      : closeMoney(storedDownpayment, total)
+      ? total
+      : closeMoney(storedDownpayment, partialDue)
+      ? partialDue
+      : (() => { throw new Error("Stored voucher payment amount does not match current pricing"); })();
+    return { courtTotal: discountedCourtTotal, serviceFee, total, due };
   }
 
   const due = chooseExpectedDue(
