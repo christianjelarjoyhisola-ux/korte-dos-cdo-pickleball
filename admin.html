@@ -4829,10 +4829,15 @@ const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',pa
 const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments',vouchers:'vouchers'};
 const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings,vouchers:renderVouchers};
 let _curSection=null;
+function adminRoleCanAccess(permission, role) {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  if (permission === 'vouchers' && (normalizedRole === 'owner' || normalizedRole === 'court_owner')) return true;
+  return Auth.can(permission, normalizedRole);
+}
 async function goto(s){
   // Block navigation to sections the current role can't access
   const perm=SECTION_PERM[s];
-  if(perm && sess && !Auth.can(perm, sess.role)){ toast('You do not have access to this section.','err'); return; }
+  if(perm && sess && !adminRoleCanAccess(perm, sess.role)){ toast('You do not have access to this section.','err'); return; }
   document.querySelectorAll('.adm-sec').forEach(el=>el.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('on',el.dataset.s===s));
   $('sec-'+s).classList.add('on');
@@ -12360,9 +12365,11 @@ async function cleanupAbandonedHolds() {
    ROLE-BASED VISIBILITY
    ============================================== */
 function applyRoleVisibility(role) {
-  const allowed = Auth.permissionsFor(role);
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  const allowed = new Set(Auth.permissionsFor(normalizedRole));
+  if (normalizedRole === 'owner' || normalizedRole === 'court_owner') allowed.add('vouchers');
   document.querySelectorAll('[data-perm]').forEach(el => {
-    el.style.display = allowed.includes(el.dataset.perm) ? '' : 'none';
+    el.style.display = allowed.has(el.dataset.perm) ? '' : 'none';
   });
 }
 </script>
@@ -12639,7 +12646,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260729-korte-dos-two-games-v1"></script>
+<script src="supabase-config.js?v=20260810-vouchers-role-v2"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>

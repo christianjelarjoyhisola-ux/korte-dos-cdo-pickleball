@@ -35,7 +35,7 @@
   Referrer-Policy: no-referrer
 
 /supabase-config.js
-  Cache-Control: no-cache
+  Cache-Control: no-store, max-age=0, must-revalidate
 
 /host-balance-payment.js
   Cache-Control: no-cache, max-age=0, must-revalidate
