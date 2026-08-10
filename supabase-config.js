@@ -116,7 +116,12 @@ if (PB_IS_LOCAL_HOST) {
 window.PB_USE_LOCAL_DATA = !PB_IS_KORTE_PRODUCTION &&
   PB_IS_LOCAL_HOST &&
   localStorage.getItem(PB_DATA_MODE_KEY) === 'local';
-const PB_PRIVATE_DATA_SURFACE = /\/(?:admin|signature-view)\.html$/i.test(location.pathname);
+
+// Cloudflare Pages canonicalizes HTML pages to extensionless routes (for
+// example, /admin.html becomes /admin). Treat both forms as the same trusted
+// application surface; Supabase Auth and RLS still decide which rows the user
+// may read.
+const PB_PRIVATE_DATA_SURFACE = /^\/(?:admin|signature-view)(?:\.html)?\/?$/i.test(location.pathname);
 
 const PB_FAST_CACHE_MS = {
   courts: 60000,
