@@ -1025,6 +1025,18 @@ window.DB = {
 
   async addBooking(booking) {
     const client = bookingMutationClient(booking);
+    const returnInsertedBooking = !isPublicCustomerBookingWrite(booking);
+
+    // Anonymous customers may insert a tightly constrained hold, but RLS
+    // intentionally prevents them from selecting booking rows afterward.
+    // Requesting a representation here turns the insert into INSERT ...
+    // RETURNING and makes Postgres apply the SELECT policy to the new row.
+    const insertBookingRow = async value => {
+      const query = client.from('bookings').insert(value);
+      return returnInsertedBooking
+        ? query.select('ref, created_at').single()
+        : query;
+    };
 
     // Check for slot conflicts before inserting
     const { data: existing } = await client
@@ -1040,17 +1052,9 @@ window.DB = {
     }
 
     const row = bookingToRow(booking);
-    let { data, error } = await client
-      .from('bookings')
-      .insert(row)
-      .select('ref, created_at')
-      .single();
+    let { data, error } = await insertBookingRow(row);
     if (error && isMissingOptionalBookingColumnError(error) && !booking.hostBooking) {
-      ({ data, error } = await client
-        .from('bookings')
-        .insert(withoutOptionalBookingColumns(row))
-        .select('ref, created_at')
-        .single());
+      ({ data, error } = await insertBookingRow(withoutOptionalBookingColumns(row)));
     }
     if (error) { console.error('addBooking:', error); throw error; }
     _pbClearFastCache(['bookings']);

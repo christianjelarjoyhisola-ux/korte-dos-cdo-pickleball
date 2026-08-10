@@ -123,3 +123,14 @@ test('booking insert, finalization, and cancellation use the safe routing', () =
   assert.match(indexSource, /savedHold\?\.createdAt/);
   assert.match(indexSource, /savedBooking\?\.createdAt/);
 });
+
+test('anonymous booking inserts do not request private rows back through RLS', () => {
+  assert.match(
+    configSource,
+    /const returnInsertedBooking = !isPublicCustomerBookingWrite\(booking\);/,
+  );
+  assert.match(
+    configSource,
+    /return returnInsertedBooking\s*\? query\.select\('ref, created_at'\)\.single\(\)\s*:\s*query;/,
+  );
+});
