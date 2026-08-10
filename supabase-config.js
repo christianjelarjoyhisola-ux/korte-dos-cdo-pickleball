@@ -1149,6 +1149,35 @@ window.DB = {
   async updateBooking(ref, updates, options = {}) {
     const client = bookingMutationClient(updates, options);
 
+    // Hardened production RLS intentionally prevents anonymous clients from
+    // selecting private booking rows. PostgreSQL also needs SELECT visibility
+    // to target a direct UPDATE, so public holds are finalized through narrow
+    // security-definer RPCs that validate the hold and expose no private row.
+    if (client === _publicBookingSb) {
+      const cancelling = updates.status === 'cancelled';
+      const { data, error } = cancelling
+        ? await _publicBookingSb.rpc('cancel_public_booking_hold', {
+            p_ref: ref,
+          })
+        : await _publicBookingSb.rpc('finalize_public_booking_hold', {
+            p_ref: ref,
+            p_full_name: updates.fullName,
+            p_contact_number: updates.contactNumber,
+            p_email: updates.email,
+            p_payment_method: updates.paymentMethod,
+            p_payment_reference: updates.gcashRef || '',
+            p_downpayment: updates.downpayment,
+          });
+      if (error) { console.error('updateBooking public hold:', error); throw error; }
+      if (!data?.ref) {
+        const denied = new Error(`Booking ${ref} was not updated. It may have expired or changed.`);
+        denied.code = 'BOOKING_UPDATE_NOT_ALLOWED';
+        throw denied;
+      }
+      _pbClearFastCache(['bookings', 'publicBookingSlots']);
+      return data;
+    }
+
     // Map only the fields provided (camelCase → snake_case)
     const row = {};
     if (updates.status    !== undefined) row.status = updates.status;

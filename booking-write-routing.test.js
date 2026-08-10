@@ -134,3 +134,14 @@ test('anonymous booking inserts do not request private rows back through RLS', (
     /return returnInsertedBooking\s*\? query\.select\('ref, created_at'\)\.single\(\)\s*:\s*query;/,
   );
 });
+
+test('public booking finalization and cancellation use narrow RPCs', () => {
+  assert.match(
+    configSource,
+    /client === _publicBookingSb[\s\S]*rpc\('finalize_public_booking_hold'/,
+  );
+  assert.match(
+    configSource,
+    /client === _publicBookingSb[\s\S]*rpc\('cancel_public_booking_hold'/,
+  );
+});
