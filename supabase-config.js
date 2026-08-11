@@ -72,6 +72,14 @@ function isPublicCustomerBookingWrite(payload) {
   return payload?.createdVia === 'customer' && payload?.hostBooking !== true;
 }
 
+function isHostBookingHoldWrite(payload) {
+  return payload?.createdVia === 'host' && payload?.hostBooking === true;
+}
+
+function isBookingHoldWrite(payload) {
+  return isPublicCustomerBookingWrite(payload) || isHostBookingHoldWrite(payload);
+}
+
 function bookingMutationClient(payload, options = {}) {
   return options.asPublicCustomer === true || isPublicCustomerBookingWrite(payload)
     ? _publicBookingSb
@@ -79,7 +87,7 @@ function bookingMutationClient(payload, options = {}) {
 }
 
 function shouldDatabaseSetBookingCreatedAt(booking) {
-  return isPublicCustomerBookingWrite(booking);
+  return isBookingHoldWrite(booking);
 }
 
 // Expose globally so HTML pages can use real-time subscriptions
@@ -677,9 +685,9 @@ function bookingToRow(b) {
     status:         b.status,
   };
 
-  // Public customer inserts use the database default (`now()`), so phone clock
-  // drift can never make an otherwise-valid booking fail the RLS time window.
-  // Admin/import/host writes keep their existing timestamp behavior.
+  // Customer and host holds use the database default (`now()`), so phone clock
+  // drift can never make an otherwise-valid reservation fail its RLS window.
+  // Admin and import writes keep their existing timestamp behavior.
   if (!shouldDatabaseSetBookingCreatedAt(b) && b.createdAt !== undefined) {
     row.created_at = b.createdAt;
   }
@@ -1046,12 +1054,14 @@ window.DB = {
 
   async addBooking(booking) {
     const client = bookingMutationClient(booking);
-    const returnInsertedBooking = !isPublicCustomerBookingWrite(booking);
+    const returnInsertedBooking = !isBookingHoldWrite(booking);
 
-    // Anonymous customers may insert a tightly constrained hold, but RLS
-    // intentionally prevents them from selecting booking rows afterward.
+    // Customer and host reservations may insert a tightly constrained hold,
+    // but hardened RLS intentionally limits which booking rows they can read.
     // Requesting a representation here turns the insert into INSERT ...
-    // RETURNING and makes Postgres apply the SELECT policy to the new row.
+    // RETURNING and makes Postgres apply SELECT policy to the new row. Holds
+    // already own their reference, and use the database clock for created_at,
+    // so they do not need a private representation returned here.
     const insertBookingRow = async value => {
       const query = client.from('bookings').insert(value);
       return returnInsertedBooking
