@@ -9153,9 +9153,12 @@ async function openHostBookings() {
   const list = $('hostBookingsList');
   modal?.classList.add('show');
   if (list) list.innerHTML = '<div class="host-empty">Loading bookings...</div>';
+  if ($('hostBkTotal')) $('hostBkTotal').textContent = '...';
+  if ($('hostBkUpcoming')) $('hostBkUpcoming').textContent = '...';
+  if ($('hostBkBalance')) $('hostBkBalance').textContent = '...';
   try {
     if (DB.clearCache) DB.clearCache();
-    const all = await DB.getBookings({ hostUserId: host.id });
+    const all = await DB.getMyHostBookings();
     const bookings = (all || [])
       .filter(b => hostBookingBelongsToSession(b, host))
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
@@ -9172,6 +9175,9 @@ async function openHostBookings() {
     renderHostBookingsList();
   } catch (e) {
     if (list) list.innerHTML = '<div class="host-empty">Could not load bookings. Please try again.</div>';
+    if ($('hostBkTotal')) $('hostBkTotal').textContent = '--';
+    if ($('hostBkUpcoming')) $('hostBkUpcoming').textContent = '--';
+    if ($('hostBkBalance')) $('hostBkBalance').textContent = '--';
     toast(e?.message || 'Could not load host bookings.', 'err');
   }
 }

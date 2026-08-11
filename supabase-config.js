@@ -1028,6 +1028,22 @@ window.DB = {
     });
   },
 
+  // Host booking history is intentionally separate from getBookings(). The
+  // public booking page must never be promoted to a general private-data
+  // surface just because a host is signed in. The RPC derives ownership from
+  // auth.uid() and only returns rows belonging to that active host account.
+  async getMyHostBookings() {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('Your host session has expired. Please log in again.');
+    }
+    const { data, error } = await _sb.rpc('get_my_host_bookings');
+    if (error) {
+      console.error('getMyHostBookings:', error);
+      throw error;
+    }
+    return (data || []).map(rowToBooking);
+  },
+
   async addBooking(booking) {
     const client = bookingMutationClient(booking);
     const returnInsertedBooking = !isPublicCustomerBookingWrite(booking);
@@ -3003,6 +3019,16 @@ window.DB = {
         .filter(b => !opts.courtId || String(b.courtId) === String(opts.courtId))
         .filter(b => !opts.hostUserId || String(b.hostUserId) === String(opts.hostUserId))
         .filter(b => !opts.activeOnly || (b.status !== 'cancelled' && b.status !== 'forfeited'))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    },
+    async getMyHostBookings() {
+      const session = window.Auth?.getSession?.();
+      if (!session || session.role !== 'host' || (session.status && session.status !== 'active')) {
+        throw new Error('An active host account is required to load bookings.');
+      }
+      return readDb().bookings
+        .filter(booking => booking.hostBooking && booking.email !== 'reserve@hold.internal')
+        .filter(booking => String(booking.hostUserId || '') === String(session.id || ''))
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     },
     async addBooking(booking) {
