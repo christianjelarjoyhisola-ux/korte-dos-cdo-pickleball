@@ -72,6 +72,14 @@ function isPublicCustomerBookingWrite(payload) {
   return payload?.createdVia === 'customer' && payload?.hostBooking !== true;
 }
 
+function isHostBookingHoldWrite(payload) {
+  return payload?.createdVia === 'host' && payload?.hostBooking === true;
+}
+
+function isBookingHoldWrite(payload) {
+  return isPublicCustomerBookingWrite(payload) || isHostBookingHoldWrite(payload);
+}
+
 function bookingMutationClient(payload, options = {}) {
   return options.asPublicCustomer === true || isPublicCustomerBookingWrite(payload)
     ? _publicBookingSb
@@ -79,7 +87,7 @@ function bookingMutationClient(payload, options = {}) {
 }
 
 function shouldDatabaseSetBookingCreatedAt(booking) {
-  return isPublicCustomerBookingWrite(booking);
+  return isBookingHoldWrite(booking);
 }
 
 // Expose globally so HTML pages can use real-time subscriptions
@@ -677,9 +685,9 @@ function bookingToRow(b) {
     status:         b.status,
   };
 
-  // Public customer inserts use the database default (`now()`), so phone clock
-  // drift can never make an otherwise-valid booking fail the RLS time window.
-  // Admin/import/host writes keep their existing timestamp behavior.
+  // Customer and host holds use the database default (`now()`), so phone clock
+  // drift can never make an otherwise-valid reservation fail its RLS window.
+  // Admin and import writes keep their existing timestamp behavior.
   if (!shouldDatabaseSetBookingCreatedAt(b) && b.createdAt !== undefined) {
     row.created_at = b.createdAt;
   }
@@ -1028,14 +1036,32 @@ window.DB = {
     });
   },
 
+  // Host booking history is intentionally separate from getBookings(). The
+  // public booking page must never be promoted to a general private-data
+  // surface just because a host is signed in. The RPC derives ownership from
+  // auth.uid() and only returns rows belonging to that active host account.
+  async getMyHostBookings() {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('Your host session has expired. Please log in again.');
+    }
+    const { data, error } = await _sb.rpc('get_my_host_bookings');
+    if (error) {
+      console.error('getMyHostBookings:', error);
+      throw error;
+    }
+    return (data || []).map(rowToBooking);
+  },
+
   async addBooking(booking) {
     const client = bookingMutationClient(booking);
-    const returnInsertedBooking = !isPublicCustomerBookingWrite(booking);
+    const returnInsertedBooking = !isBookingHoldWrite(booking);
 
-    // Anonymous customers may insert a tightly constrained hold, but RLS
-    // intentionally prevents them from selecting booking rows afterward.
+    // Customer and host reservations may insert a tightly constrained hold,
+    // but hardened RLS intentionally limits which booking rows they can read.
     // Requesting a representation here turns the insert into INSERT ...
-    // RETURNING and makes Postgres apply the SELECT policy to the new row.
+    // RETURNING and makes Postgres apply SELECT policy to the new row. Holds
+    // already own their reference, and use the database clock for created_at,
+    // so they do not need a private representation returned here.
     const insertBookingRow = async value => {
       const query = client.from('bookings').insert(value);
       return returnInsertedBooking
@@ -1148,6 +1174,35 @@ window.DB = {
 
   async updateBooking(ref, updates, options = {}) {
     const client = bookingMutationClient(updates, options);
+
+    // Hardened production RLS intentionally prevents anonymous clients from
+    // selecting private booking rows. PostgreSQL also needs SELECT visibility
+    // to target a direct UPDATE, so public holds are finalized through narrow
+    // security-definer RPCs that validate the hold and expose no private row.
+    if (client === _publicBookingSb) {
+      const cancelling = updates.status === 'cancelled';
+      const { data, error } = cancelling
+        ? await _publicBookingSb.rpc('cancel_public_booking_hold', {
+            p_ref: ref,
+          })
+        : await _publicBookingSb.rpc('finalize_public_booking_hold', {
+            p_ref: ref,
+            p_full_name: updates.fullName,
+            p_contact_number: updates.contactNumber,
+            p_email: updates.email,
+            p_payment_method: updates.paymentMethod,
+            p_payment_reference: updates.gcashRef || '',
+            p_downpayment: updates.downpayment,
+          });
+      if (error) { console.error('updateBooking public hold:', error); throw error; }
+      if (!data?.ref) {
+        const denied = new Error(`Booking ${ref} was not updated. It may have expired or changed.`);
+        denied.code = 'BOOKING_UPDATE_NOT_ALLOWED';
+        throw denied;
+      }
+      _pbClearFastCache(['bookings', 'publicBookingSlots']);
+      return data;
+    }
 
     // Map only the fields provided (camelCase → snake_case)
     const row = {};
@@ -2974,6 +3029,16 @@ window.DB = {
         .filter(b => !opts.courtId || String(b.courtId) === String(opts.courtId))
         .filter(b => !opts.hostUserId || String(b.hostUserId) === String(opts.hostUserId))
         .filter(b => !opts.activeOnly || (b.status !== 'cancelled' && b.status !== 'forfeited'))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    },
+    async getMyHostBookings() {
+      const session = window.Auth?.getSession?.();
+      if (!session || session.role !== 'host' || (session.status && session.status !== 'active')) {
+        throw new Error('An active host account is required to load bookings.');
+      }
+      return readDb().bookings
+        .filter(booking => booking.hostBooking && booking.email !== 'reserve@hold.internal')
+        .filter(booking => String(booking.hostUserId || '') === String(session.id || ''))
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     },
     async addBooking(booking) {

@@ -5,6 +5,10 @@ const vm = require('node:vm');
 
 const configSource = readFileSync('supabase-config.js', 'utf8');
 const indexSource = readFileSync('index.html', 'utf8');
+const hostRlsFixSource = readFileSync(
+  'supabase/migrations/20260811160000_host_booking_rls_fix.sql',
+  'utf8',
+);
 
 function extractFunction(name) {
   const start = configSource.indexOf(`function ${name}(`);
@@ -32,10 +36,14 @@ function loadRoutingHelpers() {
   vm.createContext(context);
   vm.runInContext([
     extractFunction('isPublicCustomerBookingWrite'),
+    extractFunction('isHostBookingHoldWrite'),
+    extractFunction('isBookingHoldWrite'),
     extractFunction('bookingMutationClient'),
     extractFunction('shouldDatabaseSetBookingCreatedAt'),
     'this.helpers = {',
     '  isPublicCustomerBookingWrite,',
+    '  isHostBookingHoldWrite,',
+    '  isBookingHoldWrite,',
     '  bookingMutationClient,',
     '  shouldDatabaseSetBookingCreatedAt,',
     '};',
@@ -68,7 +76,7 @@ test('host and dashboard writes retain the authenticated session client', () => 
   );
 });
 
-test('only public customer inserts leave created_at to the database', () => {
+test('customer and host holds leave created_at to the database', () => {
   const helpers = loadRoutingHelpers();
   const context = {
     receivedAccountForBooking: () => 'gcash',
@@ -100,7 +108,7 @@ test('only public customer inserts leave created_at to the database', () => {
 
   assert.equal(Object.hasOwn(guestRow, 'created_at'), false);
   assert.equal(adminRow.created_at, base.createdAt);
-  assert.equal(hostRow.created_at, base.createdAt);
+  assert.equal(Object.hasOwn(hostRow, 'created_at'), false);
 });
 
 test('the anonymous client cannot persist or refresh an auth session', () => {
@@ -124,13 +132,41 @@ test('booking insert, finalization, and cancellation use the safe routing', () =
   assert.match(indexSource, /savedBooking\?\.createdAt/);
 });
 
-test('anonymous booking inserts do not request private rows back through RLS', () => {
+test('customer and host hold inserts do not request private rows back through RLS', () => {
   assert.match(
     configSource,
-    /const returnInsertedBooking = !isPublicCustomerBookingWrite\(booking\);/,
+    /const returnInsertedBooking = !isBookingHoldWrite\(booking\);/,
   );
   assert.match(
     configSource,
     /return returnInsertedBooking\s*\? query\.select\('ref, created_at'\)\.single\(\)\s*:\s*query;/,
+  );
+});
+
+test('host bookings retain authenticated routing while avoiding INSERT RETURNING', () => {
+  const helpers = loadRoutingHelpers();
+  const host = { createdVia: 'host', hostBooking: true };
+
+  assert.equal(helpers.isHostBookingHoldWrite(host), true);
+  assert.equal(helpers.isBookingHoldWrite(host), true);
+  assert.equal(helpers.bookingMutationClient(host).role, 'session');
+});
+
+test('host booking reads are limited by RLS to the authenticated host owner', () => {
+  assert.match(hostRlsFixSource, /create policy bookings_select_host_own/i);
+  assert.match(hostRlsFixSource, /public\.current_account_role\(\) = 'host'/i);
+  assert.match(hostRlsFixSource, /host_user_id = auth\.uid\(\)/i);
+  assert.match(hostRlsFixSource, /created_by_user_id = auth\.uid\(\)/i);
+  assert.doesNotMatch(hostRlsFixSource, /using\s*\(\s*true\s*\)/i);
+});
+
+test('public booking finalization and cancellation use narrow RPCs', () => {
+  assert.match(
+    configSource,
+    /client === _publicBookingSb[\s\S]*rpc\('finalize_public_booking_hold'/,
+  );
+  assert.match(
+    configSource,
+    /client === _publicBookingSb[\s\S]*rpc\('cancel_public_booking_hold'/,
   );
 });

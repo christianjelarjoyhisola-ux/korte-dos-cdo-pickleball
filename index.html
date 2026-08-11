@@ -9142,6 +9142,23 @@ function setHostBookingFilter(filter) {
   renderHostBookingsList();
 }
 
+async function loadMyHostBookingsForPage() {
+  if (typeof DB?.getMyHostBookings === 'function') {
+    return DB.getMyHostBookings();
+  }
+
+  // A browser can briefly combine a newly deployed index.html with an older
+  // cached supabase-config.js. Keep the host history usable during that mixed
+  // version window while preserving the same identity-scoped database RPC.
+  const client = window._supabase;
+  if (!client?.rpc || typeof rowToBooking !== 'function') {
+    throw new Error('A site update is available. Please refresh this page.');
+  }
+  const { data, error } = await client.rpc('get_my_host_bookings');
+  if (error) throw error;
+  return (data || []).map(rowToBooking);
+}
+
 async function openHostBookings() {
   const host = activeHostSession();
   if (!host) {
@@ -9153,9 +9170,12 @@ async function openHostBookings() {
   const list = $('hostBookingsList');
   modal?.classList.add('show');
   if (list) list.innerHTML = '<div class="host-empty">Loading bookings...</div>';
+  if ($('hostBkTotal')) $('hostBkTotal').textContent = '...';
+  if ($('hostBkUpcoming')) $('hostBkUpcoming').textContent = '...';
+  if ($('hostBkBalance')) $('hostBkBalance').textContent = '...';
   try {
     if (DB.clearCache) DB.clearCache();
-    const all = await DB.getBookings({ hostUserId: host.id });
+    const all = await loadMyHostBookingsForPage();
     const bookings = (all || [])
       .filter(b => hostBookingBelongsToSession(b, host))
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
@@ -9172,6 +9192,9 @@ async function openHostBookings() {
     renderHostBookingsList();
   } catch (e) {
     if (list) list.innerHTML = '<div class="host-empty">Could not load bookings. Please try again.</div>';
+    if ($('hostBkTotal')) $('hostBkTotal').textContent = '--';
+    if ($('hostBkUpcoming')) $('hostBkUpcoming').textContent = '--';
+    if ($('hostBkBalance')) $('hostBkBalance').textContent = '--';
     toast(e?.message || 'Could not load host bookings.', 'err');
   }
 }
@@ -10175,7 +10198,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260810-booking-rls-return-v1"></script>
+<script src="supabase-config.js?v=20260811-host-bookings-cache-v2"></script>
 
 <!-- MOBILE STICKY BOOK NOW BAR -->
 <div id="mobileBookBar" class="mobile-book-bar" style="display:none">
