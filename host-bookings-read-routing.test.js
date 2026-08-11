@@ -14,8 +14,14 @@ const migration = fs.readFileSync(
 
 test('host My Bookings uses its identity-scoped RPC instead of general booking reads', () => {
   assert.match(config, /async getMyHostBookings\(\)[\s\S]*?\.rpc\('get_my_host_bookings'\)/);
-  assert.match(index, /const all = await DB\.getMyHostBookings\(\);/);
+  assert.match(index, /const all = await loadMyHostBookingsForPage\(\);/);
   assert.doesNotMatch(index, /DB\.getBookings\(\{\s*hostUserId:/);
+});
+
+test('host My Bookings survives a mixed cached page and data-layer version', () => {
+  assert.match(index, /supabase-config\.js\?v=20260811-host-bookings-cache-v2/);
+  assert.match(index, /typeof DB\?\.getMyHostBookings === 'function'/);
+  assert.match(index, /client\.rpc\('get_my_host_bookings'\)/);
 });
 
 test('host booking RPC derives ownership from auth uid and rejects public execution', () => {
