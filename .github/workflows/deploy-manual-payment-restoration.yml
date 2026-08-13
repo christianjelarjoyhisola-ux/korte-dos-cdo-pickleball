@@ -1,0 +1,134 @@
+name: Deploy Manual Payment Restoration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-manual-payment-restoration.yml"
+      - "supabase/migrations/20260813043000_restore_cancelled_manual_payment.sql"
+      - "supabase/functions/review-payment-receipt/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Apply restoration RPC and deploy payment review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260813043000_restore_cancelled_manual_payment.sql
+      MIGRATION_SHA256: bd0e020c763699451de90244a08fa86c9bd4de0c6a62acf1106d732d1f63c42f
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260813043000',
+          'restore_cancelled_manual_payment',
+          array['sha256:bd0e020c763699451de90244a08fa86c9bd4de0c6a62acf1106d732d1f63c42f']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        begin
+          if to_regprocedure(
+            'public.restore_cancelled_booking_after_manual_payment(text,uuid,text,text)'
+          ) is null then
+            raise exception 'manual payment restoration function is missing';
+          end if;
+          if not exists (
+            select 1
+              from supabase_migrations.schema_migrations
+             where version = '20260813043000'
+               and name = 'restore_cancelled_manual_payment'
+               and statements = array[
+                 'sha256:bd0e020c763699451de90244a08fa86c9bd4de0c6a62acf1106d732d1f63c42f'
+               ]::text[]
+          ) then
+            raise exception 'manual payment restoration migration history is missing';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply migration through the Supabase Management API
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          payload_file="$RUNNER_TEMP/manual-payment-restoration.json"
+          response_file="$RUNNER_TEMP/manual-payment-restoration-response.json"
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Manual payment restoration migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/manual-payment-restoration-verification.json"
+          response_file="$RUNNER_TEMP/manual-payment-restoration-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Manual payment restoration verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.114.0
+
+      - name: Deploy payment review function
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy review-payment-receipt \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt

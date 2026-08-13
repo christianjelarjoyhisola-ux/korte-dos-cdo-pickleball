@@ -2273,7 +2273,7 @@ window.DB = {
     return this.sendTelegramNotification(_telegramBookingPayload(booking, { type: 'booking_update', event, note }), { allowFailure: true });
   },
 
-  async reviewPaymentReceipt(bookingRef, decision, reason = '') {
+  async reviewPaymentReceipt(bookingRef, decision, reason = '', options = {}) {
     const normalizedDecision = String(decision || '').trim().toLowerCase();
     if (!['approve', 'reject'].includes(normalizedDecision)) {
       throw new Error('Choose a valid payment-review decision.');
@@ -2282,6 +2282,7 @@ window.DB = {
       bookingRef: String(bookingRef || '').trim(),
       decision: normalizedDecision,
       reason: String(reason || '').trim(),
+      manualProviderConfirmation: options?.manualProviderConfirmation === true,
     });
     if (result?.ok) _pbClearFastCache(['bookings']);
     return result;
@@ -4155,9 +4156,10 @@ window.DB = {
     async sendTelegramNotification() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingSubmitted() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingUpdate() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
-    async reviewPaymentReceipt(bookingRef, decision, reason = '') {
+    async reviewPaymentReceipt(bookingRef, decision, reason = '', options = {}) {
       const normalizedDecision = String(decision || '').trim().toLowerCase();
       const normalizedReason = String(reason || '').trim();
+      const manualProviderConfirmation = options?.manualProviderConfirmation === true;
       if (!['approve', 'reject'].includes(normalizedDecision)) throw new Error('Choose a valid payment-review decision.');
       if (normalizedDecision === 'reject' && normalizedReason.length < 3) {
         throw new Error('Enter a rejection reason of at least 3 characters.');
@@ -4171,6 +4173,39 @@ window.DB = {
       const rows = primary.groupRef
         ? db.bookings.filter(b => String(b.groupRef || '') === String(primary.groupRef))
         : [primary];
+      if (manualProviderConfirmation) {
+        if (normalizedDecision !== 'approve' || normalizedReason.length < 10) {
+          throw new Error('Describe how the payment was matched in the provider history.');
+        }
+        if (rows.some(b => b.status !== 'cancelled' || b.paymentStatus !== 'rejected')) {
+          throw new Error('This booking is no longer cancelled with payment rejected.');
+        }
+        const total = rows.reduce((sum, b) => sum + Number(b.total || 0), 0);
+        const collected = rows.reduce((sum, b) => sum + Number(b.downpayment || 0), 0);
+        const paymentStatus = collected >= total - 0.01 ? 'paid' : 'downpayment_paid';
+        const refs = new Set(rows.map(b => String(b.ref)));
+        db.bookings = db.bookings.map(b => refs.has(String(b.ref)) ? {
+          ...b,
+          status: 'confirmed',
+          paymentStatus,
+          receiptStatus: 'manual_review',
+          receiptFlags: [...new Set([
+            ...(b.receiptFlags || []),
+            'MANUAL_PROVIDER_VERIFICATION',
+            'NO_RECEIPT_IMAGE',
+          ])],
+        } : b);
+        writeDb(db);
+        return {
+          ok: true,
+          local: true,
+          manualProviderConfirmation: true,
+          bookingRef: primary.groupRef || primary.ref,
+          refs: [...refs],
+          status: 'confirmed',
+          paymentStatus,
+        };
+      }
       if (rows.some(b => b.status !== 'pending' || b.paymentStatus !== 'for_verification')) {
         throw new Error('This payment is no longer awaiting review. Refresh the dashboard to see its latest status.');
       }

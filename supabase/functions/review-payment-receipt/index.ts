@@ -14,6 +14,7 @@ type ReviewPayload = {
   registrationId?: number | string;
   decision?: ReviewDecision;
   reason?: string;
+  manualProviderConfirmation?: boolean;
 };
 
 type ReviewerAuthorization =
@@ -112,6 +113,7 @@ Deno.serve(async (req) => {
       .test(hostRegistrationId);
   const decision = body.decision;
   const reason = cleanReason(body.reason);
+  const manualProviderConfirmation = body.manualProviderConfirmation === true;
   if (!["court_booking", "open_play", "host_session"].includes(contextType)) {
     return json({ error: "A valid payment-review context is required" }, 400);
   }
@@ -140,17 +142,36 @@ Deno.serve(async (req) => {
       error: "A rejection reason of at least 3 characters is required",
     }, 400);
   }
+  if (manualProviderConfirmation && (
+    contextType !== "court_booking" ||
+    decision !== "approve" ||
+    reason.length < 10
+  )) {
+    return json({
+      error:
+        "Manual provider confirmation requires a court booking, an approve decision, and an audit note of at least 10 characters",
+    }, 400);
+  }
 
   try {
     const defaultReason = decision === "approve"
       ? "Receipt reviewed and payment confirmed."
       : null;
-    const rpcName = contextType === "open_play"
+    const rpcName = manualProviderConfirmation
+      ? "restore_cancelled_booking_after_manual_payment"
+      : contextType === "open_play"
       ? "apply_open_play_payment_review_decision"
       : contextType === "host_session"
       ? "apply_host_session_payment_review_decision"
       : "apply_payment_review_decision";
-    const rpcArgs = contextType === "open_play"
+    const rpcArgs = manualProviderConfirmation
+      ? {
+        p_booking_ref: bookingRef,
+        p_actor_user_id: reviewer.user.id,
+        p_actor_role: reviewer.account.role,
+        p_reason: reason,
+      }
+      : contextType === "open_play"
       ? {
         p_registration_id: registrationId,
         p_decision: decision,
@@ -193,6 +214,7 @@ Deno.serve(async (req) => {
       ok: true,
       contextType,
       decision,
+      manualProviderConfirmation,
       ...(contextType === "open_play"
         ? { registrationId }
         : contextType === "host_session"

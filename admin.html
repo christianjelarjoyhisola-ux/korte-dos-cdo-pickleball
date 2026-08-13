@@ -6250,33 +6250,45 @@ function isCurrentVerifyModalLoad(ref, token) {
 
 function paymentReviewDecisionState(b, { imageAvailable = Boolean(b?.receiptImageUrl) } = {}) {
   if (!Auth.can('payment_review', sess?.role)) {
-    return { actionable: false, reason: 'Your account can view this receipt but cannot approve or reject payments.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'Your account can view this receipt but cannot approve or reject payments.' };
   }
   if (!b || !isDigitalPayment(b.paymentMethod)) {
-    return { actionable: false, reason: 'This booking is not awaiting review for a digital payment.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'This booking is not awaiting review for a digital payment.' };
   }
+  const booking = String(b.status || '').toLowerCase();
+  const payment = String(b.paymentStatus || '').toLowerCase();
   if (!String(b.receiptImageUrl || '').trim() || !imageAvailable) {
+    const manualProviderConfirmation = booking === 'cancelled' && payment === 'rejected';
+    if (manualProviderConfirmation) {
+      return {
+        actionable: true,
+        canApprove: true,
+        canReject: false,
+        manualProviderConfirmation: true,
+        reason: 'No receipt image is stored. Because this booking was cancelled, you may restore it only after independently matching the reference, amount, recipient, and time in the payment provider history. The manual confirmation will be audited and will fail if the slot was taken.',
+      };
+    }
     const uploadStillActive = String(b.status || '').toLowerCase() === 'verifying'
       && String(b.receiptStatus || 'none').toLowerCase() === 'none';
     return {
       actionable: false,
+      canApprove: false,
+      canReject: false,
       reason: uploadStillActive
         ? 'The guest has not completed the receipt upload yet. This is a temporary 15-minute slot hold, not a submitted payment. It will be released automatically if the upload is not completed.'
         : 'Review actions are disabled because the stored receipt image could not be loaded. Ask the player to provide proof; do not confirm from a reference number alone.',
     };
   }
 
-  const booking = String(b.status || '').toLowerCase();
-  const payment = String(b.paymentStatus || '').toLowerCase();
   if (['confirmed', 'completed', 'cancelled', 'forfeited'].includes(booking)
       || ['paid', 'downpayment_paid', 'deposit_retained', 'rejected'].includes(payment)) {
-    return { actionable: false, reason: 'This payment review has already been resolved. Approve and reject actions are disabled.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'This payment review has already been resolved. Approve and reject actions are disabled.' };
   }
 
   if (booking !== 'pending' || payment !== 'for_verification') {
-    return { actionable: false, reason: 'This booking is not currently awaiting manual payment review.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'This booking is not currently awaiting manual payment review.' };
   }
-  return { actionable: true, reason: '' };
+  return { actionable: true, canApprove: true, canReject: true, manualProviderConfirmation: false, reason: '' };
 }
 
 function setVerifyModalActionState(b, { imageAvailable = Boolean(b?.receiptImageUrl), busy = false } = {}) {
@@ -6285,12 +6297,19 @@ function setVerifyModalActionState(b, { imageAvailable = Boolean(b?.receiptImage
   const confirmBtn = $('vmConfirmBtn');
   const warning = $('vmReceiptActionWarning');
   const state = paymentReviewDecisionState(b, { imageAvailable });
-  const disabled = busy || !state.actionable;
-  if (rejectBtn) rejectBtn.disabled = disabled;
-  if (confirmBtn) confirmBtn.disabled = disabled;
+  if (rejectBtn) rejectBtn.disabled = busy || !state.canReject;
+  if (confirmBtn) {
+    confirmBtn.disabled = busy || !state.canApprove;
+    if (!busy && !confirmBtn.dataset.idleLabel) {
+      confirmBtn.textContent = state.manualProviderConfirmation
+        ? '✅ Received in Provider — Restore'
+        : '✅ Received — Confirm';
+    }
+  }
   if (overlay) {
     overlay.dataset.imageAvailable = imageAvailable ? '1' : '0';
     overlay.dataset.actionable = state.actionable ? '1' : '0';
+    overlay.dataset.manualProviderConfirmation = state.manualProviderConfirmation ? '1' : '0';
     overlay.setAttribute('aria-busy', busy ? 'true' : 'false');
   }
   if (warning) {
@@ -6381,6 +6400,7 @@ function closeVerifyModal({ restoreFocus = true } = {}) {
   delete overlay.dataset.loadToken;
   delete overlay.dataset.imageAvailable;
   delete overlay.dataset.actionable;
+  delete overlay.dataset.manualProviderConfirmation;
   setVerifyModalActionBusy(false);
   overlay.removeAttribute('aria-busy');
   if ($('vmRejectBtn')) $('vmRejectBtn').disabled = true;
@@ -6516,26 +6536,49 @@ async function verifyAndConfirm() {
     if (!isCurrent()) return;
     const imageAvailable = $('verifyModal').dataset.imageAvailable === '1';
     const state = setVerifyModalActionState(bkForPay, { imageAvailable });
-    if (!state.actionable) {
+    if (!state.canApprove) {
       toast(state.reason || 'This payment cannot be approved.', 'err');
       return;
     }
     const displayRef = bkForPay.displayRef || bkForPay.primaryRef || ref;
-    if (!confirm(`Mark the payment for booking ${displayRef} as received and confirm the booking?`)) return;
+    let manualReason = '';
+    if (state.manualProviderConfirmation) {
+      manualReason = String(prompt(
+        `Booking ${displayRef} was cancelled and has no receipt image.\n\nEnter an audit note describing how you matched the transaction in the payment provider history:`,
+        `Matched ${paymentMethodLabel(bkForPay.paymentMethod)} transaction reference, amount, recipient, and time.`
+      ) || '').trim();
+      if (manualReason.length < 10) {
+        toast('Enter an audit note of at least 10 characters.', 'err');
+        return;
+      }
+      if (!confirm(`Restore and confirm booking ${displayRef}?\n\nThis records the payment as manually verified in the provider history. The restoration will fail if another booking now occupies the slot.`)) return;
+    } else if (!confirm(`Mark the payment for booking ${displayRef} as received and confirm the booking?`)) return;
     if (!isCurrent()) return;
 
-    setVerifyModalActionBusy(true, 'Approving...', 'vmConfirmBtn');
-    const result = await DB.reviewPaymentReceipt(ref, 'approve');
+    setVerifyModalActionBusy(true, state.manualProviderConfirmation ? 'Restoring...' : 'Approving...', 'vmConfirmBtn');
+    const result = await DB.reviewPaymentReceipt(ref, 'approve', manualReason, {
+      manualProviderConfirmation: state.manualProviderConfirmation,
+    });
     if (!result?.ok) throw new Error(result?.error || 'The payment could not be approved.');
     if (isCurrent()) closeVerifyModal();
-    toast(result.alreadyApplied ? 'This payment was already approved.' : 'Payment verified and booking confirmed!');
+    toast(result.alreadyApplied
+      ? 'This payment was already approved.'
+      : result.manualProviderConfirmation
+      ? 'Payment manually verified — cancelled booking restored and confirmed!'
+      : 'Payment verified and booking confirmed!');
     await refreshPaymentReviewSurfaces();
 
     if (!result.alreadyApplied) Promise.resolve(getBookingGroupByRef(ref)).then(async bk => {
       if (!bk) return;
       await Promise.all([
         sendBookingConfirmationNotice(bk),
-        notifyBookingUpdateSafe(bk, 'payment_verified', 'Payment marked received by admin.'),
+        notifyBookingUpdateSafe(
+          bk,
+          'payment_verified',
+          result.manualProviderConfirmation
+            ? `Payment manually matched in provider history by admin. Audit note: ${manualReason}`
+            : 'Payment marked received by admin.'
+        ),
       ]);
     }).catch(() => {});
   } catch(e) {
@@ -12658,7 +12701,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260813-receipt-stage-v1"></script>
+<script src="supabase-config.js?v=20260813-manual-restore-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>

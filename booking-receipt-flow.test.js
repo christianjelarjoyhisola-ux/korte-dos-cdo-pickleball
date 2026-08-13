@@ -6,6 +6,11 @@ const indexHtml = fs.readFileSync('index.html', 'utf8');
 const adminHtml = fs.readFileSync('admin.html', 'utf8');
 const supabaseConfig = fs.readFileSync('supabase-config.js', 'utf8');
 const receiptEdge = fs.readFileSync('supabase/functions/verify-gcash-receipt/index.ts', 'utf8');
+const reviewEdge = fs.readFileSync('supabase/functions/review-payment-receipt/index.ts', 'utf8');
+const manualRestoreMigration = fs.readFileSync(
+  'supabase/migrations/20260813043000_restore_cancelled_manual_payment.sql',
+  'utf8',
+);
 
 function functionSource(source, name, nextName) {
   const start = source.indexOf(`async function ${name}(`);
@@ -64,4 +69,16 @@ test('payment review queue requires stored receipt evidence', () => {
     adminHtml,
     /The guest has not completed the receipt upload yet[\s\S]*temporary 15-minute slot hold/,
   );
+});
+
+test('cancelled digital bookings can be restored only through audited provider confirmation', () => {
+  assert.match(adminHtml, /booking === 'cancelled' && payment === 'rejected'/);
+  assert.match(adminHtml, /Received in Provider — Restore/);
+  assert.match(adminHtml, /manualProviderConfirmation: state\.manualProviderConfirmation/);
+  assert.match(supabaseConfig, /manualProviderConfirmation: options\?\.manualProviderConfirmation === true/);
+  assert.match(reviewEdge, /restore_cancelled_booking_after_manual_payment/);
+  assert.match(manualRestoreMigration, /earliest_start is null or earliest_start <= now\(\)/);
+  assert.match(manualRestoreMigration, /Duplicate payment reference: this reference belongs to another payment/);
+  assert.match(manualRestoreMigration, /MANUAL_PROVIDER_VERIFICATION/);
+  assert.match(manualRestoreMigration, /payment_review_decisions/);
 });
