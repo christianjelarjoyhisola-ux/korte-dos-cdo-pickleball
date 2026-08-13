@@ -4583,7 +4583,7 @@ function currentBookingActorFields(){
   };
 }
 function bookingDetailsButton(b){
-  if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
+  if (!String(b.receiptImageUrl || '').trim()) return '';
   if (!['gcash','bdopay','maya','bpi','maribank','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`;
 }
@@ -4784,7 +4784,7 @@ async function openBookingDetails(ref) {
       </div>
       ${b.hostBooking ? `<div class="booking-detail-section"><h3>Email history</h3><div class="booking-notice-list">${notices}</div></div>` : ''}`;
     const actionRef = b.primaryRef || b.ref;
-    const hasReceipt = (b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none')) && isDigitalPayment(b.paymentMethod);
+    const hasReceipt = Boolean(String(b.receiptImageUrl || '').trim()) && isDigitalPayment(b.paymentMethod);
     $('bookingDetailsActions').innerHTML = `
       <button class="btn btn-g" onclick="closeBookingDetails()">Close</button>
       ${hasReceipt ? `<button class="btn btn-g" onclick="closeBookingDetails();openVerifyModal('${jsArg(actionRef)}')">View Payment</button>` : ''}
@@ -5384,7 +5384,7 @@ async function renderBookings(){
       </div></td>
       <td data-label="Status">${statusBdg(b.status)}</td>
       <td data-label="Actions"><div style="display:flex;gap:5px;flex-wrap:wrap">${bookingActionsHtml(b, canDelete)}</div><div style="display:none">
-        ${(b.gcashRef || (b.receiptStatus && b.receiptStatus!=='none')) && isDigitalPayment(b.paymentMethod)?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
+        ${String(b.receiptImageUrl || '').trim() && isDigitalPayment(b.paymentMethod)?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
         ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(b.ref)}')">📅 Reschedule</button>`:''}
         ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(b.ref)}')">📧 Resend Email</button>`:''}
         <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${jsArg(b.ref)}',this.value)">
@@ -5523,6 +5523,7 @@ function bookingReviewStatus(b) {
   }
   if (receipt === 'auto_approved') return 'auto_approved';
   if (['manual_review', 'rejected'].includes(receipt)) return 'manual_review';
+  if (booking === 'verifying' && !String(b.receiptImageUrl || '').trim()) return 'uploading';
   if (payment === 'for_verification' || ['pending', 'verifying'].includes(booking)) return 'manual_review';
   if (isDigitalPayment(b.paymentMethod)) return 'manual_review';
   return b.paymentStatus || 'unpaid';
@@ -5553,6 +5554,7 @@ function statusPill(status) {
     auto_approved: ['var(--green)', 'rgba(var(--green-rgb),.15)', 'Auto-verified'],
     paid: ['var(--green)', 'rgba(var(--green-rgb),.15)', 'Paid'],
     rejected: ['#e53935', 'rgba(229,57,53,.12)', 'Rejected'],
+    uploading: ['#5a9ad4', 'rgba(74,154,220,.12)', 'Receipt uploading'],
     unpaid: ['var(--muted)', 'var(--input)', 'Unpaid'],
   };
   const [c, bg, label] = map[status] || ['var(--muted)', 'var(--input)', status || 'Unknown'];
@@ -5621,7 +5623,13 @@ async function renderPaymentReview() {
     DB.getOpenPlayHostSessionRegistrations(),
     DB.getOpenPlayHostSessions(),
   ]);
-  const bookingItems = groupBookings(bookings.filter(b => b.email !== 'reserve@hold.internal' && isDigitalPayment(b.paymentMethod)))
+  // Payment Review contains stored evidence only. A verifying row without an
+  // image is still a temporary guest upload hold, not a reviewable payment.
+  const bookingItems = groupBookings(bookings.filter(b =>
+    b.email !== 'reserve@hold.internal' &&
+    isDigitalPayment(b.paymentMethod) &&
+    Boolean(String(b.receiptImageUrl || '').trim())
+  ))
     .map(b => ({
       type: 'booking',
       id: b.primaryRef || b.ref,
@@ -6248,9 +6256,13 @@ function paymentReviewDecisionState(b, { imageAvailable = Boolean(b?.receiptImag
     return { actionable: false, reason: 'This booking is not awaiting review for a digital payment.' };
   }
   if (!String(b.receiptImageUrl || '').trim() || !imageAvailable) {
+    const uploadStillActive = String(b.status || '').toLowerCase() === 'verifying'
+      && String(b.receiptStatus || 'none').toLowerCase() === 'none';
     return {
       actionable: false,
-      reason: 'Review actions are disabled because no receipt image is attached or the image could not be loaded. Ask the player to provide proof; do not confirm from a reference number alone.',
+      reason: uploadStillActive
+        ? 'The guest has not completed the receipt upload yet. This is a temporary 15-minute slot hold, not a submitted payment. It will be released automatically if the upload is not completed.'
+        : 'Review actions are disabled because the stored receipt image could not be loaded. Ask the player to provide proof; do not confirm from a reference number alone.',
     };
   }
 
@@ -12646,7 +12658,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260810-admin-route-v1"></script>
+<script src="supabase-config.js?v=20260813-receipt-stage-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
