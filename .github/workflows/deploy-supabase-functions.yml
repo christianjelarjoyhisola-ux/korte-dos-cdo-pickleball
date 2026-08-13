@@ -17,6 +17,7 @@ on:
           - manage-payment-review-notification
           - process-payment-review-notifications
           - review-payment-receipt
+          - manual-payment-restoration
           - all
 
 permissions:
@@ -34,6 +35,8 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MANUAL_RESTORE_MIGRATION: supabase/migrations/20260813043000_restore_cancelled_manual_payment.sql
+      MANUAL_RESTORE_SHA256: bd0e020c763699451de90244a08fa86c9bd4de0c6a62acf1106d732d1f63c42f
     steps:
       - uses: actions/checkout@v5
         with:
@@ -66,7 +69,9 @@ jobs:
           )
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ inputs.function }}" == "all" ]]; then
+            if [[ "${{ inputs.function }}" == "manual-payment-restoration" ]]; then
+              selected=(review-payment-receipt)
+            elif [[ "${{ inputs.function }}" == "all" ]]; then
               selected=("${all_functions[@]}")
             else
               selected=("${{ inputs.function }}")
@@ -127,6 +132,56 @@ jobs:
           names="${selected[*]}"
           echo "Deploying: $names"
           echo "names=$names" >> "$GITHUB_OUTPUT"
+
+      - name: Apply manual payment restoration migration
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.function == 'manual-payment-restoration' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MANUAL_RESTORE_MIGRATION"
+          printf '%s  %s\n' "$MANUAL_RESTORE_SHA256" "$MANUAL_RESTORE_MIGRATION" |
+            sha256sum --check --strict -
+
+          history_sql="
+            create schema if not exists supabase_migrations;
+            create table if not exists supabase_migrations.schema_migrations (
+              version text not null primary key
+            );
+            alter table supabase_migrations.schema_migrations
+              add column if not exists statements text[];
+            alter table supabase_migrations.schema_migrations
+              add column if not exists name text;
+            insert into supabase_migrations.schema_migrations (version, name, statements)
+            values (
+              '20260813043000',
+              'restore_cancelled_manual_payment',
+              array['sha256:$MANUAL_RESTORE_SHA256']::text[]
+            )
+            on conflict (version) do update
+            set name = excluded.name,
+                statements = excluded.statements;
+          "
+          payload_file="$RUNNER_TEMP/manual-payment-restoration.json"
+          response_file="$RUNNER_TEMP/manual-payment-restoration-response.json"
+          jq -Rs --arg history "$history_sql" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$MANUAL_RESTORE_MIGRATION" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Manual payment restoration migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
 
       - name: Deploy Edge Functions
         if: steps.functions.outputs.names != ''
