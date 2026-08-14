@@ -88,6 +88,36 @@ Deno.test("host booking still permits full payment when stored that way", () => 
   assertEquals(amounts.due, 840, "host full payment");
 });
 
+Deno.test("host voucher reduces the court charge while keeping the full booking fee", () => {
+  const amounts = calculateCourtPayment({
+    ...base,
+    storedTotal: 740,
+    storedDownpayment: 215,
+    voucherDiscountAmount: 100,
+    bookingFeeSnapshot: 40,
+    hostBooking: true,
+  });
+  assertEquals(amounts.courtTotal, 700, "discounted host court total");
+  assertEquals(amounts.serviceFee, 40, "protected host booking fee");
+  assertEquals(amounts.total, 740, "net host booking total");
+  assertEquals(amounts.due, 215, "fee plus 25% of discounted court charge");
+});
+
+Deno.test("a full court voucher still leaves the host booking fee due", () => {
+  const amounts = calculateCourtPayment({
+    ...base,
+    storedTotal: 40,
+    storedDownpayment: 40,
+    voucherDiscountAmount: 800,
+    bookingFeeSnapshot: 40,
+    hostBooking: true,
+  });
+  assertEquals(amounts.courtTotal, 0, "fully discounted court total");
+  assertEquals(amounts.serviceFee, 40, "booking fee remains payable");
+  assertEquals(amounts.total, 40, "only the booking fee remains");
+  assertEquals(amounts.due, 40, "host must still pay the booking fee");
+});
+
 Deno.test("booking fee aliases are treated as one flat fee", () => {
   const amounts = calculateCourtPayment({
     ...base,

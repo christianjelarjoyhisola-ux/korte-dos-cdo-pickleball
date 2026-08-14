@@ -6,6 +6,9 @@
   const el = id => document.getElementById(id);
   const refs = () => typeof reservedRefs === 'function' ? reservedRefs() : [];
   const items = () => typeof activeBookingItems === 'function' ? activeBookingItems() : [];
+  const requestOptions = () => ({
+    asHost: typeof isVerifiedHostBooking === 'function' && isVerifiedHostBooking(),
+  });
   const php = value => typeof fmt === 'function' ? fmt(value) : `₱${Number(value || 0).toFixed(2)}`;
 
   function status(message = '', type = '') {
@@ -70,15 +73,11 @@
       if (busy) return;
       const code = (el('bVoucherCode')?.value || '').trim().toUpperCase();
       if (!code) { status('Enter a voucher code first.', 'err'); el('bVoucherCode')?.focus(); return; }
-      if (typeof isVerifiedHostBooking === 'function' && isVerifiedHostBooking()) {
-        status('Vouchers are currently available for regular court bookings only.', 'err');
-        return;
-      }
       const bookingRefs = refs();
       if (!bookingRefs.length) { status('Select and reserve your court slots first.', 'err'); return; }
       busy = true; status('Checking this voucher…'); refresh();
       try {
-        const result = await DB.applyBookingVoucher(code, bookingRefs);
+        const result = await DB.applyBookingVoucher(code, bookingRefs, requestOptions());
         applied = result;
         applyAllocations(result);
         status(`${result.code} applied — ${php(result.discountAmount)} off the court fee.`, 'ok');
@@ -91,7 +90,7 @@
       busy = true; refresh();
       try {
         const bookingRefs = refs();
-        if (bookingRefs.length) await DB.removeBookingVoucher(bookingRefs);
+        if (bookingRefs.length) await DB.removeBookingVoucher(bookingRefs, requestOptions());
         restoreItems();
         applied = null;
         if (el('bVoucherCode')) el('bVoucherCode').value = '';
@@ -103,7 +102,7 @@
     },
     async finalize(customerEmail) {
       if (!applied) return;
-      await DB.finalizeBookingVoucher(refs(), customerEmail);
+      await DB.finalizeBookingVoucher(refs(), customerEmail, requestOptions());
     },
     hydrate(list = items()) {
       const first = list.find(item => item.voucherCode || item.voucherDiscountAmount > 0);

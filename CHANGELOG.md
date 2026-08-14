@@ -6,6 +6,21 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-08-14] - Vouchers for Every Court Booking Role
+
+### Changed
+- **Guest, host, and administrator redemption** - court vouchers can now be applied throughout the public court-booking flow, including authenticated host holds.
+- **Court-fee-only discounts** - voucher eligibility, checkout totals, and receipt verification subtract discounts only from the court charge while preserving the complete platform booking fee.
+- **Host payment calculation** - host reservation payments now equal the full booking fee plus 25% of the discounted court charge, with full-payment support unchanged.
+- **Clear host summaries** - host checkout shows the gross court fee, voucher deduction, unchanged booking fee, net total, due today, and remaining balance separately.
+
+### Security
+- **Owned host holds only** - applying, removing, and finalizing a host voucher requires an authenticated active host and verifies both booking ownership fields against the signed-in user.
+
+**Files affected:** `voucher-booking.js`, `index.html`, `supabase-config.js`, `supabase/functions/_shared/booking-payment.ts`, `supabase/migrations/20260814154500_vouchers_for_all_booking_roles.sql`, voucher and payment regression tests
+
+---
+
 ## [2026-07-25] - Current BDO Pay Reference Support
 
 ### Fixed

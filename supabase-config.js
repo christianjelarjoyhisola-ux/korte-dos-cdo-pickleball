@@ -1148,8 +1148,9 @@ window.DB = {
     return data || [];
   },
 
-  async applyBookingVoucher(code, bookingRefs) {
-    const { data, error } = await _publicBookingSb.rpc('apply_booking_voucher', {
+  async applyBookingVoucher(code, bookingRefs, options = {}) {
+    const client = options.asHost === true ? _sb : _publicBookingSb;
+    const { data, error } = await client.rpc('apply_booking_voucher', {
       p_code: String(code || '').trim().toUpperCase(),
       p_booking_refs: bookingRefs,
     });
@@ -1158,15 +1159,17 @@ window.DB = {
     return data;
   },
 
-  async removeBookingVoucher(bookingRefs) {
-    const { data, error } = await _publicBookingSb.rpc('remove_booking_voucher', { p_booking_refs: bookingRefs });
+  async removeBookingVoucher(bookingRefs, options = {}) {
+    const client = options.asHost === true ? _sb : _publicBookingSb;
+    const { data, error } = await client.rpc('remove_booking_voucher', { p_booking_refs: bookingRefs });
     if (error) throw error;
     _pbClearFastCache(['bookings', 'publicBookingSlots']);
     return data;
   },
 
-  async finalizeBookingVoucher(bookingRefs, customerEmail) {
-    const { error } = await _publicBookingSb.rpc('finalize_booking_voucher', {
+  async finalizeBookingVoucher(bookingRefs, customerEmail, options = {}) {
+    const client = options.asHost === true ? _sb : _publicBookingSb;
+    const { error } = await client.rpc('finalize_booking_voucher', {
       p_booking_refs: bookingRefs,
       p_customer_email: customerEmail,
     });
@@ -3172,7 +3175,9 @@ window.DB = {
       const flatFee = String(db.settings.fee_type || 'per_hour') === 'flat';
       const basis = selected.map(b => {
         const gross = Number(b.grossTotal ?? b.total ?? 0);
-        const fee = Math.min(gross, flatFee ? feeRate : feeRate * Number(b.duration || b.slots?.length || 0));
+        const snapshotFee = Number(b.bookingFeeAmountSnapshot ?? b.booking_fee_amount_snapshot);
+        const configuredFee = flatFee ? feeRate : feeRate * Number(b.duration || b.slots?.length || 0);
+        const fee = Math.min(gross, Number.isFinite(snapshotFee) && snapshotFee >= 0 ? snapshotFee : configuredFee);
         return { booking: b, gross, eligible: Math.max(0, gross - fee) };
       });
       const grossAmount = basis.reduce((sum, row) => sum + row.gross, 0);

@@ -129,18 +129,19 @@ export function calculateCourtPayment(
   if (voucherDiscount > 0 && !closeMoney(toNumber(input.storedTotal, -1), total)) {
     throw new Error("Stored voucher total does not match current pricing");
   }
+  const discountedCourtTotal = roundMoney(courtTotal - voucherDiscount);
   const storedDownpayment = toNumber(input.storedDownpayment, -1);
 
   if (input.hostBooking === true) {
     // Hosts pay a quarter of the court charges, but the booking/service fee is
     // always collected in full. This is deliberately not 25% of the total.
     // A host may still elect to pay the complete booking total.
-    const hostDue = roundMoney(courtTotal * 0.25 + serviceFee);
+    const hostDue = roundMoney(discountedCourtTotal * 0.25 + serviceFee);
     if (closeMoney(storedDownpayment, hostDue)) {
-      return { courtTotal, serviceFee, total, due: hostDue };
+      return { courtTotal: discountedCourtTotal, serviceFee, total, due: hostDue };
     }
     if (closeMoney(storedDownpayment, total)) {
-      return { courtTotal, serviceFee, total, due: total };
+      return { courtTotal: discountedCourtTotal, serviceFee, total, due: total };
     }
     throw new Error(
       "Stored host payment amount does not match current pricing",
@@ -148,7 +149,6 @@ export function calculateCourtPayment(
   }
 
   if (voucherDiscount > 0) {
-    const discountedCourtTotal = roundMoney(courtTotal - voucherDiscount);
     const partialDue = roundMoney(serviceFee + discountedCourtTotal * 0.50);
     const mode = String(input.paymentAcceptanceMode || "both");
     const due = mode === "full_payment_only"

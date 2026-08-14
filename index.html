@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="booking-balance.js?v=20260716-host-balance-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
-<script src="voucher-booking.js?v=20260810-v1"></script>
+<script src="voucher-booking.js?v=20260814-v2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
 <style>
@@ -4846,6 +4846,8 @@ function bookingItemsRateLabel(items = activeBookingItems()) {
 
 function hostBookingItemsSummaryHtml(items = uniqueBookingSelections(activeBookingItems())) {
   const courtFee = bookingItemsCourtFee(items);
+  const grossCourtFee = bookingItemsGrossCourtFee(items);
+  const voucherDiscount = window.BookingVoucher?.discount(items) || 0;
   const svcFee = bookingItemsServiceFee(items);
   const total = bookingItemsTotal(items);
   const dueToday = downpaymentAmount(total, courtFee, svcFee);
@@ -4856,8 +4858,9 @@ function hostBookingItemsSummaryHtml(items = uniqueBookingSelections(activeBooki
   return `
     <div class="host-summary-main">${esc(bookingItemsCourtLabel(items))}</div>
     <div class="host-summary-sub">${esc(dateStr)} | ${esc(timeStr)}</div>
-    <div class="host-summary-row"><span>Court fee</span><strong>${fmt(courtFee)}</strong></div>
+    <div class="host-summary-row"><span>Court fee</span><strong>${fmt(grossCourtFee)}</strong></div>
     ${svcFee > 0 ? `<div class="host-summary-row"><span>Booking fee</span><strong>${fmt(svcFee)}</strong></div>` : ''}
+    ${voucherDiscount > 0 ? `<div class="host-summary-row"><span>Voucher (${esc(window.BookingVoucher?.current()?.code || items.find(item => item.voucherCode)?.voucherCode || '')})</span><strong style="color:var(--lime-ink)">−${fmt(voucherDiscount)}</strong></div>` : ''}
     <div class="host-summary-row total"><span>Total</span><strong>${fmt(total)}</strong></div>
     <div class="host-summary-row due"><span>Due today</span><strong>${fmt(dueToday)}</strong></div>
     <div class="host-summary-note">Fee paid in full + 25% court</div>
@@ -10314,7 +10317,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260813-manual-restore-v1"></script>
+<script src="supabase-config.js?v=20260814-voucher-roles-v1"></script>
 
 <!-- MOBILE STICKY BOOK NOW BAR -->
 <div id="mobileBookBar" class="mobile-book-bar" style="display:none">

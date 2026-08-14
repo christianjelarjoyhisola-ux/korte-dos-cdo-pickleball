@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "node --test booking-balance.test.js booking-receipt-flow.test.js booking-write-routing.test.js host-bookings-read-routing.test.js private-data-surface.test.js open-play-rotation.test.js open-play-rating.test.js",
+    "test": "node --test booking-balance.test.js booking-receipt-flow.test.js booking-write-routing.test.js host-bookings-read-routing.test.js private-data-surface.test.js open-play-rotation.test.js open-play-rating.test.js voucher-role-eligibility.test.js",
     "check": "node --check open-play-rating.js && node --check play-manager.js && node --check player-live.js && node --check supabase-config.js"
   },
   "dependencies": {
