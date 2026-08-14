@@ -4583,7 +4583,7 @@ function currentBookingActorFields(){
   };
 }
 function bookingDetailsButton(b){
-  if (!(b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none'))) return '';
+  if (!String(b.receiptImageUrl || '').trim()) return '';
   if (!['gcash','bdopay','maya','bpi','maribank','gotyme','pnb'].includes(String(b.paymentMethod || '').toLowerCase())) return '';
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`;
 }
@@ -4784,7 +4784,7 @@ async function openBookingDetails(ref) {
       </div>
       ${b.hostBooking ? `<div class="booking-detail-section"><h3>Email history</h3><div class="booking-notice-list">${notices}</div></div>` : ''}`;
     const actionRef = b.primaryRef || b.ref;
-    const hasReceipt = (b.gcashRef || (b.receiptStatus && b.receiptStatus !== 'none')) && isDigitalPayment(b.paymentMethod);
+    const hasReceipt = Boolean(String(b.receiptImageUrl || '').trim()) && isDigitalPayment(b.paymentMethod);
     $('bookingDetailsActions').innerHTML = `
       <button class="btn btn-g" onclick="closeBookingDetails()">Close</button>
       ${hasReceipt ? `<button class="btn btn-g" onclick="closeBookingDetails();openVerifyModal('${jsArg(actionRef)}')">View Payment</button>` : ''}
@@ -5384,7 +5384,7 @@ async function renderBookings(){
       </div></td>
       <td data-label="Status">${statusBdg(b.status)}</td>
       <td data-label="Actions"><div style="display:flex;gap:5px;flex-wrap:wrap">${bookingActionsHtml(b, canDelete)}</div><div style="display:none">
-        ${(b.gcashRef || (b.receiptStatus && b.receiptStatus!=='none')) && isDigitalPayment(b.paymentMethod)?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
+        ${String(b.receiptImageUrl || '').trim() && isDigitalPayment(b.paymentMethod)?`<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openVerifyModal('${jsArg(b.ref)}')">🔍 ${b.status==='pending'?'Verify':'Details'}</button>`:''}
         ${b.status!=='cancelled'?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(b.ref)}')">📅 Reschedule</button>`:''}
         ${b.status==='confirmed' && b.email?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(b.ref)}')">📧 Resend Email</button>`:''}
         <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updateStatus('${jsArg(b.ref)}',this.value)">
@@ -5523,6 +5523,7 @@ function bookingReviewStatus(b) {
   }
   if (receipt === 'auto_approved') return 'auto_approved';
   if (['manual_review', 'rejected'].includes(receipt)) return 'manual_review';
+  if (booking === 'verifying' && !String(b.receiptImageUrl || '').trim()) return 'uploading';
   if (payment === 'for_verification' || ['pending', 'verifying'].includes(booking)) return 'manual_review';
   if (isDigitalPayment(b.paymentMethod)) return 'manual_review';
   return b.paymentStatus || 'unpaid';
@@ -5553,6 +5554,7 @@ function statusPill(status) {
     auto_approved: ['var(--green)', 'rgba(var(--green-rgb),.15)', 'Auto-verified'],
     paid: ['var(--green)', 'rgba(var(--green-rgb),.15)', 'Paid'],
     rejected: ['#e53935', 'rgba(229,57,53,.12)', 'Rejected'],
+    uploading: ['#5a9ad4', 'rgba(74,154,220,.12)', 'Receipt uploading'],
     unpaid: ['var(--muted)', 'var(--input)', 'Unpaid'],
   };
   const [c, bg, label] = map[status] || ['var(--muted)', 'var(--input)', status || 'Unknown'];
@@ -5621,7 +5623,13 @@ async function renderPaymentReview() {
     DB.getOpenPlayHostSessionRegistrations(),
     DB.getOpenPlayHostSessions(),
   ]);
-  const bookingItems = groupBookings(bookings.filter(b => b.email !== 'reserve@hold.internal' && isDigitalPayment(b.paymentMethod)))
+  // Payment Review contains stored evidence only. A verifying row without an
+  // image is still a temporary guest upload hold, not a reviewable payment.
+  const bookingItems = groupBookings(bookings.filter(b =>
+    b.email !== 'reserve@hold.internal' &&
+    isDigitalPayment(b.paymentMethod) &&
+    Boolean(String(b.receiptImageUrl || '').trim())
+  ))
     .map(b => ({
       type: 'booking',
       id: b.primaryRef || b.ref,
@@ -6242,29 +6250,45 @@ function isCurrentVerifyModalLoad(ref, token) {
 
 function paymentReviewDecisionState(b, { imageAvailable = Boolean(b?.receiptImageUrl) } = {}) {
   if (!Auth.can('payment_review', sess?.role)) {
-    return { actionable: false, reason: 'Your account can view this receipt but cannot approve or reject payments.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'Your account can view this receipt but cannot approve or reject payments.' };
   }
   if (!b || !isDigitalPayment(b.paymentMethod)) {
-    return { actionable: false, reason: 'This booking is not awaiting review for a digital payment.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'This booking is not awaiting review for a digital payment.' };
   }
+  const booking = String(b.status || '').toLowerCase();
+  const payment = String(b.paymentStatus || '').toLowerCase();
   if (!String(b.receiptImageUrl || '').trim() || !imageAvailable) {
+    const manualProviderConfirmation = booking === 'cancelled' && payment === 'rejected';
+    if (manualProviderConfirmation) {
+      return {
+        actionable: true,
+        canApprove: true,
+        canReject: false,
+        manualProviderConfirmation: true,
+        reason: 'No receipt image is stored. Because this booking was cancelled, you may restore it only after independently matching the reference, amount, recipient, and time in the payment provider history. The manual confirmation will be audited and will fail if the slot was taken.',
+      };
+    }
+    const uploadStillActive = String(b.status || '').toLowerCase() === 'verifying'
+      && String(b.receiptStatus || 'none').toLowerCase() === 'none';
     return {
       actionable: false,
-      reason: 'Review actions are disabled because no receipt image is attached or the image could not be loaded. Ask the player to provide proof; do not confirm from a reference number alone.',
+      canApprove: false,
+      canReject: false,
+      reason: uploadStillActive
+        ? 'The guest has not completed the receipt upload yet. This is a temporary 15-minute slot hold, not a submitted payment. It will be released automatically if the upload is not completed.'
+        : 'Review actions are disabled because the stored receipt image could not be loaded. Ask the player to provide proof; do not confirm from a reference number alone.',
     };
   }
 
-  const booking = String(b.status || '').toLowerCase();
-  const payment = String(b.paymentStatus || '').toLowerCase();
   if (['confirmed', 'completed', 'cancelled', 'forfeited'].includes(booking)
       || ['paid', 'downpayment_paid', 'deposit_retained', 'rejected'].includes(payment)) {
-    return { actionable: false, reason: 'This payment review has already been resolved. Approve and reject actions are disabled.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'This payment review has already been resolved. Approve and reject actions are disabled.' };
   }
 
   if (booking !== 'pending' || payment !== 'for_verification') {
-    return { actionable: false, reason: 'This booking is not currently awaiting manual payment review.' };
+    return { actionable: false, canApprove: false, canReject: false, reason: 'This booking is not currently awaiting manual payment review.' };
   }
-  return { actionable: true, reason: '' };
+  return { actionable: true, canApprove: true, canReject: true, manualProviderConfirmation: false, reason: '' };
 }
 
 function setVerifyModalActionState(b, { imageAvailable = Boolean(b?.receiptImageUrl), busy = false } = {}) {
@@ -6273,12 +6297,19 @@ function setVerifyModalActionState(b, { imageAvailable = Boolean(b?.receiptImage
   const confirmBtn = $('vmConfirmBtn');
   const warning = $('vmReceiptActionWarning');
   const state = paymentReviewDecisionState(b, { imageAvailable });
-  const disabled = busy || !state.actionable;
-  if (rejectBtn) rejectBtn.disabled = disabled;
-  if (confirmBtn) confirmBtn.disabled = disabled;
+  if (rejectBtn) rejectBtn.disabled = busy || !state.canReject;
+  if (confirmBtn) {
+    confirmBtn.disabled = busy || !state.canApprove;
+    if (!busy && !confirmBtn.dataset.idleLabel) {
+      confirmBtn.textContent = state.manualProviderConfirmation
+        ? '✅ Received in Provider — Restore'
+        : '✅ Received — Confirm';
+    }
+  }
   if (overlay) {
     overlay.dataset.imageAvailable = imageAvailable ? '1' : '0';
     overlay.dataset.actionable = state.actionable ? '1' : '0';
+    overlay.dataset.manualProviderConfirmation = state.manualProviderConfirmation ? '1' : '0';
     overlay.setAttribute('aria-busy', busy ? 'true' : 'false');
   }
   if (warning) {
@@ -6369,6 +6400,7 @@ function closeVerifyModal({ restoreFocus = true } = {}) {
   delete overlay.dataset.loadToken;
   delete overlay.dataset.imageAvailable;
   delete overlay.dataset.actionable;
+  delete overlay.dataset.manualProviderConfirmation;
   setVerifyModalActionBusy(false);
   overlay.removeAttribute('aria-busy');
   if ($('vmRejectBtn')) $('vmRejectBtn').disabled = true;
@@ -6504,26 +6536,49 @@ async function verifyAndConfirm() {
     if (!isCurrent()) return;
     const imageAvailable = $('verifyModal').dataset.imageAvailable === '1';
     const state = setVerifyModalActionState(bkForPay, { imageAvailable });
-    if (!state.actionable) {
+    if (!state.canApprove) {
       toast(state.reason || 'This payment cannot be approved.', 'err');
       return;
     }
     const displayRef = bkForPay.displayRef || bkForPay.primaryRef || ref;
-    if (!confirm(`Mark the payment for booking ${displayRef} as received and confirm the booking?`)) return;
+    let manualReason = '';
+    if (state.manualProviderConfirmation) {
+      manualReason = String(prompt(
+        `Booking ${displayRef} was cancelled and has no receipt image.\n\nEnter an audit note describing how you matched the transaction in the payment provider history:`,
+        `Matched ${paymentMethodLabel(bkForPay.paymentMethod)} transaction reference, amount, recipient, and time.`
+      ) || '').trim();
+      if (manualReason.length < 10) {
+        toast('Enter an audit note of at least 10 characters.', 'err');
+        return;
+      }
+      if (!confirm(`Restore and confirm booking ${displayRef}?\n\nThis records the payment as manually verified in the provider history. The restoration will fail if another booking now occupies the slot.`)) return;
+    } else if (!confirm(`Mark the payment for booking ${displayRef} as received and confirm the booking?`)) return;
     if (!isCurrent()) return;
 
-    setVerifyModalActionBusy(true, 'Approving...', 'vmConfirmBtn');
-    const result = await DB.reviewPaymentReceipt(ref, 'approve');
+    setVerifyModalActionBusy(true, state.manualProviderConfirmation ? 'Restoring...' : 'Approving...', 'vmConfirmBtn');
+    const result = await DB.reviewPaymentReceipt(ref, 'approve', manualReason, {
+      manualProviderConfirmation: state.manualProviderConfirmation,
+    });
     if (!result?.ok) throw new Error(result?.error || 'The payment could not be approved.');
     if (isCurrent()) closeVerifyModal();
-    toast(result.alreadyApplied ? 'This payment was already approved.' : 'Payment verified and booking confirmed!');
+    toast(result.alreadyApplied
+      ? 'This payment was already approved.'
+      : result.manualProviderConfirmation
+      ? 'Payment manually verified — cancelled booking restored and confirmed!'
+      : 'Payment verified and booking confirmed!');
     await refreshPaymentReviewSurfaces();
 
     if (!result.alreadyApplied) Promise.resolve(getBookingGroupByRef(ref)).then(async bk => {
       if (!bk) return;
       await Promise.all([
         sendBookingConfirmationNotice(bk),
-        notifyBookingUpdateSafe(bk, 'payment_verified', 'Payment marked received by admin.'),
+        notifyBookingUpdateSafe(
+          bk,
+          'payment_verified',
+          result.manualProviderConfirmation
+            ? `Payment manually matched in provider history by admin. Audit note: ${manualReason}`
+            : 'Payment marked received by admin.'
+        ),
       ]);
     }).catch(() => {});
   } catch(e) {
@@ -12646,7 +12701,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260810-admin-route-v1"></script>
+<script src="supabase-config.js?v=20260813-manual-restore-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>

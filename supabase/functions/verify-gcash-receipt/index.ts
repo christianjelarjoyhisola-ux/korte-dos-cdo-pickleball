@@ -2491,6 +2491,69 @@ Deno.serve(async (req) => {
     return await persistHostSessionRegistration(db, body.registration);
   }
 
+  // Store a court-booking receipt as soon as the customer selects it. This is
+  // only a private storage checkpoint: booking/payment state and owner alerts
+  // remain unchanged until Continue runs the normal verification path.
+  if (action === "stage") {
+    const bookingRef = String(body.bookingRef || "").trim().toUpperCase();
+    if (!/^PB-[A-Z0-9]+-[A-Z0-9]+$/.test(bookingRef)) {
+      return json({ error: "A valid court-booking reference is required" }, 400);
+    }
+    const { data: activeHold, error: holdError } = await db.from("bookings")
+      .select("ref,status,created_at,receipt_image_url")
+      .eq("ref", bookingRef)
+      .in("status", ["verifying", "pending"])
+      .gt("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString())
+      .maybeSingle();
+    if (holdError) return json({ error: "Booking hold could not be loaded" }, 500);
+    if (!activeHold || activeHold.receipt_image_url) {
+      return json({ error: "This booking hold expired or already has a receipt" }, 409);
+    }
+
+    const imageBase64 = String(body.imageBase64 || "");
+    if (!uploadedImage && !imageBase64) {
+      return json({ error: "receipt file or imageBase64 required" }, 400);
+    }
+    const bytes = uploadedImage
+      ? new Uint8Array(await uploadedImage.arrayBuffer())
+      : base64ToBytes(imageBase64);
+    if (!bytes.length) return json({ error: "Empty image" }, 400);
+    if (bytes.length > MAX_BYTES) {
+      return json({ error: "Image too large after compression (max 5 MB)" }, 400);
+    }
+    const rawType = String(uploadedImage?.type || body.contentType || "image/jpeg")
+      .toLowerCase().split(";", 1)[0].trim();
+    const contentType = rawType === "image/jpg" ? "image/jpeg" : rawType;
+    if (!["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(contentType)) {
+      return json({ error: "Unsupported receipt image type" }, 415);
+    }
+    const imageHash = await sha256Hex(bytes);
+    const extension = contentType.includes("png")
+      ? "png"
+      : contentType.includes("webp")
+      ? "webp"
+      : contentType.includes("heic") || contentType.includes("heif")
+      ? "heic"
+      : "jpg";
+    const objectPath = `${bookingRef}/${imageHash}.${extension}`;
+    const { error: uploadError } = await db.storage.from("receipts").upload(
+      objectPath,
+      bytes,
+      { contentType, upsert: true },
+    );
+    if (uploadError) {
+      console.error("receipt staging failed:", errMsg(uploadError));
+      return json({ error: "Receipt image could not be uploaded. Please try again." }, 500);
+    }
+    return json({
+      ok: true,
+      stagedReceiptPath: objectPath,
+      receiptImageHash: imageHash,
+      contentType,
+      size: bytes.length,
+    });
+  }
+
   // ── admin-only: mint a signed URL to view a stored receipt ────────────────
   if (action === "sign") {
     const bookingRef = String(body.bookingRef || "");
@@ -2579,13 +2642,34 @@ Deno.serve(async (req) => {
         ? body.bookingData as Record<string, unknown>
         : null;
     if (!bookingRef) return json({ error: "bookingRef required" }, 400);
-    if (!imageBase64 && !uploadedImage) {
-      return json({ error: "receipt file or imageBase64 required" }, 400);
+    const stagedReceiptPath = String(body.stagedReceiptPath || "").trim();
+    let bytes: Uint8Array;
+    if (uploadedImage) {
+      bytes = new Uint8Array(await uploadedImage.arrayBuffer());
+    } else if (imageBase64) {
+      bytes = base64ToBytes(imageBase64);
+    } else if (stagedReceiptPath) {
+      const pathParts = stagedReceiptPath.split("/");
+      if (
+        pathParts.length !== 2 ||
+        pathParts[0] !== bookingRef ||
+        !/^[a-f0-9]{64}\.(jpg|png|webp|heic)$/i.test(pathParts[1])
+      ) {
+        return json({ error: "Staged receipt path is invalid" }, 400);
+      }
+      const { data: stagedImage, error: stagedError } = await db.storage
+        .from("receipts").download(stagedReceiptPath);
+      if (stagedError || !stagedImage) {
+        return json({
+          error: "Uploaded receipt could not be loaded. Please upload it again.",
+        }, 404);
+      }
+      bytes = new Uint8Array(await stagedImage.arrayBuffer());
+    } else {
+      return json({
+        error: "receipt file, staged receipt, or imageBase64 required",
+      }, 400);
     }
-
-    const bytes = uploadedImage
-      ? new Uint8Array(await uploadedImage.arrayBuffer())
-      : base64ToBytes(imageBase64);
     if (bytes.length === 0) return json({ error: "Empty image" }, 400);
     if (bytes.length > MAX_BYTES) {
       return json({ error: "Image too large (max 5 MB)" }, 400);
@@ -2940,20 +3024,26 @@ Deno.serve(async (req) => {
       ? "heic"
       : "jpg";
     const objectPath = `${bookingRef}/${imageHash}.${ext}`;
+    if (stagedReceiptPath && stagedReceiptPath !== objectPath) {
+      return json({ error: "Uploaded receipt checkpoint does not match the image" }, 409);
+    }
     console.log("receipt checkpoint: storing", {
       bookingRef,
       bytes: bytes.length,
       contentType,
+      staged: Boolean(stagedReceiptPath),
     });
-    const { error: upErr } = await db.storage.from("receipts").upload(
-      objectPath,
-      bytes,
-      {
-        contentType,
-        // The hash-derived path makes a customer retry idempotent.
-        upsert: true,
-      },
-    );
+    const upErr = stagedReceiptPath
+      ? null
+      : (await db.storage.from("receipts").upload(
+        objectPath,
+        bytes,
+        {
+          contentType,
+          // The hash-derived path makes a customer retry idempotent.
+          upsert: true,
+        },
+      )).error;
     if (upErr) {
       console.error("receipt upload failed:", errMsg(upErr));
       return json({

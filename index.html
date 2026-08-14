@@ -4251,7 +4251,9 @@ function onHostSessionReceiptPicked(e) {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   if (!f.type.startsWith('image/')) { toast('Please choose an image file.', 'err'); e.target.value = ''; return; }
-  if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'err'); e.target.value = ''; return; }
+  // Large phone PNG screenshots are compressed before upload. Keep a generous
+  // raw-file ceiling so they can reach that preparation step.
+  if (f.size > 20 * 1024 * 1024) { toast('Image too large (max 20 MB before compression).', 'err'); e.target.value = ''; return; }
   _hostSessionReceiptFile = f;
   syncHostSessionReceiptPreview();
 }
@@ -7749,13 +7751,12 @@ async function submitBookingLegacy(e) {
     }
     bookingSaved = true;
 
-    // Notify owner via Telegram (fire-and-forget; never blocks booking flow).
-    DB.notifyBookingSubmitted(booking).catch(() => {});
-
     // ── Run OCR against the saved booking ────────────────────────────────
     if (digitalPay) {
       try {
-        if (submitBtn) submitBtn.textContent = 'Uploading receipt...';
+        if (submitBtn) submitBtn.textContent = _receiptUploadState?.status === 'uploaded'
+          ? 'Verifying payment...'
+          : 'Uploading receipt...';
         booking._receiptResult = await verifyUploadedReceipt(
           booking.ref,
           payMethod,
@@ -7791,6 +7792,11 @@ async function submitBookingLegacy(e) {
         onCardDate(booking.courtId, booking.date).catch(() => {});
       }
     }
+
+    // A digital booking is not submitted until its receipt is durably stored.
+    // Sending this before verification exposed an active upload hold to the
+    // owner as if it were ready for payment review.
+    DB.notifyBookingSubmitted(booking).catch(() => {});
 
     if (gcashNeedsCheckout) {
       try {
@@ -8016,11 +8022,11 @@ async function submitBooking(e) {
     saveGuestBookingResume();
     bookingSaved = true;
 
-    DB.notifyBookingSubmitted(booking).catch(() => {});
-
     if (digitalPay) {
       try {
-        if (submitBtn) submitBtn.textContent = 'Uploading receipt...';
+        if (submitBtn) submitBtn.textContent = _receiptUploadState?.status === 'uploaded'
+          ? 'Verifying payment...'
+          : 'Uploading receipt...';
         booking._receiptResult = await verifyUploadedReceipt(
           booking.ref,
           payMethod,
@@ -8057,6 +8063,10 @@ async function submitBooking(e) {
       }
     }
 
+    // Notify only after digital receipt storage succeeds. Cash bookings have
+    // no receipt checkpoint, so reaching this point is sufficient for them.
+    DB.notifyBookingSubmitted(booking).catch(() => {});
+
     showInvoice(booking);
     resetForm();
     toast('Booking submitted successfully!');
@@ -8076,6 +8086,92 @@ async function submitBooking(e) {
    RECEIPT UPLOAD + AUTO-VERIFICATION
    ============================================= */
 let _receiptFile = null;
+let _receiptUploadState = null;
+let _receiptUploadSequence = 0;
+
+function setBookingReceiptUploadMessage(kind, message) {
+  const st = $('bReceiptStatus');
+  if (!st) return;
+  const styles = {
+    uploading: ['rgba(74,154,220,.1)', '#4a9adc'],
+    uploaded: ['rgba(34,197,94,.12)', '#16a34a'],
+    failed: ['rgba(229,57,53,.1)', '#e53935'],
+  };
+  const [background, color] = styles[kind] || styles.uploading;
+  st.style.display = '';
+  st.style.background = background;
+  st.style.color = color;
+  st.textContent = message;
+}
+
+function setBookingReceiptContinueState(kind) {
+  const button = $('wizNextBtn');
+  if (!button || wizStep !== 5 || _bookingSubmissionInFlight) return;
+  button.disabled = kind === 'uploading';
+  button.textContent = kind === 'uploading'
+    ? 'Uploading receipt...'
+    : kind === 'uploaded'
+    ? 'Continue — Verify Payment'
+    : 'Confirm Booking';
+}
+
+function beginAutomaticReceiptUpload(file = _receiptFile) {
+  const bookingRef = _reservedRef;
+  const paymentMethod = $('bPay')?.value || 'gcash';
+  if (!file || !bookingRef || typeof DB.stageBookingReceipt !== 'function') {
+    _receiptUploadState = null;
+    setBookingReceiptContinueState('ready');
+    return Promise.resolve(null);
+  }
+
+  const sequence = ++_receiptUploadSequence;
+  setBookingReceiptUploadMessage('uploading', 'Uploading receipt... Please wait.');
+  setBookingReceiptContinueState('uploading');
+  const promise = DB.stageBookingReceipt({
+    bookingRef,
+    provider: paymentMethod,
+    imageFile: file,
+    contentType: file.type || 'image/jpeg',
+  }).then(result => {
+    if (sequence !== _receiptUploadSequence || file !== _receiptFile) return null;
+    if (!result?.stagedReceiptPath) throw new Error('Receipt upload did not finish.');
+    _receiptUploadState = {
+      sequence,
+      file,
+      bookingRef,
+      paymentMethod,
+      status: 'uploaded',
+      result,
+      promise: Promise.resolve(result),
+    };
+    setBookingReceiptUploadMessage('uploaded', '✓ Upload complete. Tap Continue to verify your payment.');
+    setBookingReceiptContinueState('uploaded');
+    return result;
+  }).catch(error => {
+    if (sequence !== _receiptUploadSequence || file !== _receiptFile) return null;
+    _receiptUploadState = {
+      sequence,
+      file,
+      bookingRef,
+      paymentMethod,
+      status: 'failed',
+      error,
+      promise: Promise.resolve(null),
+    };
+    setBookingReceiptUploadMessage('failed', `Upload failed: ${extractErrMsg(error)} Remove the image and try again.`);
+    setBookingReceiptContinueState('failed');
+    return null;
+  });
+  _receiptUploadState = {
+    sequence,
+    file,
+    bookingRef,
+    paymentMethod,
+    status: 'uploading',
+    promise,
+  };
+  return promise;
+}
 
 function keepReceiptUploadForRetry(message = 'Receipt upload was not completed. Please attach the screenshot and try again.') {
   const st = $('bReceiptStatus');
@@ -8118,7 +8214,9 @@ function onReceiptPicked(e) {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   if (!f.type.startsWith('image/')) { toast('Please choose an image file.', 'err'); e.target.value = ''; return; }
-  if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'err'); e.target.value = ''; return; }
+  // Large phone PNG screenshots are compressed before upload. Keep a generous
+  // raw-file ceiling so they can reach that preparation step.
+  if (f.size > 20 * 1024 * 1024) { toast('Image too large (max 20 MB before compression).', 'err'); e.target.value = ''; return; }
   _receiptFile = f;
   const prev = $('bReceiptPreview'); if (prev) prev.src = URL.createObjectURL(f);
   if ($('bReceiptName')) $('bReceiptName').textContent = f.name;
@@ -8128,6 +8226,7 @@ function onReceiptPicked(e) {
     clearBookingInvalid(drop);
     drop.style.display = 'none';
   }
+  beginAutomaticReceiptUpload(f);
 }
 
 function clearReceipt(options = {}) {
@@ -8136,10 +8235,13 @@ function clearReceipt(options = {}) {
     return false;
   }
   _receiptFile = null;
+  _receiptUploadSequence += 1;
+  _receiptUploadState = null;
   if ($('bReceiptImg')) $('bReceiptImg').value = '';
   if ($('bReceiptPreviewWrap')) $('bReceiptPreviewWrap').style.display = 'none';
   const drop = $('bReceiptDrop'); if (drop) drop.style.display = '';
   const st = $('bReceiptStatus'); if (st) st.style.display = 'none';
+  setBookingReceiptContinueState('ready');
   return true;
 }
 
@@ -8153,11 +8255,23 @@ async function verifyUploadedReceipt(
   if (st) { st.style.display = ''; st.style.background = 'rgba(74,154,220,.1)'; st.style.color = '#4b5563'; st.textContent = '🔎 Verifying your receipt…'; }
   try {
     if (!receiptFile) throw new Error('Receipt screenshot is required.');
+    const staged = _receiptUploadState?.file === receiptFile &&
+        _receiptUploadState?.bookingRef === bookingRef &&
+        _receiptUploadState?.status === 'uploaded'
+      ? _receiptUploadState.result
+      : null;
     const payload = {
       bookingRef,
       provider: method,
-      imageFile: receiptFile,
-      contentType: receiptFile.type || 'image/jpeg',
+      ...(staged?.stagedReceiptPath
+        ? {
+            stagedReceiptPath: staged.stagedReceiptPath,
+            contentType: staged.contentType || receiptFile.type || 'image/jpeg',
+          }
+        : {
+            imageFile: receiptFile,
+            contentType: receiptFile.type || 'image/jpeg',
+          }),
     };
     if (inlineData) payload.bookingData = inlineData;
     const res = await DB.verifyGcashReceipt(payload);
@@ -9861,7 +9975,9 @@ function onOpReceiptPicked(e) {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   if (!f.type.startsWith('image/')) { toast('Please choose an image file.', 'err'); e.target.value = ''; return; }
-  if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'err'); e.target.value = ''; return; }
+  // Large phone PNG screenshots are compressed before upload. Keep a generous
+  // raw-file ceiling so they can reach that preparation step.
+  if (f.size > 20 * 1024 * 1024) { toast('Image too large (max 20 MB before compression).', 'err'); e.target.value = ''; return; }
   _opReceiptFile = f;
   _openPlayReceiptAttestationCache = null;
   syncOpReceiptPreview();
@@ -10198,7 +10314,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260811-host-bookings-cache-v2"></script>
+<script src="supabase-config.js?v=20260813-manual-restore-v1"></script>
 
 <!-- MOBILE STICKY BOOK NOW BAR -->
 <div id="mobileBookBar" class="mobile-book-bar" style="display:none">

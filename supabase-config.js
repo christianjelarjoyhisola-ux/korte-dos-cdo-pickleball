@@ -8,6 +8,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const PB_REQUEST_TIMEOUT_MS = 45000;
 const PB_RECEIPT_TIMEOUT_MS = 90000;
+const _pbLocalStagedReceipts = new Map();
 
 function normalizeOpenPlaySkillLevel(value, fallback = 1) {
   const level = Number(value);
@@ -275,7 +276,7 @@ async function _pbPrepareReceiptImage(file) {
 async function _pbVerifyReceiptBase64Fallback(fnUrl, payload, imageFile) {
   const imageBase64 = await _pbFileToDataUrl(imageFile);
   const fallbackPayload = {
-    action: 'verify',
+    action: String(payload?.action || 'verify'),
     bookingRef: String(payload?.bookingRef || ''),
     provider: String(payload?.provider || 'gcash'),
     contentType: imageFile?.type || payload?.contentType || 'image/jpeg',
@@ -2272,7 +2273,7 @@ window.DB = {
     return this.sendTelegramNotification(_telegramBookingPayload(booking, { type: 'booking_update', event, note }), { allowFailure: true });
   },
 
-  async reviewPaymentReceipt(bookingRef, decision, reason = '') {
+  async reviewPaymentReceipt(bookingRef, decision, reason = '', options = {}) {
     const normalizedDecision = String(decision || '').trim().toLowerCase();
     if (!['approve', 'reject'].includes(normalizedDecision)) {
       throw new Error('Choose a valid payment-review decision.');
@@ -2281,6 +2282,7 @@ window.DB = {
       bookingRef: String(bookingRef || '').trim(),
       decision: normalizedDecision,
       reason: String(reason || '').trim(),
+      manualProviderConfirmation: options?.manualProviderConfirmation === true,
     });
     if (result?.ok) _pbClearFastCache(['bookings']);
     return result;
@@ -2333,6 +2335,52 @@ window.DB = {
     return _invokeEdgeFunction('integration-status', { action: 'status' }, { allowFailure: true });
   },
 
+  // Upload the selected court-booking receipt immediately. Verification and
+  // booking state changes remain separate until Continue is pressed.
+  async stageBookingReceipt(payload) {
+    if (!payload?.imageFile) throw new Error('Receipt screenshot is required.');
+    const fnUrl = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-gcash-receipt`;
+    const imageFile = await _pbPrepareReceiptImage(payload.imageFile);
+    const stagePayload = { ...payload, action: 'stage' };
+    const form = new FormData();
+    form.append('action', 'stage');
+    form.append('bookingRef', String(payload.bookingRef || ''));
+    form.append('contentType', imageFile.type || payload.contentType || 'image/jpeg');
+    try {
+      form.append('receipt', imageFile, imageFile.name || 'receipt.jpg');
+    } catch (_) {
+      return _pbVerifyReceiptBase64Fallback(fnUrl, stagePayload, imageFile);
+    }
+
+    let res;
+    try {
+      res = await _pbFetchWithTimeout(fnUrl, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: form,
+      }, PB_RECEIPT_TIMEOUT_MS);
+    } catch (transportError) {
+      if (/timed out/i.test(String(transportError?.message || ''))) throw transportError;
+      return _pbVerifyReceiptBase64Fallback(fnUrl, stagePayload, imageFile);
+    }
+    const txt = await res.text();
+    const json = _safeJsonParse(txt);
+    if (!res.ok) {
+      const reason = String(json?.error || txt || `HTTP ${res.status}`);
+      const missingMultipartImage = [400, 415, 422].includes(res.status) &&
+        /receipt file|multipart body|empty image/i.test(reason);
+      if (missingMultipartImage) {
+        return _pbVerifyReceiptBase64Fallback(fnUrl, stagePayload, imageFile);
+      }
+      throw new Error(reason);
+    }
+    if (!json?.stagedReceiptPath) throw new Error('Receipt upload did not return a storage checkpoint.');
+    return json;
+  },
+
   // Verify an uploaded GCash/GoTyme/PNB receipt image via the Edge Function.
   // payload: { bookingRef, provider, imageFile, contentType }.
   // imageBase64 remains supported for older deployed clients.
@@ -2357,14 +2405,25 @@ window.DB = {
         return _pbVerifyReceiptBase64Fallback(fnUrl, payload, imageFile);
       }
 
-      const res = await _pbFetchWithTimeout(fnUrl, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: form,
-      }, PB_RECEIPT_TIMEOUT_MS);
+      let res;
+      try {
+        res = await _pbFetchWithTimeout(fnUrl, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: form,
+        }, PB_RECEIPT_TIMEOUT_MS);
+      } catch (transportError) {
+        // Some iPhone and embedded browsers preview a PNG correctly but fail
+        // while bridging that File into a multipart request. Retry immediate
+        // transport failures as Base64. Do not retry a 90-second timeout: the
+        // server may already be processing it, and the caller will recover the
+        // durable receipt checkpoint from the booking row instead.
+        if (/timed out/i.test(String(transportError?.message || ''))) throw transportError;
+        return _pbVerifyReceiptBase64Fallback(fnUrl, payload, imageFile);
+      }
       const txt = await res.text();
       const json = _safeJsonParse(txt);
       if (!res.ok) {
@@ -4097,9 +4156,10 @@ window.DB = {
     async sendTelegramNotification() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingSubmitted() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingUpdate() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
-    async reviewPaymentReceipt(bookingRef, decision, reason = '') {
+    async reviewPaymentReceipt(bookingRef, decision, reason = '', options = {}) {
       const normalizedDecision = String(decision || '').trim().toLowerCase();
       const normalizedReason = String(reason || '').trim();
+      const manualProviderConfirmation = options?.manualProviderConfirmation === true;
       if (!['approve', 'reject'].includes(normalizedDecision)) throw new Error('Choose a valid payment-review decision.');
       if (normalizedDecision === 'reject' && normalizedReason.length < 3) {
         throw new Error('Enter a rejection reason of at least 3 characters.');
@@ -4113,6 +4173,39 @@ window.DB = {
       const rows = primary.groupRef
         ? db.bookings.filter(b => String(b.groupRef || '') === String(primary.groupRef))
         : [primary];
+      if (manualProviderConfirmation) {
+        if (normalizedDecision !== 'approve' || normalizedReason.length < 10) {
+          throw new Error('Describe how the payment was matched in the provider history.');
+        }
+        if (rows.some(b => b.status !== 'cancelled' || b.paymentStatus !== 'rejected')) {
+          throw new Error('This booking is no longer cancelled with payment rejected.');
+        }
+        const total = rows.reduce((sum, b) => sum + Number(b.total || 0), 0);
+        const collected = rows.reduce((sum, b) => sum + Number(b.downpayment || 0), 0);
+        const paymentStatus = collected >= total - 0.01 ? 'paid' : 'downpayment_paid';
+        const refs = new Set(rows.map(b => String(b.ref)));
+        db.bookings = db.bookings.map(b => refs.has(String(b.ref)) ? {
+          ...b,
+          status: 'confirmed',
+          paymentStatus,
+          receiptStatus: 'manual_review',
+          receiptFlags: [...new Set([
+            ...(b.receiptFlags || []),
+            'MANUAL_PROVIDER_VERIFICATION',
+            'NO_RECEIPT_IMAGE',
+          ])],
+        } : b);
+        writeDb(db);
+        return {
+          ok: true,
+          local: true,
+          manualProviderConfirmation: true,
+          bookingRef: primary.groupRef || primary.ref,
+          refs: [...refs],
+          status: 'confirmed',
+          paymentStatus,
+        };
+      }
       if (rows.some(b => b.status !== 'pending' || b.paymentStatus !== 'for_verification')) {
         throw new Error('This payment is no longer awaiting review. Refresh the dashboard to see its latest status.');
       }
@@ -4246,10 +4339,25 @@ window.DB = {
         ],
       };
     },
-    async verifyGcashReceipt(payload = {}) {
+    async stageBookingReceipt(payload = {}) {
       const bookingRef = String(payload.bookingRef || '').trim();
       if (!bookingRef) throw new Error('A booking reference is required.');
       const receiptFile = await _pbPrepareReceiptImage(payload.imageFile);
+      const stagedReceiptPath = `local:${bookingRef}:${Date.now()}`;
+      _pbLocalStagedReceipts.set(stagedReceiptPath, receiptFile);
+      return {
+        ok: true,
+        stagedReceiptPath,
+        contentType: receiptFile.type || 'image/jpeg',
+        size: receiptFile.size,
+      };
+    },
+    async verifyGcashReceipt(payload = {}) {
+      const bookingRef = String(payload.bookingRef || '').trim();
+      if (!bookingRef) throw new Error('A booking reference is required.');
+      const stagedFile = _pbLocalStagedReceipts.get(String(payload.stagedReceiptPath || '')) || null;
+      const receiptFile = stagedFile || await _pbPrepareReceiptImage(payload.imageFile);
+      if (stagedFile) _pbLocalStagedReceipts.delete(String(payload.stagedReceiptPath || ''));
       const receiptImageUrl = await _pbFileToDataUrl(receiptFile);
       const receiptVerifiedAt = nowIso();
       const receiptVerificationId =
