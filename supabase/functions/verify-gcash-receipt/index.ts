@@ -3711,6 +3711,18 @@ Deno.serve(async (req) => {
       // Authenticity heuristics — HARD: a non-receipt image should be rejected outright.
       if (!looksLikeGcashReceipt(ocrText)) flags.push("SUSPECTED_FAKE");
     }
+
+    // A host's remaining balance is a server-locked amount. Unlike an initial
+    // booking payment, neither an overpayment nor an underpayment is eligible
+    // for automatic approval. Keep the receipt, flag the mismatch, and let the
+    // host-balance review policy route it to the court owner.
+    if (
+      hostBalancePayment && extractedAmount != null &&
+      !closeMoney(extractedAmount, expectedAmount) &&
+      !flags.includes("AMOUNT_MISMATCH")
+    ) {
+      flags.push("AMOUNT_MISMATCH");
+    }
     if (editedBySoftware(bytes)) flags.push("EDITED_METADATA");
 
     // Low OCR confidence → soft review signal.
