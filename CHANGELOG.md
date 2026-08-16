@@ -6,6 +6,17 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-08-16] - Atomic Host Full-Payment Corrections
+
+### Fixed
+- **Atomic grouped settlement** - marking a host booking fully paid now updates every court row in one audited database transaction, including the collected amount and payment timestamp.
+- **Group-safe forfeiture** - the deadline processor leaves the whole reservation unchanged when any row has already been paid, preventing mixed paid/forfeited multi-court bookings.
+- **Guarded recovery** - owners can restore an incorrectly forfeited future booking as fully paid only when every row is still forfeited and none of its released slots has been booked again.
+
+**Files affected:** `admin.html`, `supabase-config.js`, `supabase/migrations/20260816150000_atomic_host_full_payment_recovery.sql`, `host-full-payment-recovery.test.js`, `package.json`
+
+---
+
 ## [2026-08-14] - Vouchers for Every Court Booking Role
 
 ### Changed

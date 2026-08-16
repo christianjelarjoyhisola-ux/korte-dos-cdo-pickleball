@@ -2276,6 +2276,31 @@ window.DB = {
     return this.sendTelegramNotification(_telegramBookingPayload(booking, { type: 'booking_update', event, note }), { allowFailure: true });
   },
 
+  async markHostBookingGroupFullyPaid(bookingRef) {
+    const ref = String(bookingRef || '').trim();
+    if (!ref) throw new Error('A booking reference is required.');
+    const { data, error } = await _sb.rpc('mark_host_booking_group_fully_paid', {
+      p_booking_ref: ref,
+    });
+    if (error) { console.error('markHostBookingGroupFullyPaid:', error); throw error; }
+    _pbClearFastCache(['bookings']);
+    return data;
+  },
+
+  async restoreForfeitedHostBookingAsFullyPaid(bookingRef, reason) {
+    const ref = String(bookingRef || '').trim();
+    const note = String(reason || '').trim();
+    if (!ref) throw new Error('A booking reference is required.');
+    if (note.length < 10) throw new Error('Enter a correction reason of at least 10 characters.');
+    const { data, error } = await _sb.rpc('restore_forfeited_host_booking_as_fully_paid', {
+      p_booking_ref: ref,
+      p_reason: note,
+    });
+    if (error) { console.error('restoreForfeitedHostBookingAsFullyPaid:', error); throw error; }
+    _pbClearFastCache(['bookings', 'publicBookingSlots']);
+    return data;
+  },
+
   async reviewPaymentReceipt(bookingRef, decision, reason = '', options = {}) {
     const normalizedDecision = String(decision || '').trim().toLowerCase();
     if (!['approve', 'reject'].includes(normalizedDecision)) {
@@ -4161,6 +4186,38 @@ window.DB = {
     async sendTelegramNotification() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingSubmitted() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
     async notifyBookingUpdate() { return { ok: true, skipped: true, reason: 'Local data mode' }; },
+    async markHostBookingGroupFullyPaid(bookingRef) {
+      const db = readDb();
+      const primary = db.bookings.find(b => String(b.ref) === String(bookingRef) || String(b.groupRef || '') === String(bookingRef));
+      if (!primary) throw new Error('Booking not found.');
+      const rows = primary.groupRef ? db.bookings.filter(b => String(b.groupRef || '') === String(primary.groupRef)) : [primary];
+      if (rows.some(b => !b.hostBooking || b.status !== 'confirmed' || !['downpayment_paid', 'paid'].includes(b.paymentStatus))) {
+        throw new Error('Every row must be an active confirmed host booking.');
+      }
+      const refs = new Set(rows.map(b => String(b.ref)));
+      const paidAt = new Date().toISOString();
+      db.bookings = db.bookings.map(b => refs.has(String(b.ref)) ? { ...b, paymentStatus: 'paid', downpayment: b.total, paidAt: b.paidAt || paidAt } : b);
+      writeDb(db);
+      return { status: 'confirmed', paymentStatus: 'paid', paidAt, refs: [...refs] };
+    },
+    async restoreForfeitedHostBookingAsFullyPaid(bookingRef, reason) {
+      if (String(reason || '').trim().length < 10) throw new Error('Enter a correction reason of at least 10 characters.');
+      const db = readDb();
+      const primary = db.bookings.find(b => String(b.ref) === String(bookingRef) || String(b.groupRef || '') === String(bookingRef));
+      if (!primary) throw new Error('Booking not found.');
+      const rows = primary.groupRef ? db.bookings.filter(b => String(b.groupRef || '') === String(primary.groupRef)) : [primary];
+      if (rows.some(b => !b.hostBooking || b.status !== 'forfeited' || b.paymentStatus !== 'deposit_retained')) {
+        throw new Error('Every row must still be forfeited with its deposit retained.');
+      }
+      const refs = new Set(rows.map(b => String(b.ref)));
+      const paidAt = new Date().toISOString();
+      db.bookings = db.bookings.map(b => refs.has(String(b.ref)) ? {
+        ...b, status: 'confirmed', paymentStatus: 'paid', downpayment: b.total,
+        paidAt: b.paidAt || paidAt, forfeitedAt: null, forfeitureReason: null,
+      } : b);
+      writeDb(db);
+      return { status: 'confirmed', paymentStatus: 'paid', paidAt, refs: [...refs] };
+    },
     async reviewPaymentReceipt(bookingRef, decision, reason = '', options = {}) {
       const normalizedDecision = String(decision || '').trim().toLowerCase();
       const normalizedReason = String(reason || '').trim();
