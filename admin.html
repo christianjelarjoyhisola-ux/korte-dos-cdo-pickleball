@@ -4618,11 +4618,13 @@ function bookingActionsHtml(b, canDelete){
   const actionRef = b.primaryRef || b.ref;
   const forfeited = b.status === 'forfeited' || b.paymentStatus === 'deposit_retained';
   const hasBalance = b.hostBooking && b.paymentStatus === 'downpayment_paid';
+  const canCorrectForfeiture = forfeited && b.hostBooking && ['owner','court_owner'].includes(String(sess?.role || ''));
   return `${bookingDetailsButton(b)}
     ${!grouped && !['cancelled','forfeited'].includes(b.status)?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')">Reschedule</button>`:''}
     ${b.email && (forfeited || hasBalance)?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Notice':'Balance Reminder'}</button>`:''}
     ${b.status==='confirmed' && b.email && !hasBalance?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
-    <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" ${forfeited?'disabled title="Forfeited records are permanent"':''} onchange="updateStatus('${jsArg(actionRef)}',this.value)">
+    ${canCorrectForfeiture?`<button class="btn btn-p btn-sm" onclick="restoreForfeitedHostBooking('${jsArg(actionRef)}')">Restore Fully Paid</button>`:''}
+    <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" ${forfeited?'disabled title="Use Restore Fully Paid only for a verified correction"':''} onchange="updateStatus('${jsArg(actionRef)}',this.value)">
       ${b.status==='mixed'?'<option value="mixed" selected disabled>Mixed</option>':''}
       <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
       <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
@@ -6125,9 +6127,13 @@ async function updatePaymentStatus(ref, status) {
       await renderDash();
       return;
     }
-    const updates = { paymentStatus: status };
-    if (status === 'paid') updates.paidAt = new Date().toISOString();
-    await updateBookingGroupByRef(ref, updates);
+    if (status === 'paid' && current.hostBooking) {
+      await DB.markHostBookingGroupFullyPaid(ref);
+    } else {
+      const updates = { paymentStatus: status };
+      if (status === 'paid') updates.paidAt = new Date().toISOString();
+      await updateBookingGroupByRef(ref, updates);
+    }
     const labels = { unpaid: 'Unpaid', downpayment_paid: 'Balance Due', paid: 'Fully Paid', for_verification: 'For Verification', deposit_retained: 'Deposit Retained' };
     toast(`Payment marked as: ${labels[status] || status}.`);
     if (status === 'paid') {
@@ -6139,6 +6145,38 @@ async function updatePaymentStatus(ref, status) {
   }
   await renderBookings();
   renderDash();
+}
+
+async function restoreForfeitedHostBooking(ref) {
+  if (!['owner','court_owner'].includes(String(sess?.role || ''))) {
+    toast('Only an owner can correct a forfeited booking.', 'err');
+    return;
+  }
+  const booking = await getBookingGroupByRef(ref).catch(() => null);
+  if (!booking) { toast('Booking not found.', 'err'); return; }
+  const displayRef = booking.displayRef || booking.primaryRef || ref;
+  const reason = String(prompt(
+    `Why should forfeited booking ${displayRef} be restored as fully paid?`,
+    'Full payment was recorded before the balance deadline.'
+  ) || '').trim();
+  if (reason.length < 10) {
+    toast('Enter a correction reason of at least 10 characters.', 'err');
+    return;
+  }
+  if (!confirm(`Restore ${displayRef} as confirmed and fully paid?\n\nThis will fail if any released slot was booked again.`)) return;
+  try {
+    await DB.restoreForfeitedHostBookingAsFullyPaid(ref, reason);
+    toast('Booking restored as confirmed and fully paid.');
+    await renderBookings();
+    renderDash();
+    const restored = await getBookingGroupByRef(ref).catch(() => null);
+    if (restored) Promise.all([
+      sendBookingConfirmationNotice(restored, `Corrected confirmation sent to ${restored.email}.`),
+      notifyBookingUpdateSafe(restored, 'forfeiture_corrected', reason),
+    ]).catch(() => {});
+  } catch (error) {
+    toast(error?.message || 'Could not restore the forfeited booking.', 'err');
+  }
 }
 
 async function sendBookingConfirmationNotice(bk, successText = 'Confirmation email sent to customer!') {
@@ -12701,7 +12739,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260813-manual-restore-v1"></script>
+<script src="supabase-config.js?v=20260816-atomic-host-payment-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
