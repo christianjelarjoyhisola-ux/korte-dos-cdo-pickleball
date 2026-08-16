@@ -361,11 +361,29 @@ body.dark .shared-date-display {
   background:linear-gradient(135deg,var(--navy-dark),var(--navy));
   overflow:hidden; min-height:200px;
 }
-.cc-photo img { width:100%; height:100%; object-fit:cover; display:block; }
+.cc-photo-fallback {
+  position:absolute; inset:0; z-index:0;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,var(--navy-dark),var(--navy));
+  overflow:hidden;
+}
+.cc-photo-fallback svg { width:80px; height:auto; }
+.cc-photo.has-photo:not(.photo-loaded):not(.photo-error) .cc-photo-fallback::after {
+  content:''; position:absolute; inset:-30% -70%;
+  background:linear-gradient(110deg,transparent 38%,rgba(255,255,255,.09) 50%,transparent 62%);
+  animation:cc-photo-shimmer 1.45s ease-in-out infinite;
+}
+@keyframes cc-photo-shimmer { to { transform:translateX(48%); } }
+.cc-photo-img {
+  width:100%; height:100%; object-fit:cover; object-position:center;
+  display:block; position:absolute; inset:0; z-index:1;
+  opacity:0; transition:opacity .18s ease;
+}
+.cc-photo.photo-loaded .cc-photo-img { opacity:1; }
 .cc-photo-avail {
   position:absolute; top:10px; left:10px;
   font-size:.7rem; font-weight:800; padding:4px 11px; border-radius:20px;
-  display:flex; align-items:center; gap:5px; letter-spacing:.3px;
+  display:flex; align-items:center; gap:5px; letter-spacing:.3px; z-index:2;
 }
 .cc-photo-avail.av  { background:var(--lime); color:var(--navy-dark); }
 .cc-photo-avail.full{ background:var(--red); color:#fff; }
@@ -374,7 +392,7 @@ body.dark .shared-date-display {
 .cc-photo-bar {
   position:absolute; bottom:0; left:0; right:0;
   background:linear-gradient(transparent,rgba(0,0,0,.82));
-  padding:26px 12px 12px;
+  padding:26px 12px 12px; z-index:2;
 }
 .cc-photo-name { font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:1.5px; color:#fff; display:block; }
 .cc-photo-rate { font-size:.75rem; color:rgba(255,255,255,.7); margin-top:1px; }
@@ -461,7 +479,18 @@ body.dark .shared-date-display {
 @media(max-width:700px){
   .cc { flex-direction:column; display:none; }
   .cc.active-mobile { display:flex; }
-  .cc-photo { display:none; }
+  .cc-photo {
+    display:block; width:100%; min-height:0; flex:none;
+    aspect-ratio:16 / 9;
+  }
+  .cc-photo-fallback svg { width:92px; }
+  .cc-photo-avail { top:12px; left:12px; padding:5px 10px; }
+  .cc-photo-bar {
+    padding:56px 14px 14px;
+    background:linear-gradient(180deg,transparent 0%,rgba(0,0,0,.2) 38%,rgba(0,0,0,.9) 100%);
+  }
+  .cc-photo-name { font-size:1.1rem; letter-spacing:1.4px; }
+  .cc-photo-rate { font-size:.72rem; color:rgba(255,255,255,.82); }
   .cc-times { padding:10px 12px 12px; }
   .cc-times-sub { display:none; }
   .cc-slots-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
@@ -512,6 +541,10 @@ body.dark .shared-date-display {
 .pb-loader-txt::after { content:''; animation:pb-dots 1.4s steps(4,end) infinite; }
 @keyframes pb-dots { 0%{content:'';} 25%{content:'.';} 50%{content:'..';} 75%{content:'...';} }
 @media (prefers-reduced-motion: reduce) { .pb-ball { animation-duration:2.4s; } }
+@media (prefers-reduced-motion: reduce) {
+  .cc-photo-img { transition:none; }
+  .cc-photo-fallback::after { animation:none !important; }
+}
 .pb-loader.mini {
   gap:8px; padding:14px 0;
 }
@@ -584,7 +617,8 @@ body.dark .shared-date-display {
 }
 @media(max-width:700px) {
   .cc-mobile-hd {
-    display:flex; align-items:center; justify-content:space-between;
+    display:none;
+    align-items:center; justify-content:space-between;
     padding:12px 14px;
     background:linear-gradient(135deg,rgba(var(--ac),.10),rgba(var(--ac),.035));
     border-bottom:1px solid rgba(var(--ac),.18);
@@ -6803,7 +6837,7 @@ async function renderCourts() {
     };
   });
 
-  courtsGrid.innerHTML = courts.map(c => {
+  courtsGrid.innerHTML = courts.map((c, courtIndex) => {
     const blk = c.blocked;
     const allSlots = Array.from({length: closeHour - openHour}, (_, i) => i + openHour);
 
@@ -6835,9 +6869,10 @@ async function renderCourts() {
       return r.length ? (Math.min(...r) === Math.max(...r) ? `₱${Math.min(...r)}/hr` : `₱${Math.min(...r)}–₱${Math.max(...r)}/hr`) : `${fmt(c.rate)}/hr`;
     })();
 
+    const courtPhotoFallbackHtml = `<div class="cc-photo-fallback" aria-hidden="true"><svg viewBox="0 0 110 74" fill="none" focusable="false"><rect x="2" y="2" width="106" height="70" rx="3" stroke="rgba(var(--ac),.5)" stroke-width="1.8"/><line x1="55" y1="2" x2="55" y2="72" stroke="rgba(var(--ac),.4)" stroke-width="1.4"/><line x1="2" y1="37" x2="108" y2="37" stroke="rgba(var(--ac),.3)" stroke-width="1"/><circle cx="55" cy="37" r="6" stroke="rgba(var(--ac),.35)" stroke-width="1.5"/></svg></div>`;
     const courtPhotoHtml = c.photo
-      ? `<img src="${esc(c.photo)}" alt="${esc(c.name)}" style="width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0"/>`
-      : `<div style="width:100%;height:100%;background:linear-gradient(135deg,var(--navy-dark),var(--navy));display:flex;align-items:center;justify-content:center;position:absolute;inset:0"><svg width="80" height="54" viewBox="0 0 110 74" fill="none"><rect x="2" y="2" width="106" height="70" rx="3" stroke="rgba(var(--ac),.5)" stroke-width="1.8"/><line x1="55" y1="2" x2="55" y2="72" stroke="rgba(var(--ac),.4)" stroke-width="1.4"/><line x1="2" y1="37" x2="108" y2="37" stroke="rgba(var(--ac),.3)" stroke-width="1"/><circle cx="55" cy="37" r="6" stroke="rgba(var(--ac),.35)" stroke-width="1.5"/></svg></div>`;
+      ? `${courtPhotoFallbackHtml}<img class="cc-photo-img" src="${esc(c.photo)}" alt="${esc(`Photo of ${c.name}`)}" ${courtIndex === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"'} decoding="async" onload="this.closest('.cc-photo').classList.add('photo-loaded')" onerror="this.hidden=true;this.closest('.cc-photo').classList.add('photo-error')"/>`
+      : courtPhotoFallbackHtml;
 
     const openPlayCardHtml = (!blk && todayOpenPlaySession)
       ? openPlaySessionHtml({
@@ -6887,7 +6922,7 @@ async function renderCourts() {
       </div>
 
       <!-- LEFT: Photo -->
-      <div class="cc-photo">
+      <div class="cc-photo${c.photo ? ' has-photo' : ''}">
         ${courtPhotoHtml}
         <div class="cc-photo-avail ${availBadgeCls}" id="cAvail_${esc(c.id)}">${esc(availBadgeTxt)}</div>
         <div class="cc-photo-bar">
