@@ -69,6 +69,7 @@ import {
   parseMariBankDateTime,
 } from "../_shared/maribank-receipt.ts";
 import {
+  applyGoTymeAutoApprovalPolicy,
   checkGoTymeDestinationAccountSuffix,
   checkGoTymeRecipientName,
   extractGoTymeAmount,
@@ -766,11 +767,10 @@ function expectedMerchantForProvider(
   }
   if (provider === "gotyme") {
     return {
-      // GoTyme is the sending bank. Customers scan the same GCash QR and the
-      // completed receipt must identify G-Xchange/GCash as the destination.
-      number: settings.gcash_merchant_number || "",
-      name: settings.gcash_merchant_name || settings.payment_merchant_name ||
-        "Korte DOS",
+      // GoTyme parsing and approval use provider-specific configuration. This
+      // intentionally does not inherit another payment method's verifier.
+      number: settings.gotyme_destination_suffix || "",
+      name: settings.gotyme_recipient_name || "",
     };
   }
   if (provider === "pnb") {
@@ -3157,6 +3157,8 @@ Deno.serve(async (req) => {
     const expectedNumber = expectedMerchant.number;
     const expectedName = expectedMerchant.name;
     const expectedGcashQrAccountId = settings.gcash_qr_account_id || "";
+    const expectedGoTymeDestinationSuffix =
+      settings.gotyme_destination_suffix || "";
     let pricingError = "";
     let expectedAmount = 0;
     let expectedTotal = 0;
@@ -3674,7 +3676,7 @@ Deno.serve(async (req) => {
 
         const accountCheck = checkGoTymeDestinationAccountSuffix(
           ocrText,
-          expectedGcashQrAccountId,
+          expectedGoTymeDestinationSuffix,
         );
         if (accountCheck === "wrong") {
           flags.push("GOTYME_ACCOUNT_MISMATCH");
@@ -3808,6 +3810,16 @@ Deno.serve(async (req) => {
     }
 
     // ── decision routing ────────────────────────────────────────────────────
+    // GoTyme owns its approval policy. Disabling this setting never weakens a
+    // receipt check; it only downgrades an otherwise-clean GoTyme receipt to
+    // the pending/manual-review lane. Other providers are unaffected.
+    if (provider === "gotyme") {
+      const policyFlags = applyGoTymeAutoApprovalPolicy(
+        flags,
+        settings.gotyme_auto_approve !== "0",
+      );
+      flags.splice(0, flags.length, ...policyFlags);
+    }
     const hasHard = flags.some((f) => HARD_FLAGS.has(f));
     const hasSoftOrUnreadable = flags.length > 0;
     let result: "auto_approved" | "manual_review" | "rejected";

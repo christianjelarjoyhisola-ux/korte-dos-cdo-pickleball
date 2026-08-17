@@ -3356,10 +3356,24 @@ tr:hover td { background: var(--bg2); }
         <div style="margin-top:12px;padding:14px;background:var(--input);border-radius:10px;border:1px solid var(--border);">
           <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--yellow);margin-bottom:8px;">🏦 GoTyme &rarr; GCash</div>
           <div style="font-size:.78rem;color:var(--text);line-height:1.55;margin-bottom:8px">
-            Players send from GoTyme through InstaPay to the same GCash account configured above. There is no separate GoTyme receiving account or QR code.
+            GoTyme receipts use their own parser, auto-approval switch, recipient name, and destination suffix. A clean receipt is auto-approved; any uncertain or failed check stays pending for owner review.
+          </div>
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:.82rem;margin-bottom:10px">
+            <input type="checkbox" id="gotymeAutoApproveOn" style="accent-color:var(--green);margin-top:2px" />
+            <span><strong>Enable GoTyme auto-approval</strong><br><span style="font-size:.72rem;color:var(--muted)">Only fully verified GoTyme receipts are approved. Turning this off keeps even clean GoTyme receipts pending and does not affect another payment method.</span></span>
+          </label>
+          <div class="frow" style="gap:10px;margin-bottom:10px">
+            <div class="fg" style="margin:0;flex:1">
+              <label class="fl">GoTyme Receipt Recipient Name</label>
+              <input type="text" class="fi" id="gotymeRecipientNameInput" placeholder="e.g. Korte DOS" autocomplete="off" />
+            </div>
+            <div class="fg" style="margin:0;flex:1">
+              <label class="fl">GoTyme Destination Suffix</label>
+              <input type="text" class="fi" id="gotymeDestinationSuffixInput" placeholder="A1BS" maxlength="4" autocomplete="off" spellcheck="false" />
+            </div>
           </div>
           <div id="gotymeGcashSummary" style="padding:10px 12px;border-radius:8px;background:var(--card);border:1px solid var(--border);font-size:.72rem;color:var(--muted);line-height:1.55">
-            Uses the configured GCash number, account name, QR image, and QR Account ID.
+            GoTyme parser settings are loading.
           </div>
         </div>
 
@@ -4353,6 +4367,7 @@ const RECEIPT_FLAG_LABELS = {
   GOTYME_ACCOUNT_UNREADABLE:'GoTyme GCash account suffix unreadable',
   GOTYME_ACCOUNT_MISMATCH:'GoTyme GCash account suffix needs checking',
   GOTYME_TOTAL_UNREADABLE:'GoTyme amount, fee, or total unreadable',
+  GOTYME_AUTO_APPROVE_DISABLED:'GoTyme auto-approval disabled; pending owner review',
   SESSION_CAPACITY_REVIEW:'Session filled — owner action required',
   LEGACY_CLIENT_REVIEW:'Older booking page — owner review required',
 };
@@ -8448,6 +8463,9 @@ async function renderPaymentSettings() {
   if ($('gcashNameInput')) $('gcashNameInput').value = settings.gcash_merchant_name || '';
   if ($('bpiMerchantNameInput')) $('bpiMerchantNameInput').value = settings.bpi_merchant_name || '';
   if ($('gcashQrAccountIdInput')) $('gcashQrAccountIdInput').value = settings.gcash_qr_account_id || '';
+  if ($('gotymeAutoApproveOn')) $('gotymeAutoApproveOn').checked = settings.gotyme_auto_approve !== '0';
+  if ($('gotymeRecipientNameInput')) $('gotymeRecipientNameInput').value = settings.gotyme_recipient_name || '';
+  if ($('gotymeDestinationSuffixInput')) $('gotymeDestinationSuffixInput').value = settings.gotyme_destination_suffix || '';
   if ($('pnbNumInput')) $('pnbNumInput').value = settings.pnb_merchant_number || '';
   if ($('pnbNameInput')) $('pnbNameInput').value = settings.pnb_merchant_name || '';
   if ($('platformGcashNumInput')) $('platformGcashNumInput').value = settings.platform_gcash_number || '';
@@ -8472,13 +8490,13 @@ async function renderPaymentSettings() {
   const gcashQrAccountId = String(settings.gcash_qr_account_id || '').trim();
   const gotymeGcashSummary = $('gotymeGcashSummary');
   if (gotymeGcashSummary) {
-    const gcashNumber = String(settings.gcash_merchant_number || '').trim() || 'not configured';
-    const gcashName = String(settings.gcash_merchant_name || '').trim() || 'not configured';
+    const gotymeName = String(settings.gotyme_recipient_name || '').trim() || 'not configured';
+    const gotymeSuffix = String(settings.gotyme_destination_suffix || '').trim() || 'not configured';
     gotymeGcashSummary.textContent = [
-      `GCash number: ${gcashNumber}`,
-      `Account name: ${gcashName}`,
-      `GCash QR: ${gcashQr ? 'uploaded' : 'not uploaded'}`,
-      `QR Account ID: ${gcashQrAccountId || 'not configured'}`,
+      `Auto-approval: ${settings.gotyme_auto_approve !== '0' ? 'enabled' : 'disabled (pending)'}`,
+      `Recipient: ${gotymeName}`,
+      `Destination suffix: ${gotymeSuffix}`,
+      'Parser: GoTyme only',
     ].join(' \u2022 ');
   }
   const enabledMethods = [
@@ -9524,6 +9542,7 @@ async function savePaymentSettings() {
   const bpiOn = $('payMethodBpiOn')?.checked || false;
   const maribankOn = $('payMethodMaribankOn')?.checked || false;
   const gotymeOn = $('payMethodGotymeOn').checked;
+  const gotymeAutoApprove = $('gotymeAutoApproveOn')?.checked !== false;
   const pnbOn = $('payMethodPnbOn').checked;
 
   if (!cashOn && !gcashOn && !bdopayOn && !mayaOn && !bpiOn && !maribankOn && !gotymeOn && !pnbOn) {
@@ -9532,14 +9551,26 @@ async function savePaymentSettings() {
   }
   const gcashQrAccountId = ($('gcashQrAccountIdInput')?.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const bpiMerchantName = $('bpiMerchantNameInput')?.value.trim() || '';
+  const gotymeRecipientName = ($('gotymeRecipientNameInput')?.value || '').trim();
+  const gotymeDestinationSuffix = ($('gotymeDestinationSuffixInput')?.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (bpiOn && bpiMerchantName.replace(/[^A-Z0-9]/gi, '').length < 3) {
     toast('Enter the BPI QR recipient name exactly as shown on the BPI success receipt.', 'err');
     $('bpiMerchantNameInput')?.focus();
     return;
   }
-  if ((maribankOn || gotymeOn) && !/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{12,24}$/.test(gcashQrAccountId)) {
-    toast('Enter the valid GCash QR Account ID used to verify MariBank and GoTyme receipts.', 'err');
+  if (maribankOn && !/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{12,24}$/.test(gcashQrAccountId)) {
+    toast('Enter the valid GCash QR Account ID used to verify MariBank receipts.', 'err');
     $('gcashQrAccountIdInput')?.focus();
+    return;
+  }
+  if (gotymeOn && gotymeRecipientName.replace(/[^A-Z0-9]/gi, '').length < 3) {
+    toast('Enter the GoTyme receipt recipient name.', 'err');
+    $('gotymeRecipientNameInput')?.focus();
+    return;
+  }
+  if (gotymeOn && !/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{4}$/.test(gotymeDestinationSuffix)) {
+    toast('Enter the 4-character masked destination suffix shown on GoTyme receipts.', 'err');
+    $('gotymeDestinationSuffixInput')?.focus();
     return;
   }
 
@@ -9553,6 +9584,9 @@ async function savePaymentSettings() {
     await DB.saveSetting('payment_method_bpi', bpiOn ? '1' : '0');
     await DB.saveSetting('payment_method_maribank', maribankOn ? '1' : '0');
     await DB.saveSetting('payment_method_gotyme', gotymeOn ? '1' : '0');
+    await DB.saveSetting('gotyme_auto_approve', gotymeAutoApprove ? '1' : '0');
+    await DB.saveSetting('gotyme_recipient_name', gotymeRecipientName);
+    await DB.saveSetting('gotyme_destination_suffix', gotymeDestinationSuffix);
     await DB.saveSetting('payment_method_pnb', pnbOn ? '1' : '0');
     await DB.saveSetting('payment_acceptance_mode', paymentAcceptanceMode);
 

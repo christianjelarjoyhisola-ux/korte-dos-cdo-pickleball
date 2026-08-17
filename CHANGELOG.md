@@ -6,6 +6,20 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-08-17] - Independent GoTyme Auto-Approval
+
+### Added
+- **GoTyme-only approval control** - clean GoTyme receipts can auto-approve independently; disabling the control leaves only GoTyme payments pending for owner review.
+- **Dedicated verification settings** - the GoTyme parser now uses its own expected masked recipient name and four-character destination suffix rather than another payment method's verifier configuration.
+- **Supplied receipt coverage** - added a regression fixture for the 16 August GoTyme receipt, including its ITO reference, matching trace, amount/fee/total, masked recipient, destination suffix, and Philippine timestamp.
+
+### Security
+- **No verification bypass** - auto-approval still requires every GoTyme receipt, amount, time-window, destination, reference/trace, OCR, and replay check to pass; any uncertainty stays pending.
+
+**Files affected:** `admin.html`, `supabase-config.js`, `SETUP_NEW_SUPABASE.sql`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/functions/_shared/gotyme-receipt.ts`, `supabase/functions/_shared/gotyme-receipt_test.ts`, `supabase/migrations/20260817193000_gotyme_independent_auto_approval.sql`
+
+---
+
 ## [2026-08-16] - Atomic Host Full-Payment Corrections
 
 ### Fixed

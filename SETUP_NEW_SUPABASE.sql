@@ -6868,7 +6868,11 @@ values
   ('payment_method_bpi', '1'),
   ('bpi_merchant_name', 'Korte Dos'),
   ('payment_method_maribank', '1'),
-  ('gcash_qr_account_id', 'DWQM4TK496R3UA1BS')
+  ('gcash_qr_account_id', 'DWQM4TK496R3UA1BS'),
+  ('payment_method_gotyme', '1'),
+  ('gotyme_auto_approve', '1'),
+  ('gotyme_recipient_name', 'Korte DOS'),
+  ('gotyme_destination_suffix', 'A1BS')
 on conflict (key) do nothing;
 
 -- Atomically replace an Open Play Rotation roster while preserving supplied

@@ -1,4 +1,5 @@
 import {
+  applyGoTymeAutoApprovalPolicy,
   checkGoTymeDestinationAccountSuffix,
   checkGoTymeRecipientName,
   extractGoTymeAmount,
@@ -58,6 +59,57 @@ Trace ID 836004
 Reference No. ITO260723233836004
 Date 24 Jul 2026 at 7:38 AM
 `;
+
+// OCR fixture transcribed from the GoTyme receipt supplied on 17 Aug 2026.
+// This guards the exact production layout independently from other providers.
+const august16Receipt = `
+Transferred
+P720.00
+Share
+InstaPay Instant
+To
+Korte D**
+*************A1BS
+G-Xchange, Inc (GCash)
+From
+HAZEL G**** Q******
+********7673
+GoTyme Bank
+Amount P720.00
+Fee P0.00
+Total P720.00
+Trace ID 511018
+Reference No. ITO260816145511018
+Date 16 Aug 2026 at 10:55 PM
+`;
+
+Deno.test("parses the supplied 16 Aug GoTyme receipt with the GoTyme parser only", () => {
+  assert(isGoTymeToGcashReceipt(august16Receipt), "receipt family");
+  assert(hasSuccessfulGoTymeTransfer(august16Receipt), "completed transfer");
+  assertEquals(extractGoTymeReference(august16Receipt), "ITO260816145511018", "reference");
+  assertEquals(extractGoTymeTraceId(august16Receipt), "511018", "trace ID");
+  assert(hasMatchingGoTymeReferenceTrace(august16Receipt), "reference and trace");
+  assertEquals(extractGoTymeRecipientToken(august16Receipt), "A1BS", "destination suffix");
+  assertEquals(checkGoTymeRecipientName(august16Receipt, "Korte DOS"), "match", "recipient name");
+  assertEquals(extractGoTymeSenderLast4(august16Receipt), "7673", "sender suffix");
+  assertEquals(extractGoTymeAmount(august16Receipt), 720, "amount");
+  assertEquals(extractGoTymeFee(august16Receipt), 0, "fee");
+  assertEquals(extractGoTymeTotal(august16Receipt), 720, "total");
+  assert(hasConsistentGoTymeAccounting(august16Receipt), "accounting");
+  assertEquals(parseGoTymePhDateTime(august16Receipt).shifted?.toISOString(), "2026-08-16T22:55:00.000Z", "PH time");
+});
+
+Deno.test("GoTyme auto-approval policy is independent and otherwise stays pending", () => {
+  assertEquals(applyGoTymeAutoApprovalPolicy([], true).length, 0, "clean auto mode");
+  assertEquals(
+    applyGoTymeAutoApprovalPolicy([], false)[0],
+    "GOTYME_AUTO_APPROVE_DISABLED",
+    "clean pending mode",
+  );
+  const unreadable = applyGoTymeAutoApprovalPolicy(["GOTYME_ACCOUNT_UNREADABLE"], false);
+  assertEquals(unreadable.length, 1, "existing failure remains the pending reason");
+  assertEquals(unreadable[0], "GOTYME_ACCOUNT_UNREADABLE", "failure is preserved");
+});
 
 Deno.test("extracts all dedicated GoTyme-to-GCash receipt evidence", () => {
   assert(isGoTymeToGcashReceipt(suppliedReceipt), "receipt family");

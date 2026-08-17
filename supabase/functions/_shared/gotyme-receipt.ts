@@ -25,6 +25,20 @@ export type GoTymePhDateTime = {
   shifted: Date | null;
 };
 
+export function applyGoTymeAutoApprovalPolicy(
+  receiptFlags: string[],
+  autoApproveEnabled: boolean,
+): string[] {
+  const flags = [...receiptFlags];
+  if (
+    !autoApproveEnabled && flags.length === 0 &&
+    !flags.includes("GOTYME_AUTO_APPROVE_DISABLED")
+  ) {
+    flags.push("GOTYME_AUTO_APPROVE_DISABLED");
+  }
+  return flags;
+}
+
 const MONTHS: Record<string, number> = {
   JAN: 0,
   FEB: 1,
