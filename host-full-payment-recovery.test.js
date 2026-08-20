@@ -12,6 +12,10 @@ const endOfDayMigration = fs.readFileSync(
   'supabase/migrations/20260820160000_host_balance_deadline_end_of_day_ph.sql',
   'utf8',
 );
+const disambiguationMigration = fs.readFileSync(
+  'supabase/migrations/20260820173000_disambiguate_host_payment_booking_refs.sql',
+  'utf8',
+);
 
 test('host full-payment selection uses one atomic database operation', () => {
   assert.match(admin, /status === 'paid' && current\.hostBooking/);
@@ -30,6 +34,14 @@ test('owners can close an unsubmitted online attempt when recording offline paym
   assert.match(endOfDayMigration, /set status = 'expired'/);
   assert.match(endOfDayMigration, /payment\.status = 'created'/);
   assert.match(endOfDayMigration, /recorded manual full payment/);
+});
+
+test('manual payment RPCs never confuse the booking_refs column with a local variable', () => {
+  assert.match(disambiguationMigration, /v_booking_refs text\[\]/);
+  assert.match(disambiguationMigration, /payment\.booking_refs && v_booking_refs/g);
+  assert.doesNotMatch(disambiguationMigration, /payment\.booking_refs && booking_refs/);
+  assert.match(disambiguationMigration, /restored the booking as manually fully paid/);
+  assert.match(disambiguationMigration, /payment\.status = 'created'/);
 });
 
 test('forfeiture refuses to split a mixed-payment booking group', () => {
