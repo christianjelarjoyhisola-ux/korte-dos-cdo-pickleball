@@ -83,6 +83,105 @@ Reference No. ITO260816145511018
 Date 16 Aug 2026 at 10:55 PM
 `;
 
+// Visual-row reconstruction from the 19 Aug receipt. Google Vision read the
+// green speed badge but omitted the stylized InstaPay logo beside it.
+const august19ReceiptWithMissedLogo = `
+Transferred
+P620.00
+Share
+instaFay Instant
+To
+Korte D**
+*** * A1BS
+G-Xchange, Inc (GCash)
+From
+HAZEL G**** Q******
+********7673
+GoTyme Bank
+Amount P620.00
+Fee P0.00
+Total P620.00
+Trace ID 625005
+Reference No. ITO260819143625005
+Date 19 Aug 2026 at 10:36 PM
+`;
+
+Deno.test("recovers a missed stylized InstaPay logo from strict GoTyme evidence", () => {
+  const receipt = august19ReceiptWithMissedLogo;
+  assert(isGoTymeToGcashReceipt(receipt), "receipt family");
+  assert(hasGoTymeInstapayInstant(receipt), "instant rail");
+  assert(hasSuccessfulGoTymeTransfer(receipt), "completed transfer");
+  assertEquals(extractGoTymeTransferChannel(receipt), "InstaPay", "channel");
+  assertEquals(extractGoTymeProcessingSpeed(receipt), "Instant", "speed");
+  assertEquals(
+    extractGoTymeReference(receipt),
+    "ITO260819143625005",
+    "reference",
+  );
+  assertEquals(extractGoTymeTraceId(receipt), "625005", "trace ID");
+  assert(hasMatchingGoTymeReferenceTrace(receipt), "reference and trace");
+  assertEquals(extractGoTymeAmount(receipt), 620, "amount");
+  assertEquals(extractGoTymeFee(receipt), 0, "fee");
+  assertEquals(extractGoTymeTotal(receipt), 620, "total");
+  assert(hasConsistentGoTymeAccounting(receipt), "accounting");
+  assertEquals(
+    extractGoTymeRecipientToken(receipt),
+    "A1BS",
+    "destination suffix",
+  );
+  assertEquals(
+    checkGoTymeDestinationAccountSuffix(receipt, "DWQM4TK496R3UA1BS"),
+    "match",
+    "configured destination suffix",
+  );
+  assertEquals(
+    checkGoTymeRecipientName(receipt, "Korte DOS"),
+    "match",
+    "recipient name",
+  );
+  assertEquals(
+    parseGoTymePhDateTime(receipt).shifted?.toISOString(),
+    "2026-08-19T22:36:00.000Z",
+    "PH time",
+  );
+});
+
+Deno.test("does not infer InstaPay from weak or unsafe logo-missing evidence", () => {
+  for (
+    const [label, receipt] of [
+      [
+        "PesoNet",
+        august19ReceiptWithMissedLogo.replace("Instant", "Instant\nPesoNet"),
+      ],
+      ["delayed", august19ReceiptWithMissedLogo.replace("Instant", "Delayed")],
+      [
+        "not instant",
+        august19ReceiptWithMissedLogo.replace("Instant", "Not Instant"),
+      ],
+      [
+        "trace mismatch",
+        august19ReceiptWithMissedLogo.replace(
+          "Trace ID 625005",
+          "Trace ID 111111",
+        ),
+      ],
+      [
+        "bad accounting",
+        august19ReceiptWithMissedLogo.replace("Fee P0.00", "Fee P10.00"),
+      ],
+      ["missing Instant", august19ReceiptWithMissedLogo.replace("Instant", "")],
+    ] as const
+  ) {
+    assertEquals(isGoTymeToGcashReceipt(receipt), false, `${label} family`);
+    assertEquals(hasGoTymeInstapayInstant(receipt), false, `${label} rail`);
+    assertEquals(
+      hasSuccessfulGoTymeTransfer(receipt),
+      false,
+      `${label} completion`,
+    );
+  }
+});
+
 Deno.test("parses the supplied 16 Aug GoTyme receipt with the GoTyme parser only", () => {
   assert(isGoTymeToGcashReceipt(august16Receipt), "receipt family");
   assert(hasSuccessfulGoTymeTransfer(august16Receipt), "completed transfer");

@@ -150,6 +150,62 @@ function hasAmountEvidence(text: string): boolean {
   return labels.size >= 2;
 }
 
+function hasUnsafeGoTymeRailEvidence(text: string): boolean {
+  const value = compact(text);
+  return value.includes("PESONET") || value.includes("NOTINSTANT") ||
+    value.includes("DELAYED");
+}
+
+function hasGoTymeInstantBadgeWithoutReadableLogo(text: string): boolean {
+  return nonEmptyLines(text).some((line) => {
+    const value = compact(line);
+    // Google Vision read the stylized InstaPay logo's P as F in the supplied
+    // visual row. Keep this recovery exact instead of fuzzy-matching a rail.
+    return value === "INSTANT" || value === "INSTAFAYINSTANT";
+  });
+}
+
+/**
+ * Google Vision can omit the stylized InstaPay logo while still reading the
+ * adjacent "Instant" badge. Only recover that one missing logo read when the
+ * rest of the dedicated GoTyme layout is internally self-validating.
+ */
+function hasStrongGoTymeInstantLayoutWithoutLogo(text: string): boolean {
+  const value = normalizeGoTymeOcrText(text);
+  const allText = compact(value);
+  if (allText.includes("INSTAPAY") || hasUnsafeGoTymeRailEvidence(value)) {
+    return false;
+  }
+
+  const lines = nonEmptyLines(value);
+  if (
+    !hasGoTymeInstantBadgeWithoutReadableLogo(value) ||
+    !lines.some((line) => compact(line) === "TRANSFERRED") ||
+    !lines.some(isToLabel) || !lines.some(isFromLabel) ||
+    !hasReferenceLabel(value) || !hasTraceLabel(value) ||
+    !lines.some((line) => compact(line).startsWith("DATE"))
+  ) return false;
+
+  const references = referenceCandidates(value);
+  const traces = traceCandidates(value);
+  if (references.size !== 1 || traces.size !== 1) return false;
+  if (!goTymeReferenceMatchesTrace([...references][0], [...traces][0])) {
+    return false;
+  }
+
+  const amount = extractLabeledMoney(value, "amount");
+  const fee = extractLabeledMoney(value, "fee");
+  const total = extractLabeledMoney(value, "total");
+  if (amount == null || fee == null || total == null || amount <= 0) {
+    return false;
+  }
+  const amountCents = cents(amount);
+  const feeCents = cents(fee);
+  const totalCents = cents(total);
+  return amountCents != null && feeCents != null && totalCents != null &&
+    amountCents + feeCents === totalCents;
+}
+
 /**
  * Identify the supplied GoTyme Bank -> GCash InstaPay receipt family.
  * Completion is intentionally checked separately by
@@ -159,9 +215,12 @@ export function isGoTymeToGcashReceipt(text: string): boolean {
   const value = normalizeGoTymeOcrText(text);
   if (
     !hasGoTymeBrand(value) ||
-    !compact(value).includes("INSTAPAY") ||
     !rawHasGcashDestination(value)
   ) return false;
+
+  const hasRailIdentity = compact(value).includes("INSTAPAY") ||
+    hasStrongGoTymeInstantLayoutWithoutLogo(value);
+  if (!hasRailIdentity) return false;
 
   const anchors = [
     hasReferenceLabel(value),
@@ -193,11 +252,7 @@ export const hasGcashGxiDestination = hasGoTymeGcashDestination;
 
 export function hasGoTymeInstapayInstant(text: string): boolean {
   if (!isGoTymeToGcashReceipt(text)) return false;
-  const allText = compact(text);
-  if (
-    allText.includes("PESONET") || allText.includes("NOTINSTANT") ||
-    allText.includes("DELAYED")
-  ) return false;
+  if (hasUnsafeGoTymeRailEvidence(text)) return false;
   const lines = nonEmptyLines(text);
   const instaPayIndexes: number[] = [];
   const instantIndexes: number[] = [];
@@ -208,15 +263,15 @@ export function hasGoTymeInstapayInstant(text: string): boolean {
       instantIndexes.push(index);
     }
   });
-  return instaPayIndexes.some((railIndex) =>
+  const explicitLogoAndBadge = instaPayIndexes.some((railIndex) =>
     instantIndexes.some((speedIndex) => Math.abs(railIndex - speedIndex) <= 2)
   );
+  return explicitLogoAndBadge || hasStrongGoTymeInstantLayoutWithoutLogo(text);
 }
 
 export function extractGoTymeTransferChannel(text: string): string | null {
   return isGoTymeToGcashReceipt(text) &&
-      !compact(text).includes("PESONET") &&
-      compact(text).includes("INSTAPAY")
+      hasGoTymeInstapayInstant(text)
     ? "InstaPay"
     : null;
 }
@@ -419,7 +474,7 @@ function maskedSuffixCandidates(
 ): Set<string> {
   const candidates = new Set<string>();
   const pattern =
-    /[*xX#\u2022\u2023\u25CF\u25E6\u2219]{2,}\s*([A-Z0-9](?:\s*[A-Z0-9]){3})\b/giu;
+    /(?:[*xX#\u2022\u2023\u25CF\u25E6\u2219]\s*){2,}([A-Z0-9](?:\s*[A-Z0-9]){3})\b/giu;
   for (const match of value.matchAll(pattern)) {
     const suffix = compact(match[1]);
     if (suffixPattern.test(suffix)) candidates.add(suffix);
