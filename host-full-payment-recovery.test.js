@@ -8,6 +8,10 @@ const migration = fs.readFileSync(
   'supabase/migrations/20260816150000_atomic_host_full_payment_recovery.sql',
   'utf8',
 );
+const endOfDayMigration = fs.readFileSync(
+  'supabase/migrations/20260820160000_host_balance_deadline_end_of_day_ph.sql',
+  'utf8',
+);
 
 test('host full-payment selection uses one atomic database operation', () => {
   assert.match(admin, /status === 'paid' && current\.hostBooking/);
@@ -17,6 +21,15 @@ test('host full-payment selection uses one atomic database operation', () => {
   assert.match(migration, /for update/);
   assert.match(migration, /payment\.status in \('created', 'pending_review'\)/);
   assert.match(migration, /if unpaid_count = 0 then/);
+});
+
+test('owners can close an unsubmitted online attempt when recording offline payment', () => {
+  assert.match(admin, /Record Fully Paid/);
+  assert.match(admin, /including a verified cash payment/);
+  assert.match(endOfDayMigration, /payment\.status = 'pending_review'/);
+  assert.match(endOfDayMigration, /set status = 'expired'/);
+  assert.match(endOfDayMigration, /payment\.status = 'created'/);
+  assert.match(endOfDayMigration, /recorded manual full payment/);
 });
 
 test('forfeiture refuses to split a mixed-payment booking group', () => {

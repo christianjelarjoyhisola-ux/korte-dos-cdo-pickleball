@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Korte DOS — Bayabas, Cagayan de Oro</title>
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
-<script src="booking-balance.js?v=20260716-host-balance-v1"></script>
-<script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
+<script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
+<script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="voucher-booking.js?v=20260814-v2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
@@ -3973,9 +3973,9 @@ function downpaymentAmount(total, courtFee = null, serviceFee = null) {
 function hostBookingNoteText() {
   const host = activeHostSession();
   if (!host) return '';
-  if (!hostBookingDepositEligible()) return 'This Open Play starts in five days or less, so full payment is required now.';
+  if (!hostBookingDepositEligible()) return 'The 11:59 PM Philippine-time balance deadline has passed, so full payment is required now.';
   const deadline = hostBookingBalanceDeadline();
-  const label = deadline && window.BookingBalance?.formatDeadline ? window.BookingBalance.formatDeadline(deadline) : 'five full days before Open Play';
+  const label = deadline && window.BookingBalance?.formatDeadline ? window.BookingBalance.formatDeadline(deadline) : '11:59 PM Philippine time, five calendar days before Open Play';
   return `Pay the full booking fee plus 25% of the court fee now. The remaining court balance is due by ${label}.`;
 }
 function downpaymentNoteHtml(prefix = '') {
@@ -7621,8 +7621,8 @@ function updatePaymentAmountUI() {
   if (policy) {
     policy.innerHTML = hostBooking
       ? hostDeposit
-        ? '<strong>I agree</strong> that all payments are final and non-refundable. The remaining balance is due five full days before Open Play; missing the deadline forfeits the reservation and releases the slot.'
-        : '<strong>I agree</strong> that full payment is required because this Open Play starts in five days or less, and all payments are final and non-refundable.'
+        ? '<strong>I agree</strong> that all payments are final and non-refundable. The remaining balance is due by 11:59 PM Philippine time, five calendar days before Open Play; missing the deadline forfeits the reservation and releases the slot.'
+        : '<strong>I agree</strong> that full payment is required because the 11:59 PM Philippine-time balance deadline has passed, and all payments are final and non-refundable.'
       : '<strong>I agree</strong> that all booking payments are final and non-refundable, my payment details and receipt must be correct, and an invalid payment may release this reservation.';
   }
   updatePrice();
@@ -8572,7 +8572,7 @@ function applyHostChrome() {
   const host = activeHostSession();
   document.body.classList.toggle('host-mode', !!host);
   if (host && $('hostBookingsSubtitle')) {
-    $('hostBookingsSubtitle').textContent = `${host.fullName || host.email || 'Host'} · balances are due 5 days before Open Play`;
+    $('hostBookingsSubtitle').textContent = `${host.fullName || host.email || 'Host'} · balances are due by 11:59 PM PH time, 5 calendar days before Open Play`;
   }
 }
 

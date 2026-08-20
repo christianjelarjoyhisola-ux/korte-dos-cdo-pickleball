@@ -190,7 +190,7 @@ function buildHtml(p: Payload): string {
               ${isFullPay
                 ? "&bull; No remaining balance &mdash; you're all paid up! <strong style=\"color:#f49a4a;\">&#10003;</strong>"
                 : hostBalanceDeadline
-                  ? `&bull; Remaining balance of <strong>${fmtPHP(balance)}</strong> is due by <strong>${escapeHtml(hostBalanceDeadline)}</strong> (five full days before Open Play).<br/>&bull; If the deadline is missed, the reservation is forfeited, the slot is released, and the payment already made remains non-refundable.`
+                  ? `&bull; Remaining balance of <strong>${fmtPHP(balance)}</strong> is due by <strong>${escapeHtml(hostBalanceDeadline)}</strong> (11:59 PM Philippine time, five calendar days before Open Play).<br/>&bull; If the deadline is missed, the reservation is forfeited, the slot is released, and the payment already made remains non-refundable.`
                   : `&bull; Remaining balance of <strong>${fmtPHP(balance)}</strong> is due on the day of play.`}
             </div>
           </td></tr>

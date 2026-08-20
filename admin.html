@@ -6,7 +6,7 @@
 <title>Korte DOS — Admin Dashboard</title>
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="chart.min.js"></script>
-<script src="booking-balance.js?v=20260716-court-revenue-v2"></script>
+<script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
 <script src="open-play-rotation.js?v=20260729-adaptive-competitive-v1"></script>
 <script src="voucher-admin.js?v=20260810-v2"></script>
 <link rel="stylesheet" href="play-manager.css?v=20260729-adaptive-competitive-v1">
@@ -4634,11 +4634,13 @@ function bookingActionsHtml(b, canDelete){
   const actionRef = b.primaryRef || b.ref;
   const forfeited = b.status === 'forfeited' || b.paymentStatus === 'deposit_retained';
   const hasBalance = b.hostBooking && b.paymentStatus === 'downpayment_paid';
+  const canRecordManualPayment = hasBalance && ['owner','court_owner'].includes(String(sess?.role || ''));
   const canCorrectForfeiture = forfeited && b.hostBooking && ['owner','court_owner'].includes(String(sess?.role || ''));
   return `${bookingDetailsButton(b)}
     ${!grouped && !['cancelled','forfeited'].includes(b.status)?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')">Reschedule</button>`:''}
     ${b.email && (forfeited || hasBalance)?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Notice':'Balance Reminder'}</button>`:''}
     ${b.status==='confirmed' && b.email && !hasBalance?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
+    ${canRecordManualPayment?`<button class="btn btn-p btn-sm" onclick="updatePaymentStatus('${jsArg(actionRef)}','paid')">Record Fully Paid</button>`:''}
     ${canCorrectForfeiture?`<button class="btn btn-p btn-sm" onclick="restoreForfeitedHostBooking('${jsArg(actionRef)}')">Restore Fully Paid</button>`:''}
     <select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" ${forfeited?'disabled title="Use Restore Fully Paid only for a verified correction"':''} onchange="updateStatus('${jsArg(actionRef)}',this.value)">
       ${b.status==='mixed'?'<option value="mixed" selected disabled>Mixed</option>':''}
@@ -6117,11 +6119,14 @@ async function updatePaymentStatus(ref, status) {
     if (!allowedStatuses.includes(status)) throw new Error('Invalid payment status.');
     const current = await getBookingGroupByRef(ref);
     if (!current) throw new Error('Booking not found.');
-    if (status !== 'for_verification' && bookingGroupAwaitsDigitalPaymentReview(current)) {
+    const ownerManualHostSettlement = status === 'paid'
+      && current.hostBooking
+      && ['owner', 'court_owner'].includes(String(sess?.role || ''));
+    if (!ownerManualHostSettlement && status !== 'for_verification' && bookingGroupAwaitsDigitalPaymentReview(current)) {
       await routeDropdownToPaymentReview(ref);
       return;
     }
-    if (status !== 'for_verification' && bookingGroupHasUnresolvedDigitalReceipt(current)) {
+    if (!ownerManualHostSettlement && status !== 'for_verification' && bookingGroupHasUnresolvedDigitalReceipt(current)) {
       toast('This receipt is still processing or awaiting review. Keep it For Verification and use Payment Review when it is ready.', 'err');
       await renderBookings();
       await renderDash();
@@ -6135,7 +6140,7 @@ async function updatePaymentStatus(ref, status) {
       await renderDash();
       return;
     }
-    if (['paid', 'downpayment_paid'].includes(status)
+    if (!ownerManualHostSettlement && ['paid', 'downpayment_paid'].includes(status)
         && bookingGroupHasDigitalPayment(current)
         && !bookingGroupHasEveryDigitalReceipt(current)) {
       toast('Cannot mark this digital payment as received because no receipt image is stored.', 'err');
@@ -6144,6 +6149,14 @@ async function updatePaymentStatus(ref, status) {
       return;
     }
     if (status === 'paid' && current.hostBooking) {
+      if (!['owner', 'court_owner', 'staff'].includes(String(sess?.role || ''))) {
+        throw new Error('Only an owner or authorized staff account can record a manual host payment.');
+      }
+      if (!confirm(`Mark ${current.displayRef || current.primaryRef || ref} fully paid?\n\nContinue only if Korte DOS has received the complete remaining balance, including a verified cash payment. This action is audited.`)) {
+        await renderBookings();
+        renderDash();
+        return;
+      }
       await DB.markHostBookingGroupFullyPaid(ref);
     } else {
       const updates = { paymentStatus: status };
@@ -6156,7 +6169,7 @@ async function updatePaymentStatus(ref, status) {
       getBookingGroupByRef(ref).then(bk => bk && sendBookingConfirmationNotice(bk, `Balance settled. Confirmation sent to ${bk.email}.`)).catch(() => {});
     }
   } catch(e) {
-    toast('Failed to update payment status.', 'err');
+    toast(e?.message || 'Failed to update payment status.', 'err');
     console.error('updatePaymentStatus error:', e);
   }
   await renderBookings();
@@ -9999,7 +10012,7 @@ function renderHostAccountDetails() {
       <div class="hf-stat"><div class="hf-stat-label">Verified paid</div><div class="hf-stat-value money">${fmt(summary.verifiedPaid)}</div><div class="hf-stat-note">${summary.review} awaiting review</div></div>
       <div class="hf-stat"><div class="hf-stat-label">Outstanding</div><div class="hf-stat-value money">${fmt(summary.balance)}</div><div class="hf-stat-note">Based on recorded status</div></div>
     </section>
-    <div class="hf-policy-note"><span aria-hidden="true">&#9432;</span><span><strong>How balance is calculated:</strong> the remaining balance is due five full days before Open Play. Uploaded receipts awaiting review are not counted as paid. A forfeited booking has no collectible balance, while its verified non-refundable deposit remains included in paid revenue.</span></div>
+    <div class="hf-policy-note"><span aria-hidden="true">&#9432;</span><span><strong>How balance is calculated:</strong> the remaining balance is due by 11:59 PM Philippine time, five calendar days before Open Play. Uploaded receipts awaiting review are not counted as paid. A forfeited booking has no collectible balance, while its verified non-refundable deposit remains included in paid revenue.</span></div>
     <div class="hf-toolbar">
       <label class="hf-search-wrap"><input class="hf-search" id="hostAccountSearch" type="search" aria-label="Search host bookings" placeholder="Search customer, reference, court..." value="${esc(_hostFinanceState.query)}" oninput="updateHostAccountSearch(this.value)"></label>
       <button class="btn btn-g hf-refresh" id="hostFinanceRefreshBtn" type="button" aria-label="Refresh host bookings" onclick="refreshHostAccountDetails()" title="Refresh host bookings"><span aria-hidden="true">&#8635;</span><span class="hf-refresh-label">Refresh</span></button>
@@ -12776,7 +12789,7 @@ async function checkAgreementGate(session) {
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
 <script src="supabase-config.js?v=20260816-atomic-host-payment-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
-<script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
+<script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
 <script src="open-play-parity-ui.js?v=20260724-parity-v1"></script>
 <script src="qrcode.min.js?v=1.5.4"></script>
