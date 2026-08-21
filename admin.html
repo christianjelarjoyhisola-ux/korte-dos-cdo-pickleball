@@ -4629,13 +4629,22 @@ function bookingDetailsButton(b){
   const actionRef = b.primaryRef || b.ref;
   return `<button class="btn btn-sm" style="background:rgba(200,160,96,.15);color:var(--yellow);border:1px solid rgba(200,160,96,.35);font-weight:700" onclick="openBookingDetails('${jsArg(actionRef)}')">Details</button>`;
 }
+function quickPaymentApprovalButton(b) {
+  const actionRef = b.primaryRef || b.ref;
+  const hasReceipt = Boolean(String(b.receiptImageUrl || '').trim());
+  const state = paymentReviewDecisionState(b, { imageAvailable: hasReceipt });
+  if (!state.canApprove) return '';
+  const label = state.manualProviderConfirmation ? 'Restore & Confirm' : 'Confirm Payment';
+  return `<button class="btn btn-p btn-sm" type="button" onclick="quickConfirmPayment('${jsArg(actionRef)}',this)">${label}</button>`;
+}
 function bookingActionsHtml(b, canDelete){
   const grouped = Array.isArray(b.items) && b.items.length > 1;
   const actionRef = b.primaryRef || b.ref;
   const forfeited = b.status === 'forfeited' || b.paymentStatus === 'deposit_retained';
   const hasBalance = b.hostBooking && b.paymentStatus === 'downpayment_paid';
   const canCorrectForfeiture = forfeited && b.hostBooking && ['owner','court_owner'].includes(String(sess?.role || ''));
-  return `${bookingDetailsButton(b)}
+  return `${quickPaymentApprovalButton(b)}
+    ${bookingDetailsButton(b)}
     ${!grouped && !['cancelled','forfeited'].includes(b.status)?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')">Reschedule</button>`:''}
     ${b.email && (forfeited || hasBalance)?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Notice':'Balance Reminder'}</button>`:''}
     ${b.status==='confirmed' && b.email && !hasBalance?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
@@ -6644,6 +6653,92 @@ async function verifyAndConfirm() {
     }
     await refreshPaymentReviewSurfaces().catch(() => {});
     toast(e?.message || 'Failed to confirm booking.', 'err');
+  }
+}
+
+async function quickConfirmPayment(ref, button) {
+  if (!Auth.can('payment_review', sess?.role)) {
+    toast('You do not have permission to approve payments.', 'err');
+    return;
+  }
+  const idleLabel = button?.textContent || 'Confirm Payment';
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Checking...';
+  }
+  try {
+    const booking = await getBookingGroupByRef(ref);
+    if (!booking) throw new Error('Booking not found.');
+
+    const hasReceipt = Boolean(String(booking.receiptImageUrl || '').trim());
+    let imageAvailable = false;
+    if (hasReceipt) {
+      const signedUrl = await DB.getReceiptSignedUrl(booking.ref);
+      if (signedUrl) {
+        imageAvailable = await loadReviewReceiptImage(new Image(), signedUrl);
+      }
+    }
+
+    const state = paymentReviewDecisionState(booking, { imageAvailable });
+    if (!state.canApprove) {
+      throw new Error(state.reason || 'This payment cannot be approved.');
+    }
+
+    const displayRef = booking.displayRef || booking.primaryRef || ref;
+    let manualReason = '';
+    if (state.manualProviderConfirmation) {
+      manualReason = String(prompt(
+        `Booking ${displayRef} was cancelled and has no receipt image.\n\nEnter an audit note describing how you matched the transaction in the payment provider history:`,
+        `Matched ${paymentMethodLabel(booking.paymentMethod)} transaction reference, amount, recipient, and time.`
+      ) || '').trim();
+      if (manualReason.length < 10) {
+        toast('Enter an audit note of at least 10 characters.', 'err');
+        return;
+      }
+      if (!confirm(`Restore and confirm booking ${displayRef}?\n\nThis records the payment as manually verified in the provider history. The restoration will fail if another booking now occupies the slot.`)) return;
+    } else {
+      const flags = receiptFlagsForDisplay(booking);
+      const reviewWarnings = [
+        booking.duplicatePaymentRef ? 'Warning: this payment reference appears on another booking.' : '',
+        flags.length ? `Receipt flags: ${receiptReasonText(flags)}.` : '',
+      ].filter(Boolean).join('\n');
+      if (!confirm(`Mark the payment for booking ${displayRef} as received and confirm the booking?${reviewWarnings ? `\n\n${reviewWarnings}` : ''}`)) return;
+    }
+
+    if (button) button.textContent = state.manualProviderConfirmation ? 'Restoring...' : 'Confirming...';
+    const result = await DB.reviewPaymentReceipt(ref, 'approve', manualReason, {
+      manualProviderConfirmation: state.manualProviderConfirmation,
+    });
+    if (!result?.ok) throw new Error(result?.error || 'The payment could not be approved.');
+
+    toast(result.alreadyApplied
+      ? 'This payment was already approved.'
+      : result.manualProviderConfirmation
+      ? 'Payment manually verified — cancelled booking restored and confirmed!'
+      : 'Payment verified and booking confirmed!');
+    await refreshPaymentReviewSurfaces();
+
+    if (!result.alreadyApplied) Promise.resolve(getBookingGroupByRef(ref)).then(async confirmedBooking => {
+      if (!confirmedBooking) return;
+      await Promise.all([
+        sendBookingConfirmationNotice(confirmedBooking),
+        notifyBookingUpdateSafe(
+          confirmedBooking,
+          'payment_verified',
+          result.manualProviderConfirmation
+            ? `Payment manually matched in provider history by admin. Audit note: ${manualReason}`
+            : 'Payment marked received by admin.'
+        ),
+      ]);
+    }).catch(() => {});
+  } catch (error) {
+    await refreshPaymentReviewSurfaces().catch(() => {});
+    toast(error?.message || 'Failed to confirm booking.', 'err');
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = idleLabel;
+    }
   }
 }
 

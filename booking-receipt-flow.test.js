@@ -82,3 +82,20 @@ test('cancelled digital bookings can be restored only through audited provider c
   assert.match(manualRestoreMigration, /MANUAL_PROVIDER_VERIFICATION/);
   assert.match(manualRestoreMigration, /payment_review_decisions/);
 });
+
+test('mobile booking actions offer a guarded one-step payment confirmation', () => {
+  assert.match(
+    adminHtml,
+    /function quickPaymentApprovalButton\(b\)[\s\S]*paymentReviewDecisionState\(b, \{ imageAvailable: hasReceipt \}\)[\s\S]*if \(!state\.canApprove\) return ''/,
+  );
+  assert.match(adminHtml, /state\.manualProviderConfirmation \? 'Restore & Confirm' : 'Confirm Payment'/);
+  assert.match(adminHtml, /function bookingActionsHtml\(b, canDelete\)[\s\S]*quickPaymentApprovalButton\(b\)/);
+  assert.match(
+    adminHtml,
+    /async function quickConfirmPayment\(ref, button\)[\s\S]*DB\.getReceiptSignedUrl\(booking\.ref\)[\s\S]*paymentReviewDecisionState\(booking, \{ imageAvailable \}\)/,
+  );
+  assert.match(
+    adminHtml,
+    /async function quickConfirmPayment\(ref, button\)[\s\S]*manualReason\.length < 10[\s\S]*DB\.reviewPaymentReceipt\(ref, 'approve', manualReason, \{[\s\S]*manualProviderConfirmation: state\.manualProviderConfirmation/,
+  );
+});
