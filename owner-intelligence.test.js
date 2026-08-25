@@ -146,6 +146,57 @@ test('demand campaign booking integration is automatic and fail-open at normal p
   assert.doesNotMatch(controller,/cancelled|forfeited|rejected/);
 });
 
+test('an ended Smart Offer can restart without a false live state or losing its safety cap', () => {
+  const html = fs.readFileSync(path.join(__dirname,'admin.html'),'utf8');
+  const config = fs.readFileSync(path.join(__dirname,'supabase-config.js'),'utf8');
+  const migration = fs.readFileSync(path.join(
+    __dirname,
+    'supabase',
+    'migrations',
+    '20260826150000_demand_campaign_restart.sql',
+  ),'utf8');
+  const workflow = fs.readFileSync(path.join(
+    __dirname,
+    '.github',
+    'workflows',
+    'apply-demand-campaign-restart.yml',
+  ),'utf8');
+
+  assert.match(html,/const campaign = await DB\.createDemandCampaignFromRecommendation/);
+  assert.match(html,/String\(campaign\?\.status \|\| ''\)\.toLowerCase\(\) !== 'active'/);
+  assert.match(html,/courtId:\s*\$\('dgCourt'\)\?\.value \|\| null/);
+  assert.doesNotMatch(
+    html.slice(html.indexOf('async function applyDemandRecommendation()'), html.indexOf('async function endDemandCampaign(')),
+    /courtId:\s*recommendation\.court_id/,
+  );
+
+  assert.match(migration,/drop constraint if exists demand_campaigns_source_recommendation_id_key/i);
+  assert.match(migration,/create index if not exists demand_campaigns_source_recommendation_idx/i);
+  assert.doesNotMatch(migration,/create unique index if not exists demand_campaigns_source_recommendation_idx/i);
+  assert.match(migration,/perform public\.release_expired_demand_campaign_reservations\(\)/i);
+  assert.match(migration,/campaign\.source_recommendation_id = clean_id[\s\S]*redemption\.status in \('reserved', 'redeemed'\)/i);
+  assert.match(migration,/remaining_redemptions[\s\S]*20[\s\S]*prior_usage/i);
+  assert.match(migration,/'restarted', is_restart/i);
+  assert.match(migration,/'status', inserted\.status/i);
+
+  assert.match(config,/priorCampaignIds[\s\S]*remainingRedemptions/);
+  assert.match(config,/created: true, restarted: !!prior, idempotent: false/);
+  assert.match(config,/max_redemptions: remainingRedemptions/);
+
+  const migrationSha = crypto.createHash('sha256').update(migration).digest('hex');
+  const applyStep = workflow.slice(
+    workflow.indexOf('- name: Apply Smart Offer restart migration exactly once'),
+    workflow.indexOf('- name: Verify production database state'),
+  );
+  assert.match(workflow,/MIGRATION_FILE: supabase\/migrations\/20260826150000_demand_campaign_restart\.sql/);
+  assert.match(workflow,new RegExp(`MIGRATION_SHA256: ${migrationSha}`));
+  assert.match(workflow,new RegExp(`sha256:${migrationSha}`));
+  assert.match(workflow,/demand_campaigns_source_recommendation_idx/);
+  assert.match(workflow,/demand_campaigns_one_active_uidx/);
+  assert.match(applyStep,/one mutation POST with no automatic retry/i);
+  assert.doesNotMatch(applyStep,/--retry/);
+});
+
 test('automatic pricing retries an ambiguous network loss and hydrates the authoritative amount', async () => {
   const source = fs.readFileSync(path.join(__dirname,'demand-campaign-booking.js'),'utf8');
   let calls = 0;

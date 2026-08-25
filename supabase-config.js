@@ -3713,9 +3713,17 @@ window.DB = {
         throw new Error('This demand recommendation changed. Refresh Insights before applying it.');
       }
       const prior = db.demandCampaigns.find(campaign => campaign.source_recommendation_id === cleanId);
-      if (prior) {
-        writeDb(db);
-        return { created: false, idempotent: true, campaign_id: prior.id, status: prior.status, starts_at: prior.starts_at, ends_at: prior.ends_at };
+      const priorCampaignIds = new Set(db.demandCampaigns
+        .filter(campaign => campaign.source_recommendation_id === cleanId)
+        .map(campaign => campaign.id));
+      const priorUsage = db.demandCampaignRedemptions.filter(redemption =>
+        priorCampaignIds.has(redemption.campaign_id)
+        && (redemption.status === 'redeemed'
+          || (redemption.status === 'reserved'
+            && new Date(redemption.reserved_until).getTime() > now))).length;
+      const remainingRedemptions = Math.min(20, Number(recommendation.max_redemptions || 20)) - priorUsage;
+      if (remainingRedemptions <= 0) {
+        throw new Error('This smart offer has already reached its 20-booking safety limit.');
       }
       const startsAt = nowIso();
       const campaign = {
@@ -3728,7 +3736,7 @@ window.DB = {
         start_hour: recommendation.start_hour,
         end_hour: recommendation.end_hour,
         discount_percent: Math.min(10, Number(recommendation.discount_percent || 10)),
-        max_redemptions: Math.min(20, Number(recommendation.max_redemptions || 20)),
+        max_redemptions: remainingRedemptions,
         starts_at: startsAt,
         ends_at: new Date(new Date(startsAt).getTime() + Math.min(28, Number(recommendation.valid_days || 28)) * 86400000).toISOString(),
         status: 'active',
@@ -3748,7 +3756,7 @@ window.DB = {
       db.demandCampaigns.push(campaign);
       writeDb(db);
       return {
-        created: true, idempotent: false, campaign_id: campaign.id,
+        created: true, restarted: !!prior, idempotent: false, campaign_id: campaign.id,
         recommendation_id: cleanId, court_id: campaign.court_id,
         court_name: campaign.court_name_snapshot, weekday: campaign.weekday,
         start_hour: campaign.start_hour, end_hour: campaign.end_hour,

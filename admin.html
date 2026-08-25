@@ -8923,10 +8923,18 @@ async function applyDemandRecommendation() {
   if (button?.disabled) return;
   if (button) { button.disabled = true; button.textContent = 'Starting safely…'; }
   try {
-    await DB.createDemandCampaignFromRecommendation(recommendation.id, {
-      courtId: recommendation.court_id || $('dgCourt')?.value || null,
+    const campaign = await DB.createDemandCampaignFromRecommendation(recommendation.id, {
+      courtId: $('dgCourt')?.value || null,
     });
-    toast('Smart offer is live. New matching bookings will receive it automatically.', 'ok');
+    if (String(campaign?.status || '').toLowerCase() !== 'active') {
+      throw new Error('The smart offer was not activated. Refresh Insights and try again.');
+    }
+    toast(
+      campaign.restarted
+        ? 'Smart offer restarted. New matching bookings will receive it automatically.'
+        : 'Smart offer is live. New matching bookings will receive it automatically.',
+      'ok',
+    );
     await renderOwnerInsights({ force:true });
   } catch (error) {
     console.error('applyDemandRecommendation:', error);
