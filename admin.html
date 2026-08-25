@@ -1958,6 +1958,10 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
 .dg-active-row h4 { margin: 0 0 4px; font-family: 'DM Sans', sans-serif; font-size: .78rem; font-weight: 700; letter-spacing: -.02em; text-transform: none; }
 .dg-active-row p,.dg-active-stat span { margin: 0; color: var(--oi-muted); font-size: .62rem; }
 .dg-active-stat strong { display: block; color: var(--oi-ink); font-size: .75rem; }
+.dg-active-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.dg-post,.dg-end { min-height: 35px; border-radius: 9px; padding: 7px 11px; font-size: .62rem; font-weight: 850; cursor: pointer; white-space: nowrap; }
+.dg-post { border: 1px solid var(--oi-accent); background: var(--oi-accent); color: #fff; box-shadow: 0 7px 16px rgba(101,88,232,.16); }
+.dg-post:hover { background: #5749df; transform: translateY(-1px); }
 .dg-end { min-height: 35px; border: 1px solid var(--oi-hairline); border-radius: 9px; background: var(--oi-card); color: #9d3f35; padding: 7px 11px; font-size: .62rem; font-weight: 850; cursor: pointer; }
 .dg-live { display: inline-flex; align-items: center; gap: 5px; color: #167551; font-size: .58rem; font-weight: 850; }
 .dg-live i { width: 7px; height: 7px; border-radius: 50%; background: #42b98a; box-shadow: 0 0 0 4px rgba(66,185,138,.12); }
@@ -1966,12 +1970,54 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
 .dg-method > div { border-top: 1px solid var(--oi-hairline); padding: 10px 14px; font-size: .64rem; line-height: 1.5; }
 .dg-method p { margin: 0 0 5px; }.dg-method p:last-child { margin-bottom: 0; }
 .dg-swipe-hint { display: none; color: var(--oi-muted); font-size: .6rem; text-align: right; margin: 8px 1px 0; }
-.dg-apply:focus-visible,.dg-end:focus-visible,.dg-court-filter:focus-visible,.dg-hero-actions .btn:focus-visible { outline: 3px solid rgba(101,88,232,.35); outline-offset: 2px; }
+.dg-apply:focus-visible,.dg-post:focus-visible,.dg-end:focus-visible,.dg-court-filter:focus-visible,.dg-hero-actions .btn:focus-visible { outline: 3px solid rgba(101,88,232,.35); outline-offset: 2px; }
+
+/* Owner-only, deterministic Facebook artwork composer. The generated graphic
+   is a native canvas so campaign facts remain exact and no customer data can
+   leak into a social asset. */
+.dg-postkit-modal {
+  width: min(1080px,calc(100vw - 32px)); max-width: 1080px; max-height: min(94dvh,920px);
+  overflow: hidden; display: flex; flex-direction: column; border-radius: 20px;
+  background: #f7f4ed; color: #10231d;
+}
+.dg-postkit-modal .m-hd { z-index: 3; flex: 0 0 auto; padding: 15px 18px; background: rgba(247,244,237,.97); border-color: #dcddd7; }
+.dg-postkit-modal .m-hd h2 { margin: 0; color: #10231d; font-size: 1.06rem; letter-spacing: -.02em; }
+.dg-postkit-sub { margin-top: 3px; color: #6d7772; font-size: .66rem; line-height: 1.35; }
+.dg-postkit-body { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: minmax(300px,.83fr) minmax(360px,1.17fr); gap: 18px; padding: 18px; }
+.dg-postkit-preview { min-width: 0; }
+.dg-postkit-preview-frame {
+  position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 16px;
+  background: #132f48; box-shadow: 0 18px 42px rgba(15,34,52,.2); aspect-ratio: 4/5;
+}
+.dg-postkit-preview canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+.dg-postkit-loading {
+  position: absolute; inset: 0; display: grid; place-items: center; background: rgba(16,35,48,.82);
+  color: #fff; font-size: .72rem; font-weight: 800; letter-spacing: .04em;
+}
+.dg-postkit-loading[hidden] { display: none; }
+.dg-postkit-size { display: flex; justify-content: space-between; gap: 10px; margin: 9px 2px 0; color: #6d7772; font-size: .59rem; }
+.dg-postkit-editor { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.dg-postkit-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.dg-postkit-facts span { border: 1px solid #dcddd7; border-radius: 999px; background: #fffefa; padding: 6px 9px; color: #40534c; font-size: .59rem; font-weight: 800; }
+.dg-postkit-status { border: 1px solid #dcd7ff; border-radius: 10px; background: #efedff; padding: 9px 11px; color: #5148ad; font-size: .63rem; line-height: 1.45; }
+.dg-postkit-status.schedule-only { border-color: #e4d9bd; background: #fff7df; color: #735d24; }
+.dg-postkit-label { display: block; margin-bottom: 6px; color: #40534c; font-size: .61rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.dg-postkit-variants { display: flex; flex-wrap: wrap; gap: 6px; }
+.dg-postkit-variant { border: 1px solid #dcddd7; border-radius: 999px; background: #fffefa; color: #53615c; padding: 7px 10px; font: 800 .61rem 'DM Sans',sans-serif; cursor: pointer; }
+.dg-postkit-variant[aria-pressed="true"] { border-color: #6558e8; background: #6558e8; color: #fff; }
+.dg-postkit-caption { min-height: 245px; resize: vertical; border-color: #d2d5ce; background: #fffefa; color: #10231d; font-size: .76rem; line-height: 1.5; }
+.dg-postkit-caption:focus { border-color: #6558e8; background: #fff; box-shadow: 0 0 0 3px rgba(101,88,232,.1); }
+.dg-postkit-note { display: flex; gap: 8px; align-items: flex-start; border-top: 1px solid #dcddd7; padding-top: 10px; color: #6d7772; font-size: .6rem; line-height: 1.45; }
+.dg-postkit-note strong { color: #40534c; }
+.dg-postkit-modal .m-foot { z-index: 3; flex: 0 0 auto; flex-wrap: wrap; padding: 13px 18px; background: rgba(247,244,237,.98); border-color: #dcddd7; }
+.dg-postkit-modal .m-foot .btn { min-height: 39px; border-radius: 10px; font-size: .68rem; font-weight: 850; }
+.dg-postkit-share { background: #6558e8 !important; border-color: #6558e8 !important; color: #fff !important; }
 @media (max-width: 980px) {
   .dg-main-grid { grid-template-columns: 1fr; }
   .dg-action-card { min-height: 330px; }
   .dg-active-row { grid-template-columns: 1fr repeat(2,minmax(100px,.4fr)); }
-  .dg-active-row .dg-end { grid-column: 1/-1; }
+  .dg-active-actions { grid-column: 1/-1; justify-content: stretch; }
+  .dg-active-actions button { flex: 1; }
 }
 @media (max-width: 700px) {
   .dg-hero { align-items: flex-start; flex-direction: column; gap: 14px; padding-top: 15px; }
@@ -1985,7 +2031,13 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
   .dg-heat-grid { min-width: 610px !important; }
   .dg-heat-grid .oi-heat-time,.dg-heat-grid > .oi-heat-label:first-child { position: sticky; left: 0; z-index: 3; background: var(--oi-card); }
   .dg-swipe-hint { display: block; }
-  .dg-active-row { grid-template-columns: 1fr 1fr; }.dg-active-row > div:first-child,.dg-active-row .dg-end { grid-column: 1/-1; }
+  .dg-active-row { grid-template-columns: 1fr 1fr; }.dg-active-row > div:first-child,.dg-active-actions { grid-column: 1/-1; }
+  #dgPostKitModal.overlay { align-items: flex-end; padding: 0; overflow: hidden; }
+  .dg-postkit-modal { width: 100%; max-width: none; max-height: 96dvh; border-radius: 18px 18px 0 0; }
+  .dg-postkit-body { grid-template-columns: 1fr; padding: 13px; }
+  .dg-postkit-preview { max-width: 390px; width: 100%; margin: 0 auto; }
+  .dg-postkit-caption { min-height: 215px; }
+  .dg-postkit-modal .m-foot { display: grid; grid-template-columns: 1fr 1fr; padding: 11px 13px; }
 }
 
 /* ── OPEN PLAY DAY CHIPS ──────────────────────────────── */
@@ -4077,6 +4129,52 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
   </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /admin-layout -->
+
+<!-- ACTIVE OFFER FACEBOOK POST KIT -->
+<div class="overlay" id="dgPostKitModal" hidden aria-hidden="true" onclick="if(event.target===this) closeDemandPostKit()">
+  <div class="modal dg-postkit-modal" role="dialog" aria-modal="true" aria-labelledby="dgPostKitTitle" aria-describedby="dgPostKitSubtitle" tabindex="-1" onkeydown="demandPostKitKeydown(event)">
+    <div class="m-hd">
+      <div>
+        <h2 id="dgPostKitTitle">FACEBOOK POST KIT</h2>
+        <div class="dg-postkit-sub" id="dgPostKitSubtitle">A ready-to-post graphic and persuasive caption built from the active offer.</div>
+      </div>
+      <button class="m-x" type="button" aria-label="Close Facebook Post Kit" onclick="closeDemandPostKit()">&#10005;</button>
+    </div>
+    <div class="dg-postkit-body">
+      <section class="dg-postkit-preview" aria-labelledby="dgPostKitPreviewLabel">
+        <span class="dg-postkit-label" id="dgPostKitPreviewLabel">Post graphic</span>
+        <div class="dg-postkit-preview-frame">
+          <canvas id="dgPostKitCanvas" width="1080" height="1350" role="img" aria-label="Korte DOS active offer Facebook post graphic"></canvas>
+          <div class="dg-postkit-loading" id="dgPostKitLoading" role="status" aria-live="polite">Building exact offer artwork&hellip;</div>
+        </div>
+        <div class="dg-postkit-size"><span>Facebook feed portrait</span><span>1080 &times; 1350 PNG</span></div>
+      </section>
+      <section class="dg-postkit-editor" aria-labelledby="dgPostKitCaptionLabel">
+        <div class="dg-postkit-facts" id="dgPostKitFacts" aria-label="Offer facts"></div>
+        <div class="dg-postkit-status" id="dgPostKitStatus" role="status" aria-live="polite">Checking the next exact offer times&hellip;</div>
+        <div>
+          <span class="dg-postkit-label">Caption style</span>
+          <div class="dg-postkit-variants" role="group" aria-label="Caption style">
+            <button class="dg-postkit-variant" type="button" data-variant="energetic" aria-pressed="true" onclick="setDemandPostCaptionVariant('energetic')">Energetic</button>
+            <button class="dg-postkit-variant" type="button" data-variant="clean" aria-pressed="false" onclick="setDemandPostCaptionVariant('clean')">Clean</button>
+            <button class="dg-postkit-variant" type="button" data-variant="barkada" aria-pressed="false" onclick="setDemandPostCaptionVariant('barkada')">Barkada</button>
+          </div>
+        </div>
+        <div>
+          <label class="dg-postkit-label" id="dgPostKitCaptionLabel" for="dgPostKitCaption">Facebook caption</label>
+          <textarea class="fi dg-postkit-caption" id="dgPostKitCaption" spellcheck="true" oninput="demandPostCaptionEdited(this.value)"></textarea>
+        </div>
+        <div class="dg-postkit-note"><span aria-hidden="true">&#9432;</span><span><strong>Facebook keeps you in control.</strong> A website cannot attach this generated PNG to Facebook's composer. Use Share on a supported phone, or download the image, copy the caption, then open Facebook.</span></div>
+      </section>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-g" type="button" data-demand-post-publish onclick="downloadDemandPostGraphic()">Download PNG</button>
+      <button class="btn btn-g" type="button" data-demand-post-publish onclick="copyDemandPostCaption()">Copy Caption</button>
+      <button class="btn dg-postkit-share" type="button" id="dgPostKitShareButton" data-demand-post-publish onclick="shareDemandPostKit()">Share</button>
+      <button class="btn btn-p" type="button" data-demand-post-publish onclick="openDemandPostFacebook()">Open Facebook</button>
+    </div>
+  </div>
+</div>
 
 <!-- OPEN PLAY ROTATION SUMMARY -->
 <div class="overlay" id="gmSummaryModal" hidden aria-hidden="true">
@@ -8455,6 +8553,7 @@ async function exportCSV(){
    OWNER INTELLIGENCE
    ============================================== */
 let _oiPeriod='all', _oiSnapshot=null, _oiRequestKey='', _oiLifecycleChart=null, _oiTrendChart=null, _oiForwardChart=null, _oiTrendMetric='revenue', _oiForwardDays=30, _oiRequestSeq=0;
+let _dgPostKitState=null, _dgPostKitLastFocus=null, _dgPostKitRequestSeq=0;
 
 function oiMoney(value) {
   return '₱' + Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 });
@@ -8902,9 +9001,677 @@ function renderActiveDemandCampaigns(snapshot) {
       <div class="dg-active-stat"><strong>${used}/${limit}</strong><span>bookings used</span></div>
       <div class="dg-active-stat"><strong>${oiFormatDate(item.valid_until || item.ends_at)}</strong><span>automatic end</span></div>
       <div class="dg-active-stat"><strong>${oiMoney(item.discount_cost || 0)}</strong><span>discount invested</span></div>
-      <button class="dg-end" type="button" onclick="endDemandCampaign('${jsArg(item.id)}')">End offer</button>
+      <div class="dg-active-actions">
+        <button class="dg-post" type="button" onclick="openDemandPostKit('${jsArg(item.id)}')">Create Facebook post</button>
+        <button class="dg-end" type="button" onclick="endDemandCampaign('${jsArg(item.id)}')">End offer</button>
+      </div>
     </article>`;
   }).join('');
+}
+
+function demandPostPick(row, ...keys) {
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== '') return row[key];
+  }
+  return null;
+}
+
+function demandPostNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function demandPostPercent(value) {
+  const number = demandPostNumber(value) ?? 0;
+  return Number.isInteger(number) ? String(number) : number.toFixed(1).replace(/\.0$/, '');
+}
+
+function demandPostMoney(value) {
+  const number = Math.max(0, demandPostNumber(value) ?? 0);
+  return `₱${number.toLocaleString('en-PH', {
+    minimumFractionDigits: Number.isInteger(number) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function demandPostWeekday(campaign, { short = false } = {}) {
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const index = Math.max(1,Math.min(7,Number(campaign?.weekday || 1))) - 1;
+  return short ? days[index].slice(0,3) : days[index];
+}
+
+function demandPostHourParts(value) {
+  const hour = ((Number(value) % 24) + 24) % 24;
+  return { hour: hour % 12 || 12, suffix: hour < 12 ? 'AM' : 'PM' };
+}
+
+function demandPostTimeRange(startValue, endValue, { compact = false } = {}) {
+  const start = demandPostHourParts(startValue);
+  const end = demandPostHourParts(endValue);
+  if (compact) {
+    return start.suffix === end.suffix
+      ? `${start.hour}–${end.hour} ${end.suffix}`
+      : `${start.hour} ${start.suffix}–${end.hour} ${end.suffix}`;
+  }
+  return start.suffix === end.suffix
+    ? `${start.hour}:00–${end.hour}:00 ${end.suffix}`
+    : `${start.hour}:00 ${start.suffix}–${end.hour}:00 ${end.suffix}`;
+}
+
+function demandPostDate(value, options = {}) {
+  const clean = String(value || '').slice(0,10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return '';
+  const date = new Date(`${clean}T12:00:00+08:00`);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    weekday: options.weekday === false ? undefined : 'short',
+    month: 'short',
+    day: 'numeric',
+    year: options.year ? 'numeric' : undefined,
+  }).format(date);
+}
+
+function demandPostEnd(value, { compact = false } = {}) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  if (compact) return new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila', month: 'short', day: 'numeric',
+  }).format(date).toUpperCase();
+  const dateLabel = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric',
+  }).format(date);
+  const timeLabel = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit',
+  }).format(date);
+  return `${dateLabel} at ${timeLabel}`;
+}
+
+function demandPostIsoWeekday(dateValue) {
+  const date = new Date(`${String(dateValue || '').slice(0,10)}T12:00:00+08:00`);
+  if (!Number.isFinite(date.getTime())) return null;
+  const day = date.getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
+function normalizeDemandPostFeaturedRows(payload, campaign) {
+  const source = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.offers) ? payload.offers
+      : Array.isArray(payload?.data) ? payload.data : [];
+  const courtId = String(campaign?.court_id || campaign?.courtId || '');
+  const startHour = Number(campaign?.start_hour ?? campaign?.startHour);
+  const endHour = Number(campaign?.end_hour ?? campaign?.endHour);
+  const weekday = Number(campaign?.weekday);
+  const campaignPercent = Number(campaign?.discount_percent ?? campaign?.discountPercent);
+  const unique = new Map();
+  source.forEach(row => {
+    const normalized = {
+      courtId: String(demandPostPick(row,'courtId','court_id') || ''),
+      courtName: String(demandPostPick(row,'courtName','court_name') || campaign?.court_name || campaign?.courtName || 'Court'),
+      offerDate: String(demandPostPick(row,'offerDate','offer_date','date') || '').slice(0,10),
+      slotHour: demandPostNumber(demandPostPick(row,'slotHour','slot_hour')),
+      discountPercent: demandPostNumber(demandPostPick(row,'discountPercent','discount_percent')),
+      regularRate: demandPostNumber(demandPostPick(row,'regularRate','regular_rate')),
+      offerRate: demandPostNumber(demandPostPick(row,'offerRate','offer_rate')),
+      endsAt: demandPostPick(row,'endsAt','ends_at') || campaign?.ends_at || campaign?.endsAt || null,
+    };
+    if (!normalized.courtId || !/^\d{4}-\d{2}-\d{2}$/.test(normalized.offerDate)) return;
+    if (!Number.isInteger(normalized.slotHour) || normalized.slotHour < 0 || normalized.slotHour > 23) return;
+    if (!(normalized.discountPercent > 0) || !(normalized.regularRate > normalized.offerRate) || normalized.offerRate < 0) return;
+    if (courtId && normalized.courtId !== courtId) return;
+    if (Number.isFinite(startHour) && normalized.slotHour < startHour) return;
+    if (Number.isFinite(endHour) && normalized.slotHour >= endHour) return;
+    if (Number.isFinite(weekday) && demandPostIsoWeekday(normalized.offerDate) !== weekday) return;
+    if (Number.isFinite(campaignPercent) && Math.abs(normalized.discountPercent - campaignPercent) > .05) return;
+    if (normalized.endsAt && new Date(normalized.endsAt).getTime() <= Date.now()) return;
+    unique.set(`${normalized.courtId}|${normalized.offerDate}|${normalized.slotHour}`, normalized);
+  });
+  return [...unique.values()].sort((a,b) => a.offerDate.localeCompare(b.offerDate) || a.slotHour - b.slotHour);
+}
+
+function demandPostBookingUrl() {
+  const hostname = String(location.hostname || '').toLowerCase();
+  return ['kortedoscdo.club','www.kortedoscdo.club'].includes(hostname)
+    ? `${location.origin}/`
+    : 'https://kortedoscdo.club/';
+}
+
+function buildDemandPostCaption(state, variant = 'energetic') {
+  const campaign = state?.campaign || {};
+  const rows = state?.featured || [];
+  const percent = demandPostPercent(campaign.discount_percent ?? campaign.discountPercent);
+  const court = String(campaign.court_name || campaign.courtName || state?.court?.name || 'Selected court');
+  const weekday = demandPostWeekday(campaign);
+  const windowLabel = demandPostTimeRange(campaign.start_hour ?? campaign.startHour, campaign.end_hour ?? campaign.endHour);
+  const schedule = `${court} · ${weekday}s · ${windowLabel}`;
+  const rowLines = rows.slice(0,5).map(row =>
+    `• ${demandPostDate(row.offerDate)} · ${demandPostTimeRange(row.slotHour,row.slotHour + 1)} — ${demandPostMoney(row.offerRate)} (regular ${demandPostMoney(row.regularRate)})`
+  );
+  const availability = rowLines.length
+    ? `Next discounted times:\n${rowLines.join('\n')}${rows.length > rowLines.length ? '\n• More selected offer times may be available online.' : ''}`
+    : `Offer window: ${schedule}`;
+  const endsAt = campaign.ends_at || campaign.endsAt || rows[0]?.endsAt;
+  const ending = demandPostEnd(endsAt)
+    ? `Offer is scheduled to end ${demandPostEnd(endsAt)}; availability can end earlier as players book.`
+    : 'Offer availability can change as players book.';
+  const book = demandPostBookingUrl();
+  const hashtags = '#KorteDOS #PickleballCDO #CDOPickleball';
+
+  if (variant === 'clean') return `${percent}% OFF SELECT COURT TIMES\n\n${schedule}\n\n${availability}\n\nThe discount applies automatically to matching new bookings. ${ending}\n\nBook: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+  if (variant === 'barkada') return `Barkada game, better rate. 🏓\n\nSave ${percent}% on selected ${court} times at Korte DOS.\n\n${availability}\n\nThe discount applies automatically to matching new bookings. ${ending}\n\nTara, book na: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+  return `🏓 SAVE ${percent}% ON YOUR NEXT GAME\n\nYour next rally at Korte DOS comes with a better court rate.\n\n${availability}\n\nThe discount applies automatically to matching new bookings. ${ending}\n\nReady to play? Book here: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+}
+
+function demandPostRoundRect(ctx,x,y,width,height,radius) {
+  const r = Math.max(0,Math.min(radius,Math.min(width,height) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r,y);
+  ctx.arcTo(x + width,y,x + width,y + height,r);
+  ctx.arcTo(x + width,y + height,x,y + height,r);
+  ctx.arcTo(x,y + height,x,y,r);
+  ctx.arcTo(x,y,x + width,y,r);
+  ctx.closePath();
+}
+
+function demandPostCanvasFont(ctx,size,weight = 800,family = 'DM Sans') {
+  ctx.font = `${weight} ${size}px "${family}", Arial, sans-serif`;
+}
+
+function demandPostFitFont(ctx,text,maxWidth,startSize,weight = 800,family = 'DM Sans',minimum = 24) {
+  let size = startSize;
+  while (size > minimum) {
+    demandPostCanvasFont(ctx,size,weight,family);
+    if (ctx.measureText(String(text)).width <= maxWidth) break;
+    size -= 2;
+  }
+  demandPostCanvasFont(ctx,size,weight,family);
+  return size;
+}
+
+function demandPostDrawImageCover(ctx,image,x,y,width,height) {
+  const scale = Math.max(width / image.width,height / image.height);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const sourceX = Math.max(0,(image.width - sourceWidth) / 2);
+  const sourceY = Math.max(0,(image.height - sourceHeight) / 2);
+  ctx.drawImage(image,sourceX,sourceY,sourceWidth,sourceHeight,x,y,width,height);
+}
+
+function demandPostSafePhoto(photo) {
+  const value = String(photo || '').trim();
+  if (/^data:image\//i.test(value)) return value;
+  try {
+    const url = new URL(value,location.href);
+    return url.origin === location.origin ? url.href : '';
+  } catch (_) { return ''; }
+}
+
+function demandPostLoadImage(source) {
+  return new Promise(resolve => {
+    if (!source) { resolve(null); return; }
+    const image = new Image();
+    let settled = false;
+    const finish = value => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+    const timer = setTimeout(() => finish(null),5000);
+    image.onload = () => finish(image);
+    image.onerror = () => finish(null);
+    image.decoding = 'async';
+    image.src = source;
+  });
+}
+
+async function renderDemandPostCanvas(state) {
+  const canvas = $('dgPostKitCanvas');
+  const ctx = canvas?.getContext('2d');
+  if (!canvas || !ctx || !state?.campaign) throw new Error('The post graphic could not be prepared.');
+  if (_dgPostKitState !== state) return false;
+  if (document.fonts?.ready) await document.fonts.ready.catch(() => {});
+  if (_dgPostKitState !== state) return false;
+  const campaign = state.campaign;
+  const rows = state.featured || [];
+  const courtPhoto = demandPostSafePhoto(state.court?.photo);
+  const logoUrl = new URL('korte-dos-logo.png',location.href).href;
+  const [logo,photo] = await Promise.all([demandPostLoadImage(logoUrl),demandPostLoadImage(courtPhoto)]);
+  if (_dgPostKitState !== state) return false;
+  const width = canvas.width;
+  const height = canvas.height;
+  ctx.clearRect(0,0,width,height);
+
+  if (photo) {
+    ctx.save();
+    ctx.filter = 'saturate(.88) contrast(1.06)';
+    demandPostDrawImageCover(ctx,photo,0,0,width,height);
+    ctx.restore();
+  } else {
+    const background = ctx.createLinearGradient(0,0,width,height);
+    background.addColorStop(0,'#173e62');
+    background.addColorStop(.52,'#102f4d');
+    background.addColorStop(1,'#081d30');
+    ctx.fillStyle = background;
+    ctx.fillRect(0,0,width,height);
+  }
+  const shade = ctx.createLinearGradient(0,0,0,height);
+  shade.addColorStop(0,'rgba(4,20,34,.5)');
+  shade.addColorStop(.5,'rgba(4,20,34,.72)');
+  shade.addColorStop(1,'rgba(4,20,34,.94)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(0,0,width,height);
+
+  ctx.save();
+  ctx.globalAlpha = .11;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(42,184,width - 84,965);
+  ctx.beginPath(); ctx.moveTo(width / 2,184); ctx.lineTo(width / 2,1149); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(42,665); ctx.lineTo(width - 42,665); ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(255,255,255,.96)';
+  demandPostRoundRect(ctx,62,52,112,112,30); ctx.fill();
+  if (logo) demandPostDrawImageCover(ctx,logo,70,60,96,96);
+  else {
+    ctx.fillStyle = '#173e62'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    demandPostCanvasFont(ctx,42,900); ctx.fillText('KD',118,108);
+  }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ffffff'; demandPostCanvasFont(ctx,39,900); ctx.fillText('KORTE DOS',198,101);
+  ctx.fillStyle = 'rgba(255,255,255,.72)'; demandPostCanvasFont(ctx,23,750); ctx.fillText('PICKLEBALL • BAYABAS, CDO',198,137);
+
+  const endsAt = campaign.ends_at || campaign.endsAt || rows[0]?.endsAt;
+  const endLabel = demandPostEnd(endsAt,{compact:true});
+  const badge = endLabel ? `ENDS ${endLabel}` : 'LIMITED OFFER';
+  demandPostCanvasFont(ctx,22,900);
+  const badgeWidth = Math.max(170,ctx.measureText(badge).width + 48);
+  ctx.fillStyle = 'rgba(255,255,255,.13)'; demandPostRoundRect(ctx,width - badgeWidth - 62,72,badgeWidth,54,27); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(badge,width - badgeWidth / 2 - 62,99);
+
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,24,900); ctx.fillText('LIMITED-TIME COURT OFFER',70,250);
+  const percent = `${demandPostPercent(campaign.discount_percent ?? campaign.discountPercent)}%`;
+  ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,percent,650,310,400,'Bebas Neue',190); ctx.fillText(percent,65,570);
+  ctx.fillStyle = '#ef5b36'; demandPostFitFont(ctx,'OFF',270,178,400,'Bebas Neue',110); ctx.fillText('OFF',770,548);
+  ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,'SELECT COURT TIMES',940,76,900,'DM Sans',48); ctx.fillText('SELECT COURT TIMES',70,683);
+
+  const court = String(campaign.court_name || campaign.courtName || state.court?.name || 'Selected court').toUpperCase();
+  const windowLabel = `${court} • ${demandPostWeekday(campaign).toUpperCase()}S • ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}`;
+  ctx.fillStyle = 'rgba(255,255,255,.82)'; demandPostFitFont(ctx,windowLabel,940,42,800,'DM Sans',27); ctx.fillText(windowLabel,70,760);
+
+  ctx.fillStyle = 'rgba(8,27,44,.88)'; demandPostRoundRect(ctx,70,815,940,370,30); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 2; demandPostRoundRect(ctx,70,815,940,370,30); ctx.stroke();
+  if (rows.length) {
+    ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,22,900); ctx.fillText('NEXT DISCOUNTED TIMES',100,862);
+    rows.slice(0,3).forEach((row,index) => {
+      const y = 882 + index * 88;
+      ctx.fillStyle = index % 2 ? 'rgba(255,255,255,.055)' : 'rgba(255,255,255,.09)'; demandPostRoundRect(ctx,94,y,892,78,18); ctx.fill();
+      const slotLabel = `${demandPostDate(row.offerDate,{weekday:false}).toUpperCase()} • ${demandPostTimeRange(row.slotHour,row.slotHour + 1,{compact:true})}`;
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; demandPostFitFont(ctx,slotLabel,585,37,850,'DM Sans',27); ctx.fillText(slotLabel,120,y + 40);
+      const regular = demandPostMoney(row.regularRate);
+      ctx.fillStyle = 'rgba(255,255,255,.58)'; ctx.textAlign = 'right'; demandPostCanvasFont(ctx,24,750); ctx.fillText(regular,955,y + 25);
+      const regularWidth = ctx.measureText(regular).width;
+      ctx.strokeStyle = '#ef5b36'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(955 - regularWidth,y + 25); ctx.lineTo(955,y + 25); ctx.stroke();
+      ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,43,900); ctx.fillText(demandPostMoney(row.offerRate),955,y + 57);
+    });
+    if (rows.length > 3) {
+      ctx.fillStyle = 'rgba(255,255,255,.66)'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; demandPostCanvasFont(ctx,19,800); ctx.fillText('MORE OFFER TIMES ONLINE',100,1163);
+    }
+  } else {
+    ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,22,900); ctx.fillText('OFFER WINDOW',100,870);
+    ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,court,860,58,900,'DM Sans',36); ctx.fillText(court,100,960);
+    const schedule = `${demandPostWeekday(campaign).toUpperCase()}S • ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}`;
+    ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,schedule,860,72,900,'DM Sans',44); ctx.fillText(schedule,100,1050);
+    ctx.fillStyle = 'rgba(255,255,255,.68)'; demandPostFitFont(ctx,`${percent} OFF NEW MATCHING BOOKINGS`,860,31,800,'DM Sans',24); ctx.fillText(`${percent} OFF NEW MATCHING BOOKINGS`,100,1120);
+  }
+
+  ctx.fillStyle = '#d7df48'; demandPostRoundRect(ctx,70,1215,940,84,22); ctx.fill();
+  ctx.fillStyle = '#102f4d'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; demandPostCanvasFont(ctx,35,900); ctx.fillText('BOOK NOW',100,1257);
+  ctx.textAlign = 'right'; demandPostFitFont(ctx,'KORTEDOSCDO.CLUB',560,31,900,'DM Sans',23); ctx.fillText('KORTEDOSCDO.CLUB',980,1257);
+
+  canvas.setAttribute('aria-label',`${percent} off selected ${court} times, ${demandPostWeekday(campaign)} ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}.`);
+  state.blob = null;
+  return true;
+}
+
+function setDemandPostKitBusy(busy) {
+  const modal = $('dgPostKitModal');
+  if (!modal) return;
+  modal.toggleAttribute('aria-busy',!!busy);
+  const hasLiveSlots = !!_dgPostKitState?.featured?.length;
+  modal.querySelectorAll('.m-foot button').forEach(button => {
+    button.disabled = !!busy || (button.hasAttribute('data-demand-post-publish') && !hasLiveSlots);
+  });
+  if ($('dgPostKitLoading')) $('dgPostKitLoading').hidden = !busy;
+}
+
+function renderDemandPostKitEditor(state) {
+  const campaign = state.campaign;
+  const facts = $('dgPostKitFacts');
+  const percent = demandPostPercent(campaign.discount_percent ?? campaign.discountPercent);
+  const court = String(campaign.court_name || campaign.courtName || state.court?.name || 'Selected court');
+  const endLabel = demandPostEnd(campaign.ends_at || campaign.endsAt || state.featured[0]?.endsAt,{compact:true});
+  if (facts) facts.innerHTML = [
+    `${percent}% off`,
+    court,
+    `${demandPostWeekday(campaign,{short:true})} ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour,{compact:true})}`,
+    endLabel ? `Ends ${endLabel}` : '',
+  ].filter(Boolean).map(value => `<span>${esc(value)}</span>`).join('');
+  const status = $('dgPostKitStatus');
+  if (status) {
+    status.classList.toggle('schedule-only',!state.featured.length);
+    status.textContent = state.featured.length
+      ? 'The artwork uses exact upcoming offer times and prices returned by the live public offer feed. Availability can change after this check.'
+      : 'No exact discounted time is open right now, so publishing is disabled. Refresh after a matching slot becomes available.';
+  }
+  setDemandPostCaptionVariant(state.variant || 'energetic');
+  setDemandPostKitBusy(false);
+}
+
+async function openDemandPostKit(campaignId) {
+  const campaign = (Array.isArray(_oiSnapshot?.active_campaigns) ? _oiSnapshot.active_campaigns : [])
+    .find(item => String(item.id) === String(campaignId) && item.status === 'active');
+  if (!campaign) {
+    toast('Refresh Insights before creating this post. The active offer may have changed.','err');
+    return;
+  }
+  const modal = $('dgPostKitModal');
+  if (!modal) return;
+  _dgPostKitLastFocus = document.activeElement;
+  const requestSeq = ++_dgPostKitRequestSeq;
+  _dgPostKitState = { campaign: { ...campaign }, featured: [], court: null, variant: 'energetic', blob: null };
+  modal.hidden = false;
+  modal.inert = false;
+  modal.setAttribute('aria-hidden','false');
+  modal.classList.add('show');
+  setDemandPostKitBusy(true);
+  if ($('dgPostKitFacts')) $('dgPostKitFacts').innerHTML = '';
+  if ($('dgPostKitStatus')) {
+    $('dgPostKitStatus').classList.remove('schedule-only');
+    $('dgPostKitStatus').textContent = 'Checking the next exact offer times…';
+  }
+  requestAnimationFrame(() => modal.querySelector('[role="dialog"]')?.focus());
+
+  try {
+    const featuredLoad = typeof DB.getPublicDemandCampaignFeaturedOffers === 'function'
+      ? DB.getPublicDemandCampaignFeaturedOffers()
+      : Promise.resolve([]);
+    const courtsLoad = typeof DB.getCourts === 'function' ? DB.getCourts() : Promise.resolve([]);
+    const [featuredResult,courtsResult] = await Promise.allSettled([featuredLoad,courtsLoad]);
+    if (requestSeq !== _dgPostKitRequestSeq) return;
+    const featuredPayload = featuredResult.status === 'fulfilled' ? featuredResult.value : [];
+    const courts = courtsResult.status === 'fulfilled' && Array.isArray(courtsResult.value) ? courtsResult.value : [];
+    const courtId = String(campaign.court_id || campaign.courtId || '');
+    const court = courts.find(item => String(item.id) === courtId) || null;
+    const featured = normalizeDemandPostFeaturedRows(featuredPayload,campaign);
+    _dgPostKitState = {
+      campaign: { ...campaign, court_name: campaign.court_name || campaign.courtName || court?.name || 'Selected court' },
+      featured,
+      court,
+      variant: 'energetic',
+      blob: null,
+    };
+    await renderDemandPostCanvas(_dgPostKitState);
+    if (requestSeq !== _dgPostKitRequestSeq) return;
+    renderDemandPostKitEditor(_dgPostKitState);
+  } catch (error) {
+    console.error('openDemandPostKit:',error);
+    if (requestSeq !== _dgPostKitRequestSeq) return;
+    $('dgPostKitStatus').classList.add('schedule-only');
+    $('dgPostKitStatus').textContent = 'The post kit could not be completed. Refresh Insights and try again.';
+    toast('The Facebook Post Kit could not be prepared.','err');
+  } finally {
+    if (requestSeq === _dgPostKitRequestSeq) setDemandPostKitBusy(false);
+  }
+}
+
+function closeDemandPostKit({ restoreFocus = true } = {}) {
+  const modal = $('dgPostKitModal');
+  if (!modal) return;
+  ++_dgPostKitRequestSeq;
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden','true');
+  modal.inert = true;
+  modal.hidden = true;
+  _dgPostKitState = null;
+  if (restoreFocus && _dgPostKitLastFocus?.isConnected) _dgPostKitLastFocus.focus();
+  _dgPostKitLastFocus = null;
+}
+
+function demandPostKitKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeDemandPostKit();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const dialog = event.currentTarget;
+  const focusable = [...dialog.querySelectorAll('button:not([disabled]),textarea:not([disabled]),[href],input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(element => !element.hidden && element.offsetParent !== null);
+  if (!focusable.length) { event.preventDefault(); dialog.focus(); return; }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}
+
+function setDemandPostCaptionVariant(variant) {
+  if (!_dgPostKitState) return;
+  const clean = ['energetic','clean','barkada'].includes(variant) ? variant : 'energetic';
+  _dgPostKitState.variant = clean;
+  _dgPostKitState.caption = buildDemandPostCaption(_dgPostKitState,clean);
+  if ($('dgPostKitCaption')) $('dgPostKitCaption').value = _dgPostKitState.caption;
+  document.querySelectorAll('.dg-postkit-variant').forEach(button => {
+    button.setAttribute('aria-pressed',String(button.dataset.variant === clean));
+  });
+}
+
+function demandPostCaptionEdited(value) {
+  if (_dgPostKitState) _dgPostKitState.caption = String(value || '');
+}
+
+function demandPostFilename(state = _dgPostKitState) {
+  const court = String(state?.campaign?.court_name || state?.campaign?.courtName || 'court')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'court';
+  const date = state?.featured?.[0]?.offerDate || new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
+  const percent = demandPostPercent(state?.campaign?.discount_percent ?? state?.campaign?.discountPercent);
+  return `korte-dos-${court}-${date}-${percent}pct-off.png`;
+}
+
+function demandPostFeaturedSignature(rows = []) {
+  return JSON.stringify((rows || []).map(row => [
+    row.courtId,
+    row.offerDate,
+    Number(row.slotHour),
+    Number(row.discountPercent),
+    Number(row.regularRate),
+    Number(row.offerRate),
+    row.endsAt || '',
+  ]));
+}
+
+async function revalidateDemandPostKitForPublish() {
+  const state = _dgPostKitState;
+  const requestSeq = _dgPostKitRequestSeq;
+  if (!state?.campaign || typeof DB.getPublicDemandCampaignFeaturedOffers !== 'function') {
+    toast('Live discounted times could not be confirmed. Refresh Insights and try again.','err');
+    return false;
+  }
+  let payload;
+  try {
+    payload = await DB.getPublicDemandCampaignFeaturedOffers();
+  } catch (_) {
+    payload = [];
+  }
+  if (requestSeq !== _dgPostKitRequestSeq || state !== _dgPostKitState) return false;
+  const nextRows = normalizeDemandPostFeaturedRows(payload,state.campaign);
+  const changed = demandPostFeaturedSignature(nextRows) !== demandPostFeaturedSignature(state.featured);
+  if (!nextRows.length) {
+    state.featured = [];
+    state.blob = null;
+    await renderDemandPostCanvas(state);
+    if (requestSeq !== _dgPostKitRequestSeq || state !== _dgPostKitState) return false;
+    renderDemandPostKitEditor(state);
+    toast('No exact discounted time is open now, so this post cannot be published.','inf');
+    return false;
+  }
+  if (changed) {
+    state.featured = nextRows;
+    state.blob = null;
+    await renderDemandPostCanvas(state);
+    if (requestSeq !== _dgPostKitRequestSeq || state !== _dgPostKitState) return false;
+    renderDemandPostKitEditor(state);
+    toast('Offer availability changed. The graphic and caption were refreshed—review them, then publish again.','inf');
+    return false;
+  }
+  return true;
+}
+
+function demandPostCanvasBlob() {
+  const state = _dgPostKitState;
+  const requestSeq = _dgPostKitRequestSeq;
+  if (state?.blob) return Promise.resolve(state.blob);
+  const canvas = $('dgPostKitCanvas');
+  if (!canvas || !state) return Promise.reject(new Error('Open an active offer Post Kit first.'));
+  return new Promise((resolve,reject) => {
+    canvas.toBlob(blob => {
+      if (!blob) { reject(new Error('The PNG could not be generated.')); return; }
+      if (requestSeq !== _dgPostKitRequestSeq || state !== _dgPostKitState) {
+        reject(new Error('The Post Kit changed before the PNG finished. Open it and try again.'));
+        return;
+      }
+      state.blob = blob;
+      resolve(blob);
+    },'image/png');
+  });
+}
+
+function demandPostDownloadBlob(blob,filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url),1000);
+}
+
+async function downloadDemandPostGraphic({ quiet = false } = {}) {
+  setDemandPostKitBusy(true);
+  try {
+    if (!await revalidateDemandPostKitForPublish()) return false;
+    const blob = await demandPostCanvasBlob();
+    demandPostDownloadBlob(blob,demandPostFilename());
+    if (!quiet) toast('Facebook graphic downloaded.','ok');
+    return true;
+  } catch (error) {
+    if (!quiet) toast(error?.message || 'The graphic could not be downloaded.','err');
+    return false;
+  } finally {
+    setDemandPostKitBusy(false);
+  }
+}
+
+async function demandPostWriteClipboard(text) {
+  const value = String(text || '');
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly','');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('Copy is not supported in this browser.');
+}
+
+async function copyDemandPostCaption({ quiet = false } = {}) {
+  setDemandPostKitBusy(true);
+  try {
+    if (!await revalidateDemandPostKitForPublish()) return false;
+  } catch (error) {
+    if (!quiet) toast(error?.message || 'Live discounted times could not be confirmed.','err');
+    return false;
+  } finally {
+    setDemandPostKitBusy(false);
+  }
+  const caption = String($('dgPostKitCaption')?.value || _dgPostKitState?.caption || '').trim();
+  if (!caption) {
+    if (!quiet) toast('The caption is not ready yet.','err');
+    return false;
+  }
+  try {
+    await demandPostWriteClipboard(caption);
+    if (!quiet) toast('Facebook caption copied.','ok');
+    return true;
+  } catch (error) {
+    if (!quiet) toast(error?.message || 'The caption could not be copied.','err');
+    return false;
+  }
+}
+
+async function shareDemandPostKit() {
+  if (!_dgPostKitState) return;
+  setDemandPostKitBusy(true);
+  try {
+    if (!await revalidateDemandPostKitForPublish()) return;
+    const blob = await demandPostCanvasBlob();
+    const filename = demandPostFilename();
+    const caption = String($('dgPostKitCaption')?.value || _dgPostKitState.caption || '');
+    const file = typeof File === 'function' ? new File([blob],filename,{type:'image/png'}) : null;
+    let canShareFile = false;
+    try {
+      canShareFile = !!file && typeof navigator.share === 'function'
+        && typeof navigator.canShare === 'function'
+        && navigator.canShare({ files:[file] });
+    } catch (_) { canShareFile = false; }
+    if (canShareFile) {
+      await navigator.share({
+        files:[file],
+        title:`Korte DOS ${demandPostPercent(_dgPostKitState.campaign.discount_percent ?? _dgPostKitState.campaign.discountPercent)}% offer`,
+        text:caption,
+      });
+      return;
+    }
+    await demandPostWriteClipboard(caption);
+    demandPostDownloadBlob(blob,filename);
+    toast('File sharing is unavailable here, so the PNG was downloaded and the caption was copied.','inf');
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    console.error('shareDemandPostKit:',error);
+    toast('Sharing was not completed. Download the PNG and copy the caption instead.','err');
+  } finally {
+    setDemandPostKitBusy(false);
+  }
+}
+
+async function openDemandPostFacebook() {
+  if (!_dgPostKitState) return;
+  const facebookWindow = window.open('about:blank','_blank');
+  if (facebookWindow) facebookWindow.opener = null;
+  setDemandPostKitBusy(true);
+  try {
+    if (!await revalidateDemandPostKitForPublish()) {
+      facebookWindow?.close();
+      return;
+    }
+    if (facebookWindow && !facebookWindow.closed) {
+      facebookWindow.location.replace('https://www.facebook.com/');
+    } else {
+      window.open('https://www.facebook.com/','_blank','noopener,noreferrer');
+    }
+    toast('Facebook opened. Attach the downloaded PNG and paste your caption.','inf');
+  } catch (error) {
+    facebookWindow?.close();
+    toast(error?.message || 'Live discounted times could not be confirmed.','err');
+  } finally {
+    setDemandPostKitBusy(false);
+  }
 }
 
 function renderDemandQuality(snapshot) {

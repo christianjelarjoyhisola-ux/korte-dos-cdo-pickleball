@@ -6,6 +6,8 @@
   const OFFER_PREVIEW_CACHE_MS = 20000;
   const offerPreviewCache = new Map();
   const offerPreviewLoads = new Map();
+  let featuredOfferCache = { loadedAt: 0, offers: [] };
+  let featuredOfferLoad = null;
 
   const el = id => document.getElementById(id);
   const php = value => typeof fmt === 'function' ? fmt(value) : `₱${Number(value || 0).toFixed(2)}`;
@@ -30,6 +32,7 @@
 
   function normalizeOffer(row, requestedDate) {
     const courtId = row?.courtId ?? row?.court_id;
+    const courtName = String(row?.courtName ?? row?.court_name ?? '').trim();
     const date = cleanDate(row?.offerDate ?? row?.offer_date ?? row?.date ?? requestedDate);
     const slotHour = finiteNumber(row?.slotHour, row?.slot_hour);
     const discountPercent = finiteNumber(row?.discountPercent, row?.discount_percent);
@@ -44,6 +47,7 @@
     }
     return {
       courtId: String(courtId),
+      courtName,
       date,
       slotHour,
       discountPercent,
@@ -51,6 +55,68 @@
       offerRate,
       endsAt,
     };
+  }
+
+  function featuredRows(payload) {
+    const offers = normalizedOfferRows(payload, '')
+      .filter(offer => Number.isFinite(offer.regularRate)
+        && Number.isFinite(offer.offerRate)
+        && offer.offerRate >= 0
+        && offer.offerRate < offer.regularRate)
+      .sort((a, b) => a.date.localeCompare(b.date)
+        || a.slotHour - b.slotHour
+        || a.courtName.localeCompare(b.courtName)
+        || a.courtId.localeCompare(b.courtId));
+    return offers;
+  }
+
+  function featuredOfferIsBookable(offer) {
+    if (!offer) return false;
+    if (offer.endsAt && new Date(offer.endsAt).getTime() <= Date.now()) return false;
+    try {
+      if (typeof window.isOpenPlayHour === 'function'
+          && window.isOpenPlayHour(offer.date, offer.slotHour, offer.courtId)) return false;
+      if (typeof window.isMaintenanceHour === 'function'
+          && window.isMaintenanceHour(offer.date, offer.slotHour, offer.courtId)) return false;
+    } catch (_) {
+      // These public schedule helpers are optional. The featured-offer RPC is
+      // still authoritative when a cached page is briefly missing one.
+    }
+    return true;
+  }
+
+  function featuredOffers() {
+    return (featuredOfferCache.offers || []).filter(featuredOfferIsBookable);
+  }
+
+  async function loadFeaturedOffers(options = {}) {
+    const cached = featuredOffers();
+    if (!options.force
+        && featuredOfferCache.loadedAt
+        && Date.now() - featuredOfferCache.loadedAt < OFFER_PREVIEW_CACHE_MS) return cached;
+    if (featuredOfferLoad) return featuredOfferLoad;
+    if (typeof DB?.getPublicDemandCampaignFeaturedOffers !== 'function') {
+      featuredOfferCache = { loadedAt: Date.now(), offers: [] };
+      return [];
+    }
+
+    const load = Promise.resolve()
+      .then(() => DB.getPublicDemandCampaignFeaturedOffers())
+      .then(payload => {
+        featuredOfferCache = { loadedAt: Date.now(), offers: featuredRows(payload) };
+        return featuredOffers();
+      })
+      .catch(error => {
+        // Promotion discovery must never interfere with ordinary booking.
+        console.warn('Limited court deal unavailable; continuing without promotion.', error);
+        featuredOfferCache = { loadedAt: Date.now(), offers: [] };
+        return [];
+      })
+      .finally(() => {
+        if (featuredOfferLoad === load) featuredOfferLoad = null;
+      });
+    featuredOfferLoad = load;
+    return load;
   }
 
   function normalizedOfferRows(payload, requestedDate) {
@@ -98,7 +164,7 @@
       .catch(error => {
         // Offer discovery is an enhancement only. Ordinary availability and
         // booking must continue when this small public read is unavailable.
-        console.warn('Smart Rate preview unavailable; showing regular rates.', error);
+        console.warn('Limited court deal preview unavailable; showing regular rates.', error);
         offerPreviewCache.set(clean, { loadedAt: Date.now(), offers: [] });
         return [];
       })
@@ -141,7 +207,7 @@
       ...preview,
       className: 'smart-rate',
       badgeText: `${percent}% OFF`,
-      ariaText: `Smart Rate ${percent} percent off, ${php(preview.offerRate)}, regular ${php(preview.regularRate)}`,
+      ariaText: `Limited court deal ${percent} percent off, ${php(preview.offerRate)}, regular ${php(preview.regularRate)}`,
     };
   }
 
@@ -155,6 +221,7 @@
       const date = cleanDate(item?.date);
       if (date) offerPreviewCache.delete(date);
     });
+    featuredOfferCache = { loadedAt: 0, offers: [] };
   }
 
   function withTimeout(promise, timeoutMs = PRICE_CHECK_TIMEOUT_MS) {
@@ -176,9 +243,9 @@
       status.classList.toggle('show', !!applied || !!previewNotice);
       status.classList.toggle('notice', !applied && !!previewNotice);
       status.innerHTML = applied
-        ? `<span aria-hidden="true">✦</span><div><strong>Smart Rate applied automatically</strong>You saved ${php(applied.discountAmount)} on the highlighted time. No code is needed.</div>`
+        ? `<span aria-hidden="true">✦</span><div><strong>Limited Court Deal applied</strong>You saved ${php(applied.discountAmount)} on this booking.</div>`
         : previewNotice
-          ? `<span aria-hidden="true">i</span><div><strong>Smart Rate updated</strong>${previewNotice}</div>`
+          ? `<span aria-hidden="true">i</span><div><strong>Court deal updated</strong>${previewNotice}</div>`
           : '';
     }
     if (voucherEntry) voucherEntry.style.display = applied ? 'none' : '';
@@ -192,7 +259,7 @@
       item.demandCampaignGrossTotal = Number(allocation.grossTotal ?? allocation.gross_total ?? item.total ?? 0);
       item.demandCampaignDiscountAmount = Number(allocation.discountAmount ?? allocation.discount_amount ?? 0);
       item.demandCampaignId = result.campaignId || result.campaign_id || result.id || null;
-      item.demandCampaignName = 'Smart Rate';
+      item.demandCampaignName = 'Limited Court Deal';
       item.total = Number(allocation.total ?? (item.demandCampaignGrossTotal - item.demandCampaignDiscountAmount));
     });
   }
@@ -202,7 +269,7 @@
     if (!matched.length) return null;
     applied = {
       campaignId: matched[0].demandCampaignId || null,
-      name: 'Smart Rate',
+      name: 'Limited Court Deal',
       discountAmount: matched.reduce((sum, item) => sum + Number(item.demandCampaignDiscountAmount || 0), 0),
     };
     setBookingUi();
@@ -240,7 +307,7 @@
       applied = {
         ...result,
         campaignId: result.campaignId || result.campaign_id || result.id || null,
-        name: 'Smart Rate',
+        name: 'Limited Court Deal',
         discountAmount: Number(result.discountAmount ?? result.discount_amount ?? 0),
       };
       applyAllocations(applied, items);
@@ -248,6 +315,8 @@
       return result;
     },
     loadOffersForDate,
+    loadFeaturedOffers,
+    featuredOffers,
     offersForDate,
     offerForSlot,
     previewPrice,

@@ -139,6 +139,7 @@ const PB_FAST_CACHE_MS = {
   bookings: 3500,
   openPlay: 3500,
   demandSlotOffers: 3500,
+  demandFeaturedOffers: 3500,
 };
 const PB_PUBLIC_OFFER_TIMEOUT_MS = 1500;
 const _pbFastCache = new Map();
@@ -660,6 +661,22 @@ function publicDemandCampaignSlotOfferFromRow(r) {
   };
 }
 
+function publicDemandCampaignFeaturedOfferFromRow(r) {
+  const normalized = publicDemandCampaignSlotOfferFromRow(r);
+  const courtName = String(r?.court_name || '').trim();
+  if (!normalized || !courtName) return null;
+  return {
+    courtId: normalized.courtId,
+    courtName,
+    offerDate: normalized.offerDate,
+    slotHour: normalized.slotHour,
+    discountPercent: normalized.discountPercent,
+    regularRate: normalized.regularRate,
+    offerRate: normalized.offerRate,
+    endsAt: normalized.endsAt,
+  };
+}
+
 const PB_RESERVATION_HOLD_MINUTES = 15;
 
 function bookingHoldsSlotForConflict(b) {
@@ -1034,13 +1051,13 @@ window.DB = {
   async saveCourt(court) {
     const { error } = await _sb.from('courts').upsert(courtToRow(court));
     if (error) { console.error('saveCourt:', error); throw error; }
-    _pbClearFastCache(['courts']);
+    _pbClearFastCache(['courts', 'publicDemandCampaignFeaturedOffers']);
   },
 
   async deleteCourt(id) {
     const { error } = await _sb.from('courts').delete().eq('id', id);
     if (error) console.error('deleteCourt:', error);
-    _pbClearFastCache(['courts']);
+    _pbClearFastCache(['courts', 'publicDemandCampaignFeaturedOffers']);
   },
 
   // ---- BOOKINGS ----
@@ -1119,6 +1136,46 @@ window.DB = {
     }
   },
 
+  async getPublicDemandCampaignFeaturedOffers() {
+    try {
+      return await _pbCached(
+        'publicDemandCampaignFeaturedOffers',
+        {},
+        PB_FAST_CACHE_MS.demandFeaturedOffers,
+        async () => {
+          let timeoutId = null;
+          const timedOut = Symbol('public-demand-featured-offer-timeout');
+          try {
+            const request = Promise.resolve(
+              _publicBookingSb.rpc(
+                'get_public_demand_campaign_featured_offers',
+                {},
+              ),
+            ).catch(() => null);
+            const timeout = new Promise(resolve => {
+              timeoutId = setTimeout(
+                () => resolve(timedOut),
+                PB_PUBLIC_OFFER_TIMEOUT_MS,
+              );
+            });
+            const response = await Promise.race([request, timeout]);
+            if (response === timedOut || !response || response.error) return [];
+            return (Array.isArray(response.data) ? response.data : [])
+              .map(publicDemandCampaignFeaturedOfferFromRow)
+              .filter(Boolean)
+              .slice(0, 6);
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+          }
+        },
+      );
+    } catch (_) {
+      // Featured offers drive optional promotion only. A failed discovery read
+      // must never interrupt availability, selection, or normal-price booking.
+      return [];
+    }
+  },
+
   async getOwnerIntelligence(filters = {}) {
     if (!(await _pbHasAuthSession())) {
       throw new Error('An authenticated owner session is required to load Insights.');
@@ -1173,7 +1230,11 @@ window.DB = {
       console.error('createDemandCampaignFromRecommendation:', error);
       throw error;
     }
-    _pbClearFastCache(['demandGrowthIntelligence', 'publicDemandCampaignSlotOffers']);
+    _pbClearFastCache([
+      'demandGrowthIntelligence',
+      'publicDemandCampaignSlotOffers',
+      'publicDemandCampaignFeaturedOffers',
+    ]);
     return data || {};
   },
 
@@ -1188,7 +1249,11 @@ window.DB = {
       console.error('endDemandCampaign:', error);
       throw error;
     }
-    _pbClearFastCache(['demandGrowthIntelligence', 'publicDemandCampaignSlotOffers']);
+    _pbClearFastCache([
+      'demandGrowthIntelligence',
+      'publicDemandCampaignSlotOffers',
+      'publicDemandCampaignFeaturedOffers',
+    ]);
     return data || {};
   },
 
@@ -1202,7 +1267,12 @@ window.DB = {
       console.error('applyMatchingDemandCampaign:', error);
       throw error;
     }
-    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignSlotOffers']);
+    _pbClearFastCache([
+      'bookings',
+      'publicBookingSlots',
+      'publicDemandCampaignSlotOffers',
+      'publicDemandCampaignFeaturedOffers',
+    ]);
     return data || { applied: false };
   },
 
@@ -1258,7 +1328,7 @@ window.DB = {
       ({ data, error } = await insertBookingRow(withoutOptionalBookingColumns(row)));
     }
     if (error) { console.error('addBooking:', error); throw error; }
-    _pbClearFastCache(['bookings']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
     return {
       ref: data?.ref || booking.ref,
       createdAt: data?.created_at || booking.createdAt || null,
@@ -1373,7 +1443,7 @@ window.DB = {
         denied.code = 'BOOKING_UPDATE_NOT_ALLOWED';
         throw denied;
       }
-      _pbClearFastCache(['bookings', 'publicBookingSlots']);
+      _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
       return data;
     }
 
@@ -1429,7 +1499,7 @@ window.DB = {
       console.error('updateBooking:', denied);
       throw denied;
     }
-    _pbClearFastCache(['bookings']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
   },
 
   // Stamp a set of bookings as billed on a given weekly statement (idempotent
@@ -1446,7 +1516,7 @@ window.DB = {
   async deleteBooking(ref) {
     const { error } = await _sb.from('bookings').delete().eq('ref', ref);
     if (error) { console.error('deleteBooking:', error); throw error; }
-    _pbClearFastCache(['bookings']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
   },
 
   async voidDeleteBookingGroup(ref, reason) {
@@ -1455,7 +1525,7 @@ window.DB = {
       p_reason: reason,
     });
     if (error) { console.error('voidDeleteBookingGroup:', error); throw error; }
-    _pbClearFastCache(['bookings']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
     return data || null;
   },
 
@@ -1476,7 +1546,7 @@ window.DB = {
   async restoreDeletedBookingArchive(id) {
     const { data, error } = await _sb.rpc('restore_deleted_booking_archive', { p_archive_id: id });
     if (error) { console.error('restoreDeletedBookingArchive:', error); throw error; }
-    _pbClearFastCache(['bookings']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
     return data ? rowToBooking(data) : null;
   },
 
@@ -2247,13 +2317,13 @@ window.DB = {
   async addBlockedDate(date) {
     const { error } = await _sb.from('blocked_dates').insert({ date, created_at: new Date().toISOString() });
     if (error) console.error('addBlockedDate:', error);
-    _pbClearFastCache(['blockedDates']);
+    _pbClearFastCache(['blockedDates', 'publicDemandCampaignFeaturedOffers']);
   },
 
   async removeBlockedDate(date) {
     const { error } = await _sb.from('blocked_dates').delete().eq('date', date);
     if (error) console.error('removeBlockedDate:', error);
-    _pbClearFastCache(['blockedDates']);
+    _pbClearFastCache(['blockedDates', 'publicDemandCampaignFeaturedOffers']);
   },
 
   // ---- ACCOUNTS ----
@@ -2392,7 +2462,7 @@ window.DB = {
   async expireStaleVerifyingBookings() {
     const { error } = await _sb.rpc('expire_stale_verifying_bookings');
     if (error) console.error('expireStaleVerifyingBookings:', error);
-    _pbClearFastCache(['bookings', 'publicBookingSlots']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
   },
 
   async createPaymentSession(payload) {
@@ -2466,7 +2536,7 @@ window.DB = {
       p_reason: note,
     });
     if (error) { console.error('restoreForfeitedHostBookingAsFullyPaid:', error); throw error; }
-    _pbClearFastCache(['bookings', 'publicBookingSlots']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
     return data;
   },
 
@@ -3683,6 +3753,111 @@ window.DB = {
         });
       }
       return offers;
+    },
+    async getPublicDemandCampaignFeaturedOffers() {
+      const db = readDb();
+      const now = Date.now();
+      const today = localManilaDate();
+      const campaign = (db.demandCampaigns || []).find(row => row.status === 'active'
+        && new Date(row.starts_at).getTime() <= now
+        && new Date(row.ends_at).getTime() > now);
+      if (!campaign) return [];
+
+      const effectiveUsage = (db.demandCampaignRedemptions || []).filter(redemption =>
+        redemption.campaign_id === campaign.id
+        && (redemption.status === 'redeemed'
+          || (redemption.status === 'reserved'
+            && new Date(redemption.reserved_until).getTime() > now))).length;
+      if (effectiveUsage >= Number(campaign.max_redemptions || 0)) return [];
+
+      const discountPercent = Number(campaign.discount_percent || 0);
+      if (!Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 10) return [];
+      const court = (db.courts || []).find(row => String(row.id) === String(campaign.court_id));
+      if (!court || court.blocked) return [];
+
+      const blockedDates = new Set((db.blockedDates || []).map(row => String(row?.date || row)));
+      const operatingOpen = Number(db.settings?.open_hour ?? 0);
+      const operatingClose = Number(db.settings?.close_hour ?? 24);
+      const scheduleJson = key => {
+        const raw = db.settings?.[key];
+        if (!raw) return null;
+        if (typeof raw === 'object') return raw;
+        try { return JSON.parse(String(raw)); } catch (_) { return null; }
+      };
+      const hourInRange = (slotHour, startValue, endValue) => {
+        const start = Number(startValue), end = Number(endValue);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return false;
+        return start < end ? slotHour >= start && slotHour < end : slotHour >= start || slotHour < end;
+      };
+      const appliesToCourt = config => {
+        const courtIds = Array.isArray(config?.courtIds) ? config.courtIds.map(String).filter(Boolean) : [];
+        return courtIds.length === 0 || courtIds.includes(String(campaign.court_id));
+      };
+      const calendarDay = date => new Date(`${date}T00:00:00Z`).getUTCDay();
+      const openPlay = scheduleJson('open_play_config');
+      const openPlayOccupies = (date, slotHour) => {
+        if (!openPlay?.enabled || !appliesToCourt(openPlay)
+          || !hourInRange(slotHour, openPlay.start, openPlay.end)) return false;
+        const days = Array.isArray(openPlay.days) ? openPlay.days.map(Number) : [];
+        const specificDates = Array.isArray(openPlay.specificDates) ? openPlay.specificDates.map(String) : [];
+        return days.includes(calendarDay(date)) || specificDates.includes(date);
+      };
+      const maintenance = scheduleJson('maintenance_config');
+      const maintenanceRules = Array.isArray(maintenance?.rules)
+        ? maintenance.rules
+        : maintenance && typeof maintenance === 'object' ? [maintenance] : [];
+      const maintenanceOccupies = (date, slotHour) => maintenanceRules.some(rule => {
+        if (!rule?.enabled || !appliesToCourt(rule)
+          || !hourInRange(slotHour, rule.start, rule.end)) return false;
+        const mode = String(rule.mode || 'specific');
+        if (mode === 'monthly') return Number(rule.recurring?.day) === Number(date.slice(8, 10));
+        if (mode === 'weekly') {
+          return (Array.isArray(rule.recurring?.days) ? rule.recurring.days.map(Number) : [])
+            .includes(calendarDay(date));
+        }
+        return (Array.isArray(rule.dates) ? rule.dates.map(String) : []).includes(date);
+      });
+      const freshHoldCutoff = now - PB_RESERVATION_HOLD_MINUTES * 60 * 1000;
+      const bookingOccupies = (date, slotHour) => (db.bookings || []).some(booking => {
+        if (String(booking.courtId || booking.court_id) !== String(campaign.court_id)
+          || String(booking.date || '') !== date) return false;
+        const status = String(booking.status || '').toLowerCase();
+        if (status === 'cancelled' || status === 'forfeited') return false;
+        if (status === 'verifying') {
+          const createdAt = new Date(booking.createdAt || booking.created_at || '').getTime();
+          if (Number.isFinite(createdAt) && createdAt <= freshHoldCutoff) return false;
+        }
+        return (booking.slots || []).some(value => Number(value) === Number(slotHour));
+      });
+
+      const featured = [];
+      for (let offset = 1; offset <= 28 && featured.length < 6; offset += 1) {
+        const offerDate = localDateAdd(today, offset);
+        if (blockedDates.has(offerDate)
+          || localIsoWeekday(offerDate) !== Number(campaign.weekday)) continue;
+        for (let slotHour = Number(campaign.start_hour);
+          slotHour < Number(campaign.end_hour) && featured.length < 6;
+          slotHour += 1) {
+          if (!Number.isFinite(operatingOpen) || !Number.isFinite(operatingClose)
+            || slotHour < operatingOpen || slotHour >= operatingClose) continue;
+          if (openPlayOccupies(offerDate, slotHour)
+            || maintenanceOccupies(offerDate, slotHour)
+            || bookingOccupies(offerDate, slotHour)) continue;
+          const regularRate = localDemandSlotRate(db, campaign.court_id, slotHour);
+          if (regularRate <= 0) continue;
+          featured.push({
+            courtId: String(campaign.court_id),
+            courtName: String(court.name || campaign.court_name_snapshot || campaign.court_id),
+            offerDate,
+            slotHour,
+            discountPercent,
+            regularRate,
+            offerRate: Math.round(regularRate * (100 - discountPercent)) / 100,
+            endsAt: campaign.ends_at,
+          });
+        }
+      }
+      return featured;
     },
     async createDemandCampaignFromRecommendation(recommendationId, options = {}) {
       const session = window.Auth?.getSession?.();

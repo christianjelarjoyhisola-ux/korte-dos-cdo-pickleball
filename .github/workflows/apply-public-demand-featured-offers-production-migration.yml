@@ -1,0 +1,280 @@
+name: Apply Public Smart Offer Featured Slots Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-public-demand-featured-offers-production-migration.yml"
+      - "supabase/migrations/20260826160000_public_demand_campaign_featured_offers.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Preflight, apply once, and verify public featured offers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260826160000_public_demand_campaign_featured_offers.sql
+      MIGRATION_SHA256: 3fb8101941da18b285b580bee9ddf5e9d850449a612c158dcf38a31ebac9dd21
+      PREFLIGHT_SQL: |
+        with migration_history as (
+          select version, name, statements
+          from supabase_migrations.schema_migrations
+          where version = '20260826160000'
+        )
+        select jsonb_build_object(
+          'base_ready',
+            to_regclass('public.bookings') is not null
+            and to_regclass('public.courts') is not null
+            and to_regclass('public.blocked_dates') is not null
+            and to_regclass('public.settings') is not null
+            and to_regclass('public.demand_campaigns') is not null
+            and to_regclass('public.demand_campaign_redemptions') is not null
+            and to_regprocedure(
+              'public.calculate_booking_court_total(text,text[])'
+            ) is not null
+            and to_regprocedure(
+              'public.get_public_demand_campaign_slot_offers(date)'
+            ) is not null,
+          'schema_present',
+            to_regprocedure(
+              'public.get_public_demand_campaign_featured_offers()'
+            ) is not null,
+          'history_exists', exists (select 1 from migration_history),
+          'history_name', coalesce((select name from migration_history limit 1), ''),
+          'history_marker', coalesce((select statements[1] from migration_history limit 1), '')
+        ) as preflight;
+      HISTORY_SQL: |
+        begin;
+        set local lock_timeout = '5s';
+        set local statement_timeout = '30s';
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260826160000',
+          'public_demand_campaign_featured_offers',
+          array['sha256:3fb8101941da18b285b580bee9ddf5e9d850449a612c158dcf38a31ebac9dd21']::text[]
+        )
+        on conflict (version) do nothing;
+
+        commit;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          featured_function regprocedure := to_regprocedure(
+            'public.get_public_demand_campaign_featured_offers()'
+          );
+          featured_definition text;
+          featured_argument_names text[];
+        begin
+          if featured_function is null then
+            raise exception 'Public featured Smart Offer function is missing';
+          end if;
+
+          select pg_get_functiondef(featured_function), proargnames
+            into featured_definition, featured_argument_names
+          from pg_proc
+          where oid = featured_function;
+
+          if featured_argument_names is distinct from array[
+            'court_id',
+            'court_name',
+            'offer_date',
+            'slot_hour',
+            'discount_percent',
+            'regular_rate',
+            'offer_rate',
+            'ends_at'
+          ]::text[] then
+            raise exception 'Public featured Smart Offer result shape is unexpected';
+          end if;
+
+          if not coalesce((
+            select pronargs = 0
+              and prosecdef
+              and provolatile = 's'
+              and coalesce(proconfig, '{}'::text[]) @>
+                array['search_path=pg_catalog, pg_temp']::text[]
+            from pg_proc
+            where oid = featured_function
+          ), false) then
+            raise exception 'Public featured Smart Offer function lost its security attributes';
+          end if;
+
+          if not has_function_privilege('anon', featured_function, 'execute')
+             or not has_function_privilege(
+               'authenticated',
+               featured_function,
+               'execute'
+             ) then
+            raise exception 'Public featured Smart Offer grants are incomplete';
+          end if;
+
+          if has_table_privilege('anon', 'public.demand_campaigns', 'select')
+             or has_table_privilege(
+               'anon',
+               'public.demand_campaign_redemptions',
+               'select'
+             ) then
+            raise exception 'Demand campaign tables expose anonymous reads';
+          end if;
+
+          if position('public.calculate_booking_court_total' in lower(featured_definition)) = 0
+             or position('public.blocked_dates' in lower(featured_definition)) = 0
+             or position('public.settings' in lower(featured_definition)) = 0
+             or position('open_play_config' in lower(featured_definition)) = 0
+             or position('maintenance_config' in lower(featured_definition)) = 0
+             or position('open_hour' in lower(featured_definition)) = 0
+             or position('close_hour' in lower(featured_definition)) = 0
+             or position('public.bookings' in lower(featured_definition)) = 0
+             or position('court.blocked = false' in lower(featured_definition)) = 0
+             or position('booking.status not in' in lower(featured_definition)) = 0
+             or position('15 minutes' in lower(featured_definition)) = 0
+             or position('campaign.max_redemptions' in lower(featured_definition)) = 0
+             or position('pg_catalog.generate_series(1, 28)' in lower(featured_definition)) = 0
+             or position('limit 6' in lower(featured_definition)) = 0
+             or position('asia/manila' in lower(featured_definition)) = 0 then
+            raise exception 'Public featured Smart Offer availability safeguards are incomplete';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260826160000'
+              and name = 'public_demand_campaign_featured_offers'
+              and statements = array[
+                'sha256:3fb8101941da18b285b580bee9ddf5e9d850449a612c158dcf38a31ebac9dd21'
+              ]::text[]
+          ) then
+            raise exception 'Public featured Smart Offer migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read-only production preflight
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          payload_file="$RUNNER_TEMP/public-demand-featured-preflight.json"
+          response_file="$RUNNER_TEMP/public-demand-featured-preflight-response.json"
+          jq -n --arg query "$PREFLIGHT_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Public featured Smart Offer preflight failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          preflight="$(jq -c '
+            if type == "array" then .[0].preflight
+            elif (.result? | type) == "array" then .result[0].preflight
+            else .preflight end
+          ' "$response_file")"
+          if [[ -z "$preflight" || "$preflight" == "null" ]]; then
+            echo "::error::Public featured Smart Offer preflight returned no result."
+            exit 1
+          fi
+          if [[ "$(jq -r '.base_ready' <<<"$preflight")" != "true" ]]; then
+            echo "::error::Smart Offer base schema is incomplete; migration was not attempted."
+            exit 1
+          fi
+
+          if [[ "$(jq -r '.history_exists' <<<"$preflight")" == "true" ]]; then
+            marker="$(jq -r '.history_marker' <<<"$preflight")"
+            name="$(jq -r '.history_name' <<<"$preflight")"
+            if [[ "$marker" != "sha256:$MIGRATION_SHA256" || \
+                  "$name" != "public_demand_campaign_featured_offers" ]]; then
+              echo "::error::Migration 20260826160000 has non-canonical history."
+              exit 1
+            fi
+            echo "skip_apply=true" >> "$GITHUB_OUTPUT"
+            echo "Canonical public featured Smart Offer migration is already recorded."
+          else
+            if [[ "$(jq -r '.schema_present' <<<"$preflight")" == "true" ]]; then
+              echo "::error::Public featured Smart Offer schema exists without canonical history."
+              exit 1
+            fi
+            echo "skip_apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply public featured offers migration exactly once
+        if: steps.preflight.outputs.skip_apply != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/public-demand-featured-migration.json"
+          response_file="$RUNNER_TEMP/public-demand-featured-migration-response.json"
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: (. + "\n" + $history)}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          # Exactly one mutation request and no automatic retry. A later
+          # preflight refuses partial or checksum-mismatched state.
+          status_code="$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Public featured Smart Offer migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/public-demand-featured-verification.json"
+          response_file="$RUNNER_TEMP/public-demand-featured-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 90 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Public featured Smart Offer verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Public featured Smart Offer production migration verified."

@@ -244,7 +244,7 @@ test('initial and refreshed court grids share one Smart Rate slot renderer', () 
   const refresh = sourceBetween(index, 'async function onCardDate(', 'async function ensureCourt(');
   const initial = sourceBetween(index, 'async function renderCourts(', 'function switchCourtTab(');
   const renderer = sourceBetween(index, 'function renderAvailableCourtSlot(', 'async function onCardDate(');
-  const rendererHelpers = sourceBetween(index, 'function smartRateBadgeHtml(', 'function setSmartRateNoteVisibility(');
+  const rendererHelpers = sourceBetween(index, 'function smartRateBadgeHtml(', 'let _featuredDealOffers');
   const controller = read('demand-campaign-booking.js');
 
   assert.match(refresh, /renderAvailableCourtSlot\s*\(/);
@@ -257,7 +257,7 @@ test('initial and refreshed court grids share one Smart Rate slot renderer', () 
   assert.match(rendererHelpers, /smart-rate-regular/);
   assert.match(rendererHelpers, /smart-rate-price/);
   assert.match(controller, /className:\s*'smart-rate'/);
-  assert.match(controller, /Smart Rate/i);
+  assert.match(controller, /Limited court deal/i);
   assert.match(controller, /badgeText:\s*`\$\{percent\}% OFF`/);
 });
 
@@ -317,7 +317,7 @@ test('slot previews are exact-date reads and never mutate booking selections or 
   const markup = controller.slotMarkupData('c2', selection.date, 8, 999);
   assert.equal(markup.className, 'smart-rate');
   assert.equal(markup.badgeText, '10% OFF');
-  assert.match(markup.ariaText, /Smart Rate|10% off/i);
+  assert.match(markup.ariaText, /Limited court deal|10% off/i);
   assert.equal(controller.selectionHasPreview([selection]), true);
   assert.deepEqual(selection, before);
 });
