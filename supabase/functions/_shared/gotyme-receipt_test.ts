@@ -106,6 +106,47 @@ Reference No. ITO260819143625005
 Date 19 Aug 2026 at 10:36 PM
 `;
 
+// Current GoTyme receipts can display Philippine time in 24-hour format.
+const august24ReceiptWith24HourTime = `
+Transferred
+P1,440.00
+Share
+InstaPay Instant
+To
+Korte D**
+*************A1BS
+G-Xchange, Inc (GCash)
+From
+URIAH K**** A***** G*****
+********3642
+GoTyme Bank
+Amount P1,440.00
+Fee P0.00
+Total P1,440.00
+Trace ID 830003
+Reference No. ITO260824132830003
+Date 24 Aug 2026 at 21:28
+`;
+
+Deno.test("parses the supplied GoTyme 24-hour receipt timestamp", () => {
+  const parsed = parseGoTymePhDateTime(august24ReceiptWith24HourTime);
+  assertEquals(parsed.date, "2026-08-24", "PH date");
+  assertEquals(
+    parsed.shifted?.toISOString(),
+    "2026-08-24T21:28:00.000Z",
+    "PH 24-hour time",
+  );
+});
+
+Deno.test("leaves invalid or ambiguous GoTyme 24-hour times unreadable", () => {
+  for (const invalidTime of ["24:00", "21:60", "9:28"]) {
+    const receipt = august24ReceiptWith24HourTime.replace("21:28", invalidTime);
+    const parsed = parseGoTymePhDateTime(receipt);
+    assertEquals(parsed.date, null, `${invalidTime} date`);
+    assertEquals(parsed.shifted, null, `${invalidTime} time`);
+  }
+});
+
 Deno.test("recovers a missed stylized InstaPay logo from strict GoTyme evidence", () => {
   const receipt = august19ReceiptWithMissedLogo;
   assert(isGoTymeToGcashReceipt(receipt), "receipt family");

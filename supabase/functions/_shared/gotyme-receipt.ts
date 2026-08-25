@@ -680,7 +680,7 @@ type DateCandidate = {
 
 function parseCompactDate(value: string): DateCandidate | null {
   const match = value.match(
-    /^DATE(\d{1,2})(JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)(\d{4})(?:AT)?(\d{3,4})(AM|PM)$/,
+    /^DATE(\d{1,2})(JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)(\d{4})(?:AT)?(\d{3,4})(AM|PM)?$/,
   );
   if (!match) return null;
 
@@ -693,10 +693,14 @@ function parseCompactDate(value: string): DateCandidate | null {
   const meridiem = match[5];
   if (
     month == null || year < 2000 || year > 2100 || day < 1 || day > 31 ||
-    hour < 1 || hour > 12 || minute < 0 || minute > 59
+    minute < 0 || minute > 59 ||
+    (!meridiem && timeDigits.length !== 4) ||
+    (meridiem ? hour < 1 || hour > 12 : hour < 0 || hour > 23)
   ) return null;
-  if (meridiem === "AM" && hour === 12) hour = 0;
-  if (meridiem === "PM" && hour < 12) hour += 12;
+  if (meridiem) {
+    if (meridiem === "AM" && hour === 12) hour = 0;
+    if (meridiem === "PM" && hour < 12) hour += 12;
+  }
 
   const calendarCheck = new Date(Date.UTC(year, month, day));
   if (
