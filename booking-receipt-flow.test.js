@@ -15,6 +15,10 @@ const stagedReceiptReconciliationMigration = fs.readFileSync(
   'supabase/migrations/20260825143000_reconcile_staged_court_receipts.sql',
   'utf8',
 );
+const serializedBookingHoldMigration = fs.readFileSync(
+  'supabase/migrations/20260825234000_serialize_booking_holds.sql',
+  'utf8',
+);
 
 function functionSource(source, name, nextName) {
   const start = source.indexOf(`async function ${name}(`);
@@ -64,6 +68,37 @@ test('court receipt selection uploads before Continue and verification reuses it
   assert.match(receiptEdge, /from\("receipts"\)\.download\(stagedReceiptPath\)/);
 });
 
+test('court hold creation is single-flight before any asynchronous reservation work', () => {
+  const entrypoint = functionSource(indexHtml, 'proceedToBook', 'proceedToBookOnce');
+
+  assert.match(indexHtml, /let _bookingHoldCreationPromise = null/);
+  assert.match(
+    entrypoint,
+    /if \(_bookingHoldCreationPromise\) return _bookingHoldCreationPromise/,
+  );
+  assert.match(entrypoint, /setBookingHoldCreationLocked\(true\)/);
+  assert.match(entrypoint, /const creationPromise = proceedToBookOnce\(courtId\)/);
+  assert.match(entrypoint, /_bookingHoldCreationPromise = creationPromise/);
+  assert.match(
+    entrypoint,
+    /finally[\s\S]*_bookingHoldCreationPromise === creationPromise[\s\S]*_bookingHoldCreationPromise = null[\s\S]*setBookingHoldCreationLocked\(false\)/,
+  );
+});
+
+test('database serializes same-slot booking writes before checking conflicts', () => {
+  const lockAt = serializedBookingHoldMigration.indexOf('pg_advisory_xact_lock');
+  const orderedSlotsAt = serializedBookingHoldMigration.indexOf('order by slot_value');
+  const conflictCheckAt = serializedBookingHoldMigration.indexOf('if exists (', lockAt);
+
+  assert.ok(lockAt >= 0, 'same-slot writes need a transaction-scoped advisory lock');
+  assert.ok(orderedSlotsAt >= 0 && orderedSlotsAt < lockAt, 'multi-slot locks must use deterministic ordering');
+  assert.ok(conflictCheckAt > lockAt, 'the overlap query must run after the competing transaction is serialized');
+  assert.match(
+    serializedBookingHoldMigration,
+    /'korte-dos-booking-slot\|'[\s\S]*new\.court_id[\s\S]*new\.date[\s\S]*lock_slot/,
+  );
+});
+
 test('stored court receipts recover to owner review when verification is interrupted', () => {
   assert.match(supabaseConfig, /async recoverBookingReceipt\(payload\)/);
   assert.match(supabaseConfig, /action: 'recover_court_booking_receipt'/);
@@ -78,6 +113,39 @@ test('stored court receipts recover to owner review when verification is interru
   assert.match(
     receiptEdge,
     /status: "pending",[\s\S]*payment_status: "for_verification"/,
+  );
+});
+
+test('legacy overlapping holds preserve evidence even when pending transition is blocked', () => {
+  const recoveryStart = receiptEdge.indexOf(
+    'async function recoverCourtReceiptAfterFailure(',
+  );
+  const recoveryEnd = receiptEdge.indexOf(
+    'function positiveReceiptVerificationId(',
+    recoveryStart,
+  );
+  assert.ok(recoveryStart >= 0 && recoveryEnd > recoveryStart);
+  const recovery = receiptEdge.slice(recoveryStart, recoveryEnd);
+
+  const pendingTransitionAt = recovery.indexOf('const activeUpdate');
+  const evidenceOnlyAt = recovery.indexOf('const evidenceOnlyUpdate');
+  assert.ok(pendingTransitionAt >= 0, 'normal recovery should first attempt pending review');
+  assert.ok(evidenceOnlyAt > pendingTransitionAt, 'metadata-only recovery must be the guarded fallback');
+  assert.match(
+    recovery,
+    /bookingUpdateQuery\(db, booking, evidenceUpdate\)[\s\S]*\.in\("status", \["verifying", "pending"\]\)/,
+  );
+  assert.match(
+    recovery,
+    /receiptImageUrl: state\.objectPath[\s\S]*receiptImageHash: state\.imageHash[\s\S]*attachmentDeferred: true/,
+  );
+  assert.match(
+    receiptEdge,
+    /allowVerifyingEvidence[\s\S]*row\.status === "verifying"[\s\S]*row\.payment_status === "for_verification"/,
+  );
+  assert.match(
+    receiptEdge,
+    /receipt safe-state update failed:[\s\S]*throw safeStateErr \|\| new Error/,
   );
 });
 
@@ -109,6 +177,36 @@ test('stale hold expiry reconciles Storage evidence before cancellation', () => 
   assert.match(
     stagedReceiptReconciliationMigration,
     /and not exists \([\s\S]*join storage\.objects[\s\S]*object\.name like evidence_booking\.ref \|\| '\/%'/,
+  );
+});
+
+test('stale overlap cleanup attaches evidence, releases empty holds, then promotes review', () => {
+  const attachAt = serializedBookingHoldMigration.indexOf(
+    'set receipt_image_url = staged.object_path',
+  );
+  const releaseAt = serializedBookingHoldMigration.indexOf(
+    "set status = 'cancelled'",
+  );
+  const promoteAt = serializedBookingHoldMigration.indexOf(
+    "set status = 'pending'",
+    releaseAt + 1,
+  );
+
+  assert.ok(attachAt >= 0, 'stored evidence must be attached first');
+  assert.ok(releaseAt > attachAt, 'empty stale siblings may be released only after attachment');
+  assert.ok(promoteAt > releaseAt, 'the evidence-bearing hold is promoted only after conflicts are released');
+  assert.match(
+    serializedBookingHoldMigration,
+    /set status = 'cancelled',\s*payment_status = 'failed'/,
+    'an empty placeholder is a failed attempt, not a rejected payment',
+  );
+  assert.match(
+    serializedBookingHoldMigration,
+    /and nullif\(btrim\(coalesce\(booking\.receipt_image_url, ''\)\), ''\) is null[\s\S]*and not exists \([\s\S]*join storage\.objects/,
+  );
+  assert.match(
+    serializedBookingHoldMigration,
+    /and nullif\(btrim\(coalesce\(booking\.receipt_image_url, ''\)\), ''\) is not null[\s\S]*exception[\s\S]*when sqlstate 'P0001'/,
   );
 });
 

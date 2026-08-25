@@ -6,6 +6,21 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-08-25] - Atomic Booking Holds and Receipt Recovery
+
+### Fixed
+- **No double-click duplicate holds** - court hold creation is single-flight in the browser, while the database serializes concurrent writes for every court, date, and time slot before checking availability.
+- **Stored receipts never look incomplete** - if payment evidence reaches private Storage but a legacy overlap blocks the normal review transition, the verifier attaches the evidence, alerts the owner, and tells the customer not to upload or pay again.
+- **Safe stale-hold reconciliation** - stored evidence is preserved first, genuinely empty placeholders are released as failed attempts, and the paid hold is then promoted to pending owner review.
+
+### Added
+- **Real concurrency regression** - an isolated PostgreSQL test proves that simultaneous same-slot inserts cannot both succeed and that legacy receipt evidence survives overlap cleanup.
+- **Ordered production deployment** - a checksum-locked workflow rehearses and verifies the database migration before deploying the receipt verifier.
+
+**Files affected:** `index.html`, `supabase/functions/verify-gcash-receipt/index.ts`, `supabase/migrations/20260825234000_serialize_booking_holds.sql`, `booking-receipt-flow.test.js`, `tools/test-booking-hold-concurrency.js`, `tools/check-index-inline.js`, `.github/workflows/deploy-booking-hold-receipt-recovery.yml`, `.github/workflows/apply-payment-review-production-migration.yml`, `package.json`, `CHANGELOG.md`
+
+---
+
 ## [2026-08-25] - Owner Intelligence Forward Growth Outlook
 
 ### Added

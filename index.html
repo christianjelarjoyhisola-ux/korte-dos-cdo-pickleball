@@ -5906,6 +5906,7 @@ let _reservedRefs = [];
 let _reservationStartedAt = null;
 let _countdownInterval = null;
 let _bookingSubmissionInFlight = false;
+let _bookingHoldCreationPromise = null;
 const RESERVATION_MINUTES = 15;
 const GUEST_RESUME_KEY = 'pb_guest_booking_resume_v1';
 
@@ -6308,7 +6309,41 @@ async function proceedToBookLegacy(courtId) {
   startSlotCountdown(null, true);
 }
 
+function setBookingHoldCreationLocked(locked) {
+  document.querySelectorAll('button[onclick*="proceedToBook("]').forEach(button => {
+    if (locked) {
+      if (!button.dataset.holdCreationWasDisabled) {
+        button.dataset.holdCreationWasDisabled = button.disabled ? '1' : '0';
+      }
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      return;
+    }
+    if (button.dataset.holdCreationWasDisabled === '0') button.disabled = false;
+    delete button.dataset.holdCreationWasDisabled;
+    button.removeAttribute('aria-busy');
+  });
+}
+
 async function proceedToBook(courtId = null) {
+  // A fast double-click used to start two concurrent INSERTs before either
+  // request could see the other hold. Keep the whole async selection/hold flow
+  // single-flight and disable every Book Now entry point immediately.
+  if (_bookingHoldCreationPromise) return _bookingHoldCreationPromise;
+  setBookingHoldCreationLocked(true);
+  const creationPromise = proceedToBookOnce(courtId);
+  _bookingHoldCreationPromise = creationPromise;
+  try {
+    return await creationPromise;
+  } finally {
+    if (_bookingHoldCreationPromise === creationPromise) {
+      _bookingHoldCreationPromise = null;
+      setBookingHoldCreationLocked(false);
+    }
+  }
+}
+
+async function proceedToBookOnce(courtId = null) {
   const selections = cardSelectionList();
   if (selections.length === 0) {
     toast('Please select at least one time slot.', 'inf');

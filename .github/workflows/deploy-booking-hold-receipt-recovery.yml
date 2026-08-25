@@ -1,0 +1,257 @@
+name: Deploy Booking Hold Receipt Recovery
+
+# The database must serialize same-slot reservations and preserve staged
+# receipt evidence before the receipt verifier starts relying on that contract.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-booking-hold-receipt-recovery.yml"
+      - "supabase/migrations/20260825234000_serialize_booking_holds.sql"
+      - "supabase/functions/verify-gcash-receipt/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Apply booking-hold migration and deploy receipt recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260825234000_serialize_booking_holds.sql
+      MIGRATION_SHA256: 92a820de51e8a94a8c3a12d1bc1420f9d40c40645542d642ba58189e2faca924
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260825234000',
+          'serialize_booking_holds',
+          array['sha256:92a820de51e8a94a8c3a12d1bc1420f9d40c40645542d642ba58189e2faca924']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          conflict_function regprocedure :=
+            to_regprocedure('public.prevent_double_booking()');
+          recovery_function regprocedure :=
+            to_regprocedure('public.expire_stale_verifying_bookings()');
+          conflict_definition text;
+          recovery_definition text;
+        begin
+          if conflict_function is null then
+            raise exception 'Booking conflict function is missing';
+          end if;
+
+          if recovery_function is null then
+            raise exception 'Staged receipt recovery function is missing';
+          end if;
+
+          select pg_get_functiondef(conflict_function)
+            into conflict_definition;
+          select pg_get_functiondef(recovery_function)
+            into recovery_definition;
+
+          if conflict_definition not ilike '%pg_advisory_xact_lock%'
+             or conflict_definition not ilike '%korte-dos-booking-slot|%'
+             or conflict_definition not ilike '%order by slot_value%' then
+            raise exception 'Booking writes are not serialized per court/date/slot';
+          end if;
+
+          if recovery_definition not ilike '%storage.objects%'
+             or recovery_definition not ilike '%VERIFICATION_PROCESSING_INCOMPLETE%'
+             or recovery_definition not ilike '%receipt_image_url%'
+             or recovery_definition not ilike '%status = ''pending''%'
+             or recovery_definition not ilike '%status = ''cancelled''%' then
+            raise exception 'Staged receipt reconciliation contract is incomplete';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_proc
+            where oid = recovery_function
+              and prosecdef
+          ) then
+            raise exception 'Staged receipt recovery is not SECURITY DEFINER';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_trigger
+            where tgname = 'check_booking_conflict'
+              and tgrelid = 'public.bookings'::regclass
+              and tgfoid = conflict_function
+              and tgenabled <> 'D'
+              and not tgisinternal
+          ) then
+            raise exception 'Booking conflict trigger is missing or disabled';
+          end if;
+
+          if not has_function_privilege(
+               'anon',
+               'public.expire_stale_verifying_bookings()',
+               'execute'
+             )
+             or not has_function_privilege(
+               'authenticated',
+               'public.expire_stale_verifying_bookings()',
+               'execute'
+             ) then
+            raise exception 'Staged receipt recovery grants are incomplete';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260825234000'
+              and name = 'serialize_booking_holds'
+              and statements = array[
+                'sha256:92a820de51e8a94a8c3a12d1bc1420f9d40c40645542d642ba58189e2faca924'
+              ]::text[]
+          ) then
+            raise exception 'Booking-hold migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check receipt recovery function
+        shell: bash
+        run: deno check --no-config supabase/functions/verify-gcash-receipt/index.ts
+
+      - name: Rehearse and apply the booking-hold migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          stripped_migration="$RUNNER_TEMP/booking-hold-migration.sql"
+          rehearsal_payload="$RUNNER_TEMP/booking-hold-rehearsal.json"
+          rehearsal_response="$RUNNER_TEMP/booking-hold-rehearsal-response.json"
+          apply_payload="$RUNNER_TEMP/booking-hold-migration.json"
+          apply_response="$RUNNER_TEMP/booking-hold-migration-response.json"
+
+          awk '
+            /^[[:space:]]*begin;[[:space:]]*$/ { next }
+            /^[[:space:]]*commit;[[:space:]]*$/ { next }
+            { print }
+          ' "$MIGRATION_FILE" > "$stripped_migration"
+
+          jq -Rs '{query: ("begin;\n" + . + "\nrollback;")}' \
+            "$stripped_migration" > "$rehearsal_payload"
+
+          rehearsal_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$rehearsal_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$rehearsal_payload")"
+
+          if [[ ! "$rehearsal_status" =~ ^2 ]]; then
+            echo "::error::Booking-hold migration rehearsal failed with HTTP $rehearsal_status."
+            jq -c '{code, message, error}' "$rehearsal_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$stripped_migration" > "$apply_payload"
+
+          apply_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$apply_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$apply_payload")"
+
+          if [[ ! "$apply_status" =~ ^2 ]]; then
+            echo "::error::Booking-hold migration failed with HTTP $apply_status."
+            jq -c '{code, message, error}' "$apply_response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production booking and receipt contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_payload="$RUNNER_TEMP/booking-hold-verification.json"
+          verify_response="$RUNNER_TEMP/booking-hold-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$verify_payload"
+
+          verify_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$verify_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$verify_payload")"
+
+          if [[ ! "$verify_status" =~ ^2 ]]; then
+            echo "::error::Booking-hold production verification failed with HTTP $verify_status."
+            jq -c '{code, message, error}' "$verify_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Booking-hold serialization and staged receipt recovery verified."
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.115.0
+
+      - name: Deploy receipt recovery function
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy verify-gcash-receipt \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt

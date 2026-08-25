@@ -1238,6 +1238,7 @@ async function alertStoredPendingReceiptAfterFailure(
   bookingRef: string,
   provider: PaymentProvider,
   allowTerminal = false,
+  allowVerifyingEvidence = false,
 ) {
   try {
     const { data: row, error } = await db
@@ -1249,8 +1250,10 @@ async function alertStoredPendingReceiptAfterFailure(
       .maybeSingle();
     if (
       error || !row ||
-      (!allowTerminal && (
-        row.status !== "pending" || row.payment_status !== "for_verification"
+      (!allowTerminal && !(
+        (row.status === "pending" && row.payment_status === "for_verification") ||
+        (allowVerifyingEvidence && row.status === "verifying" &&
+          row.payment_status === "for_verification")
       )) ||
       !String(row.receipt_image_url || "").trim() ||
       !/^[a-f0-9]{64}$/i.test(String(row.receipt_image_hash || ""))
@@ -1362,6 +1365,7 @@ async function recoverCourtReceiptAfterFailure(
   receiptImageUrl: string;
   receiptImageHash: string;
   receiptVerificationId: number;
+  attachmentDeferred?: boolean;
 }> {
   const pathParts = state.objectPath.split("/");
   if (
@@ -1467,6 +1471,8 @@ async function recoverCourtReceiptAfterFailure(
         db,
         state.bookingRef,
         state.provider,
+        false,
+        true,
       ),
     );
     return {
@@ -1477,6 +1483,46 @@ async function recoverCourtReceiptAfterFailure(
       receiptImageUrl: state.objectPath,
       receiptImageHash: state.imageHash,
       receiptVerificationId: auditId,
+    };
+  }
+
+  // A legacy double-tap could create two overlapping verifying holds before
+  // either INSERT saw the other. In that corrupt state the conflict trigger
+  // correctly refuses the verifying -> pending transition, but it must not
+  // prevent us from attaching already-stored payment evidence. A metadata-only
+  // update does not reclaim or change any slot. The empty sibling will expire,
+  // while the owner can immediately see and review this receipt.
+  const evidenceOnlyUpdate = allActive
+    ? await bookingUpdateQuery(db, booking, evidenceUpdate)
+      .in("status", ["verifying", "pending"])
+      .or(
+        `and(receipt_image_url.is.null,receipt_image_hash.is.null),and(receipt_image_url.eq.${state.objectPath},receipt_image_hash.eq.${state.imageHash})`,
+      )
+      .select("ref,status,payment_status")
+    : { data: [], error: null };
+  if (
+    !evidenceOnlyUpdate.error &&
+    evidenceOnlyUpdate.data?.length === groupRows.length &&
+    groupRows.length > 0
+  ) {
+    runReceiptRecoveryInBackground(
+      alertStoredPendingReceiptAfterFailure(
+        db,
+        state.bookingRef,
+        state.provider,
+        false,
+        true,
+      ),
+    );
+    return {
+      recovered: true,
+      active: true,
+      status: currentStatus,
+      paymentStatus: currentPayment,
+      receiptImageUrl: state.objectPath,
+      receiptImageHash: state.imageHash,
+      receiptVerificationId: auditId,
+      attachmentDeferred: true,
     };
   }
 
@@ -1514,7 +1560,7 @@ async function recoverCourtReceiptAfterFailure(
     };
   }
 
-  throw activeUpdate.error || terminalUpdate.error ||
+  throw activeUpdate.error || evidenceOnlyUpdate.error || terminalUpdate.error ||
     new Error("Stored receipt could not be attached to the booking");
 }
 
@@ -2847,7 +2893,9 @@ Deno.serve(async (req) => {
         status: "manual_review",
         receiptStatus: "manual_review",
         flags: ["VERIFICATION_PROCESSING_INCOMPLETE"],
-        publicReason: recovered.active
+        publicReason: recovered.attachmentDeferred
+          ? "Receipt safely stored. Do not upload or pay again. The owner has been alerted."
+          : recovered.active
           ? "Receipt safely stored. Your booking is pending owner review."
           : "Receipt safely stored, but the reservation expired. Please contact the court owner and do not pay again.",
         receiptImageUrl: recovered.receiptImageUrl,
@@ -2856,6 +2904,8 @@ Deno.serve(async (req) => {
         bookingActive: recovered.active,
         bookingStatus: recovered.status,
         paymentStatus: recovered.paymentStatus,
+        receiptStored: true,
+        requiresOwnerIntervention: recovered.attachmentDeferred === true,
         warning:
           "Automatic verification did not finish; the stored receipt was recovered for owner review.",
       });
@@ -3444,10 +3494,12 @@ Deno.serve(async (req) => {
             ? errMsg(safeStateErr)
             : "no active booking rows updated",
         );
-        return json({
-          error:
-            "Receipt was stored but could not be attached to the booking. Please contact the owner with your booking reference.",
-        }, 500);
+        // The outer recovery path can still attach the financial evidence
+        // without changing scheduling state when a legacy overlapping hold
+        // blocks the pending transition.
+        throw safeStateErr || new Error(
+          "Receipt was stored but the booking could not enter pending review",
+        );
       }
       booking = {
         ...booking,
@@ -4602,7 +4654,9 @@ Deno.serve(async (req) => {
           status: "manual_review",
           receiptStatus: "manual_review",
           flags: ["VERIFICATION_PROCESSING_INCOMPLETE"],
-          publicReason: recovered.active
+          publicReason: recovered.attachmentDeferred
+            ? "Receipt safely stored. Do not upload or pay again. The owner has been alerted."
+            : recovered.active
             ? "Receipt safely stored. Your booking is pending owner review."
             : "Receipt safely stored, but the reservation expired. Please contact the court owner and do not pay again.",
           receiptImageUrl: recovered.receiptImageUrl,
@@ -4611,6 +4665,8 @@ Deno.serve(async (req) => {
           bookingActive: recovered.active,
           bookingStatus: recovered.status,
           paymentStatus: recovered.paymentStatus,
+          receiptStored: true,
+          requiresOwnerIntervention: recovered.attachmentDeferred === true,
           warning:
             "Automatic verification did not finish; the stored receipt was recovered for owner review.",
           message: recovered.active

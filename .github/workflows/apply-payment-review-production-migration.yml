@@ -30,7 +30,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
       MIGRATION_FILE: supabase/migrations/20260723153000_payment_review_notifications.sql
-      MIGRATION_SHA256: ccd3331ec98c5b66652d44bd71786f8b64654e8fbbebcabe7f3b4cc31a8c89a1
+      MIGRATION_SHA256: d4a00a6ae126a9fa435f12089e6efe2ed96a1b10b4d6ea9b5a61c4152fbef556
       HISTORY_SQL: |
         create schema if not exists supabase_migrations;
 
@@ -48,7 +48,7 @@ jobs:
         values (
           '20260723153000',
           'payment_review_notifications',
-          array['sha256:ccd3331ec98c5b66652d44bd71786f8b64654e8fbbebcabe7f3b4cc31a8c89a1']::text[]
+          array['sha256:d4a00a6ae126a9fa435f12089e6efe2ed96a1b10b4d6ea9b5a61c4152fbef556']::text[]
         )
         on conflict (version) do update
         set name = excluded.name,
@@ -673,7 +673,7 @@ jobs:
             where version = '20260723153000'
               and name = 'payment_review_notifications'
               and statements = array[
-                'sha256:ccd3331ec98c5b66652d44bd71786f8b64654e8fbbebcabe7f3b4cc31a8c89a1'
+                'sha256:d4a00a6ae126a9fa435f12089e6efe2ed96a1b10b4d6ea9b5a61c4152fbef556'
               ]::text[]
           ) then
             raise exception 'payment-review migration history is missing or non-canonical';
