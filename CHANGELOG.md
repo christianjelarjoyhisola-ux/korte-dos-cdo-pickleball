@@ -6,6 +6,37 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-08-25] - Owner Intelligence Forward Growth Outlook
+
+### Added
+- **Separated forward outlook** - added owner-selectable 7, 30, and 60-day views for secured future payments, committed booking value, outstanding balances, confirmed bookings, booked hours, utilization, and receipt-backed payment reviews.
+- **Evidence-led action cards** - every automatic recommendation now includes a proposed experiment, a safety guardrail, a success measure, and a review date without creating offers or changing prices.
+- **Accessible chart data** - added a readable data table behind the historical momentum visualization.
+
+### Changed
+- **Premium momentum chart** - replaced the crowded dual-axis chart with a full-width, responsive one-metric Revenue/Bookings view and automatic daily, weekly, or monthly grouping.
+- **Strict revenue boundaries** - historical performance ends today; future confirmed reservations appear only in Forward Outlook; cancelled and forfeited operational records remain outside Insights.
+
+### Removed
+- **Voucher coupling** - growth guidance no longer opens, drafts, or depends on vouchers.
+- **Retained-deposit field** - forfeited deposit accounting remains in Reports only and is no longer returned by Owner Intelligence.
+
+**Files affected:** `admin.html`, `owner-intelligence.js`, `owner-intelligence.test.js`, `supabase/migrations/20260825223000_owner_intelligence_payment_pipeline.sql`, `CHANGELOG.md`
+
+---
+
+## [2026-08-25] - Owner Intelligence Booking Semantics
+
+### Fixed
+- **No false cancellation signal** - removed Cancelled and Forfeited from Owner Intelligence because those operational states include rejected receipts, expired holds, and balance-deadline outcomes rather than verified customer cancellations.
+- **Actionable payment pipeline** - replaced the cancellation card and lifecycle slices with receipt-backed payments that genuinely need owner review.
+- **Accurate revenue efficiency** - retained forfeited deposits remain in Reports/accounting and do not enter Owner Intelligence revenue per court-hour, court performance, or momentum.
+- **Clean booking totals** - only completed, confirmed, and durable payment-review reservation groups contribute to the Owner Intelligence pipeline total.
+
+**Files affected:** `admin.html`, `owner-intelligence.js`, `owner-intelligence.test.js`, `supabase/migrations/20260825223000_owner_intelligence_payment_pipeline.sql`, `CHANGELOG.md`
+
+---
+
 ## [2026-08-25] - Owner Intelligence and Growth Foundation
 
 ### Added

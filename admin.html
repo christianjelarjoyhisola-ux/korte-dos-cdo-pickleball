@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="chart.min.js"></script>
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
-<script src="owner-intelligence.js?v=20260825-v1"></script>
+<script src="owner-intelligence.js?v=20260825-v2"></script>
 <script src="open-play-rotation.js?v=20260729-adaptive-competitive-v1"></script>
 <script src="voucher-admin.js?v=20260810-v2"></script>
 <link rel="stylesheet" href="play-manager.css?v=20260729-adaptive-competitive-v1">
@@ -1604,6 +1604,41 @@ tr:hover td { background: var(--bg2); }
   background: var(--input); color: var(--text3); font-size: .7rem; line-height: 1.5;
 }
 .oi-empty { padding: 24px 12px; text-align: center; color: var(--text3); font-size: .8rem; }
+.oi-section-kicker { margin-bottom: 5px; color: var(--green); font-size: .58rem; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.oi-segment { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg2); }
+.oi-segment button { min-height: 40px; padding: 7px 13px; border: 0; border-radius: 7px; background: transparent; color: var(--text3); font: 800 .75rem 'DM Sans',sans-serif; cursor: pointer; }
+.oi-segment button.active { background: var(--surface); color: var(--text); box-shadow: 0 2px 7px rgba(0,0,0,.08); }
+.oi-segment button:focus-visible,.oi-data-details summary:focus-visible { outline: 3px solid var(--oi-accent,var(--green)); outline-offset: 2px; }
+.oi-forward-panel,.oi-recommendation-panel,.oi-momentum-panel { margin-bottom: 12px; }
+.oi-forward-grid { display: grid; grid-template-columns: minmax(300px,.75fr) minmax(0,1.25fr); gap: 22px; align-items: stretch; }
+.oi-forward-summary { display: flex; flex-direction: column; justify-content: space-between; gap: 14px; }
+.oi-forward-primary span,.oi-forward-stats span { display: block; color: var(--text3); font-size: .65rem; font-weight: 750; }
+.oi-forward-primary strong { display: block; margin: 4px 0 2px; color: var(--text); font-size: clamp(1.65rem,3.2vw,2.4rem); line-height: 1; letter-spacing: -.05em; }
+.oi-forward-primary small { color: var(--text3); font-size: .64rem; }
+.oi-forward-stats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.oi-forward-stats > div { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg2); }
+.oi-forward-stats strong { display: block; min-width: 0; margin-top: 3px; color: var(--text); font-size: .88rem; overflow-wrap: anywhere; }
+.oi-forward-note { padding: 8px 10px; border-radius: 9px; background: var(--input); color: var(--text3); font-size: .73rem; line-height: 1.45; }
+.oi-forward-chart { min-height: 245px; }
+.oi-forward-chart canvas { height: 245px !important; }
+.oi-forward-chart .oi-chart-empty { display:none; min-height:245px; place-items:center; padding:24px; color:var(--text3); font-size:.75rem; text-align:center; }
+.oi-forward-chart.is-empty canvas { display:none !important; }
+.oi-forward-chart.is-empty .oi-chart-empty { display:grid; }
+.oi-forward-chart.is-empty,.oi-forward-chart.is-empty .oi-chart-empty { min-height:120px; }
+.oi-chart-controls { display: flex; align-items: center; gap: 8px; }
+.oi-momentum-chart { min-height: 320px; }
+.oi-momentum-chart canvas { height: 320px !important; }
+.oi-data-details { margin-top: 8px; border-top: 1px solid var(--border); color: var(--text3); font-size: .68rem; }
+.oi-data-details summary { padding: 10px 2px 2px; cursor: pointer; font-weight: 800; }
+.oi-data-table-wrap { max-height: 260px; overflow: auto; margin-top: 8px; }
+.oi-data-table-wrap table { width: 100%; border-collapse: collapse; }
+.oi-data-table-wrap th,.oi-data-table-wrap td { padding: 7px 9px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.oi-data-table-wrap th:first-child,.oi-data-table-wrap td:first-child { text-align: left; }
+.oi-rec-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.oi-rec-meta { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; margin-top: 9px; }
+.oi-rec-meta div { padding: 7px 8px; border-radius: 8px; background: var(--input); color: var(--text3); font-size: .7rem; line-height: 1.45; }
+.oi-rec-meta strong { display: block; margin-bottom: 2px; color: var(--text2); font-size: .58rem; letter-spacing: .08em; text-transform: uppercase; }
+#oiTrendHeadline { margin-top: 4px; font-size: clamp(1.55rem,3vw,2rem); font-variant-numeric: tabular-nums; letter-spacing: -.045em; }
 
 /* Premium editorial treatment inspired by the Dinktopia analytics surface. */
 body.insights-mode {
@@ -1617,6 +1652,13 @@ body.insights-mode {
   --oi-accent-soft: #eeeaff;
   --oi-forest: #15382e;
   --oi-amber: #f2b544;
+  --oi-note-text: #46514c;
+  --oi-chart-text: #59635e;
+  --oi-chart-grid: #e4e5df;
+  --oi-chart-revenue: #6b5bea;
+  --oi-chart-revenue-fill: rgba(107,91,234,.10);
+  --oi-chart-bookings: #15382e;
+  --oi-chart-outstanding: #f2b544;
 }
 body[data-theme="dark"].insights-mode {
   --oi-page: #171a18;
@@ -1629,6 +1671,13 @@ body[data-theme="dark"].insights-mode {
   --oi-accent-soft: #302b4c;
   --oi-forest: #dcece4;
   --oi-amber: #f4bd55;
+  --oi-note-text: #c6cec8;
+  --oi-chart-text: #bcc5bf;
+  --oi-chart-grid: #353b36;
+  --oi-chart-revenue: #9b8cff;
+  --oi-chart-revenue-fill: rgba(155,140,255,.12);
+  --oi-chart-bookings: #7cc7a5;
+  --oi-chart-outstanding: #f4bd55;
 }
 body.insights-mode .main,
 body.insights-mode .content { background: var(--oi-page); }
@@ -1702,6 +1751,18 @@ body.insights-mode .oi-panel {
   background: var(--oi-card); border: 1px solid var(--oi-hairline); border-radius: 16px;
   box-shadow: 0 10px 34px rgba(16,35,29,.045); padding: 16px;
 }
+body.insights-mode .oi-section-kicker { color: var(--oi-accent); }
+body.insights-mode .oi-segment { border-color: var(--oi-hairline); background: var(--oi-card-soft); }
+body.insights-mode .oi-segment button { color: var(--oi-muted); }
+body.insights-mode .oi-segment button.active { background: var(--oi-card); color: var(--oi-ink); box-shadow: 0 3px 10px rgba(16,35,29,.08); }
+body.insights-mode .oi-forward-primary strong { color: var(--oi-ink); }
+body.insights-mode .oi-forward-stats > div { border-color: var(--oi-hairline); background: var(--oi-card-soft); }
+body.insights-mode .oi-forward-stats span,body.insights-mode .oi-forward-primary span,body.insights-mode .oi-forward-primary small { color: var(--oi-muted); }
+body.insights-mode .oi-forward-stats strong { color: var(--oi-ink); }
+body.insights-mode .oi-forward-note,body.insights-mode .oi-rec-meta div { background: var(--oi-accent-soft); color: var(--oi-note-text); }
+body.insights-mode .oi-rec-meta strong { color: var(--oi-ink); }
+body.insights-mode .oi-data-details { border-color: var(--oi-hairline); color: var(--oi-muted); }
+body.insights-mode .oi-data-table-wrap th,body.insights-mode .oi-data-table-wrap td { border-color: var(--oi-hairline); }
 body.insights-mode .oi-panel-head h3 {
   color: var(--oi-ink); font-family: 'DM Sans', sans-serif; font-size: .83rem;
   font-weight: 850; letter-spacing: -.025em; text-transform: none;
@@ -1738,6 +1799,7 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
   .oi-grid { grid-template-columns: 1fr; }
   body.insights-mode .oi-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }
   body.insights-mode .oi-grid { grid-template-columns: 1fr; }
+  .oi-forward-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
   #sec-insights .toolbar { gap: 10px; }
@@ -1753,9 +1815,24 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
   .oi-kpis .sc-val { font-size: 1.3rem; }
   .oi-panel { padding: 12px; }
   .oi-signal-strip { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .oi-panel-head,.oi-momentum-head { flex-direction: column; }
+  .oi-chart-controls { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+  .oi-rec-list { grid-template-columns: 1fr; }
+  .oi-forward-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .oi-forward-chart { min-height: 220px; }
+  .oi-forward-chart canvas { height: 220px !important; }
+  .oi-momentum-chart { min-height: 260px; }
+  .oi-momentum-chart canvas { height: 260px !important; }
+  .oi-segment button { min-height: 44px; }
   body.insights-mode .oi-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; background: transparent; border: 0; border-radius: 0; overflow: visible; box-shadow: none; }
   body.insights-mode .oi-kpis .sc { background: var(--oi-card); border: 1px solid var(--oi-hairline); border-radius: 12px; }
   body.insights-mode .oi-heat-grid { min-width: 610px; }
+}
+@media (max-width: 420px) {
+  .oi-forward-stats { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sec-insights * { scroll-behavior: auto !important; }
 }
 @media print {
   body.oi-printing { background: #fff !important; color: #111 !important; }
@@ -2746,12 +2823,12 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
         <div class="oi-range-label" id="oiRangeLabel">All reliable booking history</div>
       </div>
 
-      <div class="oi-loading" id="oiLoading"><span class="pb-ball" aria-hidden="true"></span>Analyzing booking history&hellip;</div>
+      <div class="oi-loading" id="oiLoading" role="status" aria-live="polite"><span class="pb-ball" aria-hidden="true"></span>Analyzing booking history&hellip;</div>
 
       <div class="stat-cards oi-kpis">
-        <div class="sc"><div class="sc-lbl">Collected Revenue</div><div class="sc-val" id="oiCollected">&#8369;0</div><div class="oi-kpi-note">Attached to selected play dates</div><div class="sc-ic">&#128176;</div></div>
+        <div class="sc"><div class="sc-lbl">Payments Collected</div><div class="sc-val" id="oiCollected">&#8369;0</div><div class="oi-kpi-note">For selected historical play dates</div><div class="sc-ic">&#128176;</div></div>
         <div class="sc"><div class="sc-lbl">Court Utilization</div><div class="sc-val" id="oiUtilization">0%</div><div class="oi-kpi-note" id="oiUtilizationNote">0 of 0 available hours</div><div class="sc-ic">&#127934;</div></div>
-        <div class="sc"><div class="sc-lbl">Completed Bookings</div><div class="sc-val" id="oiCompleted">0</div><div class="oi-kpi-note" id="oiActiveNote">0 active reservations</div><div class="sc-ic">&#9989;</div></div>
+        <div class="sc"><div class="sc-lbl">Completed Bookings</div><div class="sc-val" id="oiCompleted">0</div><div class="oi-kpi-note" id="oiActiveNote">0 successful reservations</div><div class="sc-ic">&#9989;</div></div>
         <div class="sc"><div class="sc-lbl">Revenue / Booked Hour</div><div class="sc-val" id="oiRevBookedHour">&#8369;0</div><div class="oi-kpi-note">Collected revenue efficiency</div><div class="sc-ic">&#9201;</div></div>
       </div>
 
@@ -2759,8 +2836,55 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
         <div class="oi-signal"><span>Booked court-hours</span><strong id="oiBookedHours">0</strong></div>
         <div class="oi-signal"><span>Outstanding balance</span><strong id="oiOutstanding">&#8369;0</strong></div>
         <div class="oi-signal"><span>Repeat customer rate</span><strong id="oiRepeat">0%</strong></div>
-        <div class="oi-signal"><span>Cancellation signal</span><strong id="oiCancelRate">0%</strong></div>
+        <div class="oi-signal"><span>Needs payment review</span><strong id="oiPaymentReview">0</strong></div>
       </div>
+
+      <section class="panel oi-panel oi-forward-panel">
+        <div class="oi-panel-head">
+          <div><div class="oi-section-kicker">Forward outlook</div><h3>Confirmed future bookings, clearly separated.</h3><p>Tomorrow onward only. Historical performance above never includes these future play dates.</p></div>
+          <div class="oi-segment" role="group" aria-label="Forward outlook horizon">
+            <button type="button" id="oi-forward-7" onclick="setInsightsForwardDays(7)" aria-pressed="false">7D</button>
+            <button type="button" id="oi-forward-30" class="active" onclick="setInsightsForwardDays(30)" aria-pressed="true">30D</button>
+            <button type="button" id="oi-forward-60" onclick="setInsightsForwardDays(60)" aria-pressed="false">60D</button>
+          </div>
+        </div>
+        <div class="oi-forward-grid">
+          <div class="oi-forward-summary">
+            <div class="oi-forward-primary"><span>Secured future payments</span><strong id="oiForwardSecured">&#8369;0</strong><small id="oiForwardRange">Next 30 days</small></div>
+            <div class="oi-forward-stats">
+              <div><span>Committed value</span><strong id="oiForwardCommitted">&#8369;0</strong></div>
+              <div><span>Outstanding</span><strong id="oiForwardOutstanding">&#8369;0</strong></div>
+              <div><span>Confirmed bookings</span><strong id="oiForwardBookings">0</strong></div>
+              <div><span>Estimated booked utilization</span><strong id="oiForwardUtilization">0%</strong></div>
+            </div>
+            <div class="oi-forward-note" id="oiForwardReview">No future payments need review.</div>
+          </div>
+          <div class="oi-chart-wrap oi-forward-chart" id="oiForwardChartWrap"><canvas id="oiForwardChart" role="img" aria-label="Secured and outstanding future booking payments chart" aria-describedby="oiForwardReview"></canvas><div class="oi-chart-empty">No confirmed future booking payments in this horizon yet.</div></div>
+        </div>
+      </section>
+
+      <section class="panel oi-panel oi-recommendation-panel">
+        <div class="oi-panel-head">
+          <div><div class="oi-section-kicker">Recommended next moves</div><h3>Automatic, evidence-led growth guidance.</h3><p>Recommendations never publish offers, create vouchers, or change prices automatically.</p></div>
+          <span class="oi-chip">Owner decision required</span>
+        </div>
+        <div class="oi-rec-list" id="oiRecommendations"><div class="oi-empty">Analyzing opportunities&hellip;</div></div>
+      </section>
+
+      <section class="panel oi-panel oi-momentum-panel">
+        <div class="oi-panel-head oi-momentum-head">
+          <div><div class="oi-section-kicker">Historical momentum</div><h3 id="oiTrendHeadline">Collected revenue over time.</h3><p id="oiTrendCaption">Successful bookings grouped by the selected historical period.</p></div>
+          <div class="oi-chart-controls">
+            <span class="oi-chip" id="oiTrendGrain">Monthly view</span>
+            <div class="oi-segment" role="group" aria-label="Historical momentum metric">
+              <button type="button" id="oi-trend-revenue" class="active" onclick="setInsightsTrendMetric('revenue')" aria-pressed="true">Revenue</button>
+              <button type="button" id="oi-trend-bookings" onclick="setInsightsTrendMetric('bookings')" aria-pressed="false">Bookings</button>
+            </div>
+          </div>
+        </div>
+        <div class="oi-chart-wrap oi-momentum-chart"><canvas id="oiTrendChart" aria-label="Historical momentum chart"></canvas></div>
+        <details class="oi-data-details"><summary>View chart data</summary><div class="oi-data-table-wrap"><table><thead><tr><th>Period</th><th>Collected revenue</th><th>Bookings</th></tr></thead><tbody id="oiTrendTable"></tbody></table></div></details>
+      </section>
 
       <div class="oi-grid">
         <section class="panel oi-panel">
@@ -2772,27 +2896,10 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
         </section>
         <section class="panel oi-panel">
           <div class="oi-panel-head">
-            <div><h3>Booking lifecycle</h3><p>One count per reservation group.</p></div>
+            <div><h3>Booking &amp; payment pipeline</h3><p>Completed, confirmed, and receipt-backed reviews only.</p></div>
             <span class="oi-chip" id="oiLifecycleTotal">0 total</span>
           </div>
-          <div class="oi-chart-wrap compact"><canvas id="oiLifecycleChart" aria-label="Booking lifecycle chart"></canvas></div>
-        </section>
-      </div>
-
-      <div class="oi-grid">
-        <section class="panel oi-panel">
-          <div class="oi-panel-head">
-            <div><h3>Revenue and booking momentum</h3><p>Collected revenue and reservations grouped by the selected play period.</p></div>
-            <span class="oi-chip" id="oiTrendGrain">Monthly</span>
-          </div>
-          <div class="oi-chart-wrap"><canvas id="oiTrendChart" aria-label="Revenue and booking trend chart"></canvas></div>
-        </section>
-        <section class="panel oi-panel">
-          <div class="oi-panel-head">
-            <div><h3>Opportunity queue</h3><p>Deterministic recommendations with supporting evidence.</p></div>
-            <span class="oi-chip">Owner approval required</span>
-          </div>
-          <div class="oi-rec-list" id="oiRecommendations"><div class="oi-empty">Analyzing opportunities&hellip;</div></div>
+          <div class="oi-chart-wrap compact"><canvas id="oiLifecycleChart" role="img" aria-label="Completed, confirmed, and payment-review booking pipeline chart" aria-describedby="oiLifecycleTotal"></canvas></div>
         </section>
       </div>
 
@@ -8144,7 +8251,7 @@ async function exportCSV(){
 /* ==============================================
    OWNER INTELLIGENCE
    ============================================== */
-let _oiPeriod='all', _oiSnapshot=null, _oiRequestKey='', _oiLifecycleChart=null, _oiTrendChart=null;
+let _oiPeriod='all', _oiSnapshot=null, _oiRequestKey='', _oiLifecycleChart=null, _oiTrendChart=null, _oiForwardChart=null, _oiTrendMetric='revenue', _oiForwardDays=30, _oiRequestSeq=0;
 
 function oiMoney(value) {
   return '₱' + Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 });
@@ -8208,12 +8315,12 @@ function renderInsightsKpis(snapshot) {
   $('oiUtilization').textContent = `${oiNumber(k.utilization_pct, 1)}%`;
   $('oiUtilizationNote').textContent = `${oiNumber(k.booked_hours, 1)} of ${oiNumber(k.available_hours, 1)} available hours`;
   $('oiCompleted').textContent = oiNumber(k.completed_reservations);
-  $('oiActiveNote').textContent = `${oiNumber(k.active_reservations)} active reservations`;
+  $('oiActiveNote').textContent = `${oiNumber(k.active_reservations)} completed + confirmed`;
   $('oiRevBookedHour').textContent = oiMoney(k.revenue_per_booked_hour);
   $('oiBookedHours').textContent = oiNumber(k.booked_hours, 1);
   $('oiOutstanding').textContent = oiMoney(k.outstanding_balance);
   $('oiRepeat').textContent = `${oiNumber(k.repeat_customer_rate, 1)}%`;
-  $('oiCancelRate').textContent = `${oiNumber(k.cancellation_rate, 1)}%`;
+  $('oiPaymentReview').textContent = oiNumber(k.payment_review_reservations);
 }
 
 function renderInsightsHeatmap(snapshot) {
@@ -8249,10 +8356,12 @@ function renderInsightsHeatmap(snapshot) {
 function insightsChartColors() {
   const styles = getComputedStyle(document.body);
   return {
-    text: styles.getPropertyValue('--text2').trim() || '#b9c4cf',
-    grid: styles.getPropertyValue('--border').trim() || 'rgba(128,128,128,.2)',
-    green: document.body.classList.contains('insights-mode') ? (styles.getPropertyValue('--oi-accent').trim() || '#6b5bea') : (styles.getPropertyValue('--green').trim() || '#21b573'),
-    yellow: document.body.classList.contains('insights-mode') ? (styles.getPropertyValue('--oi-amber').trim() || '#f2b544') : (styles.getPropertyValue('--yellow').trim() || '#f6b93b'),
+    text: styles.getPropertyValue('--oi-chart-text').trim() || styles.getPropertyValue('--text2').trim() || '#59635e',
+    grid: styles.getPropertyValue('--oi-chart-grid').trim() || styles.getPropertyValue('--border').trim() || 'rgba(128,128,128,.2)',
+    revenue: styles.getPropertyValue('--oi-chart-revenue').trim() || '#6b5bea',
+    revenueFill: styles.getPropertyValue('--oi-chart-revenue-fill').trim() || 'rgba(107,91,234,.10)',
+    bookings: styles.getPropertyValue('--oi-chart-bookings').trim() || '#15382e',
+    outstanding: styles.getPropertyValue('--oi-chart-outstanding').trim() || '#f2b544',
   };
 }
 
@@ -8261,22 +8370,98 @@ function renderInsightsLifecycle(snapshot) {
   const rows = Array.isArray(snapshot?.lifecycle) ? snapshot.lifecycle : [];
   const canvas = $('oiLifecycleChart');
   if (!canvas || typeof Chart === 'undefined') return;
-  const labels = rows.map(row => String(row.status || '').replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()));
+  const labels = rows.map(row => {
+    const status = String(row.status || '');
+    if (status === 'payment_review') return 'Needs Payment Review';
+    return status.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+  });
   const values = rows.map(row => Number(row.count || 0));
   const total = values.reduce((sum, value) => sum + value, 0);
-  $('oiLifecycleTotal').textContent = `${total} total`;
+  $('oiLifecycleTotal').textContent = `${total} tracked`;
   _oiLifecycleChart = new Chart(canvas, {
     type: 'doughnut',
     data: {
       labels,
-      datasets: [{ data: values, backgroundColor: ['#6b5bea','#49b98b','#55a7e8','#a58cff','#e26d65','#f2b544'], borderWidth: 0 }],
+      datasets: [{ data: values, backgroundColor: ['#49b98b','#6b5bea','#f2b544'], borderWidth: 0 }],
     },
     options: {
-      responsive: true, maintainAspectRatio: false, cutout: '66%',
+      responsive: true, maintainAspectRatio: false, cutout: '66%', animation:matchMedia('(prefers-reduced-motion: reduce)').matches ? false : {duration:350},
       plugins: {
         legend: { position: 'bottom', labels: { color: insightsChartColors().text, boxWidth: 9, usePointStyle: true, padding: 11, font: { size: 10, weight: 700 } } },
         tooltip: { callbacks: { label: context => `${context.label}: ${context.raw}` } },
       },
+    },
+  });
+}
+
+function setInsightsTrendMetric(metric) {
+  _oiTrendMetric = metric === 'bookings' ? 'bookings' : 'revenue';
+  ['revenue','bookings'].forEach(key => {
+    const button = $(`oi-trend-${key}`);
+    button?.classList.toggle('active', key === _oiTrendMetric);
+    button?.setAttribute('aria-pressed', String(key === _oiTrendMetric));
+  });
+  if (_oiSnapshot) renderInsightsTrend(_oiSnapshot);
+}
+
+function setInsightsForwardDays(days) {
+  _oiForwardDays = [7,30,60].includes(Number(days)) ? Number(days) : 30;
+  [7,30,60].forEach(value => {
+    const button = $(`oi-forward-${value}`);
+    button?.classList.toggle('active', value === _oiForwardDays);
+    button?.setAttribute('aria-pressed', String(value === _oiForwardDays));
+  });
+  if (_oiSnapshot) renderInsightsForward(_oiSnapshot);
+}
+
+function renderInsightsForward(snapshot) {
+  if (_oiForwardChart) _oiForwardChart.destroy();
+  const outlook = snapshot?.forward_outlook || {};
+  const horizon = (Array.isArray(outlook.horizons) ? outlook.horizons : []).find(item => Number(item.days) === _oiForwardDays) || {};
+  const k = horizon.kpis || {};
+  $('oiForwardSecured').textContent = oiMoney(k.secured_revenue);
+  $('oiForwardCommitted').textContent = oiMoney(k.committed_booking_value);
+  $('oiForwardOutstanding').textContent = oiMoney(k.outstanding_balance);
+  $('oiForwardBookings').textContent = oiNumber(k.confirmed_reservations);
+  $('oiForwardUtilization').textContent = `${oiNumber(k.booked_utilization_pct,1)}%`;
+  $('oiForwardRange').textContent = horizon.from && horizon.to ? `${oiFormatDate(horizon.from)} – ${oiFormatDate(horizon.to)}` : `Next ${_oiForwardDays} days`;
+  const review = Number(k.payment_review_reservations || 0);
+  $('oiForwardReview').textContent = review ? `${review} future reservation${review === 1 ? '' : 's'} with stored payment evidence ${review === 1 ? 'needs' : 'need'} review. This value is not counted as secured.` : 'No future payments need review.';
+  const raw = (Array.isArray(outlook.daily) ? outlook.daily : []).slice(0, _oiForwardDays);
+  const groups = new Map();
+  raw.forEach((row, index) => {
+    const key = _oiForwardDays <= 7 ? String(row.date) : `week-${Math.floor(index / 7)}`;
+    const current = groups.get(key) || { date:row.date, end_date:row.date, secured_revenue:0, outstanding_balance:0 };
+    current.end_date = row.date;
+    current.secured_revenue += Number(row.secured_revenue || 0);
+    current.outstanding_balance += Number(row.outstanding_balance || 0);
+    groups.set(key, current);
+  });
+  const rows = [...groups.values()];
+  const canvas = $('oiForwardChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const hasFinancialData = rows.some(row => row.secured_revenue > 0 || row.outstanding_balance > 0);
+  $('oiForwardChartWrap')?.classList.toggle('is-empty', !hasFinancialData);
+  if (!hasFinancialData) return;
+  const colors = insightsChartColors();
+  _oiForwardChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: rows.map(row => {
+        const start = new Date(`${String(row.date).slice(0,10)}T00:00:00`).toLocaleDateString('en-PH',{month:'short',day:'numeric'});
+        const end = new Date(`${String(row.end_date).slice(0,10)}T00:00:00`).toLocaleDateString('en-PH',{month:'short',day:'numeric'});
+        return row.date === row.end_date ? start : `${start}–${end}`;
+      }),
+      datasets: [
+        { label:'Secured', data:rows.map(row=>row.secured_revenue), backgroundColor:colors.bookings, borderRadius:6, borderSkipped:false },
+        { label:'Outstanding', data:rows.map(row=>row.outstanding_balance), backgroundColor:colors.outstanding, borderRadius:6, borderSkipped:false },
+      ],
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:matchMedia('(prefers-reduced-motion: reduce)').matches ? false : {duration:350},
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom',align:'start',labels:{color:colors.text,boxWidth:8,usePointStyle:true,padding:14,font:{size:10,weight:700}}},tooltip:{callbacks:{label:context=>`${context.dataset.label}: ${oiMoney(context.raw)}`}}},
+      scales:{x:{stacked:true,ticks:{color:colors.text,maxTicksLimit:innerWidth<=700?5:9,maxRotation:0,font:{size:11}},grid:{display:false}},y:{stacked:true,beginAtZero:true,ticks:{color:colors.text,font:{size:11},callback:value=>'₱'+Number(value).toLocaleString('en-PH',{notation:'compact'})},grid:{color:colors.grid}}},
     },
   });
 }
@@ -8292,21 +8477,43 @@ function renderInsightsTrend(snapshot) {
   const label = value => new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('en-PH', {
     month: 'short', day: grain === 'month' ? undefined : 'numeric', year: grain === 'month' ? '2-digit' : undefined,
   });
+  const periodLabel = row => {
+    const start = row.bucket_start || row.date;
+    const end = row.bucket_end || row.date;
+    if (grain === 'day' || start === end) return label(start);
+    return `${label(start)}–${label(end)}${row.is_partial ? ' · partial' : ''}`;
+  };
+  const isRevenue = _oiTrendMetric === 'revenue';
+  const total = rows.reduce((sum,row)=>sum+Number(isRevenue ? row.collected_revenue : row.reservations),0);
+  $('oiTrendHeadline').textContent = isRevenue ? `${oiMoney(total)} collected for selected historical play dates.` : `${oiNumber(total)} successful bookings across the selected history.`;
+  $('oiTrendCaption').textContent = `${({day:'Daily',week:'Weekly',month:'Monthly'}[grain] || 'Period')} grouping · future bookings are excluded.`;
+  const table = $('oiTrendTable');
+  if (table) table.innerHTML = rows.map(row=>`<tr><td>${esc(periodLabel(row))}</td><td>${esc(oiMoney(row.collected_revenue))}</td><td>${esc(oiNumber(row.reservations))}</td></tr>`).join('');
   _oiTrendChart = new Chart(canvas, {
+    type: isRevenue ? 'line' : 'bar',
     data: {
-      labels: rows.map(row => label(row.date)),
-      datasets: [
-        { type: 'line', label: 'Collected revenue', data: rows.map(row => Number(row.collected_revenue || 0)), yAxisID: 'revenue', borderColor: colors.green, backgroundColor: 'rgba(33,181,115,.12)', fill: true, tension: .28, pointRadius: rows.length > 40 ? 0 : 2 },
-        { type: 'bar', label: 'Reservations', data: rows.map(row => Number(row.reservations || 0)), yAxisID: 'bookings', backgroundColor: 'rgba(232,112,91,.26)', borderColor: '#e8705b', borderWidth: 1, borderRadius: 4 },
+      labels: rows.map(row => periodLabel(row)),
+      datasets: [isRevenue
+        ? { label:'Collected revenue', data:rows.map(row=>Number(row.collected_revenue||0)), borderColor:colors.revenue, backgroundColor:colors.revenueFill, fill:true, tension:.18, cubicInterpolationMode:'monotone', borderWidth:2.5, pointRadius:rows.length>28?0:2, pointHoverRadius:4 }
+        : { label:'Successful bookings', data:rows.map(row=>Number(row.reservations||0)), backgroundColor:colors.bookings, borderRadius:7, borderSkipped:false, maxBarThickness:34 }
       ],
     },
     options: {
-      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { labels: { color: colors.text, boxWidth: 10, usePointStyle: true } } },
+      responsive: true, maintainAspectRatio: false, animation:matchMedia('(prefers-reduced-motion: reduce)').matches ? false : {duration:400}, interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: {
+          label: context => isRevenue ? `Collected: ${oiMoney(context.raw)}` : `Bookings: ${oiNumber(context.raw)}`,
+          afterLabel: context => {
+            const row = rows[context.dataIndex] || {};
+            const companion = isRevenue ? `Bookings: ${oiNumber(row.reservations)}` : `Collected: ${oiMoney(row.collected_revenue)}`;
+            return row.is_partial ? [companion, 'Partial period — compare cautiously'] : companion;
+          },
+        } },
+      },
       scales: {
-        x: { ticks: { color: colors.text, maxTicksLimit: 12, font: { size: 9 } }, grid: { display: false } },
-        revenue: { type: 'linear', position: 'left', beginAtZero: true, ticks: { color: colors.text, callback: value => '₱'+Number(value).toLocaleString('en-PH',{notation:'compact'}) }, grid: { color: colors.grid } },
-        bookings: { type: 'linear', position: 'right', beginAtZero: true, ticks: { color: colors.text, precision: 0 }, grid: { drawOnChartArea: false } },
+        x: { ticks: { color: colors.text, maxTicksLimit: innerWidth<=700?5:12, maxRotation:0, font: { size: 11 } }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: colors.text, font:{size:11}, precision:isRevenue?undefined:0, callback:value=>isRevenue?'₱'+Number(value).toLocaleString('en-PH',{notation:'compact'}):Number(value).toLocaleString('en-PH') }, grid: { color: colors.grid } },
       },
     },
   });
@@ -8320,6 +8527,12 @@ function renderInsightsRecommendations(snapshot) {
     <div class="oi-rec-top"><h4>${esc(item.title)}</h4><span class="oi-confidence ${esc(item.confidence?.code || 'learning')}">${esc(item.confidence?.label || 'Still learning')}</span></div>
     <p>${esc(item.summary)}</p>
     <div class="oi-evidence">Evidence: ${esc(item.evidence)}</div>
+    <div class="oi-rec-meta">
+      <div><strong>Proposed test</strong>${esc(item.plan || 'Continue collecting reliable booking evidence.')}</div>
+      <div><strong>Guardrail</strong>${esc(item.guardrail || 'No automatic operational changes.')}</div>
+      <div><strong>Success measure</strong>${esc(item.successMetric || 'Review against comparable booking results.')}</div>
+      <div><strong>Review date</strong>${esc(oiFormatDate(item.reviewDate) || 'After more evidence')}</div>
+    </div>
     ${item.action && item.actionSection ? `<button class="btn btn-g btn-sm" type="button" onclick="goto('${jsArg(item.actionSection)}')">${esc(item.action)}</button>` : ''}
   </article>`).join('') || '<div class="oi-empty">No safe recommendation is available yet.</div>';
 }
@@ -8339,7 +8552,11 @@ function renderInsightsCourts(snapshot) {
   const operatingDays = Number(snapshot?.period?.operating_days || 0);
   $('oiOperatingDays').textContent = `${operatingDays} operating day${operatingDays === 1 ? '' : 's'}`;
   const quality = snapshot?.data_quality || {};
-  $('oiQualityNote').textContent = `${quality.reliable_booking_rows || 0} reliable booking rows analyzed. ${quality.capacity_note || ''}`.trim();
+  $('oiQualityNote').textContent = [
+    `${quality.reliable_booking_rows || 0} reliable booking rows analyzed.`,
+    quality.capacity_note || '',
+    quality.pipeline_note || '',
+  ].filter(Boolean).join(' ').trim();
 }
 
 function renderInsightsRange(snapshot) {
@@ -8366,24 +8583,28 @@ async function renderOwnerInsights(options = {}) {
   const filters = { from: range.from || null, to: range.to || null, courtId: $('oiCourt')?.value || null };
   const requestKey = JSON.stringify(filters);
   if (!options.force && _oiSnapshot && requestKey === _oiRequestKey) return;
+  const requestSeq = ++_oiRequestSeq;
   $('oiLoading')?.classList.add('on');
   try {
     const snapshot = await DB.getOwnerIntelligence(filters);
+    if (requestSeq !== _oiRequestSeq) return;
     _oiSnapshot = snapshot || {};
     _oiRequestKey = requestKey;
     renderInsightsRange(_oiSnapshot);
     renderInsightsKpis(_oiSnapshot);
     renderInsightsHeatmap(_oiSnapshot);
     renderInsightsLifecycle(_oiSnapshot);
+    renderInsightsForward(_oiSnapshot);
     renderInsightsTrend(_oiSnapshot);
     renderInsightsRecommendations(_oiSnapshot);
     renderInsightsCourts(_oiSnapshot);
   } catch (error) {
+    if (requestSeq !== _oiRequestSeq) return;
     console.error('renderOwnerInsights:', error);
     $('oiRecommendations').innerHTML = '<div class="oi-empty">Insights could not be loaded. Apply the Owner Intelligence database migration, then refresh.</div>';
     toast('Insights could not be loaded.', 'err');
   } finally {
-    $('oiLoading')?.classList.remove('on');
+    if (requestSeq === _oiRequestSeq) $('oiLoading')?.classList.remove('on');
   }
 }
 

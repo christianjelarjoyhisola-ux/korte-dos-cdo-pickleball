@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/apply-owner-intelligence-production-migration.yml"
-      - "supabase/migrations/20260825190000_owner_intelligence.sql"
+      - "supabase/migrations/20260825223000_owner_intelligence_payment_pipeline.sql"
   workflow_dispatch:
 
 permissions:
@@ -23,8 +23,8 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
-      MIGRATION_FILE: supabase/migrations/20260825190000_owner_intelligence.sql
-      MIGRATION_SHA256: 5e57eb3a0527fca7a3cc782220550da3d21623c29bf999d27d28091ca7a8812d
+      MIGRATION_FILE: supabase/migrations/20260825223000_owner_intelligence_payment_pipeline.sql
+      MIGRATION_SHA256: 3b53c348f51e9227adaf89300f8bbefeababaaa0ca1693d9d6fca1336a5deeef
       HISTORY_SQL: |
         create schema if not exists supabase_migrations;
 
@@ -40,9 +40,9 @@ jobs:
 
         insert into supabase_migrations.schema_migrations (version, name, statements)
         values (
-          '20260825190000',
-          'owner_intelligence',
-          array['sha256:5e57eb3a0527fca7a3cc782220550da3d21623c29bf999d27d28091ca7a8812d']::text[]
+          '20260825223000',
+          'owner_intelligence_payment_pipeline',
+          array['sha256:3b53c348f51e9227adaf89300f8bbefeababaaa0ca1693d9d6fca1336a5deeef']::text[]
         )
         on conflict (version) do update
         set name = excluded.name,
@@ -55,6 +55,10 @@ jobs:
         begin
           if intelligence_function is null then
             raise exception 'Owner Intelligence function is missing';
+          end if;
+
+          if to_regprocedure('public.get_owner_intelligence_legacy(date,date,text)') is null then
+            raise exception 'Owner Intelligence legacy function is missing';
           end if;
 
           if not exists (
@@ -79,10 +83,9 @@ jobs:
             raise exception 'Owner Intelligence function grants are unsafe';
           end if;
 
-          if pg_get_functiondef(intelligence_function) not ilike '%owner%court_owner%'
-             or pg_get_functiondef(intelligence_function) not ilike '%current_account_role%'
-             or pg_get_functiondef(intelligence_function) not ilike '%reserve@hold.internal%'
-             or pg_get_functiondef(intelligence_function) not ilike '%created_via%import%' then
+          if pg_get_functiondef(intelligence_function) not ilike '%forward_outlook%'
+             or pg_get_functiondef(intelligence_function) not ilike '%pipeline_note%'
+             or pg_get_functiondef(intelligence_function) not ilike '%retained_deposit_amount%' then
             raise exception 'Owner Intelligence data or role safeguards are incomplete';
           end if;
 
@@ -93,10 +96,10 @@ jobs:
           if not exists (
             select 1
             from supabase_migrations.schema_migrations
-            where version = '20260825190000'
-              and name = 'owner_intelligence'
+            where version = '20260825223000'
+              and name = 'owner_intelligence_payment_pipeline'
               and statements = array[
-                'sha256:5e57eb3a0527fca7a3cc782220550da3d21623c29bf999d27d28091ca7a8812d'
+                'sha256:3b53c348f51e9227adaf89300f8bbefeababaaa0ca1693d9d6fca1336a5deeef'
               ]::text[]
           ) then
             raise exception 'Owner Intelligence migration history is missing or non-canonical';

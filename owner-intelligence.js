@@ -39,8 +39,24 @@
     return `${days} comparable operating day${days === 1 ? '' : 's'}, ${booked.toFixed(1)} of ${available.toFixed(1)} court-hours booked`;
   }
 
+  function addDays(date, days) {
+    const value = new Date(`${String(date).slice(0, 10)}T00:00:00Z`);
+    value.setUTCDate(value.getUTCDate() + number(days));
+    return value.toISOString().slice(0, 10);
+  }
+
+  function trendGrainForDays(days) {
+    const count = Math.max(0, number(days));
+    if (count <= 28) return 'day';
+    if (count <= 180) return 'week';
+    return 'month';
+  }
+
   function buildRecommendations(snapshot) {
     const kpis = snapshot?.kpis || {};
+    const operationalDate = snapshot?.forward_outlook?.as_of || snapshot?.period?.generated_at || new Date().toISOString();
+    const forward30 = (Array.isArray(snapshot?.forward_outlook?.horizons) ? snapshot.forward_outlook.horizons : [])
+      .find(item => number(item?.days) === 30)?.kpis || {};
     const cells = (Array.isArray(snapshot?.heatmap) ? snapshot.heatmap : [])
       .filter(cell => number(cell?.available_hours ?? cell?.availableHours) > 0);
     const recommendations = [];
@@ -57,6 +73,35 @@
       .filter(cell => number(cell?.utilization_pct ?? cell?.utilizationPct) >= 70)
       .sort((a, b) => number(b?.utilization_pct ?? b?.utilizationPct) - number(a?.utilization_pct ?? a?.utilizationPct));
 
+    if (number(forward30.outstanding_balance) > 0) {
+      recommendations.push({
+        type: 'future_payment_recovery', priority: 220,
+        confidence: { code:'high', label:'Directly measured' },
+        title: 'Protect upcoming revenue by collecting balances',
+        summary: 'Resolve confirmed future booking balances before launching a demand experiment.',
+        evidence: `₱${number(forward30.outstanding_balance).toLocaleString('en-PH',{maximumFractionDigits:0})} is outstanding across the next 30 play days.`,
+        plan: 'Contact confirmed customers with upcoming balances and reconcile payment against the reservation.',
+        guardrail: 'Do not mark any balance paid without matching payment evidence.',
+        successMetric: 'Reduce the measured 30-day future outstanding balance.',
+        reviewDate: addDays(operationalDate, 3), action:'Review balances', actionSection:'bookings',
+      });
+    }
+
+    if (number(forward30.payment_review_reservations) > 0) {
+      const futureReview = number(forward30.payment_review_reservations);
+      recommendations.push({
+        type:'future_payment_review', priority:210,
+        confidence:{code:'high',label:'Directly measured'},
+        title:'Review payments for upcoming play dates',
+        summary:'Clear receipt-backed future payments before running a growth experiment.',
+        evidence:`${futureReview} future reservation${futureReview===1?'':'s'} in the next 30 days ${futureReview===1?'has':'have'} stored evidence awaiting review.`,
+        plan:'Resolve each item from Payment Review while preserving unclear receipts as pending.',
+        guardrail:'Never reject only because OCR missed a field.',
+        successMetric:'All receipt-backed future reviews resolved accurately.',
+        reviewDate:addDays(operationalDate,1), action:'Open Payment Review', actionSection:'payreview',
+      });
+    }
+
     if (number(kpis.outstanding_balance) > 0) {
       recommendations.push({
         type: 'payment_recovery',
@@ -65,8 +110,30 @@
         title: 'Recover confirmed booking balances',
         summary: 'Follow up on outstanding balances before offering additional discounts.',
         evidence: `₱${number(kpis.outstanding_balance).toLocaleString('en-PH', { maximumFractionDigits: 0 })} remains outstanding on active bookings.`,
+        plan: 'Contact the affected customers and reconcile each balance against its confirmed reservation.',
+        guardrail: 'Do not change a booking or mark it paid without matching payment evidence.',
+        successMetric: 'Outstanding balance reduced with no payment mismatch.',
+        reviewDate: addDays(operationalDate, 3),
         action: 'Review balances',
         actionSection: 'bookings',
+      });
+    }
+
+    if (number(kpis.payment_review_reservations) > 0) {
+      const reviewCount = number(kpis.payment_review_reservations);
+      recommendations.push({
+        type: 'payment_review',
+        priority: 180,
+        confidence: { code: 'high', label: 'Directly measured' },
+        title: 'Review submitted payments',
+        summary: 'Resolve receipt-backed payments before testing new discounts or acquisition offers.',
+        evidence: `${reviewCount} reservation${reviewCount === 1 ? '' : 's'} ${reviewCount === 1 ? 'has' : 'have'} durable receipt evidence awaiting review.`,
+        plan: 'Review the stored receipt evidence and decide each payment from the Payment Review queue.',
+        guardrail: 'Keep unclear receipts pending; never reject only because OCR missed a field.',
+        successMetric: 'All receipt-backed reviews resolved accurately.',
+        reviewDate: addDays(operationalDate, 1),
+        action: 'Open Payment Review',
+        actionSection: 'payreview',
       });
     }
 
@@ -78,11 +145,15 @@
         type: 'off_peak',
         priority: 80 + Math.max(0, 35 - utilization),
         confidence: confidenceFor(cell),
-        title: `Test an off-peak offer for ${cellLabel(cell)}`,
-        summary: `This window is ${utilization.toFixed(0)}% utilized. Create a short, owner-approved voucher draft and measure incremental bookings before extending it.`,
+        title: `Run a 14-day demand experiment for ${cellLabel(cell)}`,
+        summary: `This window is ${utilization.toFixed(0)}% utilized. Test focused awareness and clearer availability messaging before considering any price change.`,
         evidence: `${evidence(cell)}; ${openHours.toFixed(1)} historical court-hours were unfilled.`,
-        action: 'Open vouchers',
-        actionSection: 'vouchers',
+        plan: 'Feature this exact play window in organic posts and booking-page messaging for 14 days, then compare like-for-like bookings.',
+        guardrail: 'Keep the current court price and peak windows unchanged during the test.',
+        successMetric: 'At least 2 additional confirmed bookings versus the prior comparable 14-day baseline, or a 10-point utilization lift.',
+        reviewDate: addDays(operationalDate, 14),
+        action: '',
+        actionSection: '',
         context: cell,
       });
     }
@@ -97,26 +168,13 @@
         title: `Protect pricing for ${cellLabel(cell)}`,
         summary: `Demand is already strong at ${utilization.toFixed(0)}% utilization. Avoid broad discounts in this window and keep capacity for full-price bookings.`,
         evidence: evidence(cell),
-        action: 'View vouchers',
-        actionSection: 'vouchers',
+        plan: 'Maintain current pricing and monitor whether the window continues to fill at the same pace.',
+        guardrail: 'Do not include this window in broad promotions while utilization remains above 70%.',
+        successMetric: 'Utilization remains at or above 70% without reducing yield.',
+        reviewDate: addDays(operationalDate, 14),
+        action: '',
+        actionSection: '',
         context: cell,
-      });
-    }
-
-    const totalReservations = number(kpis.total_reservations);
-    const cancellationRate = number(kpis.cancellation_rate);
-    if (totalReservations >= 10 && cancellationRate >= 10) {
-      recommendations.push({
-        type: 'cancellation',
-        priority: 70 + cancellationRate,
-        confidence: totalReservations >= 30
-          ? { code: 'high', label: 'High confidence' }
-          : { code: 'medium', label: 'Medium confidence' },
-        title: 'Reduce booking loss from cancellations',
-        summary: 'Review cancellation timing and payment completion before spending on acquisition discounts.',
-        evidence: `${cancellationRate.toFixed(1)}% of ${totalReservations} recorded reservations were cancelled or forfeited.`,
-        action: 'Review lifecycle',
-        actionSection: 'bookings',
       });
     }
 
@@ -131,6 +189,10 @@
         title: 'Building a reliable demand baseline',
         summary: 'Korte DOS is using all reliable historical bookings, but this segment does not yet have enough comparable operating days for a safe action.',
         evidence: bestLearningCell ? evidence(bestLearningCell) : `${analyzedDays} operating day${analyzedDays === 1 ? '' : 's'} analyzed.`,
+        plan: 'Keep booking availability accurate and collect more comparable operating days.',
+        guardrail: 'Do not infer demand or change price from zero or low-sample data.',
+        successMetric: 'At least 6 comparable days and 18 available court-hours for a target window.',
+        reviewDate: addDays(operationalDate, 14),
         action: '',
         actionSection: '',
       });
@@ -155,13 +217,13 @@
       || String(row.paymentMethod || row.payment_method || '').toLowerCase() === 'manual'
     ).length;
     const excludedHolds = allRows.filter(row => String(row.email || '').toLowerCase() === 'reserve@hold.internal').length;
-    const reliable = allRows.filter(row =>
+    const allReliable = allRows.filter(row =>
       String(row.createdVia || row.created_via || '').toLowerCase() !== 'import'
       && !String(row.ref || '').toUpperCase().startsWith('MANUAL-')
       && String(row.paymentMethod || row.payment_method || '').toLowerCase() !== 'manual'
       && String(row.email || '').toLowerCase() !== 'reserve@hold.internal'
-      && String(row.date || '').slice(0, 10) <= today
     );
+    const reliable = allReliable.filter(row => String(row.date || '').slice(0, 10) <= today);
     const earliest = reliable.map(row => String(row.date || '').slice(0,10)).filter(Boolean).sort()[0] || today;
     const rangeEnd = [String(input.to || today).slice(0,10), today].sort()[0];
     const rangeStart = String(input.from || earliest || rangeEnd).slice(0,10);
@@ -192,12 +254,26 @@
     const reservations = [...reservationMap.values()].map(items => {
       const statuses = new Set(items.map(row => String(row.status || 'pending').toLowerCase()));
       const lifecycleStatus = lifecycleOrder.find(status => statuses.has(status)) || 'cancelled';
+      const paymentReview = items.some(row => {
+        const bookingStatus = String(row.status || '').toLowerCase();
+        const paymentStatus = String(row.paymentStatus || row.payment_status || '').toLowerCase();
+        const receiptStatus = String(row.receiptStatus || row.receipt_status || '').toLowerCase();
+        const hasStoredReceipt = Boolean(
+          String(row.receiptImageUrl || row.receipt_image_url || '').trim()
+          && /^[a-f0-9]{64}$/i.test(String(row.receiptImageHash || row.receipt_image_hash || '').trim())
+        );
+        const hasAuditEvidence = Boolean(row.receiptVerificationId || row.receipt_verification_id || row.hasReceiptVerification);
+        return ['pending','verifying'].includes(bookingStatus)
+          && paymentStatus === 'for_verification'
+          && (hasStoredReceipt || receiptStatus === 'manual_review' || hasAuditEvidence);
+      });
       const customer = String(items[0]?.email || items[0]?.contactNumber || items[0]?.contact_number || items[0]?.reservationKey || '').toLowerCase();
       return {
         lifecycleStatus,
+        paymentReview,
         customer,
-        grossRevenue: items.reduce((sum, row) => sum + (['confirmed','completed'].includes(String(row.status).toLowerCase()) ? number(row.total) : (String(row.status).toLowerCase() === 'forfeited' && String(row.paymentStatus || row.payment_status).toLowerCase() === 'deposit_retained' ? paidAmount(row) : 0)), 0),
-        collectedRevenue: items.reduce((sum, row) => sum + (['confirmed','completed','forfeited'].includes(String(row.status).toLowerCase()) ? paidAmount(row) : 0), 0),
+        grossRevenue: items.reduce((sum, row) => sum + (['confirmed','completed'].includes(String(row.status).toLowerCase()) ? number(row.total) : 0), 0),
+        collectedRevenue: items.reduce((sum, row) => sum + (['confirmed','completed'].includes(String(row.status).toLowerCase()) ? paidAmount(row) : 0), 0),
         outstandingBalance: items.reduce((sum, row) => sum + (['confirmed','completed'].includes(String(row.status).toLowerCase()) ? Math.max(0, number(row.total) - paidAmount(row)) : 0), 0),
         bookedHours: items.reduce((sum, row) => sum + (['confirmed','completed'].includes(String(row.status).toLowerCase()) ? Math.max(0, number(row.duration)) : 0), 0),
       };
@@ -265,7 +341,7 @@
       heatmap.push(cell);
     }});
     const daysAnalyzed = dateRange.length;
-    const trendGrain = daysAnalyzed > 180 ? 'month' : daysAnalyzed > 60 ? 'week' : 'day';
+    const trendGrain = trendGrainForDays(daysAnalyzed);
     const trendKey = date => {
       if (trendGrain === 'month') return `${date.slice(0,7)}-01`;
       if (trendGrain === 'week') {
@@ -274,12 +350,23 @@
       return date;
     };
     const trendMap = new Map();
-    dateRange.forEach(date => trendMap.set(trendKey(date), { date: trendKey(date), reservations: 0, booked_hours: 0, collected_revenue: 0 }));
+    dateRange.forEach(date => {
+      const key = trendKey(date);
+      const item = trendMap.get(key) || { date:key, bucket_start:date, bucket_end:date, is_partial:false, reservations:0, booked_hours:0, collected_revenue:0 };
+      item.bucket_end = date;
+      trendMap.set(key, item);
+    });
+    trendMap.forEach(item => {
+      let fullEnd = item.date;
+      if (trendGrain === 'week') fullEnd = addDays(item.date, 6);
+      if (trendGrain === 'month') fullEnd = addDays(`${addDays(`${item.date.slice(0,7)}-28`, 4).slice(0,7)}-01`, -1);
+      item.is_partial = item.bucket_start !== item.date || item.bucket_end !== fullEnd;
+    });
     rows.forEach(row => {
       const key = trendKey(String(row.date).slice(0,10));
-      const item = trendMap.get(key) || { date: key, reservations: 0, booked_hours: 0, collected_revenue: 0 };
+      const item = trendMap.get(key) || { date:key, bucket_start:String(row.date).slice(0,10), bucket_end:String(row.date).slice(0,10), is_partial:true, reservations:0, booked_hours:0, collected_revenue:0 };
       if (['confirmed','completed'].includes(String(row.status).toLowerCase())) item.booked_hours += Math.max(0, number(row.duration));
-      if (['confirmed','completed','forfeited'].includes(String(row.status).toLowerCase())) item.collected_revenue += paidAmount(row);
+      if (['confirmed','completed'].includes(String(row.status).toLowerCase())) item.collected_revenue += paidAmount(row);
       trendMap.set(key, item);
     });
     reservationMap.forEach(items => {
@@ -294,20 +381,86 @@
       const courtRows = rows.filter(row => String(row.courtId || row.court_id) === String(court.id));
       const booked = courtRows.reduce((sum,row)=>sum+(['confirmed','completed'].includes(String(row.status).toLowerCase())?number(row.duration):0),0);
       const capacity = number(capacityByCourt.get(String(court.id)));
-      return { court_id:court.id, court_name:court.name, booked_hours:booked, available_hours:capacity, utilization_pct:capacity?Math.min(100,booked*100/capacity):0, gross_revenue:courtRows.reduce((sum,row)=>sum+(['confirmed','completed'].includes(String(row.status).toLowerCase())?number(row.total):0),0), collected_revenue:courtRows.reduce((sum,row)=>sum+(['confirmed','completed','forfeited'].includes(String(row.status).toLowerCase())?paidAmount(row):0),0) };
+      return { court_id:court.id, court_name:court.name, booked_hours:booked, available_hours:capacity, utilization_pct:capacity?Math.min(100,booked*100/capacity):0, gross_revenue:courtRows.reduce((sum,row)=>sum+(['confirmed','completed'].includes(String(row.status).toLowerCase())?number(row.total):0),0), collected_revenue:courtRows.reduce((sum,row)=>sum+(['confirmed','completed'].includes(String(row.status).toLowerCase())?paidAmount(row):0),0) };
     }).sort((a,b)=>b.collected_revenue-a.collected_revenue);
     const grossRevenue = reservations.reduce((sum,item)=>sum+item.grossRevenue,0);
     const collectedRevenue = reservations.reduce((sum,item)=>sum+item.collectedRevenue,0);
     const outstandingBalance = reservations.reduce((sum,item)=>sum+item.outstandingBalance,0);
     const bookedHours = reservations.reduce((sum,item)=>sum+item.bookedHours,0);
-    const lifecycle = ['confirmed','completed','pending','verifying','cancelled','forfeited'].map(status => ({ status, count: reservations.filter(item=>item.lifecycleStatus===status).length }));
-    const cancelled = reservations.filter(item=>['cancelled','forfeited'].includes(item.lifecycleStatus)).length;
+    const paymentReviewReservations = reservations.filter(item => item.paymentReview).length;
+    const lifecycle = [
+      { status:'completed', count:reservations.filter(item=>item.lifecycleStatus==='completed').length },
+      { status:'confirmed', count:reservations.filter(item=>item.lifecycleStatus==='confirmed').length },
+      { status:'payment_review', count:paymentReviewReservations },
+    ];
+    const forwardEnd = addDays(today, 60);
+    const forwardLogical = new Map();
+    allReliable
+      .filter(row => String(row.date || '').slice(0,10) > today && String(row.date || '').slice(0,10) <= forwardEnd)
+      .filter(row => !input.courtId || String(row.courtId || row.court_id) === String(input.courtId))
+      .forEach(row => {
+        const reservationKey = String(row.groupRef || row.booking_group_ref || row.ref || '');
+        const slots = Array.isArray(row.slots) ? row.slots.join(',') : '';
+        const key = `${reservationKey}|${row.courtId || row.court_id}|${row.date}|${slots || row.startTime || row.start_time || ''}`;
+        if (!forwardLogical.has(key)) forwardLogical.set(key, { ...row, reservationKey });
+      });
+    const forwardRows = [...forwardLogical.values()];
+    const forwardDailyMap = new Map();
+    for (let day = 1; day <= 60; day += 1) {
+      const date = addDays(today, day);
+      let capacity = 0;
+      if (!blockedDates.has(date)) courts.forEach(court => {
+        const createdDate = String(court.createdAt || court.created_at || '').slice(0,10);
+        if (!createdDate || createdDate <= date) capacity += closeHour - openHour;
+      });
+      forwardDailyMap.set(date, { date, secured_revenue:0, outstanding_balance:0, committed_booking_value:0, confirmed_reservations:0, payment_review_reservations:0, booked_hours:0, available_hours:capacity });
+    }
+    forwardRows.forEach(row => {
+      const date = String(row.date || '').slice(0,10);
+      const day = forwardDailyMap.get(date);
+      if (!day) return;
+      const status = String(row.status || '').toLowerCase();
+      if (status === 'confirmed') {
+        day.secured_revenue += paidAmount(row);
+        day.committed_booking_value += Math.max(0, number(row.total));
+        day.outstanding_balance += Math.max(0, number(row.total) - paidAmount(row));
+        day.booked_hours += Math.max(0, number(row.duration));
+      }
+    });
+    const forwardReservations = new Map();
+    forwardRows.forEach(row => {
+      if (!forwardReservations.has(row.reservationKey)) forwardReservations.set(row.reservationKey, []);
+      forwardReservations.get(row.reservationKey).push(row);
+    });
+    forwardReservations.forEach(items => {
+      const date = String(items[0]?.date || '').slice(0,10);
+      const day = forwardDailyMap.get(date);
+      if (!day) return;
+      if (items.some(row => String(row.status || '').toLowerCase() === 'confirmed')) day.confirmed_reservations += 1;
+      if (items.some(row => {
+        const status = String(row.status || '').toLowerCase();
+        const paymentStatus = String(row.paymentStatus || row.payment_status || '').toLowerCase();
+        const receiptStatus = String(row.receiptStatus || row.receipt_status || '').toLowerCase();
+        const stored = Boolean(String(row.receiptImageUrl || row.receipt_image_url || '').trim() && /^[a-f0-9]{64}$/i.test(String(row.receiptImageHash || row.receipt_image_hash || '').trim()));
+        return ['pending','verifying'].includes(status) && paymentStatus === 'for_verification' && (stored || receiptStatus === 'manual_review' || row.receiptVerificationId || row.receipt_verification_id || row.hasReceiptVerification);
+      })) day.payment_review_reservations += 1;
+    });
+    const forwardDaily = [...forwardDailyMap.values()];
+    const forwardHorizons = [7,30,60].map(days => {
+      const selected = forwardDaily.slice(0, days);
+      const sum = field => selected.reduce((total, item) => total + number(item[field]), 0);
+      const horizonAvailable = sum('available_hours');
+      const horizonBooked = sum('booked_hours');
+      return { days, from:addDays(today,1), to:addDays(today,days), kpis:{ secured_revenue:sum('secured_revenue'), committed_booking_value:sum('committed_booking_value'), outstanding_balance:sum('outstanding_balance'), confirmed_reservations:sum('confirmed_reservations'), payment_review_reservations:sum('payment_review_reservations'), booked_hours:horizonBooked, available_hours:horizonAvailable, booked_utilization_pct:horizonAvailable?Math.min(100,horizonBooked*100/horizonAvailable):0 } };
+    });
+    const trackedReservations = lifecycle.reduce((sum, item) => sum + item.count, 0);
     return {
       period: { from:rangeStart, to:rangeEnd, earliest_reliable_booking_date:earliest, generated_at:new Date().toISOString(), days_analyzed:daysAnalyzed, operating_days:operatingDays, trend_grain:trendGrain },
       settings: { open_hour:openHour, close_hour:closeHour, court_id:input.courtId || null },
-      kpis: { gross_revenue:grossRevenue, collected_revenue:collectedRevenue, outstanding_balance:outstandingBalance, booked_hours:bookedHours, available_hours:availableHours, utilization_pct:availableHours?Math.min(100,bookedHours*100/availableHours):0, completed_reservations:reservations.filter(item=>item.lifecycleStatus==='completed').length, active_reservations:reservations.filter(item=>['confirmed','completed'].includes(item.lifecycleStatus)).length, total_reservations:reservations.length, revenue_per_booked_hour:bookedHours?collectedRevenue/bookedHours:0, revenue_per_available_hour:availableHours?collectedRevenue/availableHours:0, cancellation_rate:reservations.length?cancelled*100/reservations.length:0, repeat_customer_rate:activeCustomers.length?activeCustomers.filter(count=>count>1).length*100/activeCustomers.length:0 },
+      kpis: { gross_revenue:grossRevenue, collected_revenue:collectedRevenue, outstanding_balance:outstandingBalance, booked_hours:bookedHours, available_hours:availableHours, utilization_pct:availableHours?Math.min(100,bookedHours*100/availableHours):0, completed_reservations:reservations.filter(item=>item.lifecycleStatus==='completed').length, active_reservations:reservations.filter(item=>['confirmed','completed'].includes(item.lifecycleStatus)).length, payment_review_reservations:paymentReviewReservations, total_reservations:trackedReservations, revenue_per_booked_hour:bookedHours?collectedRevenue/bookedHours:0, revenue_per_available_hour:availableHours?collectedRevenue/availableHours:0, repeat_customer_rate:activeCustomers.length?activeCustomers.filter(count=>count>1).length*100/activeCustomers.length:0 },
+      forward_outlook: { as_of:today, horizons:forwardHorizons, daily:forwardDaily },
       lifecycle, trend:[...trendMap.values()].sort((a,b)=>a.date.localeCompare(b.date)), heatmap, courts:courtPerformance,
-      data_quality: { reliable_booking_rows:rows.length, excluded_import_rows:excludedImport, excluded_placeholder_rows:excludedHolds, historical_capacity_exact:false, capacity_basis:'local operating hours and saved court state', capacity_note:'Local demo mode estimates historical capacity from saved operating hours, court creation dates, venue block dates, and current-day court state.' },
+      data_quality: { reliable_booking_rows:rows.length, excluded_import_rows:excludedImport, excluded_placeholder_rows:excludedHolds, historical_capacity_exact:false, capacity_basis:'local operating hours and saved court state', capacity_note:'Local demo mode estimates historical capacity from saved operating hours, court creation dates, venue block dates, and current-day court state.', pipeline_note:'Cancelled, rejected, expired, and forfeited operational records are excluded from booking pipeline and revenue-efficiency metrics. Receipt-backed payments awaiting an owner decision are counted as Needs payment review.' },
     };
   }
 
@@ -317,6 +470,7 @@
     timeLabel,
     cellLabel,
     evidence,
+    trendGrainForDays,
     buildRecommendations,
     buildLocalSnapshot,
   };
