@@ -44,6 +44,21 @@ test('does not offer balance payment at or after the deadline or after forfeitur
   assert.equal(forfeited.eligible, false);
 });
 
+test('fallback deadline is 11:59 PM Philippine time on the fifth calendar day', () => {
+  const booking = {
+    ref: 'BK-EOD',
+    date: '2026-08-25',
+    startTime: '3:00 PM',
+    hostBooking: true,
+    status: 'confirmed',
+    paymentStatus: 'downpayment_paid',
+    total: 1000,
+    downpayment: 250,
+  };
+  assert.equal(balancePayment.balanceDeadline(booking).toISOString(), '2026-08-20T15:59:59.999Z');
+  assert.equal(balancePayment.eligibility(booking, new Date('2026-08-20T15:01:00Z')).eligible, true);
+});
+
 test('resolves grouped booking keys while retaining a real child ref for server lookup', () => {
   const grouped = {
     ...eligibleBooking,
@@ -230,14 +245,39 @@ test('invokes the existing compatibility function with a strict balance API mark
   assert.equal(response.quote.balanceAmount, 700);
 });
 
+test('surfaces the Edge Function response instead of a generic non-2xx error', async () => {
+  await assert.rejects(
+    balancePayment.invoke({
+      functions: {
+        async invoke() {
+          return {
+            data: null,
+            error: {
+              message: 'Edge Function returned a non-2xx status code',
+              context: {
+                async json() {
+                  return { error: 'The receipt was submitted after the balance deadline.' };
+                },
+              },
+            },
+          };
+        },
+      },
+    }, { action: 'submit' }),
+    /submitted after the balance deadline/,
+  );
+});
+
 test('serves critical balance scripts through the current cache-busted release', () => {
   const indexHtml = fs.readFileSync('./index.html', 'utf8');
   const adminHtml = fs.readFileSync('./admin.html', 'utf8');
   const headers = fs.readFileSync('./_headers', 'utf8');
   const worker = fs.readFileSync('./_worker.js', 'utf8');
 
-  assert.match(indexHtml, /host-balance-payment\.js\?v=20260731-host-balance-payment-v2/);
-  assert.match(adminHtml, /host-balance-payment\.js\?v=20260731-host-balance-payment-v2/);
+  assert.match(indexHtml, /host-balance-payment\.js\?v=20260820-host-balance-eod-v3/);
+  assert.match(adminHtml, /host-balance-payment\.js\?v=20260820-host-balance-eod-v3/);
+  assert.match(indexHtml, /booking-balance\.js\?v=20260820-host-balance-eod-v3/);
+  assert.match(adminHtml, /booking-balance\.js\?v=20260820-host-balance-eod-v3/);
   assert.match(adminHtml, /host-balance-admin\.js\?v=20260731-host-balance-payment-v2/);
   assert.match(headers, /\/host-balance-payment\.js\s+Cache-Control: no-cache, max-age=0, must-revalidate/);
   assert.match(headers, /\/host-balance-admin\.js\s+Cache-Control: no-cache, max-age=0, must-revalidate/);

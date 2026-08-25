@@ -44,16 +44,33 @@
     return starts[0] || null;
   }
 
+  function groupDate(items) {
+    const dates = (Array.isArray(items) ? items : [items])
+      .map(item => String(item?.date || '').slice(0, 10))
+      .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+      .sort();
+    return dates[0] || '';
+  }
+
+  function endOfBalanceDueDate(dateValue) {
+    const date = String(dateValue || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    const calendar = new Date(`${date}T12:00:00Z`);
+    if (Number.isNaN(calendar.getTime())) return null;
+    calendar.setUTCDate(calendar.getUTCDate() - BALANCE_LEAD_DAYS);
+    const dueDate = calendar.toISOString().slice(0, 10);
+    return new Date(`${dueDate}T23:59:59.999+08:00`);
+  }
+
   function balanceDeadline(bookingOrItems) {
-    const explicit = Array.isArray(bookingOrItems)
-      ? bookingOrItems.map(item => item?.balanceDueAt || item?.balance_due_at).find(Boolean)
-      : bookingOrItems?.balanceDueAt || bookingOrItems?.balance_due_at;
-    if (explicit) {
-      const parsed = new Date(explicit);
-      if (!Number.isNaN(parsed.getTime())) return parsed;
-    }
-    const start = groupStart(bookingOrItems);
-    return start ? new Date(start.getTime() - BALANCE_LEAD_DAYS * DAY_MS) : null;
+    const explicit = (Array.isArray(bookingOrItems) ? bookingOrItems : [bookingOrItems])
+      .map(item => item?.balanceDueAt || item?.balance_due_at)
+      .filter(Boolean)
+      .map(value => new Date(value))
+      .filter(value => !Number.isNaN(value.getTime()))
+      .sort((a, b) => a - b);
+    if (explicit.length) return explicit[0];
+    return endOfBalanceDueDate(groupDate(bookingOrItems));
   }
 
   function depositEligible(bookingOrItems, now = new Date()) {
@@ -156,6 +173,8 @@
     parseHour,
     bookingStart,
     groupStart,
+    groupDate,
+    endOfBalanceDueDate,
     balanceDeadline,
     depositEligible,
     paidAmount,

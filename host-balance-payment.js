@@ -86,6 +86,15 @@
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
+  function endOfBalanceDueDate(dateValue) {
+    const date = cleanText(dateValue).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    const calendar = new Date(`${date}T12:00:00Z`);
+    if (Number.isNaN(calendar.getTime())) return null;
+    calendar.setUTCDate(calendar.getUTCDate() - BALANCE_LEAD_DAYS);
+    return new Date(`${calendar.toISOString().slice(0, 10)}T23:59:59.999+08:00`);
+  }
+
   function balanceDeadline(booking) {
     const candidates = itemsFor(booking)
       .map(item => item?.balanceDueAt ?? item?.balance_due_at)
@@ -96,8 +105,11 @@
       .sort((a, b) => a - b);
     if (candidates.length) return candidates[0];
 
-    const starts = itemsFor(booking).map(bookingStart).filter(Boolean).sort((a, b) => a - b);
-    return starts.length ? new Date(starts[0].getTime() - BALANCE_LEAD_DAYS * DAY_MS) : null;
+    const dates = itemsFor(booking)
+      .map(item => cleanText(item?.date).slice(0, 10))
+      .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+      .sort();
+    return dates.length ? endOfBalanceDueDate(dates[0]) : null;
   }
 
   function bookingKey(booking) {
@@ -319,12 +331,34 @@
     return cleanText(message) || fallback;
   }
 
+  async function invokeErrorMessage(error, fallback = 'Balance payment request failed.') {
+    const generic = errorMessage(error, '');
+    const context = error?.context;
+    if (context && (typeof context.json === 'function' || typeof context.text === 'function')) {
+      try {
+        const response = typeof context.clone === 'function' ? context.clone() : context;
+        if (typeof response.json === 'function') {
+          const payload = await response.json();
+          const detailed = errorMessage(payload?.error ?? payload?.message ?? payload, '');
+          if (detailed) return detailed;
+        }
+      } catch (_) {
+        try {
+          const response = typeof context.clone === 'function' ? context.clone() : context;
+          const detailed = cleanText(await response.text?.());
+          if (detailed) return detailed;
+        } catch (_) {}
+      }
+    }
+    return generic || fallback;
+  }
+
   async function invoke(client, payload) {
     if (!client?.functions?.invoke) throw new Error('Secure balance payment is unavailable.');
     const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
       body: { ...(payload || {}), api: API_NAME },
     });
-    if (error) throw new Error(errorMessage(error));
+    if (error) throw new Error(await invokeErrorMessage(error));
     if (!data || data.ok === false) throw new Error(errorMessage(data?.error ?? data, 'Balance payment request was not accepted.'));
     return data;
   }
@@ -348,6 +382,7 @@
     statusState,
     safeImageUrl,
     errorMessage,
+    invokeErrorMessage,
     invoke,
   };
 });
