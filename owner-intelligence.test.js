@@ -18,6 +18,36 @@ function local(overrides = {}) {
   });
 }
 
+function visibleLocalGrowth(db, filters = {}) {
+  const source = fs.readFileSync(path.join(__dirname, 'supabase-config.js'), 'utf8');
+  const start = source.indexOf('  function buildLocalDemandGrowthIntelligence(db, filters = {})');
+  const end = source.indexOf('\n\n  window.DB = {', start);
+  assert.ok(start >= 0 && end > start, 'visible local Demand Growth function must be extractable');
+  const localDateAdd = (value, amount) => {
+    const date = new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + Number(amount));
+    return date.toISOString().slice(0, 10);
+  };
+  const context = {
+    window: { OwnerIntelligence: Intelligence },
+    localManilaDate: () => '2026-08-26',
+    localDateAdd,
+    localDateDiff: (from, to) => Math.round(
+      (new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000,
+    ),
+    localIsoWeekday: value => ((new Date(`${value}T12:00:00Z`).getUTCDay() + 6) % 7) + 1,
+    localRecommendationId: parts => `TEST-${parts.join('-')}`,
+    result: null,
+  };
+  const sandbox = { ...context, inputDb: db, inputFilters: filters };
+  vm.runInNewContext(
+    `${source.slice(start, end)}\nresult = buildLocalDemandGrowthIntelligence(inputDb, inputFilters);`,
+    sandbox,
+    { filename:'visible-local-demand-growth.js' },
+  );
+  return sandbox.result;
+}
+
 test('confidence gates price actions until comparable evidence is medium or high', () => {
   assert.equal(Intelligence.confidenceFor({ comparable_days:3, available_hours:48 }).code, 'learning');
   assert.equal(Intelligence.confidenceFor({ comparable_days:4, available_hours:12 }).code, 'low');
@@ -119,6 +149,232 @@ test('future confirmed bookings and fresh holds reduce open inventory but do not
   ] });
   assert.equal(withFuture.kpis.successful_reservations, withoutFuture.kpis.successful_reservations);
   assert.ok(withFuture.kpis.expected_unsold_hours < withoutFuture.kpis.expected_unsold_hours);
+});
+
+test('every enabled Maintenance block label is unavailable demand capacity', () => {
+  const labels = ['closed', 'maintenance', 'reserved', 'blocked', 'private', 'group', 'openplay'];
+  for (const label of labels) {
+    const settings = {
+      maintenance_config: JSON.stringify({ rules: [{
+        enabled: true,
+        label,
+        mode: 'specific',
+        dates: ['2026-08-18'],
+        start: 0,
+        end: 24,
+        courtIds: [],
+      }] }),
+    };
+    assert.equal(
+      Intelligence.scheduleHourUnavailable('2026-08-18', 9, 'c1', settings),
+      true,
+      `${label} must be excluded`,
+    );
+  }
+});
+
+test('Maintenance and Open Play matching supports recurrence, court scope, and disabled rules', () => {
+  const settings = {
+    maintenance_config: {
+      rules: [
+        { enabled: true, mode: 'weekly', recurring: { days: [2] }, start: 6, end: 9, courtIds: ['c1'], label: 'private' },
+        { enabled: true, mode: 'monthly', recurring: { day: 18 }, start: 12, end: 13, courtIds: [], label: 'group' },
+        { enabled: false, mode: 'specific', dates: ['2026-08-18'], start: 9, end: 12, courtIds: [], label: 'closed' },
+      ],
+    },
+    open_play_config: {
+      enabled: true,
+      days: [2],
+      specificDates: ['2026-08-19'],
+      start: 18,
+      end: 20,
+      courtIds: ['c2'],
+    },
+  };
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 6, 'c1', settings), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 6, 'c2', settings), false);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 12, 'c2', settings), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 10, 'c1', settings), false);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 18, 'c2', settings), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-19', 19, 'c2', settings), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-19', 19, 'c1', settings), false);
+});
+
+test('blocked operating hours count as neither unsold capacity nor booked demand', () => {
+  const bookings = [
+    { ref:'BLOCKED-HOUR', courtId:'c1', date:'2026-08-18', status:'completed', slots:[6] },
+    { ref:'SELLABLE-HOUR', courtId:'c1', date:'2026-08-18', status:'completed', slots:[8] },
+  ];
+  const base = local({ settings: { open_hour:'6', close_hour:'9' }, bookings });
+  const excluded = local({
+    settings: {
+      open_hour:'6',
+      close_hour:'9',
+      maintenance_config: { rules: [
+        { enabled:true, label:'private', mode:'specific', dates:['2026-08-18'], start:6, end:8, courtIds:[] },
+        { enabled:true, label:'maintenance', mode:'specific', dates:['2026-08-18'], start:6, end:8, courtIds:['c1'] },
+      ] },
+      open_play_config: { enabled:true, specificDates:['2026-08-18'], days:[], start:7, end:8, courtIds:[] },
+    },
+    bookings,
+  });
+
+  assert.equal(excluded.kpis.available_hours, base.kpis.available_hours - 2);
+  assert.equal(excluded.kpis.booked_hours, 1);
+  assert.equal(excluded.kpis.successful_reservations, 1);
+  assert.equal(
+    excluded.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 6).comparable_days,
+    base.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 6).comparable_days,
+  );
+});
+
+test('a fully blocked historical band removes the date from comparable days', () => {
+  const bookings = [
+    { ref:'SELLABLE-ANCHOR', courtId:'c1', date:'2026-08-17', status:'completed', slots:[8] },
+    { ref:'BLOCKED-BASELINE', courtId:'c1', date:'2026-08-18', status:'completed', slots:[6] },
+  ];
+  const base = local({
+    settings: { open_hour:'6', close_hour:'9' },
+    bookings,
+  });
+  const snapshot = local({
+    settings: {
+      open_hour:'6', close_hour:'9',
+      maintenance_config: { rules: [{
+        enabled:true, label:'private', mode:'specific', dates:['2026-08-18'], start:0, end:24, courtIds:[],
+      }] },
+    },
+    bookings,
+  });
+  const baseTuesday = base.court_signals.find(cell => cell.weekday === 2 && cell.start_hour === 6);
+  const tuesday = snapshot.court_signals.find(cell => cell.weekday === 2 && cell.start_hour === 6);
+  assert.equal(tuesday.available_hours, baseTuesday.available_hours - 3);
+  assert.equal(tuesday.comparable_days, baseTuesday.comparable_days - 1);
+  assert.equal(snapshot.kpis.booked_hours, 1);
+  assert.equal(snapshot.kpis.successful_reservations, 1);
+});
+
+test('an excluded booking cannot start the 30-day learning clock', () => {
+  const snapshot = local({
+    settings: {
+      open_hour:'6', close_hour:'9',
+      maintenance_config: { rules: [{
+        enabled:true, label:'closed', mode:'specific', dates:['2026-06-01'], start:0, end:24, courtIds:[],
+      }] },
+    },
+    bookings: [
+      { ref:'BLOCKED-OLD', courtId:'c1', date:'2026-06-01', status:'completed', slots:[6] },
+      { ref:'FIRST-SELLABLE', courtId:'c1', date:'2026-08-18', status:'completed', slots:[8] },
+    ],
+  });
+  assert.equal(snapshot.period.from, '2026-08-18');
+  assert.equal(snapshot.kpis.successful_reservations, 1);
+  assert.equal(snapshot.recommendation, null);
+});
+
+test('overnight blocks follow the occurrence start date and remain end-exclusive', () => {
+  const specific = {
+    maintenance_config: {
+      enabled:true, label:'private', mode:'specific', dates:['2026-08-17'], start:22, end:2, courtIds:[],
+    },
+  };
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-17', 23, 'c1', specific), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 1, 'c1', specific), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-17', 1, 'c1', specific), false);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 2, 'c1', specific), false);
+
+  const recurring = {
+    maintenance_config: { rules: [
+      { enabled:true, mode:'weekly', recurring:{days:[1]}, start:22, end:2, courtIds:[] },
+      { enabled:true, mode:'monthly', recurring:{day:31}, start:22, end:2, courtIds:['c2'] },
+    ] },
+    open_play_config: { enabled:true, days:[1], specificDates:[], start:22, end:2, courtIds:['c3'] },
+  };
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 1, 'c1', recurring), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-09-01', 1, 'c2', recurring), true);
+  assert.equal(Intelligence.scheduleHourUnavailable('2026-08-18', 1, 'c3', recurring), true);
+});
+
+test('a future booking inside blocked time does not subtract capacity twice', () => {
+  const commonSettings = { open_hour:'6', close_hour:'9' };
+  const bookings = [{ ref:'BASE', courtId:'c1', date:'2026-06-01', status:'completed', slots:[8] }];
+  const block = {
+    enabled:true, label:'group', mode:'specific', dates:['2026-09-01'], start:6, end:8, courtIds:[],
+  };
+  const blockedOnly = local({
+    settings: { ...commonSettings, maintenance_config:{ rules:[block] } },
+    bookings,
+  });
+  const blockedAndBooked = local({
+    settings: { ...commonSettings, maintenance_config:{ rules:[block] } },
+    bookings: [...bookings, { ref:'FUTURE-BLOCKED', courtId:'c1', date:'2026-09-01', status:'confirmed', slots:[6] }],
+  });
+  assert.equal(blockedAndBooked.kpis.expected_unsold_hours, blockedOnly.kpis.expected_unsold_hours);
+});
+
+test('blocked dates exclude their bookings from both numerator and learning start', () => {
+  const snapshot = local({
+    settings: { open_hour:'6', close_hour:'9' },
+    blockedDates: ['2026-06-01'],
+    bookings: [
+      { ref:'BLOCKED-DATE', courtId:'c1', date:'2026-06-01', status:'completed', slots:[6] },
+      { ref:'SELLABLE', courtId:'c1', date:'2026-08-18', status:'completed', slots:[8] },
+    ],
+  });
+  assert.equal(snapshot.period.from, '2026-08-18');
+  assert.equal(snapshot.kpis.booked_hours, 1);
+  assert.equal(snapshot.kpis.successful_reservations, 1);
+});
+
+test('the visible local Insights engine uses the same sellable-hour exclusions', () => {
+  const db = {
+    settings: {
+      open_hour:'6', close_hour:'9',
+      maintenance_config: JSON.stringify({ rules:[{
+        enabled:true, label:'reserved', mode:'specific', dates:['2026-08-18'], start:6, end:8, courtIds:[],
+      }] }),
+      open_play_config: JSON.stringify({ enabled:false, days:[], specificDates:[], start:6, end:7, courtIds:[] }),
+    },
+    courts: [{ id:'c1', name:'Court 1', rate:360, createdAt:'2026-06-01T00:00:00Z', blocked:false }],
+    blockedDates: ['2026-08-19'],
+    bookings: [
+      { ref:'ANCHOR', courtId:'c1', date:'2026-08-17', status:'completed', analyticsEligible:true, slots:[6] },
+      { ref:'MAINT', courtId:'c1', date:'2026-08-18', status:'completed', analyticsEligible:true, slots:[6] },
+      { ref:'SELLABLE', courtId:'c1', date:'2026-08-18', status:'completed', analyticsEligible:true, slots:[8] },
+      { ref:'CLOSED-DATE', courtId:'c1', date:'2026-08-19', status:'completed', analyticsEligible:true, slots:[8] },
+    ],
+    demandCampaigns: [], demandCampaignRedemptions: [],
+  };
+  const result = visibleLocalGrowth(db, { from:'2026-08-17', to:'2026-08-19' });
+  assert.equal(result.kpis.available_hours, 4);
+  assert.equal(result.kpis.booked_hours, 2);
+  assert.equal(result.kpis.successful_reservations, 2);
+});
+
+test('the visible local Insights engine preserves fractional duration and avoids future double subtraction', () => {
+  const baseDb = {
+    settings: {
+      open_hour:'6', close_hour:'9',
+      maintenance_config: JSON.stringify({ rules:[{
+        enabled:true, label:'group', mode:'specific', dates:['2026-09-01'], start:6, end:8, courtIds:[],
+      }] }),
+    },
+    courts: [{ id:'c1', name:'Court 1', rate:360, createdAt:'2026-06-01T00:00:00Z', blocked:false }],
+    blockedDates: [], demandCampaigns: [], demandCampaignRedemptions: [],
+    bookings: [{
+      ref:'FRACTIONAL', courtId:'c1', date:'2026-08-17', status:'completed', analyticsEligible:true,
+      slots:[], startTime:'6:00 AM', duration:1.5,
+    }],
+  };
+  const withoutFuture = visibleLocalGrowth(baseDb, { from:'2026-08-17', to:'2026-08-17' });
+  const withBlockedFuture = visibleLocalGrowth({
+    ...baseDb,
+    bookings: [...baseDb.bookings, {
+      ref:'FUTURE-BLOCKED', courtId:'c1', date:'2026-09-01', status:'confirmed', slots:[6],
+    }],
+  }, { from:'2026-08-17', to:'2026-08-17' });
+  assert.equal(withoutFuture.kpis.booked_hours, 1.5);
+  assert.equal(withBlockedFuture.kpis.expected_unsold_hours, withoutFuture.kpis.expected_unsold_hours);
 });
 
 test('the visible Insights surface is demand-only and inline browser code parses', () => {
@@ -283,5 +539,49 @@ test('digest schema hotfix is narrow, idempotent, and deployed without mutation 
   assert.match(workflow,/position\('public\.digest\('/i);
   assert.match(workflow,/skip_apply=true/i);
   assert.match(applyStep,/one mutation POST with no automatic retry/i);
+  assert.doesNotMatch(applyStep,/--retry/);
+});
+
+test('sellable-capacity migration is additive, pinned, and production-verifiable', () => {
+  const migration = fs.readFileSync(path.join(
+    __dirname,
+    'supabase',
+    'migrations',
+    '20260826170000_demand_growth_schedule_capacity.sql',
+  ), 'utf8');
+  const workflow = fs.readFileSync(path.join(
+    __dirname,
+    '.github',
+    'workflows',
+    'apply-demand-growth-schedule-capacity.yml',
+  ), 'utf8');
+  const migrationSha = crypto.createHash('sha256').update(migration).digest('hex');
+  const applyStep = workflow.slice(
+    workflow.indexOf('- name: Apply Demand sellable-capacity migration exactly once'),
+    workflow.indexOf('- name: Verify production database state'),
+  );
+
+  assert.match(migration,/create or replace function public\.demand_schedule_hour_is_unavailable/i);
+  assert.match(migration,/historical_capacity_units as materialized/i);
+  assert.match(migration,/future_capacity_units as materialized/i);
+  assert.match(migration,/signal_dimensions as materialized[\s\S]*generate_series\(1, 7\)/i);
+  assert.match(migration,/left join historical_capacity_by_cell/i);
+  assert.match(migration,/count\(distinct unit\.capacity_date\)/i);
+  assert.match(migration,/not public\.demand_schedule_hour_is_unavailable/gi);
+  assert.match(migration,/then p_date - 1/i);
+  assert.match(migration,/extensions\.digest/i);
+  assert.doesNotMatch(migration,/public\.digest/i);
+  assert.match(migration,/grant execute on function public\.demand_schedule_hour_is_unavailable[\s\S]*intelligence_owner/i);
+  assert.doesNotMatch(migration,/\b(?:insert|update|delete|truncate)\s+(?:from\s+)?public\.(?:bookings|payments|settings|courts|blocked_dates)\b/i);
+  assert.doesNotMatch(migration,/\b(?:create|alter|drop|truncate)\s+table\b/i);
+
+  assert.match(workflow,/name: Read-only production preflight/i);
+  assert.match(workflow,/MIGRATION_FILE: supabase\/migrations\/20260826170000_/i);
+  assert.match(workflow,new RegExp(`MIGRATION_SHA256: ${migrationSha}`));
+  assert.match(workflow,new RegExp(`sha256:${migrationSha}`));
+  assert.match(workflow,/has_function_privilege[\s\S]*demand_function[\s\S]*helper_function/i);
+  assert.match(workflow,/Overnight occurrence-date or end-boundary matching failed/);
+  assert.match(workflow,/Canonical Demand migration history exists, but the schema has drifted/);
+  assert.match(applyStep,/Exactly one mutation request and no automatic retry/i);
   assert.doesNotMatch(applyStep,/--retry/);
 });

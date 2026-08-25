@@ -3437,6 +3437,23 @@ window.DB = {
     const selectedCourtId = filters.courtId ? String(filters.courtId) : null;
     const courts = (db.courts || []).filter(court => !selectedCourtId || String(court.id) === selectedCourtId);
     if (selectedCourtId && courts.length === 0) throw new Error('The selected court does not exist.');
+    const scheduleUnavailable = (date, hour, courtId) =>
+      window.OwnerIntelligence?.scheduleHourUnavailable?.(date, hour, courtId, db.settings || {}) === true;
+    const openHour = Math.max(0, Math.min(23, Number(db.settings?.open_hour || 6)));
+    const closeHour = Math.max(openHour + 1, Math.min(24, Number(db.settings?.close_hour || 22)));
+    const blocked = new Set((db.blockedDates || []).map(row => String(row?.date || row)));
+    const bookingHourUnits = booking => {
+      const explicit = (booking.slots || []).map(Number).filter(Number.isFinite);
+      if (explicit.length) return explicit.map(hour => ({ hour: Math.floor(hour), hours: 1 }));
+      const match = String(booking.startTime || booking.start_time || '').match(/^\s*(\d{1,2})(?::\d{2})?\s*(AM|PM)?/i);
+      let start = match ? Number(match[1]) : openHour;
+      if (match?.[2]) start = (start % 12) + (match[2].toUpperCase() === 'PM' ? 12 : 0);
+      const duration = Math.max(0, Number(booking.duration || 0));
+      return Array.from({ length: Math.ceil(duration) }, (_, offset) => ({
+        hour: start + offset,
+        hours: Math.min(1, Math.max(duration - offset, 0)),
+      })).filter(piece => piece.hour < 24 && piece.hours > 0);
+    };
 
     const venueSuccessful = (db.bookings || []).filter(booking =>
       booking.analyticsEligible !== false
@@ -3444,21 +3461,29 @@ window.DB = {
       && String(booking.date || '') <= yesterday);
     const successful = venueSuccessful.filter(booking =>
       !selectedCourtId || String(booking.courtId) === selectedCourtId);
-    const earliest = venueSuccessful.map(booking => booking.date).filter(Boolean).sort()[0] || yesterday;
+    const allCourtMap = new Map((db.courts || []).map(court => [String(court.id), court]));
+    const eligibleVenueSuccessful = venueSuccessful.filter(booking => {
+      const date = String(booking.date || '');
+      const court = allCourtMap.get(String(booking.courtId));
+      const courtCreated = String(court?.createdAt || court?.created_at || '').slice(0, 10);
+      if (!court || !date || blocked.has(date) || (courtCreated && courtCreated > date)) return false;
+      return bookingHourUnits(booking).some(piece => piece.hour >= openHour
+        && piece.hour < closeHour
+        && !scheduleUnavailable(date, piece.hour, booking.courtId));
+    });
+    const earliest = eligibleVenueSuccessful.map(booking => booking.date).filter(Boolean).sort()[0] || yesterday;
     const rangeEnd = [filters.to || yesterday, yesterday].sort()[0];
     const rangeStart = filters.from || earliest;
     if (rangeStart > rangeEnd) throw new Error('The Demand Intelligence start date must not be after yesterday.');
     const learningDays = localDateDiff(rangeStart, rangeEnd) + 1;
 
-    const openHour = Math.max(0, Math.min(23, Number(db.settings?.open_hour || 6)));
-    const closeHour = Math.max(openHour + 1, Math.min(24, Number(db.settings?.close_hour || 22)));
     const bands = [];
     for (let hour = openHour; hour < closeHour; hour += 3) {
       bands.push({ start_hour: hour, end_hour: Math.min(hour + 3, closeHour) });
     }
     const weekdayLabel = weekday => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][weekday - 1];
-    const blocked = new Set((db.blockedDates || []).map(row => String(row?.date || row)));
     const signalMap = new Map();
+    const venueComparableDates = new Map();
     for (const court of courts) {
       for (let weekday = 1; weekday <= 7; weekday += 1) {
         for (const band of bands) {
@@ -3482,8 +3507,16 @@ window.DB = {
         if (courtCreated && courtCreated > date) continue;
         for (const band of bands) {
           const signal = signalMap.get(`${court.id}|${weekday}|${band.start_hour}`);
-          signal.available_hours += band.end_hour - band.start_hour;
+          let eligibleHours = 0;
+          for (let hour = band.start_hour; hour < band.end_hour; hour += 1) {
+            if (!scheduleUnavailable(date, hour, court.id)) eligibleHours += 1;
+          }
+          if (!eligibleHours) continue;
+          signal.available_hours += eligibleHours;
           signal.comparable_days += 1;
+          const venueKey = `${weekday}|${band.start_hour}`;
+          if (!venueComparableDates.has(venueKey)) venueComparableDates.set(venueKey, new Set());
+          venueComparableDates.get(venueKey).add(date);
         }
       }
     }
@@ -3497,20 +3530,25 @@ window.DB = {
         seen.add(key);
         return true;
       });
+    const eligibleReservationKeys = new Set();
     for (const booking of filteredSuccesses) {
-      let slots = (booking.slots || []).map(Number).filter(Number.isFinite);
-      if (!slots.length) {
-        const match = String(booking.startTime || '').match(/^\s*(\d{1,2})(?::\d{2})?\s*(AM|PM)?/i);
-        let start = match ? Number(match[1]) : openHour;
-        if (match?.[2]) start = (start % 12) + (match[2].toUpperCase() === 'PM' ? 12 : 0);
-        slots = Array.from({ length: Math.max(0, Math.ceil(Number(booking.duration || 0))) }, (_, index) => start + index);
-      }
+      const bookingDate = String(booking.date || '');
+      const court = courts.find(item => String(item.id) === String(booking.courtId));
+      const courtCreated = String(court?.createdAt || court?.created_at || '').slice(0, 10);
+      if (!court || blocked.has(bookingDate) || (courtCreated && courtCreated > bookingDate)) continue;
       const weekday = localIsoWeekday(booking.date);
-      for (const slot of slots) {
-        const band = bands.find(item => slot >= item.start_hour && slot < item.end_hour);
+      let contributed = false;
+      for (const piece of bookingHourUnits(booking)) {
+        const band = bands.find(item => piece.hour >= item.start_hour && piece.hour < item.end_hour);
         const signal = band && signalMap.get(`${booking.courtId}|${weekday}|${band.start_hour}`);
-        if (signal) signal.booked_hours += 1;
+        if (signal && !scheduleUnavailable(bookingDate, piece.hour, booking.courtId)) {
+          signal.booked_hours += piece.hours;
+          contributed = true;
+        }
       }
+      if (contributed) eligibleReservationKeys.add(
+        booking.groupRef || booking.bookingGroupRef || booking.booking_group_ref || booking.ref,
+      );
     }
 
     for (let offset = 1; offset <= 28; offset += 1) {
@@ -3520,7 +3558,9 @@ window.DB = {
       for (const court of courts.filter(item => !item.blocked)) {
         for (const band of bands) {
           const signal = signalMap.get(`${court.id}|${weekday}|${band.start_hour}`);
-          signal.open_future_hours += band.end_hour - band.start_hour;
+          for (let hour = band.start_hour; hour < band.end_hour; hour += 1) {
+            if (!scheduleUnavailable(date, hour, court.id)) signal.open_future_hours += 1;
+          }
         }
       }
     }
@@ -3548,18 +3588,13 @@ window.DB = {
     for (const booking of occupiedFutureBookings) {
       const court = courts.find(item => String(item.id) === String(booking.courtId));
       if (!court || court.blocked || blocked.has(String(booking.date || ''))) continue;
-      let slots = (booking.slots || []).map(Number).filter(Number.isFinite);
-      if (!slots.length) {
-        const match = String(booking.startTime || '').match(/^\s*(\d{1,2})(?::\d{2})?\s*(AM|PM)?/i);
-        let start = match ? Number(match[1]) : openHour;
-        if (match?.[2]) start = (start % 12) + (match[2].toUpperCase() === 'PM' ? 12 : 0);
-        slots = Array.from({ length: Math.max(0, Math.ceil(Number(booking.duration || 0))) }, (_, index) => start + index);
-      }
       const weekday = localIsoWeekday(booking.date);
-      for (const slot of slots) {
-        const band = bands.find(item => slot >= item.start_hour && slot < item.end_hour);
+      for (const piece of bookingHourUnits(booking)) {
+        const band = bands.find(item => piece.hour >= item.start_hour && piece.hour < item.end_hour);
         const signal = band && signalMap.get(`${booking.courtId}|${weekday}|${band.start_hour}`);
-        if (signal) signal.open_future_hours = Math.max(0, signal.open_future_hours - 1);
+        if (signal && !scheduleUnavailable(booking.date, piece.hour, booking.courtId)) {
+          signal.open_future_hours = Math.max(0, signal.open_future_hours - piece.hours);
+        }
       }
     }
 
@@ -3595,7 +3630,7 @@ window.DB = {
           weekday, weekday_label: weekdayLabel(weekday), ...band,
           booked_hours: rows.reduce((sum, row) => sum + row.booked_hours, 0),
           available_hours: rows.reduce((sum, row) => sum + row.available_hours, 0),
-          comparable_days: Math.max(0, ...rows.map(row => row.comparable_days)),
+          comparable_days: venueComparableDates.get(`${weekday}|${band.start_hour}`)?.size || 0,
           open_future_hours: rows.reduce((sum, row) => sum + row.open_future_hours, 0),
           rate: 0,
         }));
@@ -3651,7 +3686,7 @@ window.DB = {
     const bookedHours = courtSignals.reduce((sum, row) => sum + row.booked_hours, 0);
     const futureHours = courtSignals.reduce((sum, row) => sum + row.open_future_hours, 0);
     const expectedUnsold = courtSignals.reduce((sum, row) => sum + row.expected_unsold_hours, 0);
-    const reservations = new Set(filteredSuccesses.map(booking => booking.groupRef || booking.bookingGroupRef || booking.ref)).size;
+    const reservations = eligibleReservationKeys.size;
     return {
       period: { from: rangeStart, to: rangeEnd, days_analyzed: learningDays, learning_days: learningDays, minimum_learning_days: 30 },
       kpis: {
@@ -3673,7 +3708,7 @@ window.DB = {
       recommendation,
       active_campaigns: activeCampaigns,
       data_quality: {
-        note: 'Demand learning includes only analytics-eligible confirmed/completed play dates through yesterday. Pending, verifying, cancelled, rejected, failed, expired, and forfeited records do not influence demand.',
+        note: 'Demand learning includes only sellable court-hours and analytics-eligible confirmed/completed play through yesterday. Blocked dates, every enabled Maintenance rule type, and Open Play hours are excluded using the currently saved venue schedules. Pending, verifying, cancelled, rejected, failed, expired, and forfeited records do not influence demand.',
         successful_statuses: ['confirmed', 'completed'], through_date: rangeEnd,
         all_genuine_sources_included: true,
       },
@@ -3780,43 +3815,54 @@ window.DB = {
       const operatingClose = Number(db.settings?.close_hour ?? 24);
       const scheduleJson = key => {
         const raw = db.settings?.[key];
-        if (!raw) return null;
-        if (typeof raw === 'object') return raw;
-        try { return JSON.parse(String(raw)); } catch (_) { return null; }
+        if (!raw) return {};
+        if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+        try { return JSON.parse(String(raw)) || {}; } catch (_) { return {}; }
       };
-      const hourInRange = (slotHour, startValue, endValue) => {
-        const start = Number(startValue), end = Number(endValue);
-        if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return false;
-        return start < end ? slotHour >= start && slotHour < end : slotHour >= start || slotHour < end;
-      };
-      const appliesToCourt = config => {
-        const courtIds = Array.isArray(config?.courtIds) ? config.courtIds.map(String).filter(Boolean) : [];
-        return courtIds.length === 0 || courtIds.includes(String(campaign.court_id));
-      };
-      const calendarDay = date => new Date(`${date}T00:00:00Z`).getUTCDay();
-      const openPlay = scheduleJson('open_play_config');
-      const openPlayOccupies = (date, slotHour) => {
-        if (!openPlay?.enabled || !appliesToCourt(openPlay)
-          || !hourInRange(slotHour, openPlay.start, openPlay.end)) return false;
-        const days = Array.isArray(openPlay.days) ? openPlay.days.map(Number) : [];
-        const specificDates = Array.isArray(openPlay.specificDates) ? openPlay.specificDates.map(String) : [];
-        return days.includes(calendarDay(date)) || specificDates.includes(date);
-      };
-      const maintenance = scheduleJson('maintenance_config');
-      const maintenanceRules = Array.isArray(maintenance?.rules)
-        ? maintenance.rules
-        : maintenance && typeof maintenance === 'object' ? [maintenance] : [];
-      const maintenanceOccupies = (date, slotHour) => maintenanceRules.some(rule => {
-        if (!rule?.enabled || !appliesToCourt(rule)
-          || !hourInRange(slotHour, rule.start, rule.end)) return false;
-        const mode = String(rule.mode || 'specific');
-        if (mode === 'monthly') return Number(rule.recurring?.day) === Number(date.slice(8, 10));
-        if (mode === 'weekly') {
-          return (Array.isArray(rule.recurring?.days) ? rule.recurring.days.map(Number) : [])
-            .includes(calendarDay(date));
+      const fallbackScheduleOccupies = (date, slotHour) => {
+        const appliesToCourt = config => {
+          const courtIds = Array.isArray(config?.courtIds) ? config.courtIds.map(String).filter(Boolean) : [];
+          return courtIds.length === 0 || courtIds.includes(String(campaign.court_id));
+        };
+        const matchesTime = config => {
+          const start = Number(config?.start), end = Number(config?.end);
+          if (!Number.isInteger(start) || start < 0 || start > 23
+            || !Number.isInteger(end) || end < 0 || end > 24 || start === end) return false;
+          return start < end ? slotHour >= start && slotHour < end : slotHour >= start || slotHour < end;
+        };
+        const occurrenceDate = config =>
+          Number(config?.start) > Number(config?.end) && slotHour < Number(config?.end)
+            ? localDateAdd(date, -1) : date;
+        const enabled = config => config?.enabled === true || String(config?.enabled || '').toLowerCase() === 'true';
+        const calendarDay = value => new Date(`${value}T12:00:00Z`).getUTCDay();
+        const openPlay = scheduleJson('open_play_config');
+        if (enabled(openPlay) && appliesToCourt(openPlay) && matchesTime(openPlay)) {
+          const scheduledDate = occurrenceDate(openPlay);
+          if ((Array.isArray(openPlay.days) ? openPlay.days.map(Number) : []).includes(calendarDay(scheduledDate))
+            || (Array.isArray(openPlay.specificDates) ? openPlay.specificDates.map(String) : []).includes(scheduledDate)) {
+            return true;
+          }
         }
-        return (Array.isArray(rule.dates) ? rule.dates.map(String) : []).includes(date);
-      });
+        const maintenance = scheduleJson('maintenance_config');
+        const rules = Array.isArray(maintenance.rules)
+          ? maintenance.rules : Object.keys(maintenance).length ? [maintenance] : [];
+        return rules.some(rule => {
+          if (!enabled(rule) || !appliesToCourt(rule) || !matchesTime(rule)) return false;
+          const scheduledDate = occurrenceDate(rule);
+          const mode = String(rule.mode || 'specific').toLowerCase();
+          if (mode === 'weekly') {
+            return (Array.isArray(rule.recurring?.days) ? rule.recurring.days.map(Number) : [])
+              .includes(calendarDay(scheduledDate));
+          }
+          if (mode === 'monthly') return Number(rule.recurring?.day) === Number(scheduledDate.slice(8, 10));
+          return mode === 'specific'
+            && (Array.isArray(rule.dates) ? rule.dates.map(String) : []).includes(scheduledDate);
+        });
+      };
+      const scheduleOccupies = (date, slotHour) =>
+        typeof window !== 'undefined' && window.OwnerIntelligence?.scheduleHourUnavailable
+          ? window.OwnerIntelligence.scheduleHourUnavailable(date, slotHour, campaign.court_id, db.settings || {})
+          : fallbackScheduleOccupies(date, slotHour);
       const freshHoldCutoff = now - PB_RESERVATION_HOLD_MINUTES * 60 * 1000;
       const bookingOccupies = (date, slotHour) => (db.bookings || []).some(booking => {
         if (String(booking.courtId || booking.court_id) !== String(campaign.court_id)
@@ -3840,8 +3886,7 @@ window.DB = {
           slotHour += 1) {
           if (!Number.isFinite(operatingOpen) || !Number.isFinite(operatingClose)
             || slotHour < operatingOpen || slotHour >= operatingClose) continue;
-          if (openPlayOccupies(offerDate, slotHour)
-            || maintenanceOccupies(offerDate, slotHour)
+          if (scheduleOccupies(offerDate, slotHour)
             || bookingOccupies(offerDate, slotHour)) continue;
           const regularRate = localDemandSlotRate(db, campaign.court_id, slotHour);
           if (regularRate <= 0) continue;

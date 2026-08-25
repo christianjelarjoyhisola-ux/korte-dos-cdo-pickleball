@@ -123,10 +123,104 @@
     const explicit = Array.isArray(row?.slots)
       ? row.slots.map(Number).filter(Number.isFinite)
       : [];
-    if (explicit.length) return explicit.map(hour => ({ hour, hours: 1 }));
+    if (explicit.length) return explicit.map(hour => ({ hour: Math.floor(hour), hours: 1 }));
     const duration = Math.max(0, number(row?.duration));
     const start = parseStartHour(row?.startTime || row?.start_time, fallbackOpen);
-    return duration ? [{ hour: start, hours: duration }] : [];
+    return Array.from({ length: Math.ceil(duration) }, (_, offset) => ({
+      hour: start + offset,
+      hours: Math.min(1, Math.max(duration - offset, 0)),
+    })).filter(piece => piece.hour < 24 && piece.hours > 0);
+  }
+
+  function parseScheduleSetting(settings, key) {
+    const raw = settings?.[key];
+    if (!raw) return {};
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    try {
+      const parsed = JSON.parse(String(raw));
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function isEnabled(value) {
+    return value === true || String(value || '').toLowerCase() === 'true';
+  }
+
+  function scheduleAppliesToCourt(config, courtId) {
+    const configured = Array.isArray(config?.courtIds)
+      ? config.courtIds
+      : Array.isArray(config?.court_ids) ? config.court_ids : [];
+    const courtIds = configured.map(String).filter(Boolean);
+    return courtIds.length === 0 || courtIds.includes(String(courtId));
+  }
+
+  function scheduleHourInRange(hour, startValue, endValue) {
+    const slotHour = Number(hour);
+    const start = Number(startValue);
+    const end = Number(endValue);
+    if (!Number.isInteger(slotHour) || slotHour < 0 || slotHour > 23
+      || !Number.isInteger(start) || start < 0 || start > 23
+      || !Number.isInteger(end) || end < 0 || end > 24
+      || start === end) return false;
+    return start < end
+      ? slotHour >= start && slotHour < end
+      : slotHour >= start || slotHour < end;
+  }
+
+  function scheduleCalendarDay(value) {
+    const date = dateOnly(value);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    const parsed = new Date(`${date}T12:00:00Z`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getUTCDay();
+  }
+
+  function scheduleOccurrenceDate(value, hour, startValue, endValue) {
+    const date = dateOnly(value);
+    const start = Number(startValue);
+    const end = Number(endValue);
+    const slotHour = Number(hour);
+    return start > end && slotHour < end ? addDays(date, -1) : date;
+  }
+
+  function scheduleHourUnavailable(value, hour, courtId, settings = {}) {
+    const date = dateOnly(value);
+    if (scheduleCalendarDay(date) === null) return false;
+
+    const openPlay = parseScheduleSetting(settings, 'open_play_config');
+    if (isEnabled(openPlay.enabled)
+      && scheduleAppliesToCourt(openPlay, courtId)
+      && scheduleHourInRange(hour, openPlay.start, openPlay.end)) {
+      const occurrenceDate = scheduleOccurrenceDate(date, hour, openPlay.start, openPlay.end);
+      const calendarDay = scheduleCalendarDay(occurrenceDate);
+      const weekdays = Array.isArray(openPlay.days) ? openPlay.days.map(Number) : [];
+      const specificDates = Array.isArray(openPlay.specificDates)
+        ? openPlay.specificDates.map(String)
+        : Array.isArray(openPlay.specific_dates) ? openPlay.specific_dates.map(String) : [];
+      if (weekdays.includes(calendarDay) || specificDates.includes(occurrenceDate)) return true;
+    }
+
+    const maintenance = parseScheduleSetting(settings, 'maintenance_config');
+    const maintenanceRules = Array.isArray(maintenance.rules)
+      ? maintenance.rules
+      : Object.keys(maintenance).length ? [maintenance] : [];
+    return maintenanceRules.some(rule => {
+      if (!rule || !isEnabled(rule.enabled)
+        || !scheduleAppliesToCourt(rule, courtId)
+        || !scheduleHourInRange(hour, rule.start, rule.end)) return false;
+      const occurrenceDate = scheduleOccurrenceDate(date, hour, rule.start, rule.end);
+      const calendarDay = scheduleCalendarDay(occurrenceDate);
+      const mode = String(rule.mode || 'specific').toLowerCase();
+      if (mode === 'monthly') return Number(rule.recurring?.day) === Number(occurrenceDate.slice(8, 10));
+      if (mode === 'weekly') {
+        const weekdays = Array.isArray(rule.recurring?.days) ? rule.recurring.days.map(Number) : [];
+        return weekdays.includes(calendarDay);
+      }
+      if (mode !== 'specific') return false;
+      const dates = Array.isArray(rule.dates) ? rule.dates.map(String) : [];
+      return dates.includes(occurrenceDate);
+    });
   }
 
   function isSuccessful(row) {
@@ -222,17 +316,34 @@
     const throughDate = addDays(today, -1);
     const selectedCourts = (Array.isArray(input.courts) ? input.courts : [])
       .filter(court => !input.courtId || String(court.id) === String(input.courtId));
-    const blockedDates = new Set((Array.isArray(input.blockedDates) ? input.blockedDates : []).map(dateOnly));
+    const blockedDates = new Set((Array.isArray(input.blockedDates) ? input.blockedDates : [])
+      .map(value => dateOnly(value?.date || value)));
     const openHour = clamp(parseInt(input.settings?.open_hour || 6, 10) || 6, 0, 23);
     const closeHour = clamp(parseInt(input.settings?.close_hour || 22, 10) || 22, openHour + 1, 24);
     const venueRows = logicalSuccessfulRows(input.bookings, throughDate, null);
     const rows = logicalSuccessfulRows(input.bookings, throughDate, input.courtId);
-    const earliest = venueRows.map(row => dateOnly(row.date)).filter(Boolean).sort()[0] || null;
+    const allCourtMap = new Map((Array.isArray(input.courts) ? input.courts : [])
+      .map(court => [String(court.id), court]));
+    const rowHasEligibleHistoricalHour = row => {
+      const courtId = String(row.courtId || row.court_id);
+      const court = allCourtMap.get(courtId);
+      const date = dateOnly(row.date);
+      const createdDate = dateOnly(court?.createdAt || court?.created_at);
+      if (!court || !date || blockedDates.has(date) || (createdDate && createdDate > date)) return false;
+      return normalizedSlots(row, openHour).some(piece =>
+        piece.hour >= openHour
+        && piece.hour < closeHour
+        && !scheduleHourUnavailable(date, piece.hour, courtId, input.settings));
+    };
+    const earliest = venueRows.filter(rowHasEligibleHistoricalHour)
+      .map(row => dateOnly(row.date)).filter(Boolean).sort()[0] || null;
     const historyDates = earliest ? datesBetween(earliest, throughDate) : [];
     const bands = [];
     for (let start = openHour; start < closeHour; start += 3) bands.push({ start, end: Math.min(start + 3, closeHour) });
 
     const courtCells = new Map();
+    const selectedCourtMap = new Map(selectedCourts.map(court => [String(court.id), court]));
+    const venueComparableDates = new Map();
     selectedCourts.forEach(court => bands.forEach(band => {
       for (let weekday = 1; weekday <= 7; weekday += 1) {
         const key = `${court.id}:${weekday}:${band.start}`;
@@ -255,30 +366,50 @@
         if (createdDate && createdDate > date) return;
         bands.forEach(band => {
           const cell = courtCells.get(`${court.id}:${weekday}:${band.start}`);
-          const hours = band.end - band.start;
+          let hours = 0;
+          for (let hour = band.start; hour < band.end; hour += 1) {
+            if (!scheduleHourUnavailable(date, hour, court.id, input.settings)) hours += 1;
+          }
+          if (!hours) return;
           cell.available_hours += hours;
           cell.weighted_available_hours += hours * recencyWeight;
           cell.comparable_days += 1;
+          const venueKey = `${weekday}:${band.start}`;
+          if (!venueComparableDates.has(venueKey)) venueComparableDates.set(venueKey, new Set());
+          venueComparableDates.get(venueKey).add(date);
         });
       });
     });
 
-    rows.forEach(row => {
+    const eligibleReservationIds = new Set();
+    let eligibleBookingRows = 0;
+    let eligibleBookedHours = 0;
+    rows.forEach((row, rowIndex) => {
       const courtId = String(row.courtId || row.court_id);
       const date = dateOnly(row.date);
+      if (!date || blockedDates.has(date)) return;
+      const court = selectedCourtMap.get(courtId);
+      const createdDate = dateOnly(court?.createdAt || court?.created_at);
+      if (!court || (createdDate && createdDate > date)) return;
       const weekday = isoWeekday(date);
       const age = daysApart(date, throughDate);
       const recencyWeight = Math.pow(0.5, age / RECENCY_HALF_LIFE_DAYS);
+      let rowContributed = false;
       normalizedSlots(row, openHour).forEach(piece => {
         const band = bands.find(item => piece.hour >= item.start && piece.hour < item.end);
         const cell = band && courtCells.get(`${courtId}:${weekday}:${band.start}`);
-        if (!cell) return;
+        if (!cell || scheduleHourUnavailable(date, piece.hour, courtId, input.settings)) return;
         cell.booked_hours += piece.hours;
         cell.weighted_booked_hours += piece.hours * recencyWeight;
+        eligibleBookedHours += piece.hours;
+        rowContributed = true;
       });
+      if (!rowContributed) return;
+      eligibleBookingRows += 1;
+      eligibleReservationIds.add(String(row.groupRef || row.booking_group_ref || row.ref || `row-${rowIndex}`));
     });
 
-    const futureOccupied = new Set();
+    const futureOccupied = new Map();
     (Array.isArray(input.bookings) ? input.bookings : []).forEach(row => {
       const date = dateOnly(row.date);
       if (!date || date <= today || date > addDays(today, FORECAST_DAYS)) return;
@@ -286,15 +417,20 @@
       const createdMs = new Date(row.createdAt || row.created_at || '').getTime();
       const freshHold = status === 'verifying' && Number.isFinite(createdMs) && nowMs >= createdMs && nowMs - createdMs < 15 * 60000;
       if (!['pending', 'confirmed', 'completed'].includes(status) && !freshHold) return;
-      normalizedSlots(row, openHour).forEach(piece => futureOccupied.add(`${row.courtId || row.court_id}:${date}:${piece.hour}`));
+      normalizedSlots(row, openHour).forEach(piece => {
+        const key = `${row.courtId || row.court_id}:${date}:${piece.hour}`;
+        futureOccupied.set(key, Math.min(1, number(futureOccupied.get(key)) + piece.hours));
+      });
     });
     datesBetween(addDays(today, 1), addDays(today, FORECAST_DAYS)).forEach(date => {
       if (blockedDates.has(date)) return;
       const weekday = isoWeekday(date);
-      selectedCourts.forEach(court => bands.forEach(band => {
+      selectedCourts.filter(court => !court.blocked).forEach(court => bands.forEach(band => {
         const cell = courtCells.get(`${court.id}:${weekday}:${band.start}`);
         for (let hour = band.start; hour < band.end; hour += 1) {
-          if (!futureOccupied.has(`${court.id}:${date}:${hour}`)) cell.open_future_hours += 1;
+          if (scheduleHourUnavailable(date, hour, court.id, input.settings)) continue;
+          const occupiedHours = number(futureOccupied.get(`${court.id}:${date}:${hour}`));
+          cell.open_future_hours += Math.max(0, 1 - occupiedHours);
         }
       }));
     });
@@ -326,7 +462,7 @@
         const cell = {
           weekday, weekday_label: WEEKDAYS[weekday - 1], start_hour: band.start, end_hour: band.end,
           booked_hours: booked, available_hours: available,
-          comparable_days: pieces.reduce((max, item) => Math.max(max, number(item.comparable_days)), 0),
+          comparable_days: venueComparableDates.get(`${weekday}:${band.start}`)?.size || 0,
           utilization_pct: weightedAvailable > 0 ? clamp(weightedBooked * 100 / weightedAvailable) : 0,
         };
         cell.confidence = confidenceFor(cell).code;
@@ -335,8 +471,7 @@
       }
     });
 
-    const reservationIds = new Set(rows.map(row => String(row.groupRef || row.booking_group_ref || row.ref || '')));
-    const bookedHours = rows.reduce((sum, row) => sum + normalizedSlots(row, openHour).reduce((hours, piece) => hours + piece.hours, 0), 0);
+    const bookedHours = eligibleBookedHours;
     const availableHours = courtSignals.reduce((sum, cell) => sum + number(cell.available_hours), 0);
     const forecastOpenHours = courtSignals.reduce((sum, cell) => sum + number(cell.open_future_hours), 0);
     const expectedFilledHours = courtSignals.reduce((sum, cell) => sum + number(cell.open_future_hours) * number(cell.utilization_pct) / 100, 0);
@@ -353,7 +488,7 @@
       },
       settings: { open_hour: openHour, close_hour: closeHour, court_id: input.courtId || null },
       kpis: {
-        successful_reservations: reservationIds.size,
+        successful_reservations: eligibleReservationIds.size,
         booked_hours: bookedHours,
         available_hours: availableHours,
         utilization_pct: availableHours ? clamp(bookedHours * 100 / availableHours) : 0,
@@ -366,9 +501,9 @@
       court_signals: courtSignals,
       active_campaigns: activeCampaigns,
       data_quality: {
-        successful_booking_rows: rows.length,
+        successful_booking_rows: eligibleBookingRows,
         excluded_operational_rows: Math.max(0, (Array.isArray(input.bookings) ? input.bookings.length : 0) - rows.length),
-        capacity_note: 'Demand uses successful confirmed or completed bookings only. Blocked dates are removed; historical maintenance is estimated from saved venue state.',
+        capacity_note: 'Demand uses sellable court-hours only. Blocked dates, all enabled Maintenance rule types, and Open Play hours are excluded using the currently saved venue schedules.',
         model_note: `Recent comparable weeks carry more weight (${RECENCY_HALF_LIFE_DAYS}-day half-life). Failed attempts and payment states never influence demand.`,
       },
     };
@@ -387,6 +522,7 @@
     timeLabel,
     cellLabel,
     evidence,
+    scheduleHourUnavailable,
     recommendationFromSignals,
     buildRecommendations,
     buildLocalSnapshot,

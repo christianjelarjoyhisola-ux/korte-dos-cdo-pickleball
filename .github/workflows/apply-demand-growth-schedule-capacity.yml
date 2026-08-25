@@ -1,0 +1,405 @@
+name: Apply Demand Growth Sellable Capacity Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-demand-growth-schedule-capacity.yml"
+      - "supabase/migrations/20260826170000_demand_growth_schedule_capacity.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Preflight, apply once, and verify sellable demand capacity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260826170000_demand_growth_schedule_capacity.sql
+      MIGRATION_SHA256: 723ff9ba30f361859881d4e6a5f646a8ee26141c71bc7643f9ca343585e6d83e
+      PREFLIGHT_SQL: |
+        with migration_history as (
+          select version, name, statements
+          from supabase_migrations.schema_migrations
+          where version = '20260826170000'
+        )
+        select jsonb_build_object(
+          'base_ready',
+            to_regclass('public.settings') is not null
+            and to_regclass('public.courts') is not null
+            and to_regclass('public.bookings') is not null
+            and to_regclass('public.blocked_dates') is not null
+            and to_regclass('public.demand_campaigns') is not null
+            and to_regclass('public.demand_campaign_redemptions') is not null
+            and to_regprocedure('public.current_account_role()') is not null
+            and to_regprocedure(
+              'public.get_demand_growth_intelligence(date,date,text)'
+            ) is not null
+            and to_regprocedure('extensions.digest(text,text)') is not null
+            and to_regrole('anon') is not null
+            and to_regrole('authenticated') is not null,
+          'schema_present',
+            to_regprocedure(
+              'public.demand_schedule_hour_is_unavailable(date,integer,text,jsonb,jsonb)'
+            ) is not null
+            and position('historical_capacity_units' in lower(coalesce(pg_get_functiondef(
+              to_regprocedure('public.get_demand_growth_intelligence(date,date,text)')
+            ), ''))) > 0
+            and position('future_capacity_units' in lower(coalesce(pg_get_functiondef(
+              to_regprocedure('public.get_demand_growth_intelligence(date,date,text)')
+            ), ''))) > 0
+            and position('extensions.digest' in lower(coalesce(pg_get_functiondef(
+              to_regprocedure('public.get_demand_growth_intelligence(date,date,text)')
+            ), ''))) > 0
+            and position('public.digest' in lower(coalesce(pg_get_functiondef(
+              to_regprocedure('public.get_demand_growth_intelligence(date,date,text)')
+            ), ''))) = 0,
+          'history_exists', exists (select 1 from migration_history),
+          'history_name', coalesce((select name from migration_history limit 1), ''),
+          'history_marker', coalesce((select statements[1] from migration_history limit 1), '')
+        ) as preflight;
+      HISTORY_SQL: |
+        begin;
+        set local lock_timeout = '5s';
+        set local statement_timeout = '30s';
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260826170000',
+          'demand_growth_schedule_capacity',
+          array['sha256:723ff9ba30f361859881d4e6a5f646a8ee26141c71bc7643f9ca343585e6d83e']::text[]
+        )
+        on conflict (version) do nothing;
+
+        commit;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          helper_function regprocedure := to_regprocedure(
+            'public.demand_schedule_hour_is_unavailable(date,integer,text,jsonb,jsonb)'
+          );
+          demand_function regprocedure := to_regprocedure(
+            'public.get_demand_growth_intelligence(date,date,text)'
+          );
+          helper_definition text;
+          demand_definition text;
+          block_label text;
+          maintenance_config jsonb;
+        begin
+          if helper_function is null or demand_function is null then
+            raise exception 'Demand sellable-capacity functions are missing';
+          end if;
+
+          select pg_get_functiondef(helper_function)
+            into helper_definition
+          from pg_proc
+          where oid = helper_function;
+
+          select pg_get_functiondef(demand_function)
+            into demand_definition
+          from pg_proc
+          where oid = demand_function;
+
+          if not coalesce((
+            select pronargs = 5
+              and prorettype = 'boolean'::regtype
+              and not prosecdef
+              and provolatile = 'i'
+              and proparallel = 's'
+              and coalesce(proconfig, '{}'::text[]) @>
+                array['search_path=pg_catalog, pg_temp']::text[]
+            from pg_proc
+            where oid = helper_function
+          ), false) then
+            raise exception 'Demand schedule predicate attributes are unexpected';
+          end if;
+
+          if has_function_privilege('anon', helper_function, 'execute')
+             or has_function_privilege('authenticated', helper_function, 'execute') then
+            raise exception 'Internal Demand schedule predicate is publicly callable';
+          end if;
+
+          if not has_function_privilege(
+            pg_get_userbyid((select proowner from pg_proc where oid = demand_function)),
+            helper_function,
+            'execute'
+          ) then
+            raise exception 'Demand Intelligence owner cannot execute its internal schedule predicate';
+          end if;
+
+          if not coalesce((
+            select pronargs = 3
+              and prorettype = 'jsonb'::regtype
+              and prosecdef
+              and provolatile = 's'
+              and coalesce(proconfig, '{}'::text[]) @>
+                array['search_path=pg_catalog, pg_temp']::text[]
+            from pg_proc
+            where oid = demand_function
+          ), false) then
+            raise exception 'Demand Intelligence function lost its security attributes';
+          end if;
+
+          if has_function_privilege('anon', demand_function, 'execute')
+             or not has_function_privilege('authenticated', demand_function, 'execute') then
+            raise exception 'Demand Intelligence grants are unexpected';
+          end if;
+
+          if position('historical_capacity_units' in lower(demand_definition)) = 0
+             or position('future_capacity_units' in lower(demand_definition)) = 0
+             or (
+               length(lower(demand_definition))
+               - length(replace(lower(demand_definition), 'demand_schedule_hour_is_unavailable', ''))
+             ) / length('demand_schedule_hour_is_unavailable') < 2
+             or position('open_play_config' in lower(demand_definition)) = 0
+             or position('maintenance_config' in lower(demand_definition)) = 0
+             or position('extensions.digest' in lower(demand_definition)) = 0
+             or position('public.digest' in lower(demand_definition)) > 0 then
+            raise exception 'Demand Intelligence sellable-capacity safeguards are incomplete';
+          end if;
+
+          if position('courtids' in lower(helper_definition)) = 0
+             or position('specificdates' in lower(helper_definition)) = 0
+             or position('recurring,days' in lower(helper_definition)) = 0
+             or position('recurring,day' in lower(helper_definition)) = 0
+             or position('p_date - 1' in lower(helper_definition)) = 0
+             or position('->> ''label''' in lower(helper_definition)) > 0 then
+            raise exception 'Demand schedule predicate does not cover the saved rule formats';
+          end if;
+
+          foreach block_label in array array[
+            'closed', 'maintenance', 'reserved', 'blocked',
+            'private', 'group', 'openplay'
+          ] loop
+            maintenance_config := jsonb_build_object(
+              'rules', jsonb_build_array(jsonb_build_object(
+                'enabled', true,
+                'label', block_label,
+                'mode', 'specific',
+                'dates', jsonb_build_array('2026-08-18'),
+                'start', 0,
+                'end', 24,
+                'courtIds', '[]'::jsonb
+              ))
+            );
+            if not public.demand_schedule_hour_is_unavailable(
+              '2026-08-18', 9, 'court-1', '{}'::jsonb, maintenance_config
+            ) then
+              raise exception 'Maintenance label % was not excluded', block_label;
+            end if;
+          end loop;
+
+          if not public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 6, 'court-1', '{}'::jsonb,
+            '{"rules":[{"enabled":true,"mode":"weekly","recurring":{"days":[2]},"start":6,"end":9,"courtIds":["court-1"]}]}'::jsonb
+          ) then
+            raise exception 'Weekly Maintenance matching failed';
+          end if;
+
+          if public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 6, 'court-2', '{}'::jsonb,
+            '{"rules":[{"enabled":true,"mode":"weekly","recurring":{"days":[2]},"start":6,"end":9,"courtIds":["court-1"]}]}'::jsonb
+          ) then
+            raise exception 'Maintenance court scoping failed';
+          end if;
+
+          if not public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 12, 'court-2', '{}'::jsonb,
+            '{"rules":[{"enabled":true,"mode":"monthly","recurring":{"day":18},"start":12,"end":13,"courtIds":[]}]}'::jsonb
+          ) then
+            raise exception 'Monthly Maintenance matching failed';
+          end if;
+
+          maintenance_config := '{"rules":[{"enabled":true,"mode":"specific","dates":["2026-08-17"],"start":22,"end":2,"courtIds":[]}]}'::jsonb;
+          if not public.demand_schedule_hour_is_unavailable(
+            '2026-08-17', 23, 'court-1', '{}'::jsonb, maintenance_config
+          ) or not public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 1, 'court-1', '{}'::jsonb, maintenance_config
+          ) or public.demand_schedule_hour_is_unavailable(
+            '2026-08-17', 1, 'court-1', '{}'::jsonb, maintenance_config
+          ) or public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 2, 'court-1', '{}'::jsonb, maintenance_config
+          ) then
+            raise exception 'Overnight occurrence-date or end-boundary matching failed';
+          end if;
+
+          if not public.demand_schedule_hour_is_unavailable(
+            '2026-09-01', 1, 'court-1', '{}'::jsonb,
+            '{"rules":[{"enabled":true,"mode":"monthly","recurring":{"day":31},"start":22,"end":2,"courtIds":[]}]}'::jsonb
+          ) then
+            raise exception 'Overnight monthly cross-month matching failed';
+          end if;
+
+          if not public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 18, 'court-2',
+            '{"enabled":true,"days":[2],"specificDates":[],"start":18,"end":20,"courtIds":["court-2"]}'::jsonb,
+            '{}'::jsonb
+          ) then
+            raise exception 'Open Play weekday matching failed';
+          end if;
+
+          if not public.demand_schedule_hour_is_unavailable(
+            '2026-08-19', 18, 'court-2',
+            '{"enabled":true,"days":[],"specificDates":["2026-08-19"],"start":18,"end":20,"courtIds":["court-2"]}'::jsonb,
+            '{}'::jsonb
+          ) then
+            raise exception 'Open Play specific-date matching failed';
+          end if;
+
+          if public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 10, 'court-1', '{}'::jsonb,
+            '{"rules":[{"enabled":false,"mode":"specific","dates":["2026-08-18"],"start":9,"end":12,"courtIds":[]}]}'::jsonb
+          ) then
+            raise exception 'Disabled Maintenance rule was incorrectly excluded';
+          end if;
+
+          if public.demand_schedule_hour_is_unavailable(
+            '2026-08-18', 24, 'court-1', '{}'::jsonb, '{}'::jsonb
+          ) then
+            raise exception 'Out-of-range hour was incorrectly excluded';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260826170000'
+              and name = 'demand_growth_schedule_capacity'
+              and statements = array[
+                'sha256:723ff9ba30f361859881d4e6a5f646a8ee26141c71bc7643f9ca343585e6d83e'
+              ]::text[]
+          ) then
+            raise exception 'Demand sellable-capacity migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read-only production preflight
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          payload_file="$RUNNER_TEMP/demand-schedule-capacity-preflight.json"
+          response_file="$RUNNER_TEMP/demand-schedule-capacity-preflight-response.json"
+          jq -n --arg query "$PREFLIGHT_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand sellable-capacity preflight failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          preflight="$(jq -c '
+            if type == "array" then .[0].preflight
+            elif (.result? | type) == "array" then .result[0].preflight
+            else .preflight end
+          ' "$response_file")"
+          if [[ -z "$preflight" || "$preflight" == "null" ]]; then
+            echo "::error::Demand sellable-capacity preflight returned no result."
+            exit 1
+          fi
+          if [[ "$(jq -r '.base_ready' <<<"$preflight")" != "true" ]]; then
+            echo "::error::Demand Growth base schema is incomplete; migration was not attempted."
+            exit 1
+          fi
+
+          if [[ "$(jq -r '.history_exists' <<<"$preflight")" == "true" ]]; then
+            marker="$(jq -r '.history_marker' <<<"$preflight")"
+            name="$(jq -r '.history_name' <<<"$preflight")"
+            if [[ "$marker" != "sha256:$MIGRATION_SHA256" || \
+                  "$name" != "demand_growth_schedule_capacity" ]]; then
+              echo "::error::Migration 20260826170000 has non-canonical history."
+              exit 1
+            fi
+            if [[ "$(jq -r '.schema_present' <<<"$preflight")" != "true" ]]; then
+              echo "::error::Canonical Demand migration history exists, but the schema has drifted."
+              exit 1
+            fi
+            echo "skip_apply=true" >> "$GITHUB_OUTPUT"
+            echo "Canonical Demand sellable-capacity migration is already recorded."
+          else
+            if [[ "$(jq -r '.schema_present' <<<"$preflight")" == "true" ]]; then
+              echo "::error::Demand sellable-capacity schema exists without canonical history."
+              exit 1
+            fi
+            echo "skip_apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply Demand sellable-capacity migration exactly once
+        if: steps.preflight.outputs.skip_apply != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/demand-schedule-capacity-migration.json"
+          response_file="$RUNNER_TEMP/demand-schedule-capacity-migration-response.json"
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: (. + "\n" + $history)}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          # Exactly one mutation request and no automatic retry. A later
+          # preflight refuses partial or checksum-mismatched state.
+          status_code="$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand sellable-capacity migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/demand-schedule-capacity-verification.json"
+          response_file="$RUNNER_TEMP/demand-schedule-capacity-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 90 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand sellable-capacity verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Demand sellable-capacity production migration verified."
