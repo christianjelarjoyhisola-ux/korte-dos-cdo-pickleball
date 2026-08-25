@@ -8,7 +8,7 @@
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="voucher-booking.js?v=20260826-demand-growth-v1"></script>
-<script src="demand-campaign-booking.js?v=20260826-v1"></script>
+<script src="demand-campaign-booking.js?v=20260826-smart-rate-v1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
 <style>
@@ -1275,6 +1275,8 @@ select.fi option { background:var(--card); }
 .demand-offer-status { display:none; margin-top:12px; border:1px solid rgba(101,88,232,.24); border-radius:12px; background:#f1efff; padding:11px 12px; color:#4f45ae; font-size:.75rem; line-height:1.45; }
 .demand-offer-status.show { display:flex; align-items:flex-start; gap:8px; }
 .demand-offer-status strong { display:block; margin-bottom:2px; color:#302a78; font-size:.78rem; }
+.demand-offer-status.notice { border-color:rgba(245,176,31,.42); background:#fff8e8; color:#7a4b00; }
+.demand-offer-status.notice strong { color:#603a00; }
 
 /* 3-column payment options */
 .pay-opts-3 { grid-template-columns:1fr 1fr 1fr; }
@@ -1979,6 +1981,75 @@ footer { background:var(--card); border-top:1px solid var(--border); padding:40p
 .slot.maintenance .slot-time { color: var(--muted); }
 .slot.maintenance .slot-end  { color: var(--muted); opacity:.7; }
 .slot.maintenance .slot-tag.mt-tag { background: none; color: var(--lime-ink); font-size:.62rem; font-weight:700; letter-spacing:.3px; }
+
+/* ── SMART RATE — automatic demand offer preview ── */
+.smart-rate-note {
+  display:flex; align-items:center; gap:8px;
+  margin:10px 0 12px; padding:9px 12px; border-radius:10px;
+  border:1px solid rgba(124,107,255,.32);
+  background:linear-gradient(135deg,rgba(124,107,255,.13),rgba(124,107,255,.045));
+  color:#5549ad; font-size:.76rem; font-weight:700; line-height:1.35;
+}
+.smart-rate-note[hidden] { display:none !important; }
+.smart-rate-note strong { color:#342b79; font-weight:900; }
+.smart-rate-note-mark { color:#6758df; font-size:.95rem; line-height:1; }
+body.dark .smart-rate-note { color:#c7c1ff; }
+body.dark .smart-rate-note strong { color:#fff; }
+body.dark .smart-rate-note-mark { color:#a89cff; }
+.cc-slot-btn[type="button"], .slot[type="button"] {
+  appearance:none; -webkit-appearance:none; width:100%; font:inherit;
+}
+.cc-slot-btn[type="button"]:focus-visible, .slot[type="button"]:focus-visible {
+  outline:3px solid #a99eff; outline-offset:2px;
+}
+.cc-slot-btn.smart-rate, .slot.smart-rate {
+  position:relative; min-height:62px; padding-top:20px;
+}
+.cc-slot-btn.smart-rate:not(.selected):not(.taken):not(.past-slot):not(.open-play):not(.maintenance) {
+  border-color:rgba(139,124,255,.72);
+  background:linear-gradient(145deg,rgba(119,99,255,.16),#0d1b2e 58%);
+  box-shadow:inset 0 0 0 1px rgba(178,167,255,.08);
+}
+.slot.smart-rate:not(.sel) {
+  border-color:rgba(139,124,255,.72);
+  background:linear-gradient(145deg,rgba(119,99,255,.14),var(--input) 62%);
+  box-shadow:inset 0 0 0 1px rgba(178,167,255,.07);
+}
+.smart-rate-badge {
+  position:absolute; top:4px; right:4px; z-index:3;
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:14px; padding:2px 5px; border-radius:999px;
+  background:linear-gradient(135deg,#8575ff,#6658e8); color:#fff;
+  box-shadow:0 2px 8px rgba(69,54,188,.34);
+  font-size:.48rem; font-weight:900; letter-spacing:.35px; line-height:1;
+  white-space:nowrap; text-transform:uppercase;
+}
+.cc-slot-btn.selected .smart-rate-badge, .slot.sel .smart-rate-badge {
+  background:rgba(15,25,42,.88); color:#eeeaff;
+  box-shadow:0 2px 7px rgba(0,0,0,.26);
+}
+.smart-rate-prices {
+  display:flex; align-items:baseline; justify-content:center; gap:4px;
+  white-space:nowrap; line-height:1.05;
+}
+.smart-rate-price { color:#5547c4; font-weight:900; }
+.cc-slot-btn .smart-rate-price, body.dark .smart-rate-price { color:#ded9ff; }
+.smart-rate-regular { color:#657486; font-size:.58rem; font-weight:700; text-decoration:line-through; text-decoration-thickness:1px; }
+body.dark .smart-rate-regular { color:#98a3b3; }
+.cc-slot-btn.selected .smart-rate-price, .slot.sel .smart-rate-price { color:#fff; }
+.cc-slot-btn.selected .smart-rate-regular, .slot.sel .smart-rate-regular { color:rgba(255,255,255,.64); }
+.slot.smart-rate .slot-time { margin-top:1px; }
+.slot-smart-rate-prices { margin-top:4px; font-size:.68rem; }
+@media(max-width:480px) {
+  .smart-rate-note { margin:8px 0 10px; padding:8px 10px; font-size:.68rem; }
+  .cc-slot-btn.smart-rate { min-height:58px; padding:19px 2px 5px; }
+  .smart-rate-badge { top:3px; right:3px; padding:2px 4px; font-size:.43rem; letter-spacing:.2px; }
+  .smart-rate-prices { gap:3px; }
+  .smart-rate-regular { font-size:.5rem; }
+}
+@media(max-width:340px) {
+  .smart-rate-badge .smart-rate-off-word { display:none; }
+}
 
 /* ── COMBINED OPEN PLAY BLOCK ── */
 .open-play-block {
@@ -3209,6 +3280,10 @@ body.host-mode .courts { padding-bottom:140px; }
     </div>
   </div>
   <div id="courtTabs" class="court-tabs"></div>
+  <div class="smart-rate-note" id="courtSmartRateNote" role="status" hidden>
+    <span class="smart-rate-note-mark" aria-hidden="true">✦</span>
+    <span><strong>Smart Rate times</strong> — the discount is applied automatically. No code needed.</span>
+  </div>
   <div class="courts" id="courtsGrid">
     <div class="pb-loader">
       <div class="pb-ball" aria-hidden="true"></div>
@@ -3756,7 +3831,7 @@ body.host-mode .courts { padding-bottom:140px; }
     <div class="inv-amount-wrap">
       <div class="inv-amt-total">Total Amount</div>
       <div id="iVoucherRow" style="display:none;font-size:.78rem;color:var(--lime-ink);font-weight:800;margin:4px 0"><span id="iVoucherCode"></span> <span id="iVoucherDiscount"></span></div>
-      <div id="iDemandOfferRow" style="display:none;font-size:.78rem;color:#6558e8;font-weight:800;margin:4px 0"><span id="iDemandOfferName">Smart growth offer</span> <span id="iDemandOfferDiscount"></span></div>
+      <div id="iDemandOfferRow" style="display:none;font-size:.78rem;color:#6558e8;font-weight:800;margin:4px 0"><span id="iDemandOfferName">Smart Rate</span> <span id="iDemandOfferDiscount"></span></div>
       <div class="inv-amt-val" id="iTot">₱0.00</div>
       <div class="inv-amt-down-wrap">
         <div class="inv-amt-down-label" id="iDownLabel">Booking Fee + 50% Court Fee Due</div>
@@ -4909,7 +4984,7 @@ function hostBookingItemsSummaryHtml(items = uniqueBookingSelections(activeBooki
     <div class="host-summary-row"><span>Court fee</span><strong>${fmt(grossCourtFee)}</strong></div>
     ${svcFee > 0 ? `<div class="host-summary-row"><span>Booking fee</span><strong>${fmt(svcFee)}</strong></div>` : ''}
     ${voucherDiscount > 0 ? `<div class="host-summary-row"><span>Voucher (${esc(window.BookingVoucher?.current()?.code || items.find(item => item.voucherCode)?.voucherCode || '')})</span><strong style="color:var(--lime-ink)">−${fmt(voucherDiscount)}</strong></div>` : ''}
-    ${demandDiscount > 0 ? `<div class="host-summary-row"><span>Smart growth offer</span><strong style="color:#6558e8">−${fmt(demandDiscount)}</strong></div>` : ''}
+    ${demandDiscount > 0 ? `<div class="host-summary-row"><span>Smart Rate</span><strong style="color:#6558e8">−${fmt(demandDiscount)}</strong></div>` : ''}
     <div class="host-summary-row total"><span>Total</span><strong>${fmt(total)}</strong></div>
     <div class="host-summary-row due"><span>Due today</span><strong>${fmt(dueToday)}</strong></div>
     <div class="host-summary-note">Fee paid in full + 25% court</div>
@@ -4939,7 +5014,7 @@ function bookingItemsSummaryHtml(items = uniqueBookingSelections(activeBookingIt
   rows.push(`Court Fee: <strong style="color:var(--muted)">${fmt(grossCourtFee)}</strong>`);
   if (svcFee > 0) rows.push(`Booking Fee: <strong style="color:var(--muted)">${bookingFeeDisplay(svcFee, hrs)}</strong>`);
   if (voucherDiscount > 0) rows.push(`Voucher (${esc(window.BookingVoucher?.current()?.code || items.find(item => item.voucherCode)?.voucherCode || '')}): <strong style="color:var(--lime-ink)">−${fmt(voucherDiscount)}</strong>`);
-  if (demandDiscount > 0) rows.push(`Smart growth offer: <strong style="color:#6558e8">−${fmt(demandDiscount)}</strong>`);
+  if (demandDiscount > 0) rows.push(`Smart Rate: <strong style="color:#6558e8">−${fmt(demandDiscount)}</strong>`);
   rows.push(`Total: <strong style="color:var(--accent)">${fmt(total)}</strong>`);
   return rows.filter(Boolean).map(s => `<div>${s}</div>`).join('');
 }
@@ -4973,7 +5048,10 @@ function clearCardSelection(options = {}) {
   if (!preserveBookingItems) bookingItems = [];
   cardSel = emptyCardSelection();
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
-  document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
+  document.querySelectorAll('.cc-slot-btn.selected').forEach(b => {
+    b.classList.remove('selected');
+    if (b.matches('button')) b.setAttribute('aria-pressed', 'false');
+  });
   const mobileBar = $('mobileBookBar');
   if (mobileBar) mobileBar.style.display = 'none';
   syncCourtCardSelection();
@@ -5640,6 +5718,39 @@ const fmtTs = h => h === 24 ? '12A' : `${h % 12 || 12}${h < 12 ? 'A' : 'P'}`;
 /* compact range label for mobile, e.g. 6AM–7AM / 11AM–12PM */
 const fmtTc = h => h === 24 ? '12AM' : `${h % 12 || 12}${h < 12 ? 'AM' : 'PM'}`;
 const slotTimeLabel = h => `<span class="t-full">${fmtT(h)} – ${fmtT(h+1)}</span><span class="t-compact">${fmtTc(h)}–${fmtTc(h+1)}</span>`;
+const fmtSlotRate = value => `₱${Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
+
+function smartRateBadgeHtml(preview) {
+  if (!preview?.hasOffer) return '';
+  const shortLabel = String(preview.badgeText || '').replace(/\s+OFF$/i, '');
+  return `<span class="smart-rate-badge" aria-hidden="true">${esc(shortLabel)}<span class="smart-rate-off-word">&nbsp;OFF</span></span>`;
+}
+
+function smartRatePricesHtml(preview, baseClass = '') {
+  if (!preview?.hasOffer) return `<span>${fmtSlotRate(preview?.regularRate || 0)}</span>`;
+  return `<span class="${baseClass ? `${baseClass} ` : ''}smart-rate-prices"><span class="smart-rate-price">${fmtSlotRate(preview.offerRate)}</span><span class="smart-rate-regular">${fmtSlotRate(preview.regularRate)}</span></span>`;
+}
+
+function renderAvailableCourtSlot({ courtId, date, hour, regularRate, selected = false }) {
+  const preview = window.BookingDemandCampaign?.slotMarkupData(courtId, date, hour, regularRate) || {
+    hasOffer: false,
+    regularRate: Number(regularRate || 0),
+    className: '',
+    ariaText: '',
+  };
+  const className = `cc-slot-btn${preview.className ? ` ${preview.className}` : ''}${selected ? ' selected' : ''}`;
+  const priceHtml = preview.hasOffer
+    ? smartRatePricesHtml(preview, 'csl-price')
+    : `<div class="csl-price">${fmtSlotRate(preview.regularRate)}</div>`;
+  const priceLabel = preview.hasOffer ? preview.ariaText : `${fmtSlotRate(preview.regularRate)} regular rate`;
+  const ariaLabel = `${fmtT(hour)} to ${fmtT(hour + 1)}, available, ${priceLabel}`;
+  return `<button type="button" class="${className}" data-h="${hour}" aria-label="${esc(ariaLabel)}" aria-pressed="${selected ? 'true' : 'false'}" onclick="event.stopPropagation(); toggleCardSlot('${jsArg(courtId)}','${jsArg(date)}',${hour})">${smartRateBadgeHtml(preview)}<span class="csl-time">${slotTimeLabel(hour)}</span>${priceHtml}</button>`;
+}
+
+function setSmartRateNoteVisibility(id, visible) {
+  const note = $(id);
+  if (note) note.hidden = !visible;
+}
 
 /* =============================================
    FIND AVAILABLE TIME
@@ -5877,7 +5988,9 @@ function updateCardUI(courtId) {
   // Update button selected states
   grid.querySelectorAll('.cc-slot-btn').forEach(btn => {
     const h = parseInt(btn.dataset.h);
-    btn.classList.toggle('selected', !!sel && sel.slots.includes(h));
+    const isSelected = !!sel && sel.slots.includes(h);
+    btn.classList.toggle('selected', isSelected);
+    if (btn.matches('button')) btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
   });
 
   // Show/hide Book Now bar
@@ -6143,7 +6256,10 @@ function clearSelectedBookingUi() {
   selSlots = [];
   bookingItems = [];
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
-  document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
+  document.querySelectorAll('.cc-slot-btn.selected').forEach(b => {
+    b.classList.remove('selected');
+    if (b.matches('button')) b.setAttribute('aria-pressed', 'false');
+  });
   const mobileBar = $('mobileBookBar');
   if (mobileBar) {
     mobileBar.style.display = 'none';
@@ -6399,6 +6515,11 @@ async function proceedToBookOnce(courtId = null) {
     return;
   }
 
+  // Remember what was visibly advertised before the hold is created. Preview
+  // data never changes totals; it only lets us explain a rare expiry/quota race
+  // if the authoritative server-side application no longer succeeds.
+  const advertisedSmartRate = !!window.BookingDemandCampaign?.selectionHasPreview(selections);
+
   let bookingSelections = uniqueBookingSelections(selections);
   const extensionCandidate = await lateNightExtensionCandidate(selections);
   if (extensionCandidate) {
@@ -6483,13 +6604,21 @@ async function proceedToBookOnce(courtId = null) {
   // dependency. The server revalidates the complete fresh hold and returns the
   // normal price unchanged when no exact future scope matches.
   try {
-    await window.BookingDemandCampaign?.autoApply(
+    const smartRateResult = await window.BookingDemandCampaign?.autoApply(
       createdRefs,
       reserveItems,
       { asHost: typeof isVerifiedHostBooking === 'function' && isVerifiedHostBooking() },
     );
+    if (advertisedSmartRate && !smartRateResult?.applied) {
+      window.BookingDemandCampaign?.showPreviewUnavailableNotice();
+      toast('Smart Rate just ended. Your slot is secure at the regular rate shown before payment.', 'inf');
+    }
   } catch (campaignError) {
     console.warn('Demand campaign was not applied; continuing at normal price.', campaignError);
+    if (advertisedSmartRate) {
+      window.BookingDemandCampaign?.showPreviewUnavailableNotice();
+      toast('Smart Rate could not be confirmed. Your slot is secure at the regular rate shown before payment.', 'inf');
+    }
   }
 
   saveGuestBookingResume({ pricingState: 'ready' });
@@ -6807,8 +6936,13 @@ async function onCardDate(courtId, date, options = {}) {
   grid.innerHTML = `<div class="cc-slots-empty"><div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading times</div></div></div>`;
 
   const [courts, bookings, blockedDates] = await Promise.all([
-    DB.getCourts(), DB.getBookings({ courtId, date, activeOnly: true }), DB.getBlockedDates(), loadOperatingHours()
+    DB.getCourts(),
+    DB.getBookings({ courtId, date, activeOnly: true }),
+    DB.getBlockedDates(),
+    loadOperatingHours(),
+    window.BookingDemandCampaign?.loadOffersForDate(date) || Promise.resolve([]),
   ]);
+  if (!grid.isConnected || $('cSlots_' + courtId) !== grid || selectedCourtBrowseDate() !== date) return;
 
   const c = courts.find(x => x.id === courtId);
   if (!c || c.blocked) {
@@ -6840,6 +6974,7 @@ async function onCardDate(courtId, date, options = {}) {
   let openPlayCardHtml = '';
   if (!isPastDate_ && openPlaySession) {
     const opRegCount = await DB.getOpenPlayCountForDate(date, courtId);
+    if (!grid.isConnected || $('cSlots_' + courtId) !== grid || selectedCourtBrowseDate() !== date) return;
     const opSpotsLeft = Math.max(0, (openPlayMaxPlayers || 40) - opRegCount);
     openPlayCardHtml = openPlaySessionHtml({
       courtId,
@@ -6878,8 +7013,15 @@ async function onCardDate(courtId, date, options = {}) {
     if (isBooked_) return `<div class="cc-slot-btn taken"><div class="csl-time">${timeRange}</div><div class="csl-name">Booked</div></div>`;
     if (isMaint_)  { const _ml=getMaintenanceLabel(date,h,courtId); return `<div class="cc-slot-btn maintenance"><div class="csl-time">${timeRange}</div><div class="csl-tag">${_ml.icon} ${_ml.text}</div></div>`; }
     if (isOpenPlay_) return '';
-    return `<div class="cc-slot-btn" data-h="${h}" onclick="event.stopPropagation(); toggleCardSlot('${courtId}','${date}',${h})"><div class="csl-time">${timeRange}</div><div class="csl-price">₱${getRateForHourFromTiers(h, cTiers, c.rate)}</div></div>`;
+    return renderAvailableCourtSlot({
+      courtId,
+      date,
+      hour: h,
+      regularRate: getRateForHourFromTiers(h, cTiers, c.rate),
+      selected: false,
+    });
   }).join('');
+  setSmartRateNoteVisibility('courtSmartRateNote', !!document.querySelector('#courtsGrid .cc-slot-btn.smart-rate'));
 }
 
 /* proceedToBook loads court data if needed */
@@ -6896,6 +7038,7 @@ async function ensureCourt(courtId) {
 async function renderCourts() {
   const today = todayStr();
   const selectedDate = selectedCourtBrowseDate();
+  setSmartRateNoteVisibility('courtSmartRateNote', false);
   const isSelectedToday = selectedDate === today;
   const isSelectedPast = selectedDate < today;
   const [courts, bookings, , openPlayCountsByCourt] = await Promise.all([
@@ -6903,7 +7046,9 @@ async function renderCourts() {
     DB.getBookings({ date: selectedDate, activeOnly: true }),
     loadOperatingHours(),
     DB.getOpenPlayCountsForDate ? DB.getOpenPlayCountsForDate(selectedDate) : Promise.resolve({}),
+    window.BookingDemandCampaign?.loadOffersForDate(selectedDate) || Promise.resolve([]),
   ]);
+  if (selectedCourtBrowseDate() !== selectedDate) return;
   const curHour = isSelectedToday ? nowHour() : (isSelectedPast ? 999 : -1);
   const courtsGrid = $('courtsGrid');
   if (!courtsGrid) return;
@@ -6981,7 +7126,13 @@ async function renderCourts() {
           if (isBooked_) return `<div class="cc-slot-btn taken"><div class="csl-time">${timeRange}</div><div class="csl-name">Booked</div></div>`;
           if (isMaint_)  { const _ml=getMaintenanceLabel(selectedDate,h,c.id); return `<div class="cc-slot-btn maintenance"><div class="csl-time">${timeRange}</div><div class="csl-tag">${esc(_ml.icon)} ${esc(_ml.text)}</div></div>`; }
           if (isOpenPlay_) return '';
-          return `<div class="cc-slot-btn${isSelectedSlot_ ? ' selected' : ''}" data-h="${h}" onclick="event.stopPropagation(); toggleCardSlot('${jsArg(c.id)}','${jsArg(selectedDate)}',${h})"><div class="csl-time">${timeRange}</div><div class="csl-price">₱${_cRate(h)}</div></div>`;
+          return renderAvailableCourtSlot({
+            courtId: c.id,
+            date: selectedDate,
+            hour: h,
+            regularRate: _cRate(h),
+            selected: isSelectedSlot_,
+          });
         }).join('');
     const isSelectedCard = !blk && !!cardSelection && cardSelection.date === selectedDate && cardSelection.slots.length > 0;
     const selectedSummary = isSelectedCard
@@ -7041,6 +7192,7 @@ async function renderCourts() {
 
     </div>`;
   }).join('');
+  setSmartRateNoteVisibility('courtSmartRateNote', !!courtsGrid.querySelector('.cc-slot-btn.smart-rate'));
 
   const active = bookings.filter(b => window.BookingBalance?.holdsSlot?.(b));
   const totalRev = fmt(active.reduce((s,b) => s+b.total, 0));
@@ -7174,13 +7326,21 @@ async function renderSlots() {
     return;
   }
 
-  // Always fetch fresh settings so Open Play config is current
+  const requestedCourtId = String(court.id);
+  const smartRateLoad = window.BookingDemandCampaign?.loadOffersForDate(date) || Promise.resolve([]);
+  // Always fetch fresh settings so Open Play config is current. Smart Rate
+  // discovery starts alongside it and remains a fail-open visual enhancement.
   await loadOperatingHours();
   // Re-apply this court's rate schedule after loadOperatingHours resets pricingTiers
   if (court.rateSchedule && court.rateSchedule.length) {
     pricingTiers = court.rateSchedule;
   }
-  cachedBookedSlots = await getBookedSlots(court.id, date);
+  const [freshBookedSlots] = await Promise.all([
+    getBookedSlots(court.id, date),
+    smartRateLoad,
+  ]);
+  if ($('bDate')?.value !== date || !court || String(court.id) !== requestedCourtId) return;
+  cachedBookedSlots = freshBookedSlots;
   const booked = cachedBookedSlots;
   const todayFlag = isToday(date);
   const curHour = nowHour();
@@ -7197,6 +7357,7 @@ async function renderSlots() {
   const openPlaySession = getOpenPlaySessionForDate(date, court?.id);
   if (openPlaySession) {
     const opRegCount = await DB.getOpenPlayCountForDate(date, court?.id);
+    if ($('bDate')?.value !== date || !court || String(court.id) !== requestedCourtId) return;
     const opSpotsLeft = Math.max(0, (openPlayMaxPlayers || 40) - opRegCount);
     openPlayBlock = openPlaySessionHtml({
       courtId: court.id,
@@ -7239,12 +7400,18 @@ async function renderSlots() {
     else if (isOpenPlay)   { cls += ' open-play'; tag = `<span class="slot-tag op-tag">🏓 Open Play<span class="op-tap">Tap to register</span></span>`; }
     else                   { cls += ' free'; }
 
-    slotHtml += `
-      <div class="${cls}" data-h="${h}" onclick="toggleSlot(${h})">
-        <div class="slot-time">${fmtT(h)}</div>
-        <div class="slot-end">${fmtT(h + 1)}</div>
-        ${tag}
-      </div>`;
+    const isInteractive = isSel || (!isUnavail && !isNow);
+    const smartRate = isInteractive
+      ? window.BookingDemandCampaign?.slotMarkupData(court.id, date, h, getRateForHour(h))
+      : null;
+    if (smartRate?.hasOffer) cls += ` ${smartRate.className}`;
+    const slotAria = smartRate?.hasOffer
+      ? `${fmtT(h)} to ${fmtT(h + 1)}, available, ${smartRate.ariaText}`
+      : `${fmtT(h)} to ${fmtT(h + 1)}, ${isInteractive ? 'available' : String(tag.replace(/<[^>]*>/g, ' ') || 'unavailable').trim()}`;
+    const slotBody = `${smartRateBadgeHtml(smartRate)}<span class="slot-time">${fmtT(h)}</span><span class="slot-end">${fmtT(h + 1)}</span>${smartRate?.hasOffer ? smartRatePricesHtml(smartRate, 'slot-smart-rate-prices') : ''}${tag}`;
+    slotHtml += isInteractive
+      ? `<button type="button" class="${cls}" data-h="${h}" aria-label="${esc(slotAria)}" aria-pressed="${isSel ? 'true' : 'false'}" onclick="toggleSlot(${h})">${slotBody}</button>`
+      : `<div class="${cls}" data-h="${h}" aria-label="${esc(slotAria)}">${slotBody}</div>`;
   }
 
   const liveNote = todayFlag
@@ -7260,7 +7427,10 @@ async function renderSlots() {
       ${todayFlag ? '<span class="leg" style="color:var(--muted)">⬛ Past</span><span class="leg" style="color:#4fc3f7">🔵 Now</span>' : ''}
     </div>`;
 
-  g.innerHTML = liveNote + legend + `<div class="slots-grid">${openPlayBlock}${slotHtml}</div>`;
+  const smartRateNote = slotHtml.includes('smart-rate-badge')
+    ? `<div class="smart-rate-note" role="status"><span class="smart-rate-note-mark" aria-hidden="true">✦</span><span><strong>Smart Rate times</strong> — the discount is applied automatically. No code needed.</span></div>`
+    : '';
+  g.innerHTML = liveNote + smartRateNote + legend + `<div class="slots-grid">${openPlayBlock}${slotHtml}</div>`;
 }
 
 function toggleSlot(h) {
@@ -7297,6 +7467,7 @@ function toggleSlot(h) {
     const isSel = selSlots.includes(elH);
     el.className = el.className.replace(/\bsel\b/, '').trim();
     if (isSel) el.classList.add('sel');
+    if (el.matches('button')) el.setAttribute('aria-pressed', isSel ? 'true' : 'false');
   });
 
   if (selSlots.length > 0) clearBookingInvalid('slotsGrid');
@@ -8527,7 +8698,10 @@ function resetForm() {
   window.BookingDemandCampaign?.reset();
   cardSel = emptyCardSelection();
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
-  document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
+  document.querySelectorAll('.cc-slot-btn.selected').forEach(b => {
+    b.classList.remove('selected');
+    if (b.matches('button')) b.setAttribute('aria-pressed', 'false');
+  });
   const mb2 = $('mobileBookBar'); if (mb2) { mb2.style.display = 'none'; mb2.classList.remove('sel'); }
   const d = $('courtDisp');
   d.textContent = 'Click a court above to select';
@@ -8612,7 +8786,7 @@ function showInvoice(b) {
   set('iVoucherCode', b.voucherCode ? `${b.voucherCode} applied` : 'Voucher applied');
   set('iVoucherDiscount', Number(b.voucherDiscountAmount || 0) > 0 ? `−${fmt(b.voucherDiscountAmount)}` : '');
   if ($('iDemandOfferRow')) $('iDemandOfferRow').style.display = Number(b.demandCampaignDiscountAmount || 0) > 0 ? '' : 'none';
-  set('iDemandOfferName', b.demandCampaignName || 'Smart growth offer');
+  set('iDemandOfferName', b.demandCampaignName || 'Smart Rate');
   set('iDemandOfferDiscount', Number(b.demandCampaignDiscountAmount || 0) > 0 ? `−${fmt(b.demandCampaignDiscountAmount)}` : '');
   set('iTot', fmt(b.total));
   set('iDown', fmt(b.downpayment));
@@ -10522,7 +10696,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260826-demand-growth-v1"></script>
+<script src="supabase-config.js?v=20260826-smart-rate-v1"></script>
 
 <!-- MOBILE STICKY BOOK NOW BAR -->
 <div id="mobileBookBar" class="mobile-book-bar" style="display:none">

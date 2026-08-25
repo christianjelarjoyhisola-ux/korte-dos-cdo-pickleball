@@ -1,0 +1,293 @@
+name: Apply Public Demand Slot Offers Production Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-public-demand-slot-offers-production-migration.yml"
+      - "supabase/migrations/20260826140000_public_demand_campaign_slot_offers.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Preflight, apply once, and verify public slot offers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260826140000_public_demand_campaign_slot_offers.sql
+      MIGRATION_SHA256: b6e0c91999eadcc0e5214b2d15a97b6f922995d8f97078d32ea13bd459c8dcff
+      PREFLIGHT_SQL: |
+        with migration_history as (
+          select version, name, statements
+          from supabase_migrations.schema_migrations
+          where version = '20260826140000'
+        )
+        select jsonb_build_object(
+          'base_ready',
+            to_regclass('public.bookings') is not null
+            and to_regclass('public.courts') is not null
+            and to_regclass('public.demand_campaigns') is not null
+            and to_regclass('public.demand_campaign_redemptions') is not null
+            and to_regprocedure('public.calculate_booking_court_total(text,text[])') is not null
+            and to_regprocedure('public.apply_matching_demand_campaign(text[])') is not null
+            and to_regprocedure('public.current_account_role()') is not null,
+          'schema_present',
+            to_regprocedure(
+              'public.get_public_demand_campaign_slot_offers(date)'
+            ) is not null,
+          'history_exists', exists (select 1 from migration_history),
+          'history_name', coalesce((select name from migration_history limit 1), ''),
+          'history_marker', coalesce((select statements[1] from migration_history limit 1), '')
+        ) as preflight;
+      HISTORY_SQL: |
+        begin;
+        set local lock_timeout = '5s';
+        set local statement_timeout = '30s';
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260826140000',
+          'public_demand_campaign_slot_offers',
+          array['sha256:b6e0c91999eadcc0e5214b2d15a97b6f922995d8f97078d32ea13bd459c8dcff']::text[]
+        )
+        on conflict (version) do nothing;
+
+        commit;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          preview_function regprocedure :=
+            to_regprocedure('public.get_public_demand_campaign_slot_offers(date)');
+          apply_function regprocedure :=
+            to_regprocedure('public.apply_matching_demand_campaign(text[])');
+          preview_definition text;
+          apply_definition text;
+          preview_argument_names text[];
+        begin
+          if preview_function is null or apply_function is null then
+            raise exception 'Public demand slot preview or campaign application function is missing';
+          end if;
+
+          select pg_get_functiondef(preview_function)
+          into preview_definition;
+          select pg_get_functiondef(apply_function)
+          into apply_definition;
+          select proargnames
+          into preview_argument_names
+          from pg_proc
+          where oid = preview_function;
+
+          if preview_argument_names is distinct from array[
+            'p_date',
+            'court_id',
+            'offer_date',
+            'slot_hour',
+            'discount_percent',
+            'regular_rate',
+            'offer_rate',
+            'ends_at'
+          ]::text[] then
+            raise exception 'Public demand slot preview exposes an unexpected result shape';
+          end if;
+
+          if not coalesce((
+            select prosecdef
+              and provolatile = 's'
+              and coalesce(proconfig, '{}'::text[]) @>
+                array['search_path=pg_catalog, pg_temp']::text[]
+            from pg_proc
+            where oid = preview_function
+          ), false) then
+            raise exception 'Public demand slot preview lost its security attributes';
+          end if;
+
+          if not coalesce((
+            select prosecdef
+              and coalesce(proconfig, '{}'::text[]) @>
+                array['search_path=pg_catalog, pg_temp']::text[]
+            from pg_proc
+            where oid = apply_function
+          ), false) then
+            raise exception 'Campaign application function lost its security attributes';
+          end if;
+
+          if not has_function_privilege('anon', preview_function, 'execute')
+             or not has_function_privilege('authenticated', preview_function, 'execute') then
+            raise exception 'Public demand slot preview grants are incomplete';
+          end if;
+
+          if not has_function_privilege('anon', apply_function, 'execute')
+             or not has_function_privilege('authenticated', apply_function, 'execute') then
+            raise exception 'Campaign application grants are incomplete';
+          end if;
+
+          if has_table_privilege('anon', 'public.demand_campaigns', 'select')
+             or has_table_privilege(
+               'anon',
+               'public.demand_campaign_redemptions',
+               'select'
+             ) then
+            raise exception 'Demand campaign tables expose anonymous reads';
+          end if;
+
+          if position(
+               'public.calculate_booking_court_total' in preview_definition
+             ) = 0
+             or position('pg_catalog.generate_series' in preview_definition) = 0
+             or position('campaign.max_redemptions' in preview_definition) = 0
+             or position(
+               'pg_catalog.timezone(''Asia/Manila''' in preview_definition
+             ) = 0 then
+            raise exception 'Public demand slot preview eligibility or pricing is incomplete';
+          end if;
+
+          if position('eligible_slots' in apply_definition) = 0
+             or position(
+               'public.calculate_booking_court_total' in apply_definition
+             ) = 0
+             or position('booking_fee_amount_snapshot' in apply_definition) = 0
+             or position('app.demand_campaign_apply' in apply_definition) = 0 then
+            raise exception 'Mixed-slot authoritative campaign pricing is incomplete';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260826140000'
+              and name = 'public_demand_campaign_slot_offers'
+              and statements = array[
+                'sha256:b6e0c91999eadcc0e5214b2d15a97b6f922995d8f97078d32ea13bd459c8dcff'
+              ]::text[]
+          ) then
+            raise exception 'Public demand slot offer migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read-only production preflight
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          payload_file="$RUNNER_TEMP/public-demand-slot-preflight.json"
+          response_file="$RUNNER_TEMP/public-demand-slot-preflight-response.json"
+          jq -n --arg query "$PREFLIGHT_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Public demand slot preflight failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          preflight="$(jq -c '
+            if type == "array" then .[0].preflight
+            elif (.result? | type) == "array" then .result[0].preflight
+            else .preflight end
+          ' "$response_file")"
+          if [[ -z "$preflight" || "$preflight" == "null" ]]; then
+            echo "::error::Public demand slot preflight returned no result."
+            exit 1
+          fi
+          if [[ "$(jq -r '.base_ready' <<<"$preflight")" != "true" ]]; then
+            echo "::error::Demand Growth base schema is incomplete; migration was not attempted."
+            exit 1
+          fi
+
+          if [[ "$(jq -r '.history_exists' <<<"$preflight")" == "true" ]]; then
+            marker="$(jq -r '.history_marker' <<<"$preflight")"
+            name="$(jq -r '.history_name' <<<"$preflight")"
+            if [[ "$marker" != "sha256:$MIGRATION_SHA256" || \
+                  "$name" != "public_demand_campaign_slot_offers" ]]; then
+              echo "::error::Migration 20260826140000 has non-canonical history."
+              exit 1
+            fi
+            echo "skip_apply=true" >> "$GITHUB_OUTPUT"
+            echo "Canonical public demand slot migration is already recorded."
+          else
+            if [[ "$(jq -r '.schema_present' <<<"$preflight")" == "true" ]]; then
+              echo "::error::Public demand slot schema exists without canonical migration history."
+              exit 1
+            fi
+            echo "skip_apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply public demand slot migration exactly once
+        if: steps.preflight.outputs.skip_apply != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/public-demand-slot-migration.json"
+          response_file="$RUNNER_TEMP/public-demand-slot-migration-response.json"
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: (. + "\n" + $history)}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          # Deliberately one mutation POST with no automatic retry. A later
+          # preflight refuses partial or unrecorded state.
+          status_code="$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Public demand slot migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/public-demand-slot-verification.json"
+          response_file="$RUNNER_TEMP/public-demand-slot-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 90 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Public demand slot verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Public demand slot production migration verified."

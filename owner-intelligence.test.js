@@ -142,7 +142,7 @@ test('demand campaign booking integration is automatic and fail-open at normal p
   assert.match(controller,/PRICE_CHECK_TIMEOUT_MS = 2500/);
   assert.match(controller,/second call reconciles an[\s\S]*network response was lost/);
   assert.match(controller,/if \(!result\?\.applied\) return null/);
-  assert.match(controller,/Smart growth offer applied automatically/);
+  assert.match(controller,/Smart Rate applied automatically/);
   assert.doesNotMatch(controller,/cancelled|forfeited|rejected/);
 });
 

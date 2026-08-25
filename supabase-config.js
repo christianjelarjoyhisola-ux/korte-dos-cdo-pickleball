@@ -138,7 +138,9 @@ const PB_FAST_CACHE_MS = {
   blockedDates: 30000,
   bookings: 3500,
   openPlay: 3500,
+  demandSlotOffers: 3500,
 };
+const PB_PUBLIC_OFFER_TIMEOUT_MS = 1500;
 const _pbFastCache = new Map();
 
 function _pbClone(value) {
@@ -632,6 +634,32 @@ function publicSlotToBooking(r) {
   };
 }
 
+function publicDemandCampaignSlotOfferFromRow(r) {
+  const courtId = String(r?.court_id || '').trim();
+  const offerDate = String(r?.offer_date || '').trim();
+  const slotHour = Number(r?.slot_hour);
+  const discountPercent = Number(r?.discount_percent);
+  const regularRate = Number(r?.regular_rate);
+  const offerRate = Number(r?.offer_rate);
+  const endsAt = String(r?.ends_at || '').trim();
+  const endsAtMs = Date.parse(endsAt);
+  if (!courtId || !/^\d{4}-\d{2}-\d{2}$/.test(offerDate)) return null;
+  if (!Number.isInteger(slotHour) || slotHour < 0 || slotHour > 23) return null;
+  if (!Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 10) return null;
+  if (!Number.isFinite(regularRate) || regularRate <= 0) return null;
+  if (!Number.isFinite(offerRate) || offerRate < 0 || offerRate >= regularRate) return null;
+  if (!Number.isFinite(endsAtMs) || endsAtMs <= Date.now()) return null;
+  return {
+    courtId,
+    offerDate,
+    slotHour,
+    discountPercent,
+    regularRate,
+    offerRate,
+    endsAt,
+  };
+}
+
 const PB_RESERVATION_HOLD_MINUTES = 15;
 
 function bookingHoldsSlotForConflict(b) {
@@ -1050,6 +1078,47 @@ window.DB = {
     });
   },
 
+  async getPublicDemandCampaignSlotOffers(date) {
+    const offerDate = String(date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(offerDate)) return [];
+
+    try {
+      return await _pbCached(
+        'publicDemandCampaignSlotOffers',
+        { date: offerDate },
+        PB_FAST_CACHE_MS.demandSlotOffers,
+        async () => {
+          let timeoutId = null;
+          const timedOut = Symbol('public-demand-offer-timeout');
+          try {
+            const request = Promise.resolve(
+              _publicBookingSb.rpc('get_public_demand_campaign_slot_offers', {
+                p_date: offerDate,
+              }),
+            ).catch(() => null);
+            const timeout = new Promise(resolve => {
+              timeoutId = setTimeout(
+                () => resolve(timedOut),
+                PB_PUBLIC_OFFER_TIMEOUT_MS,
+              );
+            });
+            const response = await Promise.race([request, timeout]);
+            if (response === timedOut || !response || response.error) return [];
+            return (Array.isArray(response.data) ? response.data : [])
+              .map(publicDemandCampaignSlotOfferFromRow)
+              .filter(Boolean);
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+          }
+        },
+      );
+    } catch (_) {
+      // Slot promotions are display-only. Availability and normal-price
+      // booking must remain usable when this optional read is unavailable.
+      return [];
+    }
+  },
+
   async getOwnerIntelligence(filters = {}) {
     if (!(await _pbHasAuthSession())) {
       throw new Error('An authenticated owner session is required to load Insights.');
@@ -1104,7 +1173,7 @@ window.DB = {
       console.error('createDemandCampaignFromRecommendation:', error);
       throw error;
     }
-    _pbClearFastCache(['demandGrowthIntelligence']);
+    _pbClearFastCache(['demandGrowthIntelligence', 'publicDemandCampaignSlotOffers']);
     return data || {};
   },
 
@@ -1119,7 +1188,7 @@ window.DB = {
       console.error('endDemandCampaign:', error);
       throw error;
     }
-    _pbClearFastCache(['demandGrowthIntelligence']);
+    _pbClearFastCache(['demandGrowthIntelligence', 'publicDemandCampaignSlotOffers']);
     return data || {};
   },
 
@@ -1133,7 +1202,7 @@ window.DB = {
       console.error('applyMatchingDemandCampaign:', error);
       throw error;
     }
-    _pbClearFastCache(['bookings', 'publicBookingSlots']);
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignSlotOffers']);
     return data || { applied: false };
   },
 
@@ -3248,6 +3317,37 @@ window.DB = {
     return new Date(`${dateText}T00:00:00Z`).getUTCDay() || 7;
   }
 
+  function localDemandPricingTiers(value) {
+    let parsed = value;
+    if (typeof parsed === 'string') parsed = _safeJsonParse(parsed);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(tier => ({
+      from: Number(tier?.from),
+      to: Number(tier?.to),
+      rate: Number(tier?.rate),
+    })).filter(tier => Number.isFinite(tier.from)
+      && Number.isFinite(tier.to)
+      && Number.isFinite(tier.rate)
+      && tier.rate >= 0);
+  }
+
+  function localDemandSlotRate(db, courtId, slotHour) {
+    const court = (db.courts || []).find(row => String(row.id) === String(courtId));
+    if (!court) return 0;
+    const courtTiers = localDemandPricingTiers(court.rateSchedule ?? court.rate_schedule);
+    const globalTiers = localDemandPricingTiers(db.settings?.pricing_tiers);
+    const tiers = courtTiers.length ? courtTiers : globalTiers;
+    const hour = Number(slotHour);
+    const matching = tiers.find(tier => tier.from < tier.to
+      ? hour >= tier.from && hour < tier.to
+      : hour >= tier.from || hour < tier.to);
+    const fallback = tiers.length
+      ? Math.min(...tiers.map(tier => tier.rate))
+      : Number(court.rate || 0);
+    const rate = matching ? matching.rate : fallback;
+    return Math.round(Math.max(0, Number(rate || 0)) * 100) / 100;
+  }
+
   function localRecommendationId(parts) {
     const text = parts.join('|');
     const hash = seed => {
@@ -3550,6 +3650,40 @@ window.DB = {
     async getDemandGrowthIntelligence(filters = {}) {
       return buildLocalDemandGrowthIntelligence(readDb(), filters || {});
     },
+    async getPublicDemandCampaignSlotOffers(date) {
+      const offerDate = String(date || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(offerDate) || offerDate <= localManilaDate()) return [];
+      const db = readDb();
+      const now = Date.now();
+      const campaign = (db.demandCampaigns || []).find(row => row.status === 'active'
+        && new Date(row.starts_at).getTime() <= now
+        && new Date(row.ends_at).getTime() > now
+        && localIsoWeekday(offerDate) === Number(row.weekday));
+      if (!campaign) return [];
+      const effectiveUsage = (db.demandCampaignRedemptions || []).filter(redemption =>
+        redemption.campaign_id === campaign.id
+        && (redemption.status === 'redeemed'
+          || (redemption.status === 'reserved'
+            && new Date(redemption.reserved_until).getTime() > now))).length;
+      if (effectiveUsage >= Number(campaign.max_redemptions || 0)) return [];
+      const discountPercent = Number(campaign.discount_percent || 0);
+      if (!Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 10) return [];
+      const offers = [];
+      for (let slotHour = Number(campaign.start_hour); slotHour < Number(campaign.end_hour); slotHour += 1) {
+        const regularRate = localDemandSlotRate(db, campaign.court_id, slotHour);
+        if (regularRate <= 0) continue;
+        offers.push({
+          courtId: String(campaign.court_id),
+          offerDate,
+          slotHour,
+          discountPercent,
+          regularRate,
+          offerRate: Math.round(regularRate * (100 - discountPercent)) / 100,
+          endsAt: campaign.ends_at,
+        });
+      }
+      return offers;
+    },
     async createDemandCampaignFromRecommendation(recommendationId, options = {}) {
       const session = window.Auth?.getSession?.();
       if (!session || !['owner', 'court_owner'].includes(session.role) || (session.status && session.status !== 'active')) {
@@ -3684,26 +3818,36 @@ window.DB = {
           })),
         };
       }
-      const matching = selected.filter(booking => {
-        const slots = (booking.slots || []).map(Number);
-        return String(booking.courtId) === String(campaign.court_id)
-          && localIsoWeekday(booking.date) === Number(campaign.weekday)
-          && slots.length > 0 && slots.every(slot => Number.isFinite(slot)
-            && slot >= Number(campaign.start_hour) && slot < Number(campaign.end_hour))
-          && !booking.demandCampaignId;
-      });
+      const matching = selected.map(booking => {
+        const eligibleSlots = (booking.slots || []).map(Number).filter(slot =>
+          Number.isInteger(slot)
+          && slot >= Number(campaign.start_hour)
+          && slot < Number(campaign.end_hour));
+        return { booking, eligibleSlots };
+      }).filter(row => String(row.booking.courtId) === String(campaign.court_id)
+        && localIsoWeekday(row.booking.date) === Number(campaign.weekday)
+        && row.eligibleSlots.length > 0
+        && !row.booking.demandCampaignId);
       if (!matching.length) return { applied: false, reason: 'booking_not_in_campaign_window' };
       const usage = db.demandCampaignRedemptions.filter(row => row.campaign_id === campaign.id
         && ['reserved', 'redeemed'].includes(row.status)).length;
       if (usage >= Number(campaign.max_redemptions)) return { applied: false, reason: 'campaign_limit_reached' };
       const feeRate = Number(db.settings.maintenance_fee ?? db.settings.service_fee_rate ?? 0);
       const flatFee = String(db.settings.fee_type || 'per_hour') === 'flat';
-      const basis = matching.map(booking => {
+      const basis = matching.map(({ booking, eligibleSlots }) => {
         const gross = Number(booking.demandCampaignGrossTotal ?? booking.grossTotal ?? booking.total ?? 0);
         const snapshotFee = Number(booking.bookingFeeAmountSnapshot ?? booking.booking_fee_amount_snapshot);
         const configuredFee = flatFee ? feeRate : feeRate * Number(booking.duration || booking.slots?.length || 0);
         const fee = Math.min(gross, Number.isFinite(snapshotFee) && snapshotFee >= 0 ? snapshotFee : configuredFee);
-        return { booking, gross, eligible: Math.max(0, gross - fee) };
+        const eligibleCourtAmount = eligibleSlots.reduce(
+          (sum, slot) => sum + localDemandSlotRate(db, booking.courtId, slot),
+          0,
+        );
+        return {
+          booking,
+          gross,
+          eligible: Math.min(Math.max(0, gross - fee), eligibleCourtAmount),
+        };
       });
       const grossAmount = basis.reduce((sum, row) => sum + row.gross, 0);
       const eligibleAmount = basis.reduce((sum, row) => sum + row.eligible, 0);
@@ -3728,7 +3872,7 @@ window.DB = {
         new Date(booking.createdAt || booking.created_at).getTime() + 15 * 60000))).toISOString();
       db.demandCampaignRedemptions.push({
         id: localRef('demand-redemption').toLowerCase(), campaign_id: campaign.id,
-        booking_group_key: groupKey, booking_refs: matching.map(booking => booking.ref),
+        booking_group_key: groupKey, booking_refs: basis.map(row => row.booking.ref),
         gross_amount: grossAmount, eligible_court_amount: eligibleAmount,
         discount_amount: discount, status: 'reserved', reserved_until: reservedUntil,
         created_at: nowIso(), updated_at: nowIso(),
