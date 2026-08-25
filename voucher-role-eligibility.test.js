@@ -10,6 +10,14 @@ const migrationSource = readFileSync(
   'supabase/migrations/20260814154500_vouchers_for_all_booking_roles.sql',
   'utf8',
 );
+const demandMigrationSource = readFileSync(
+  'supabase/migrations/20260826120000_demand_growth_campaigns.sql',
+  'utf8',
+);
+const demandWorkflowSource = readFileSync(
+  '.github/workflows/apply-demand-growth-production-migration.yml',
+  'utf8',
+);
 
 function loadVoucherController({ host = false } = {}) {
   const elements = {
@@ -110,6 +118,42 @@ test('database voucher math removes the booking fee from the discount basis', ()
     /coalesce\(voucher_gross_total, total\)[\s\S]*booking_fee_amount_snapshot/,
   );
   assert.match(migrationSource, /discount_amount := greatest\(least\(discount_amount, eligible_amount\), 0\)/);
+});
+
+test('a voucher atomically replaces only a reserved automatic demand offer', () => {
+  assert.match(demandMigrationSource, /create or replace function public\.apply_booking_voucher/i);
+  assert.match(
+    demandMigrationSource,
+    /update public\.demand_campaign_redemptions redemption[\s\S]*redemption\.status = 'reserved'[\s\S]*redemption\.booking_refs && clean_refs/,
+  );
+  assert.match(
+    demandMigrationSource,
+    /set total = coalesce\(booking\.demand_campaign_gross_total, booking\.total\)[\s\S]*demand_campaign_id = null[\s\S]*demand_campaign_discount_amount = 0/,
+  );
+  assert.ok(
+    demandMigrationSource.indexOf("redemption.status = 'reserved'")
+      < demandMigrationSource.lastIndexOf('insert into public.voucher_redemptions'),
+  );
+  assert.match(configSource, /demandCampaignRedemptions[\s\S]*redemption\.status === 'reserved'/);
+  assert.match(configSource, /demandCampaignGrossTotal \?\? booking\.grossTotal[\s\S]*replacedDemandCampaign = true/);
+});
+
+test('production demand migration uses read-only preflight and one non-retried DDL call', () => {
+  assert.match(demandWorkflowSource, /Read-only production schema preflight/);
+  assert.match(demandWorkflowSource, /skip_apply=true/);
+  assert.match(demandWorkflowSource, /refusing a second or partial DDL run/);
+  assert.doesNotMatch(demandWorkflowSource, /rollback rehearsal/i);
+  assert.doesNotMatch(demandWorkflowSource, /group by true/i);
+  assert.match(demandWorkflowSource, /select count\(\*\) from pg_class[\s\S]*\) <> 2 then/);
+  assert.match(demandWorkflowSource, /select count\(\*\) from pg_proc[\s\S]*\) <> 4 then/);
+  const applyStep = demandWorkflowSource.slice(
+    demandWorkflowSource.indexOf('- name: Apply Demand Growth migration exactly once'),
+    demandWorkflowSource.indexOf('- name: Verify production database state'),
+  );
+  assert.doesNotMatch(applyStep, /--retry/);
+  assert.match(demandMigrationSource, /set local lock_timeout = '5s'/);
+  assert.match(demandMigrationSource, /check \(demand_campaign_discount_amount >= 0\) not valid/);
+  assert.match(demandMigrationSource, /validate constraint bookings_no_voucher_campaign_stacking/);
 });
 
 test('host summary displays gross court fee, voucher discount, and booking fee separately', () => {

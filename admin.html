@@ -7,12 +7,12 @@
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="chart.min.js"></script>
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
-<script src="owner-intelligence.js?v=20260825-v2"></script>
+<script src="owner-intelligence.js?v=20260826-demand-growth-v1"></script>
 <script src="open-play-rotation.js?v=20260729-adaptive-competitive-v1"></script>
 <script src="voucher-admin.js?v=20260810-v2"></script>
 <link rel="stylesheet" href="play-manager.css?v=20260729-adaptive-competitive-v1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 /* ── DESIGN TOKENS ─────────────────────────────────────── */
 :root {
@@ -1846,6 +1846,148 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
   body.oi-printing .oi-grid { grid-template-columns: 1.6fr 1fr; }
 }
 
+/* Focused demand-growth surface. The legacy finance-heavy Insights markup is
+   intentionally hidden while this owner-only view keeps the booking engine
+   and reporting pages independent. */
+body.insights-mode,
+body[data-theme="dark"].insights-mode {
+  --oi-page: #f5f3ed;
+  --oi-card: #fffefa;
+  --oi-card-soft: #f1efe9;
+  --oi-ink: #10231d;
+  --oi-muted: #6d7772;
+  --oi-hairline: #dcddd7;
+  --oi-accent: #6558e8;
+  --oi-accent-soft: #efedff;
+  --oi-forest: #15382e;
+}
+body.insights-mode .main,
+body.insights-mode .content { background: var(--oi-page); color: var(--oi-ink); }
+body.insights-mode .topbar { background: rgba(245,243,237,.94); border-color: var(--oi-hairline); }
+body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bottom: 36px; }
+.oi-legacy[hidden] { display: none !important; }
+.dg-shell { font-family: 'DM Sans', sans-serif; color: var(--oi-ink); }
+.dg-hero {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 28px;
+  padding: 25px 2px 15px;
+}
+.dg-hero > div:first-child { max-width: 670px; }
+.dg-eyebrow,.dg-kicker {
+  color: var(--oi-accent); font-size: .63rem; font-weight: 900; letter-spacing: .16em; text-transform: uppercase;
+}
+.dg-hero h2 {
+  margin: 8px 0 7px; color: var(--oi-ink); font-size: clamp(1.85rem,3.3vw,2.75rem);
+  font-family: 'DM Sans', sans-serif; font-weight: 700; letter-spacing: -.055em; line-height: 1.04;
+}
+.dg-hero p { max-width: 620px; margin: 0; color: var(--oi-muted); font-size: .78rem; line-height: 1.55; }
+.dg-hero-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.dg-hero-actions .btn,.dg-court-filter {
+  min-height: 38px; border: 1px solid var(--oi-hairline) !important; border-radius: 10px !important;
+  background: var(--oi-card) !important; color: var(--oi-ink) !important; box-shadow: 0 6px 18px rgba(16,35,29,.05) !important;
+  font-size: .68rem !important; font-weight: 800 !important;
+}
+.dg-court-filter { width: 150px !important; padding: 7px 28px 7px 10px !important; }
+.dg-range {
+  display: inline-flex; align-items: center; gap: 7px; margin-bottom: 14px; color: var(--oi-muted);
+  font-size: .65rem; font-weight: 650;
+}
+.dg-range::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #42b98a; box-shadow: 0 0 0 4px rgba(66,185,138,.12); }
+.dg-loading { margin-bottom: 12px; background: var(--oi-accent-soft); border-color: #dcd7ff; color: #5148ad; }
+.dg-metrics {
+  display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); overflow: hidden; margin-bottom: 13px;
+  border: 1px solid var(--oi-hairline); border-radius: 17px; background: var(--oi-card); box-shadow: 0 10px 30px rgba(16,35,29,.045);
+}
+.dg-metrics article { min-height: 102px; padding: 18px 20px 15px; border-right: 1px solid var(--oi-hairline); }
+.dg-metrics article:last-child { border-right: 0; }
+.dg-metrics span { display: block; color: var(--oi-muted); font-size: .61rem; font-weight: 850; letter-spacing: .11em; text-transform: uppercase; }
+.dg-metrics strong { display: block; margin: 7px 0 2px; color: var(--oi-ink); font-size: 1.55rem; font-weight: 850; letter-spacing: -.05em; }
+.dg-metrics small { color: var(--oi-muted); font-size: .62rem; }
+.dg-main-grid { display: grid; grid-template-columns: minmax(0,1.65fr) minmax(310px,.78fr); gap: 13px; align-items: stretch; }
+.dg-card {
+  min-width: 0; border: 1px solid var(--oi-hairline); border-radius: 17px; background: var(--oi-card);
+  padding: 17px; box-shadow: 0 10px 34px rgba(16,35,29,.045);
+}
+.dg-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 13px; margin-bottom: 15px; }
+.dg-card h3 { margin: 5px 0 0; color: var(--oi-ink); font-family: 'DM Sans', sans-serif; font-size: .87rem; font-weight: 700; letter-spacing: -.03em; text-transform: none; }
+.dg-legend { display: flex; align-items: center; gap: 4px; color: var(--oi-muted); font-size: .52rem; }
+.dg-legend i { width: 8px; height: 8px; border-radius: 2px; background: #efedff; }
+.dg-legend i:nth-of-type(2) { background: #dcd7ff; }
+.dg-legend i:nth-of-type(3) { background: #b8adfa; }
+.dg-legend i:nth-of-type(4) { background: #7a6bea; }
+.dg-heat-grid { min-width: 610px !important; grid-template-columns: 80px repeat(7,minmax(56px,1fr)) !important; gap: 5px; }
+.dg-heat-grid .oi-heat-cell {
+  min-height: 42px; border: 1px solid color-mix(in srgb,var(--oi-accent) calc(9% + var(--oi-heat,0) * .46%),var(--oi-hairline));
+  border-radius: 8px; background: color-mix(in srgb,var(--oi-accent) calc(4% + var(--oi-heat,0) * .68%),var(--oi-card));
+  color: var(--oi-ink); font-size: .62rem; transition: transform .16s ease,box-shadow .16s ease;
+}
+.dg-heat-grid .oi-heat-cell:hover { z-index: 2; transform: translateY(-1px); box-shadow: 0 7px 16px rgba(101,88,232,.13); }
+.dg-heat-grid .oi-heat-cell[data-recommended="true"] { outline: 2px solid var(--oi-accent); outline-offset: 1px; box-shadow: 0 0 0 4px rgba(101,88,232,.09); }
+.dg-map-callout {
+  display: flex; align-items: center; gap: 9px; margin-top: 13px; border-radius: 10px; background: var(--oi-accent-soft);
+  padding: 10px 12px; color: #5b52b6; font-size: .65rem; line-height: 1.45;
+}
+.dg-map-callout > span { font-size: .9rem; }
+.dg-map-callout p { margin: 0; }
+.dg-map-callout strong { color: var(--oi-ink); }
+.dg-action-card { display: flex; flex-direction: column; }
+.dg-confidence {
+  display: inline-flex; border-radius: 999px; padding: 5px 8px; white-space: nowrap;
+  background: #e4f4ec; color: #167551; font-size: .56rem; font-weight: 850;
+}
+.dg-confidence.low,.dg-confidence.learning { background: #f0eee8; color: #747d78; }
+.dg-confidence.medium { background: #fff1cd; color: #8b6415; }
+.dg-recommendation { display: flex; flex: 1; flex-direction: column; align-items: flex-start; }
+.dg-recommendation > strong { color: var(--oi-ink); font-size: 1.16rem; line-height: 1.17; letter-spacing: -.04em; }
+.dg-recommendation > p { margin: 8px 0 14px; color: var(--oi-muted); font-size: .71rem; line-height: 1.55; }
+.dg-action-scope { width: 100%; display: grid; gap: 8px; margin: 0 0 14px; }
+.dg-action-scope div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--oi-hairline); padding: 0 0 8px; color: var(--oi-muted); font-size: .64rem; }
+.dg-action-scope div:last-child { border-bottom: 0; }
+.dg-action-scope b { color: var(--oi-ink); font-weight: 800; text-align: right; }
+.dg-apply {
+  width: 100%; min-height: 43px; margin-top: auto; border: 0; border-radius: 10px; background: var(--oi-accent); color: white;
+  padding: 10px 13px; font: 850 .7rem 'DM Sans',sans-serif; cursor: pointer; box-shadow: 0 9px 20px rgba(101,88,232,.2);
+}
+.dg-apply:hover { background: #5749df; transform: translateY(-1px); }
+.dg-apply:disabled { cursor: wait; opacity: .65; transform: none; }
+.dg-guardrail { display: block; margin: 9px 2px 0; color: var(--oi-muted); font-size: .57rem; line-height: 1.45; text-align: center; }
+.dg-learning-orb { position: relative; width: 100%; height: 92px; display: grid; place-items: center; }
+.dg-learning-orb::before { content: ''; width: 64px; height: 64px; border-radius: 50%; background: conic-gradient(var(--oi-accent) var(--dg-progress,0%),#ece9e2 0); opacity: .92; }
+.dg-learning-orb span { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: var(--oi-card); }
+.dg-active-card { margin-top: 13px; }
+.dg-active-row { display: grid; grid-template-columns: minmax(0,1.35fr) repeat(3,minmax(90px,.55fr)) auto; gap: 14px; align-items: center; }
+.dg-active-row h4 { margin: 0 0 4px; font-family: 'DM Sans', sans-serif; font-size: .78rem; font-weight: 700; letter-spacing: -.02em; text-transform: none; }
+.dg-active-row p,.dg-active-stat span { margin: 0; color: var(--oi-muted); font-size: .62rem; }
+.dg-active-stat strong { display: block; color: var(--oi-ink); font-size: .75rem; }
+.dg-end { min-height: 35px; border: 1px solid var(--oi-hairline); border-radius: 9px; background: var(--oi-card); color: #9d3f35; padding: 7px 11px; font-size: .62rem; font-weight: 850; cursor: pointer; }
+.dg-live { display: inline-flex; align-items: center; gap: 5px; color: #167551; font-size: .58rem; font-weight: 850; }
+.dg-live i { width: 7px; height: 7px; border-radius: 50%; background: #42b98a; box-shadow: 0 0 0 4px rgba(66,185,138,.12); }
+.dg-method { margin-top: 12px; border: 1px solid var(--oi-hairline); border-radius: 13px; background: rgba(255,254,250,.55); color: var(--oi-muted); }
+.dg-method summary { padding: 12px 14px; cursor: pointer; color: var(--oi-ink); font-size: .66rem; font-weight: 800; }
+.dg-method > div { border-top: 1px solid var(--oi-hairline); padding: 10px 14px; font-size: .64rem; line-height: 1.5; }
+.dg-method p { margin: 0 0 5px; }.dg-method p:last-child { margin-bottom: 0; }
+.dg-swipe-hint { display: none; color: var(--oi-muted); font-size: .6rem; text-align: right; margin: 8px 1px 0; }
+.dg-apply:focus-visible,.dg-end:focus-visible,.dg-court-filter:focus-visible,.dg-hero-actions .btn:focus-visible { outline: 3px solid rgba(101,88,232,.35); outline-offset: 2px; }
+@media (max-width: 980px) {
+  .dg-main-grid { grid-template-columns: 1fr; }
+  .dg-action-card { min-height: 330px; }
+  .dg-active-row { grid-template-columns: 1fr repeat(2,minmax(100px,.4fr)); }
+  .dg-active-row .dg-end { grid-column: 1/-1; }
+}
+@media (max-width: 700px) {
+  .dg-hero { align-items: flex-start; flex-direction: column; gap: 14px; padding-top: 15px; }
+  .dg-hero-actions { width: 100%; }.dg-court-filter { flex: 1; width: auto !important; }
+  .dg-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .dg-metrics article { min-height: 76px; padding: 13px 10px 11px; }
+  .dg-metrics span { font-size: .49rem; line-height: 1.35; }
+  .dg-metrics strong { margin-top: 6px; font-size: 1.08rem; }
+  .dg-metrics small { display: none; }
+  .dg-card { padding: 13px; }
+  .dg-heat-grid { min-width: 610px !important; }
+  .dg-heat-grid .oi-heat-time,.dg-heat-grid > .oi-heat-label:first-child { position: sticky; left: 0; z-index: 3; background: var(--oi-card); }
+  .dg-swipe-hint { display: block; }
+  .dg-active-row { grid-template-columns: 1fr 1fr; }.dg-active-row > div:first-child,.dg-active-row .dg-end { grid-column: 1/-1; }
+}
+
 /* ── OPEN PLAY DAY CHIPS ──────────────────────────────── */
 .op-day {
   display: inline-flex; align-items: center; gap: 5px;
@@ -2793,6 +2935,66 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
 
     <!-- OWNER INTELLIGENCE -->
     <div id="sec-insights" class="adm-sec">
+      <div class="dg-shell">
+        <header class="dg-hero">
+          <div>
+            <div class="dg-eyebrow">Korte DOS intelligence</div>
+            <h2>Find weak hours. Fill more courts.</h2>
+            <p>Korte DOS learns from successful bookings, estimates which hours may stay open, and recommends one controlled action at a time.</p>
+          </div>
+          <div class="dg-hero-actions">
+            <select class="fi dg-court-filter" id="dgCourt" aria-label="Filter demand by court" onchange="renderOwnerInsights({force:true})">
+              <option value="">All courts</option>
+            </select>
+            <button class="btn btn-g btn-sm" type="button" onclick="renderOwnerInsights({force:true})" aria-label="Refresh demand intelligence">&#8635; Refresh</button>
+          </div>
+        </header>
+
+        <div class="dg-range" id="dgRange">Learning from the first successful booking through yesterday.</div>
+        <div class="oi-loading dg-loading" id="dgLoading" role="status" aria-live="polite"><span class="pb-ball" aria-hidden="true"></span>Reading demand patterns&hellip;</div>
+
+        <section class="dg-metrics" aria-label="Demand summary">
+          <article><span>Expected 28-day fill</span><strong id="dgPredictedFill">—</strong><small>Current booking pattern across future openings</small></article>
+          <article><span>Likely open court-hours</span><strong id="dgUnsoldHours">—</strong><small>Future capacity with the weakest demand signal</small></article>
+          <article><span>Smart action ready</span><strong id="dgActionReady">0</strong><small id="dgLearningNote">Still collecting reliable history</small></article>
+        </section>
+
+        <div class="dg-main-grid">
+          <section class="dg-card dg-map-card" aria-labelledby="dgMapTitle">
+            <div class="dg-card-head">
+              <div><div class="dg-kicker">Demand map</div><h3 id="dgMapTitle">Demand by time · All courts</h3></div>
+              <div class="dg-legend" aria-label="Heatmap scale"><span>Low demand</span><i></i><i></i><i></i><i></i><span>High demand</span></div>
+            </div>
+            <div class="oi-heat-wrap"><div class="oi-heat-grid dg-heat-grid" id="dgHeatmap"><div class="oi-empty">No successful booking history yet.</div></div></div>
+            <div class="dg-swipe-hint" aria-hidden="true">Swipe to see all days →</div>
+            <div class="dg-map-callout" id="dgMapCallout"><span aria-hidden="true">&#10022;</span><p><strong>Learning demand.</strong> The clearest growth pocket will appear here when enough comparable days exist.</p></div>
+          </section>
+
+          <aside class="dg-card dg-action-card" aria-labelledby="dgActionTitle">
+            <div class="dg-card-head">
+              <div><div class="dg-kicker">Next best action</div><h3 id="dgActionTitle">Learning demand patterns</h3></div>
+              <span class="dg-confidence learning" id="dgConfidence">Still learning</span>
+            </div>
+            <div id="dgRecommendation" class="dg-recommendation">
+              <div class="dg-learning-orb" aria-hidden="true"><span></span></div>
+              <strong>Building a reliable baseline</strong>
+              <p>Recommendations begin only when a weak window has enough successful, comparable booking history.</p>
+            </div>
+          </aside>
+        </div>
+
+        <section class="dg-card dg-active-card" id="dgActiveSection" hidden>
+          <div class="dg-card-head"><div><div class="dg-kicker">Active smart offer</div><h3>Automatic offer running</h3></div><span class="dg-live"><i></i> Live</span></div>
+          <div id="dgActiveCampaigns"></div>
+        </section>
+
+        <details class="dg-method">
+          <summary>How Korte DOS decides</summary>
+          <div><p id="dgQuality">Only successful play through yesterday teaches the model.</p><p>Incomplete payment attempts and temporary holds are ignored. Existing bookings are never repriced.</p></div>
+        </details>
+      </div>
+
+      <div class="oi-legacy" hidden aria-hidden="true">
       <div class="toolbar">
         <div class="oi-heading">
           <div class="oi-eyebrow">Korte DOS Owner Intelligence</div>
@@ -2911,6 +3113,7 @@ body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: 
         <div id="oiCourtPerformance"><div class="oi-empty">No court performance yet.</div></div>
         <div class="oi-quality" id="oiQualityNote">Capacity quality details will appear after analysis.</div>
       </section>
+      </div>
     </div>
 
     <!-- REPORTS -->
@@ -5300,7 +5503,7 @@ let sess;
 /* ==============================================
    NAVIGATION
    ============================================== */
-const titles={dash:'Dashboard',insights:'Owner Intelligence',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments',vouchers:'Vouchers'};
+const titles={dash:'Dashboard',insights:'Insights',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments',vouchers:'Vouchers'};
 const SECTION_PERM={dash:'dashboard',insights:'reports',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments',vouchers:'vouchers'};
 const SECTION_LOADERS={dash:renderDash,insights:()=>renderOwnerInsights({force:true}),bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings,vouchers:renderVouchers};
 let _curSection=null;
@@ -8298,15 +8501,17 @@ function setInsightsPeriod(period) {
 }
 
 async function ensureInsightsCourts(force = false) {
-  const select = $('oiCourt');
-  if (!select || (!force && select.dataset.loaded === 'true')) return;
-  const selected = select.value;
+  const selects = [$('dgCourt'), $('oiCourt')].filter(Boolean);
+  if (!selects.length || (!force && selects.every(select => select.dataset.loaded === 'true'))) return;
+  const selected = $('dgCourt')?.value || $('oiCourt')?.value || '';
   const courts = await DB.getCourts();
-  select.innerHTML = '<option value="">All courts</option>' + courts.map(c =>
-    `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`
-  ).join('');
-  if ([...select.options].some(option => option.value === selected)) select.value = selected;
-  select.dataset.loaded = 'true';
+  selects.forEach(select => {
+    select.innerHTML = '<option value="">All courts</option>' + courts.map(c =>
+      `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`
+    ).join('');
+    if ([...select.options].some(option => option.value === selected)) select.value = selected;
+    select.dataset.loaded = 'true';
+  });
 }
 
 function renderInsightsKpis(snapshot) {
@@ -8569,42 +8774,217 @@ function renderInsightsRange(snapshot) {
   if ($('oiTo')) $('oiTo').max = oiToday();
 }
 
+function renderDemandMetrics(snapshot) {
+  const k = snapshot?.kpis || {};
+  const period = snapshot?.period || {};
+  const predicted = Number(k.predicted_28d_fill_pct || 0);
+  const unsoldHours = Number(k.expected_unsold_hours || 0);
+  const learningDays = Number(period.learning_days ?? period.days_analyzed ?? 0);
+  const minimumDays = Number(period.minimum_learning_days || window.OwnerIntelligence.MINIMUM_LEARNING_DAYS || 30);
+  const recommendation = snapshot?.recommendation || window.OwnerIntelligence.recommendationFromSignals(snapshot);
+  const active = (snapshot?.active_campaigns || []).some(item => item.status === 'active');
+  const ready = !!recommendation;
+  $('dgPredictedFill').textContent = learningDays < minimumDays ? '—' : `${oiNumber(predicted, 0)}%`;
+  $('dgUnsoldHours').textContent = learningDays < minimumDays ? '—' : `${oiNumber(unsoldHours, 0)} hr`;
+  $('dgActionReady').textContent = ready ? '1' : '0';
+  $('dgLearningNote').textContent = learningDays < minimumDays
+    ? `Day ${Math.min(learningDays, minimumDays)} of ${minimumDays}`
+    : active ? 'One smart offer is currently active' : ready ? 'One evidence-checked recommendation' : 'No safe action needed now';
+}
+
+function renderDemandRange(snapshot) {
+  const period = snapshot?.period || {};
+  const label = period.from && period.to
+    ? `${oiFormatDate(period.from)} – ${oiFormatDate(period.to)}`
+    : 'No successful booking history yet';
+  $('dgRange').textContent = `${label} · successful bookings through yesterday only`;
+  const courtSelect = $('dgCourt');
+  const selectedCourt = courtSelect?.selectedOptions?.[0]?.textContent?.trim() || 'All courts';
+  $('dgMapTitle').textContent = `Demand by time · ${selectedCourt === 'All courts' ? 'All courts combined' : selectedCourt}`;
+}
+
+function renderDemandHeatmap(snapshot) {
+  const target = $('dgHeatmap');
+  const cells = Array.isArray(snapshot?.heatmap) ? snapshot.heatmap : [];
+  if (!target || !cells.length) {
+    if (target) target.innerHTML = '<div class="oi-empty">No successful booking history yet.</div>';
+    return;
+  }
+  const starts = [...new Set(cells.map(cell => Number(cell.start_hour)))].sort((a,b)=>a-b);
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const map = new Map(cells.map(cell => [`${Number(cell.start_hour)}:${Number(cell.weekday)}`, cell]));
+  const recommendation = snapshot?.recommendation || window.OwnerIntelligence.recommendationFromSignals(snapshot);
+  const recommendedKey = recommendation ? `${Number(recommendation.start_hour)}:${Number(recommendation.weekday)}` : '';
+  let html = '<div class="oi-heat-label"></div>' + days.map(day => `<div class="oi-heat-label">${day}</div>`).join('');
+  starts.forEach(start => {
+    const first = cells.find(cell => Number(cell.start_hour) === start);
+    const end = Number(first?.end_hour || start + 3);
+    html += `<div class="oi-heat-label oi-heat-time">${esc(window.OwnerIntelligence.timeLabel(start,end))}</div>`;
+    for (let weekday=1; weekday<=7; weekday+=1) {
+      const cell = map.get(`${start}:${weekday}`) || {};
+      const pct = Math.max(0,Math.min(100,Number(cell.utilization_pct || 0)));
+      const confidence = window.OwnerIntelligence.confidenceFor(cell);
+      const state = cell.state || window.OwnerIntelligence.demandState(cell);
+      const tooltip = `${pct.toFixed(1)}% utilized · ${window.OwnerIntelligence.evidence(cell)} · ${confidence.label}`;
+      const displayPct = pct > 0 && pct < 1 ? '&lt;1%' : `${pct.toFixed(0)}%`;
+      html += `<div class="oi-heat-cell" style="--oi-heat:${pct}" data-state="${esc(state)}" data-learning="${confidence.code==='learning'}" data-recommended="${recommendedKey===`${start}:${weekday}`}" title="${esc(tooltip)}">${displayPct}</div>`;
+    }
+  });
+  target.innerHTML = html;
+  const callout = $('dgMapCallout');
+  if (!callout) return;
+  if (recommendation) {
+    callout.innerHTML = `<span aria-hidden="true">&#10022;</span><p><strong>Clearest growth pocket.</strong> Recommendation for ${esc(recommendation.court_name || 'the selected court')} · ${esc(recommendation.weekday_label)} ${esc(window.OwnerIntelligence.timeLabel(recommendation.start_hour,recommendation.end_hour))}.</p>`;
+    return;
+  }
+  callout.innerHTML = '<span aria-hidden="true">&#10022;</span><p><strong>Learning demand.</strong> Korte DOS will abstain until a weak window has enough comparable history for a safe action.</p>';
+}
+
+function renderDemandRecommendation(snapshot) {
+  const target = $('dgRecommendation');
+  const title = $('dgActionTitle');
+  const badge = $('dgConfidence');
+  if (!target || !title || !badge) return;
+  const active = (Array.isArray(snapshot?.active_campaigns) ? snapshot.active_campaigns : []).filter(item => item.status === 'active');
+  if (active.length) {
+    title.textContent = 'One smart offer is already running';
+    badge.className = 'dg-confidence high';
+    badge.textContent = 'Protected';
+    target.innerHTML = '<div class="dg-learning-orb" style="--dg-progress:100%" aria-hidden="true"><span></span></div><strong>Measure before changing another window</strong><p>Korte DOS runs one controlled smart offer at a time so its result stays understandable. End the active offer if you need to stop it immediately.</p>';
+    return;
+  }
+  const recommendation = snapshot?.recommendation || window.OwnerIntelligence.recommendationFromSignals(snapshot);
+  if (!recommendation) {
+    const period = snapshot?.period || {};
+    const days = Number(period.learning_days ?? period.days_analyzed ?? 0);
+    const minimum = Number(period.minimum_learning_days || window.OwnerIntelligence.MINIMUM_LEARNING_DAYS || 30);
+    const progress = Math.max(0,Math.min(100,days * 100 / Math.max(1,minimum)));
+    const stillLearning = days < minimum;
+    title.textContent = stillLearning ? 'Learning demand patterns' : 'No weak window needs action';
+    badge.className = 'dg-confidence learning';
+    badge.textContent = stillLearning ? `Day ${Math.min(days,minimum)} of ${minimum}` : 'Demand healthy';
+    target.innerHTML = `<div class="dg-learning-orb" style="--dg-progress:${progress}%" aria-hidden="true"><span></span></div><strong>${stillLearning?'Building a reliable baseline':'Protect current pricing'}</strong><p>${stillLearning?'Recommendations start after enough successful, comparable booking days. Failed payment attempts never count.':'The engine found no evidence-ready weak window. It will keep watching and will not invent an offer.'}</p>`;
+    return;
+  }
+  const confidence = window.OwnerIntelligence.confidenceFor(recommendation);
+  const bookedHours = Number(recommendation.booked_hours || 0);
+  const evidence = bookedHours > 0
+    ? `${oiNumber(bookedHours, bookedHours % 1 ? 1 : 0)} booked court-hours`
+    : 'No booked court-hours';
+  const discount = Number(recommendation.discount_percent || 10);
+  title.textContent = `${recommendation.court_name || 'Selected court'} · ${recommendation.weekday_label} ${window.OwnerIntelligence.timeLabel(recommendation.start_hour,recommendation.end_hour)}`;
+  badge.className = `dg-confidence ${esc(confidence.code)}`;
+  badge.textContent = confidence.label;
+  target.innerHTML = `
+    <strong>Best chance to add a booking</strong>
+    <p>${evidence} across ${oiNumber(recommendation.comparable_days)} comparable ${esc(recommendation.weekday_label)} windows. Korte DOS selected the clearest evidence-ready opportunity.</p>
+    <div class="dg-action-scope">
+      <div><span>Smart offer</span><b>${oiNumber(discount)}% off new matching bookings</b></div>
+      <div><span>Runs for</span><b>${oiNumber(recommendation.valid_days || 28)} days</b></div>
+      <div><span>Safety limit</span><b>Maximum ${oiNumber(recommendation.max_redemptions || 20)} bookings</b></div>
+    </div>
+    <button class="dg-apply" id="dgApplyButton" type="button" onclick="applyDemandRecommendation()">Start ${oiNumber(discount)}% smart offer</button>
+    <small class="dg-guardrail">Only new bookings matching this court, day, and time receive it. Existing bookings never change.</small>`;
+}
+
+function renderActiveDemandCampaigns(snapshot) {
+  const section = $('dgActiveSection');
+  const target = $('dgActiveCampaigns');
+  if (!section || !target) return;
+  const rows = (Array.isArray(snapshot?.active_campaigns) ? snapshot.active_campaigns : []).filter(item => item.status === 'active');
+  section.hidden = !rows.length;
+  if (!rows.length) { target.innerHTML = ''; return; }
+  target.innerHTML = rows.map(item => {
+    const used = Number(item.redemption_count ?? item.redemptions ?? item.used ?? (Number(item.redeemed_count || 0) + Number(item.reserved_count || 0)));
+    const limit = Number(item.max_redemptions ?? item.redemption_limit ?? 20);
+    return `<article class="dg-active-row">
+      <div><h4>${esc(item.name || `${item.weekday_label || ''} smart offer`)}</h4><p>${esc(item.court_name || item.court_id || 'Court')} · ${esc(item.weekday_label || '')} ${esc(window.OwnerIntelligence.timeLabel(item.start_hour,item.end_hour))} · ${oiNumber(item.discount_percent || 10)}% automatic offer</p></div>
+      <div class="dg-active-stat"><strong>${used}/${limit}</strong><span>bookings used</span></div>
+      <div class="dg-active-stat"><strong>${oiFormatDate(item.valid_until || item.ends_at)}</strong><span>automatic end</span></div>
+      <div class="dg-active-stat"><strong>${oiMoney(item.discount_cost || 0)}</strong><span>discount invested</span></div>
+      <button class="dg-end" type="button" onclick="endDemandCampaign('${jsArg(item.id)}')">End offer</button>
+    </article>`;
+  }).join('');
+}
+
+function renderDemandQuality(snapshot) {
+  const quality = snapshot?.data_quality || {};
+  const count = quality.successful_booking_rows;
+  $('dgQuality').textContent = `${count != null ? `${oiNumber(count)} successful booking rows were analyzed. ` : ''}Only real, successful bookings teach the model. Incomplete payment attempts and temporary holds never count.`;
+}
+
+async function applyDemandRecommendation() {
+  const recommendation = _oiSnapshot?.recommendation || window.OwnerIntelligence?.recommendationFromSignals(_oiSnapshot);
+  if (!recommendation?.id || typeof DB.createDemandCampaignFromRecommendation !== 'function') {
+    toast('This demand action is not available yet. Refresh Insights.', 'err');
+    return;
+  }
+  const button = $('dgApplyButton');
+  if (button?.disabled) return;
+  if (button) { button.disabled = true; button.textContent = 'Starting safely…'; }
+  try {
+    await DB.createDemandCampaignFromRecommendation(recommendation.id, {
+      courtId: recommendation.court_id || $('dgCourt')?.value || null,
+    });
+    toast('Smart offer is live. New matching bookings will receive it automatically.', 'ok');
+    await renderOwnerInsights({ force:true });
+  } catch (error) {
+    console.error('applyDemandRecommendation:', error);
+    toast(error?.message || 'The smart offer could not be started.', 'err');
+    if (button) { button.disabled = false; button.textContent = `Start ${oiNumber(recommendation.discount_percent || 10)}% smart offer`; }
+  }
+}
+
+async function endDemandCampaign(id) {
+  if (!id || typeof DB.endDemandCampaign !== 'function') return;
+  if (!confirm('End this smart offer? Existing bookings keep their saved price; only new automatic offers stop.')) return;
+  try {
+    await DB.endDemandCampaign(id);
+    toast('Smart offer ended. Existing bookings were not changed.', 'ok');
+    await renderOwnerInsights({ force:true });
+  } catch (error) { toast(error?.message || 'Smart offer could not be ended.', 'err'); }
+}
+
 async function renderOwnerInsights(options = {}) {
-  if (!window.OwnerIntelligence || typeof DB.getOwnerIntelligence !== 'function') {
-    toast('Owner Intelligence is not available in this build.', 'err');
+  if (!window.OwnerIntelligence || typeof DB.getDemandGrowthIntelligence !== 'function') {
+    toast('Demand Intelligence is not available in this build.', 'err');
     return;
   }
   await ensureInsightsCourts(!!options.force);
-  const range = oiRange();
-  if (range.from && range.to && range.from > range.to) {
-    toast('Insights start date must be before the end date.', 'err');
-    return;
-  }
-  const filters = { from: range.from || null, to: range.to || null, courtId: $('oiCourt')?.value || null };
+  const filters = { courtId: $('dgCourt')?.value || null };
   const requestKey = JSON.stringify(filters);
   if (!options.force && _oiSnapshot && requestKey === _oiRequestKey) return;
   const requestSeq = ++_oiRequestSeq;
-  $('oiLoading')?.classList.add('on');
+  $('dgLoading')?.classList.add('on');
   try {
-    const snapshot = await DB.getOwnerIntelligence(filters);
+    const snapshot = await DB.getDemandGrowthIntelligence(filters);
     if (requestSeq !== _oiRequestSeq) return;
     _oiSnapshot = snapshot || {};
     _oiRequestKey = requestKey;
-    renderInsightsRange(_oiSnapshot);
-    renderInsightsKpis(_oiSnapshot);
-    renderInsightsHeatmap(_oiSnapshot);
-    renderInsightsLifecycle(_oiSnapshot);
-    renderInsightsForward(_oiSnapshot);
-    renderInsightsTrend(_oiSnapshot);
-    renderInsightsRecommendations(_oiSnapshot);
-    renderInsightsCourts(_oiSnapshot);
+    renderDemandRange(_oiSnapshot);
+    renderDemandMetrics(_oiSnapshot);
+    renderDemandHeatmap(_oiSnapshot);
+    renderDemandRecommendation(_oiSnapshot);
+    renderActiveDemandCampaigns(_oiSnapshot);
+    renderDemandQuality(_oiSnapshot);
   } catch (error) {
     if (requestSeq !== _oiRequestSeq) return;
     console.error('renderOwnerInsights:', error);
-    $('oiRecommendations').innerHTML = '<div class="oi-empty">Insights could not be loaded. Apply the Owner Intelligence database migration, then refresh.</div>';
-    toast('Insights could not be loaded.', 'err');
+    $('dgRange').textContent = 'Demand data is temporarily unavailable.';
+    $('dgPredictedFill').textContent = '—';
+    $('dgUnsoldHours').textContent = '—';
+    $('dgActionReady').textContent = '0';
+    $('dgLearningNote').textContent = 'No action was applied';
+    $('dgHeatmap').innerHTML = '<div class="oi-empty">Demand data is temporarily unavailable.</div>';
+    $('dgMapCallout').innerHTML = '<span aria-hidden="true">&#10022;</span><p><strong>No change made.</strong> Booking and pricing continue normally.</p>';
+    $('dgActionTitle').textContent = 'Demand data unavailable';
+    $('dgConfidence').className = 'dg-confidence learning';
+    $('dgConfidence').textContent = 'Paused safely';
+    $('dgRecommendation').innerHTML = '<strong>Try again when ready</strong><p>The demand service did not respond. No booking, price, or offer was changed.</p><button class="dg-apply" type="button" onclick="renderOwnerInsights({force:true})">Retry demand data</button>';
+    $('dgActiveSection').hidden = true;
+    toast('Demand Intelligence could not be loaded.', 'err');
   } finally {
-    if (requestSeq === _oiRequestSeq) $('oiLoading')?.classList.remove('on');
+    if (requestSeq === _oiRequestSeq) $('dgLoading')?.classList.remove('on');
   }
 }
 
@@ -13702,7 +14082,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260825-receipt-recovery-v1"></script>
+<script src="supabase-config.js?v=20260826-demand-growth-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>

@@ -38,6 +38,7 @@ $publicFiles = @(
   "CHANGELOG.md",
   "chart.min.js",
   "court-splash.jpg",
+  "demand-campaign-booking.js",
   "f6b5eb3c-a6b6-49ce-981e-d9b127b67ba3.jpg",
   "host-balance-admin.js",
   "host-balance-payment.js",

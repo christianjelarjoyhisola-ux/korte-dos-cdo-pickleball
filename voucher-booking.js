@@ -71,6 +71,10 @@
     },
     async apply() {
       if (busy) return;
+      if (window.BookingDemandCampaign?.current?.()) {
+        status('A smart growth offer is already applied. Offers cannot be stacked.', 'err');
+        return;
+      }
       const code = (el('bVoucherCode')?.value || '').trim().toUpperCase();
       if (!code) { status('Enter a voucher code first.', 'err'); el('bVoucherCode')?.focus(); return; }
       const bookingRefs = refs();

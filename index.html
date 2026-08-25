@@ -7,7 +7,8 @@
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
-<script src="voucher-booking.js?v=20260814-v2"></script>
+<script src="voucher-booking.js?v=20260826-demand-growth-v1"></script>
+<script src="demand-campaign-booking.js?v=20260826-v1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1871576789265012" crossorigin="anonymous"></script>
 <style>
@@ -1271,6 +1272,9 @@ select.fi option { background:var(--card); }
 .voucher-status.show { display:block; }
 .voucher-status.ok { color:var(--lime-ink); font-weight:800; }
 .voucher-status.err { color:var(--red); }
+.demand-offer-status { display:none; margin-top:12px; border:1px solid rgba(101,88,232,.24); border-radius:12px; background:#f1efff; padding:11px 12px; color:#4f45ae; font-size:.75rem; line-height:1.45; }
+.demand-offer-status.show { display:flex; align-items:flex-start; gap:8px; }
+.demand-offer-status strong { display:block; margin-bottom:2px; color:#302a78; font-size:.78rem; }
 
 /* 3-column payment options */
 .pay-opts-3 { grid-template-columns:1fr 1fr 1fr; }
@@ -3413,6 +3417,7 @@ body.host-mode .courts { padding-bottom:140px; }
             <div class="wiz-summary-lbl">Booking Summary</div>
             <div id="wiz3Summary" style="font-size:.84rem;line-height:1.55"></div>
           </div>
+          <div class="demand-offer-status" id="bDemandOfferStatus" aria-live="polite"></div>
           <div class="voucher-entry" id="bookingVoucherEntry">
             <label class="fl" for="bVoucherCode">Have a voucher?</label>
             <div class="voucher-entry-row">
@@ -3751,6 +3756,7 @@ body.host-mode .courts { padding-bottom:140px; }
     <div class="inv-amount-wrap">
       <div class="inv-amt-total">Total Amount</div>
       <div id="iVoucherRow" style="display:none;font-size:.78rem;color:var(--lime-ink);font-weight:800;margin:4px 0"><span id="iVoucherCode"></span> <span id="iVoucherDiscount"></span></div>
+      <div id="iDemandOfferRow" style="display:none;font-size:.78rem;color:#6558e8;font-weight:800;margin:4px 0"><span id="iDemandOfferName">Smart growth offer</span> <span id="iDemandOfferDiscount"></span></div>
       <div class="inv-amt-val" id="iTot">₱0.00</div>
       <div class="inv-amt-down-wrap">
         <div class="inv-amt-down-label" id="iDownLabel">Booking Fee + 50% Court Fee Due</div>
@@ -4781,6 +4787,10 @@ function makeBookingItemFromSelection(sel, ref = null, groupRef = null) {
     voucherDiscountAmount: 0,
     voucherCode: null,
     voucherId: null,
+    demandCampaignGrossTotal: null,
+    demandCampaignDiscountAmount: 0,
+    demandCampaignId: null,
+    demandCampaignName: null,
   };
 }
 
@@ -4823,7 +4833,10 @@ function activeBookingItems() {
 }
 
 function bookingItemsCourtFee(items = activeBookingItems()) {
-  return items.reduce((sum, item) => sum + (window.BookingVoucher?.netCourtFee(item) ?? Number(item.courtFee || 0)), 0);
+  return items.reduce((sum, item) => {
+    const voucherNet = window.BookingVoucher?.netCourtFee(item) ?? Number(item.courtFee || 0);
+    return sum + Math.max(0, voucherNet - Number(item.demandCampaignDiscountAmount || 0));
+  }, 0);
 }
 
 function bookingItemsGrossCourtFee(items = activeBookingItems()) {
@@ -4882,6 +4895,7 @@ function hostBookingItemsSummaryHtml(items = uniqueBookingSelections(activeBooki
   const courtFee = bookingItemsCourtFee(items);
   const grossCourtFee = bookingItemsGrossCourtFee(items);
   const voucherDiscount = window.BookingVoucher?.discount(items) || 0;
+  const demandDiscount = window.BookingDemandCampaign?.discount(items) || 0;
   const svcFee = bookingItemsServiceFee(items);
   const total = bookingItemsTotal(items);
   const dueToday = downpaymentAmount(total, courtFee, svcFee);
@@ -4895,6 +4909,7 @@ function hostBookingItemsSummaryHtml(items = uniqueBookingSelections(activeBooki
     <div class="host-summary-row"><span>Court fee</span><strong>${fmt(grossCourtFee)}</strong></div>
     ${svcFee > 0 ? `<div class="host-summary-row"><span>Booking fee</span><strong>${fmt(svcFee)}</strong></div>` : ''}
     ${voucherDiscount > 0 ? `<div class="host-summary-row"><span>Voucher (${esc(window.BookingVoucher?.current()?.code || items.find(item => item.voucherCode)?.voucherCode || '')})</span><strong style="color:var(--lime-ink)">−${fmt(voucherDiscount)}</strong></div>` : ''}
+    ${demandDiscount > 0 ? `<div class="host-summary-row"><span>Smart growth offer</span><strong style="color:#6558e8">−${fmt(demandDiscount)}</strong></div>` : ''}
     <div class="host-summary-row total"><span>Total</span><strong>${fmt(total)}</strong></div>
     <div class="host-summary-row due"><span>Due today</span><strong>${fmt(dueToday)}</strong></div>
     <div class="host-summary-note">Fee paid in full + 25% court</div>
@@ -4908,6 +4923,7 @@ function bookingItemsSummaryHtml(items = uniqueBookingSelections(activeBookingIt
   const svcFee = bookingItemsServiceFee(items);
   const grossCourtFee = bookingItemsGrossCourtFee(items);
   const voucherDiscount = window.BookingVoucher?.discount(items) || 0;
+  const demandDiscount = window.BookingDemandCampaign?.discount(items) || 0;
   const hrs = bookingItemsDuration(items);
   const dates = [...new Set(items.map(item => item.date).filter(Boolean))];
   const dateStr = dates.length > 1 ? dates.map(fmtD).join(' + ') : bookingItemsDate(items) ? fmtD(bookingItemsDate(items)) : '-';
@@ -4923,6 +4939,7 @@ function bookingItemsSummaryHtml(items = uniqueBookingSelections(activeBookingIt
   rows.push(`Court Fee: <strong style="color:var(--muted)">${fmt(grossCourtFee)}</strong>`);
   if (svcFee > 0) rows.push(`Booking Fee: <strong style="color:var(--muted)">${bookingFeeDisplay(svcFee, hrs)}</strong>`);
   if (voucherDiscount > 0) rows.push(`Voucher (${esc(window.BookingVoucher?.current()?.code || items.find(item => item.voucherCode)?.voucherCode || '')}): <strong style="color:var(--lime-ink)">−${fmt(voucherDiscount)}</strong>`);
+  if (demandDiscount > 0) rows.push(`Smart growth offer: <strong style="color:#6558e8">−${fmt(demandDiscount)}</strong>`);
   rows.push(`Total: <strong style="color:var(--accent)">${fmt(total)}</strong>`);
   return rows.filter(Boolean).map(s => `<div>${s}</div>`).join('');
 }
@@ -5998,6 +6015,8 @@ function bookingItemFromReservedBooking(b) {
   const total = Number(b.total || 0);
   const grossTotal = Number(b.grossTotal ?? total);
   const voucherDiscountAmount = Number(b.voucherDiscountAmount || 0);
+  const demandCampaignGrossTotal = Number(b.demandCampaignGrossTotal ?? grossTotal);
+  const demandCampaignDiscountAmount = Number(b.demandCampaignDiscountAmount || 0);
   return {
     ref: b.ref,
     groupRef: b.groupRef || null,
@@ -6010,13 +6029,17 @@ function bookingItemFromReservedBooking(b) {
     timeLabel: b.timeLabel || slotsTimeLabel(slots),
     duration,
     rate: Number(b.rate || 0),
-    courtFee: Math.max(0, grossTotal - serviceFee),
+    courtFee: Math.max(0, Math.max(grossTotal, demandCampaignGrossTotal) - serviceFee),
     serviceFee,
     total,
     grossTotal: voucherDiscountAmount > 0 ? grossTotal : null,
     voucherDiscountAmount,
     voucherCode: b.voucherCode || null,
     voucherId: b.voucherId || null,
+    demandCampaignGrossTotal: demandCampaignDiscountAmount > 0 ? demandCampaignGrossTotal : null,
+    demandCampaignDiscountAmount,
+    demandCampaignId: b.demandCampaignId || null,
+    demandCampaignName: b.demandCampaignName || null,
   };
 }
 
@@ -6073,6 +6096,7 @@ async function maybeResumeGuestBooking() {
 
   bookingItems = rows.map(bookingItemFromReservedBooking);
   window.BookingVoucher?.hydrate(bookingItems);
+  window.BookingDemandCampaign?.hydrate(bookingItems);
   _reservedRefs = rows.map(b => b.ref);
   _reservedRef = _reservedRefs[0] || null;
   _reservationStartedAt = resume.startedAt;
@@ -6135,6 +6159,7 @@ async function releaseReservedBookingViews(items = activeBookingItems()) {
   })).filter(item => item.courtId && item.date);
   if (window.BookingVoucher?.current()) await window.BookingVoucher.remove({ silent: true }).catch(() => {});
   await cancelReservedBookings();
+  window.BookingDemandCampaign?.reset();
   clearSelectedBookingUi();
   if (refreshItems.length) await refreshBookingItemViews(refreshItems);
   else await renderCourts();
@@ -6344,6 +6369,7 @@ async function proceedToBook(courtId = null) {
 }
 
 async function proceedToBookOnce(courtId = null) {
+  window.BookingDemandCampaign?.reset();
   const selections = cardSelectionList();
   if (selections.length === 0) {
     toast('Please select at least one time slot.', 'inf');
@@ -6444,11 +6470,29 @@ async function proceedToBookOnce(courtId = null) {
     return;
   }
 
+  // Track the reserved group before optional pricing. Even if the price check
+  // is slow or interrupted, the hold is resumable and its countdown remains
+  // anchored to the authoritative reservation time.
   bookingItems = reserveItems;
   _reservedRefs = reserveItems.map(item => item.ref);
   _reservedRef = _reservedRefs[0] || null;
   _reservationStartedAt = authoritativeReserveStartedAt;
-  saveGuestBookingResume();
+  saveGuestBookingResume({ pricingState: 'checking' });
+
+  // A demand campaign is a best-effort price benefit, never a booking
+  // dependency. The server revalidates the complete fresh hold and returns the
+  // normal price unchanged when no exact future scope matches.
+  try {
+    await window.BookingDemandCampaign?.autoApply(
+      createdRefs,
+      reserveItems,
+      { asHost: typeof isVerifiedHostBooking === 'function' && isVerifiedHostBooking() },
+    );
+  } catch (campaignError) {
+    console.warn('Demand campaign was not applied; continuing at normal price.', campaignError);
+  }
+
+  saveGuestBookingResume({ pricingState: 'ready' });
   selSlots = [...primary.slots];
   await refreshBookingItemViews(reserveItems);
   $('bDate').value = selectedDate;
@@ -8041,10 +8085,14 @@ async function submitBooking(e) {
     voucherId: item.voucherId || null,
     voucherCode: item.voucherCode || null,
     voucherDiscountAmount: Number(item.voucherDiscountAmount || 0),
+    demandCampaignId: item.demandCampaignId || null,
+    demandCampaignName: item.demandCampaignName || null,
+    demandCampaignGrossTotal: item.demandCampaignGrossTotal == null ? null : Number(item.demandCampaignGrossTotal),
+    demandCampaignDiscountAmount: Number(item.demandCampaignDiscountAmount || 0),
     paymentMethod: payMethod,
     gcashRef: gcashRef || null,
     paymentFlow: payMethod,
-    downpayment: downpaymentAmount(item.total, Math.max(0, item.courtFee - Number(item.voucherDiscountAmount || 0)), item.serviceFee),
+    downpayment: downpaymentAmount(item.total, Math.max(0, item.courtFee - Number(item.voucherDiscountAmount || 0) - Number(item.demandCampaignDiscountAmount || 0)), item.serviceFee),
     ...bookingIdentity,
     balanceDueAt: bookingIdentity.hostBooking ? hostBookingBalanceDeadline(items)?.toISOString() || null : null,
     paymentStatus,
@@ -8065,6 +8113,9 @@ async function submitBooking(e) {
     grossTotal: itemBookings.reduce((sum, item) => sum + Number(item.grossTotal || item.total || 0), 0),
     voucherCode: window.BookingVoucher?.current()?.code || null,
     voucherDiscountAmount: itemBookings.reduce((sum, item) => sum + Number(item.voucherDiscountAmount || 0), 0),
+    demandCampaignId: window.BookingDemandCampaign?.current()?.campaignId || itemBookings.find(item=>item.demandCampaignId)?.demandCampaignId || null,
+    demandCampaignName: window.BookingDemandCampaign?.current()?.name || itemBookings.find(item=>item.demandCampaignName)?.demandCampaignName || null,
+    demandCampaignDiscountAmount: itemBookings.reduce((sum, item) => sum + Number(item.demandCampaignDiscountAmount || 0), 0),
   };
 
   stopSlotCountdown();
@@ -8473,6 +8524,7 @@ function resetForm() {
   cardSelections = {};
   bookingItems = [];
   window.BookingVoucher?.reset();
+  window.BookingDemandCampaign?.reset();
   cardSel = emptyCardSelection();
   document.querySelectorAll('.cc-book-bar').forEach(b => b.style.display = 'none');
   document.querySelectorAll('.cc-slot-btn.selected').forEach(b => b.classList.remove('selected'));
@@ -8559,6 +8611,9 @@ function showInvoice(b) {
   if ($('iVoucherRow')) $('iVoucherRow').style.display = Number(b.voucherDiscountAmount || 0) > 0 ? '' : 'none';
   set('iVoucherCode', b.voucherCode ? `${b.voucherCode} applied` : 'Voucher applied');
   set('iVoucherDiscount', Number(b.voucherDiscountAmount || 0) > 0 ? `−${fmt(b.voucherDiscountAmount)}` : '');
+  if ($('iDemandOfferRow')) $('iDemandOfferRow').style.display = Number(b.demandCampaignDiscountAmount || 0) > 0 ? '' : 'none';
+  set('iDemandOfferName', b.demandCampaignName || 'Smart growth offer');
+  set('iDemandOfferDiscount', Number(b.demandCampaignDiscountAmount || 0) > 0 ? `−${fmt(b.demandCampaignDiscountAmount)}` : '');
   set('iTot', fmt(b.total));
   set('iDown', fmt(b.downpayment));
   const invoiceDownLabel = (!isFullPay && b.hostBooking) ? 'Full Booking Fee + 25% Court Fee Due' : 'Full Booking Fee + 50% Court Fee Due';
@@ -10467,7 +10522,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260825-receipt-recovery-v1"></script>
+<script src="supabase-config.js?v=20260826-demand-growth-v1"></script>
 
 <!-- MOBILE STICKY BOOK NOW BAR -->
 <div id="mobileBookBar" class="mobile-book-bar" style="display:none">

@@ -506,10 +506,19 @@ function rowToBooking(r) {
     duration:      r.duration,
     rate:          r.rate,
     total:         r.total,
-    grossTotal:    r.voucher_gross_total != null ? Number(r.voucher_gross_total) : Number(r.total || 0),
+    grossTotal:    r.demand_campaign_gross_total != null
+      ? Number(r.demand_campaign_gross_total)
+      : r.voucher_gross_total != null ? Number(r.voucher_gross_total) : Number(r.total || 0),
     voucherId:     r.voucher_id || null,
     voucherCode:   r.voucher_code_snapshot || null,
     voucherDiscountAmount: Number(r.voucher_discount_amount || 0),
+    demandCampaignId: r.demand_campaign_id || null,
+    demandCampaignDiscountPercent: r.demand_campaign_discount_percent_snapshot != null
+      ? Number(r.demand_campaign_discount_percent_snapshot) : null,
+    demandCampaignDiscountAmount: Number(r.demand_campaign_discount_amount || 0),
+    demandCampaignGrossTotal: r.demand_campaign_gross_total != null
+      ? Number(r.demand_campaign_gross_total) : null,
+    analyticsEligible: r.analytics_eligible !== false,
     bookingFeeAmountSnapshot: r.booking_fee_amount_snapshot != null ? Number(r.booking_fee_amount_snapshot) : null,
     paymentMethod: r.payment_method,
     receivedAccount: receivedAccountForBooking(r),
@@ -685,6 +694,10 @@ function bookingToRow(b) {
     created_by_email:   b.createdByEmail || null,
     status:         b.status,
   };
+
+  if (b.analyticsEligible !== undefined) {
+    row.analytics_eligible = b.analyticsEligible !== false;
+  }
 
   // Customer and host holds use the database default (`now()`), so phone clock
   // drift can never make an otherwise-valid reservation fail its RLS window.
@@ -1052,6 +1065,71 @@ window.DB = {
       throw error;
     }
     return data || {};
+  },
+
+  // Demand Growth is deliberately narrower than Owner Intelligence: the
+  // database returns successful-play aggregates, one revalidated action, and
+  // active experiments. It contains no customer or payment detail.
+  async getDemandGrowthIntelligence(filters = {}) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to load Demand Intelligence.');
+    }
+    const opts = filters || {};
+    const { data, error } = await _sb.rpc('get_demand_growth_intelligence', {
+      p_from: opts.from || null,
+      p_to: opts.to || null,
+      p_court_id: opts.courtId ? String(opts.courtId) : null,
+    });
+    if (error) {
+      console.error('getDemandGrowthIntelligence:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  async createDemandCampaignFromRecommendation(recommendationId, options = {}) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to apply a demand recommendation.');
+    }
+    const { data, error } = await _sb.rpc('create_demand_campaign_from_recommendation', {
+      p_recommendation_id: String(recommendationId || '').trim().toUpperCase(),
+      p_court_id: options.courtId ? String(options.courtId) : null,
+    });
+    if (error) {
+      console.error('createDemandCampaignFromRecommendation:', error);
+      throw error;
+    }
+    _pbClearFastCache(['demandGrowthIntelligence']);
+    return data || {};
+  },
+
+  async endDemandCampaign(campaignId) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to end a demand campaign.');
+    }
+    const { data, error } = await _sb.rpc('end_demand_campaign', {
+      p_campaign_id: campaignId,
+    });
+    if (error) {
+      console.error('endDemandCampaign:', error);
+      throw error;
+    }
+    _pbClearFastCache(['demandGrowthIntelligence']);
+    return data || {};
+  },
+
+  async applyMatchingDemandCampaign(bookingRefs, options = {}) {
+    const client = options.asHost === true ? _sb : _publicBookingSb;
+    const refs = Array.isArray(bookingRefs) ? bookingRefs.map(String) : [];
+    const { data, error } = await client.rpc('apply_matching_demand_campaign', {
+      p_booking_refs: refs,
+    });
+    if (error) {
+      console.error('applyMatchingDemandCampaign:', error);
+      throw error;
+    }
+    _pbClearFastCache(['bookings', 'publicBookingSlots']);
+    return data || { applied: false };
   },
 
   // Host booking history is intentionally separate from getBookings(). The
@@ -3082,6 +3160,8 @@ window.DB = {
       accounts: defaultAccounts(),
       vouchers: [],
       voucherRedemptions: [],
+      demandCampaigns: [],
+      demandCampaignRedemptions: [],
       settings: defaultSettings(),
       agreements: [],
       weeklyFees: [],
@@ -3128,6 +3208,8 @@ window.DB = {
       accounts,
       vouchers: Array.isArray(parsed.vouchers) ? parsed.vouchers : [],
       voucherRedemptions: Array.isArray(parsed.voucherRedemptions) ? parsed.voucherRedemptions : [],
+      demandCampaigns: Array.isArray(parsed.demandCampaigns) ? parsed.demandCampaigns : [],
+      demandCampaignRedemptions: Array.isArray(parsed.demandCampaignRedemptions) ? parsed.demandCampaignRedemptions : [],
       agreements: Array.isArray(parsed.agreements) ? parsed.agreements : [],
       weeklyFees: Array.isArray(parsed.weeklyFees) ? parsed.weeklyFees : [],
     };
@@ -3137,6 +3219,290 @@ window.DB = {
 
   function writeDb(db) {
     localStorage.setItem(STORE_KEY, JSON.stringify(db));
+  }
+
+  function localManilaDate() {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date());
+    const value = type => parts.find(part => part.type === type)?.value || '';
+    return `${value('year')}-${value('month')}-${value('day')}`;
+  }
+
+  function localDateAdd(dateText, days) {
+    const date = new Date(`${dateText}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + Number(days || 0));
+    return date.toISOString().slice(0, 10);
+  }
+
+  function localDateDiff(from, to) {
+    return Math.floor((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000);
+  }
+
+  function localIsoWeekday(dateText) {
+    return new Date(`${dateText}T00:00:00Z`).getUTCDay() || 7;
+  }
+
+  function localRecommendationId(parts) {
+    const text = parts.join('|');
+    const hash = seed => {
+      let value = seed >>> 0;
+      for (let index = 0; index < text.length; index += 1) {
+        value ^= text.charCodeAt(index);
+        value = Math.imul(value, 16777619) >>> 0;
+      }
+      return value.toString(16).padStart(8, '0').toUpperCase();
+    };
+    return `DG-${hash(2166136261)}${hash(2246822507)}${hash(3266489909)}`;
+  }
+
+  function buildLocalDemandGrowthIntelligence(db, filters = {}) {
+    const today = localManilaDate();
+    const yesterday = localDateAdd(today, -1);
+    const selectedCourtId = filters.courtId ? String(filters.courtId) : null;
+    const courts = (db.courts || []).filter(court => !selectedCourtId || String(court.id) === selectedCourtId);
+    if (selectedCourtId && courts.length === 0) throw new Error('The selected court does not exist.');
+
+    const venueSuccessful = (db.bookings || []).filter(booking =>
+      booking.analyticsEligible !== false
+      && ['confirmed', 'completed'].includes(String(booking.status || '').toLowerCase())
+      && String(booking.date || '') <= yesterday);
+    const successful = venueSuccessful.filter(booking =>
+      !selectedCourtId || String(booking.courtId) === selectedCourtId);
+    const earliest = venueSuccessful.map(booking => booking.date).filter(Boolean).sort()[0] || yesterday;
+    const rangeEnd = [filters.to || yesterday, yesterday].sort()[0];
+    const rangeStart = filters.from || earliest;
+    if (rangeStart > rangeEnd) throw new Error('The Demand Intelligence start date must not be after yesterday.');
+    const learningDays = localDateDiff(rangeStart, rangeEnd) + 1;
+
+    const openHour = Math.max(0, Math.min(23, Number(db.settings?.open_hour || 6)));
+    const closeHour = Math.max(openHour + 1, Math.min(24, Number(db.settings?.close_hour || 22)));
+    const bands = [];
+    for (let hour = openHour; hour < closeHour; hour += 3) {
+      bands.push({ start_hour: hour, end_hour: Math.min(hour + 3, closeHour) });
+    }
+    const weekdayLabel = weekday => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][weekday - 1];
+    const blocked = new Set((db.blockedDates || []).map(row => String(row?.date || row)));
+    const signalMap = new Map();
+    for (const court of courts) {
+      for (let weekday = 1; weekday <= 7; weekday += 1) {
+        for (const band of bands) {
+          const key = `${court.id}|${weekday}|${band.start_hour}`;
+          signalMap.set(key, {
+            court_id: String(court.id), court_name: court.name || String(court.id),
+            rate: Math.max(0, Number(court.rate || 0)), weekday,
+            weekday_label: weekdayLabel(weekday), ...band,
+            booked_hours: 0, available_hours: 0, comparable_days: 0,
+            open_future_hours: 0,
+          });
+        }
+      }
+    }
+
+    for (let date = rangeStart; date <= rangeEnd; date = localDateAdd(date, 1)) {
+      if (blocked.has(date)) continue;
+      const weekday = localIsoWeekday(date);
+      for (const court of courts) {
+        const courtCreated = String(court.createdAt || court.created_at || '').slice(0, 10);
+        if (courtCreated && courtCreated > date) continue;
+        for (const band of bands) {
+          const signal = signalMap.get(`${court.id}|${weekday}|${band.start_hour}`);
+          signal.available_hours += band.end_hour - band.start_hour;
+          signal.comparable_days += 1;
+        }
+      }
+    }
+
+    const seen = new Set();
+    const filteredSuccesses = successful.filter(booking => booking.date >= rangeStart && booking.date <= rangeEnd)
+      .filter(booking => {
+        const slots = (booking.slots || []).join(',');
+        const key = `${booking.groupRef || booking.bookingGroupRef || booking.ref}|${booking.courtId}|${booking.date}|${slots || booking.startTime || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    for (const booking of filteredSuccesses) {
+      let slots = (booking.slots || []).map(Number).filter(Number.isFinite);
+      if (!slots.length) {
+        const match = String(booking.startTime || '').match(/^\s*(\d{1,2})(?::\d{2})?\s*(AM|PM)?/i);
+        let start = match ? Number(match[1]) : openHour;
+        if (match?.[2]) start = (start % 12) + (match[2].toUpperCase() === 'PM' ? 12 : 0);
+        slots = Array.from({ length: Math.max(0, Math.ceil(Number(booking.duration || 0))) }, (_, index) => start + index);
+      }
+      const weekday = localIsoWeekday(booking.date);
+      for (const slot of slots) {
+        const band = bands.find(item => slot >= item.start_hour && slot < item.end_hour);
+        const signal = band && signalMap.get(`${booking.courtId}|${weekday}|${band.start_hour}`);
+        if (signal) signal.booked_hours += 1;
+      }
+    }
+
+    for (let offset = 1; offset <= 28; offset += 1) {
+      const date = localDateAdd(today, offset);
+      if (blocked.has(date)) continue;
+      const weekday = localIsoWeekday(date);
+      for (const court of courts.filter(item => !item.blocked)) {
+        for (const band of bands) {
+          const signal = signalMap.get(`${court.id}|${weekday}|${band.start_hour}`);
+          signal.open_future_hours += band.end_hour - band.start_hour;
+        }
+      }
+    }
+
+    const futureEnd = localDateAdd(today, 28);
+    const freshHoldCutoff = Date.now() - 15 * 60000;
+    const futureSeen = new Set();
+    const occupiedFutureBookings = (db.bookings || [])
+      .filter(booking => String(booking.date || '') > today && String(booking.date || '') <= futureEnd)
+      .filter(booking => !selectedCourtId || String(booking.courtId) === selectedCourtId)
+      .filter(booking => {
+        const status = String(booking.status || '').toLowerCase();
+        if (['confirmed', 'completed', 'pending'].includes(status)) return true;
+        if (status !== 'verifying') return false;
+        const createdAt = new Date(booking.createdAt || booking.created_at || '').getTime();
+        return Number.isFinite(createdAt) && createdAt > freshHoldCutoff;
+      })
+      .filter(booking => {
+        const slots = (booking.slots || []).join(',');
+        const key = `${booking.groupRef || booking.bookingGroupRef || booking.ref}|${booking.courtId}|${booking.date}|${slots || booking.startTime || ''}`;
+        if (futureSeen.has(key)) return false;
+        futureSeen.add(key);
+        return true;
+      });
+    for (const booking of occupiedFutureBookings) {
+      const court = courts.find(item => String(item.id) === String(booking.courtId));
+      if (!court || court.blocked || blocked.has(String(booking.date || ''))) continue;
+      let slots = (booking.slots || []).map(Number).filter(Number.isFinite);
+      if (!slots.length) {
+        const match = String(booking.startTime || '').match(/^\s*(\d{1,2})(?::\d{2})?\s*(AM|PM)?/i);
+        let start = match ? Number(match[1]) : openHour;
+        if (match?.[2]) start = (start % 12) + (match[2].toUpperCase() === 'PM' ? 12 : 0);
+        slots = Array.from({ length: Math.max(0, Math.ceil(Number(booking.duration || 0))) }, (_, index) => start + index);
+      }
+      const weekday = localIsoWeekday(booking.date);
+      for (const slot of slots) {
+        const band = bands.find(item => slot >= item.start_hour && slot < item.end_hour);
+        const signal = band && signalMap.get(`${booking.courtId}|${weekday}|${band.start_hour}`);
+        if (signal) signal.open_future_hours = Math.max(0, signal.open_future_hours - 1);
+      }
+    }
+
+    const classify = signal => {
+      const utilization = signal.available_hours > 0
+        ? Math.min(100, signal.booked_hours * 100 / signal.available_hours) : 0;
+      const confidence = learningDays < 30 || signal.comparable_days < 4 ? 'learning'
+        : signal.comparable_days < 8 ? 'low'
+        : signal.comparable_days < 16 ? 'medium' : 'high';
+      const state = learningDays < 30 || signal.comparable_days < 4 ? 'learning'
+        : utilization >= 80 ? 'protected_peak'
+        : utilization >= 60 ? 'healthy'
+        : utilization >= 40 ? 'watch'
+        : utilization >= 15 ? 'underused' : 'persistent_vacancy';
+      const expectedUnsold = signal.open_future_hours * Math.max(100 - utilization, 0) / 100;
+      return {
+        ...signal,
+        booked_hours: Math.round(Math.min(signal.booked_hours, signal.available_hours) * 100) / 100,
+        available_hours: Math.round(signal.available_hours * 100) / 100,
+        utilization_pct: Math.round(utilization * 10) / 10,
+        confidence, state,
+        open_future_hours: Math.round(signal.open_future_hours * 100) / 100,
+        expected_unsold_hours: Math.round(expectedUnsold * 100) / 100,
+        opportunity_value: Math.round(expectedUnsold * signal.rate * 100) / 100,
+      };
+    };
+    const courtSignals = [...signalMap.values()].map(classify);
+    const heatmap = [];
+    for (let weekday = 1; weekday <= 7; weekday += 1) {
+      for (const band of bands) {
+        const rows = courtSignals.filter(row => row.weekday === weekday && row.start_hour === band.start_hour);
+        heatmap.push(classify({
+          weekday, weekday_label: weekdayLabel(weekday), ...band,
+          booked_hours: rows.reduce((sum, row) => sum + row.booked_hours, 0),
+          available_hours: rows.reduce((sum, row) => sum + row.available_hours, 0),
+          comparable_days: Math.max(0, ...rows.map(row => row.comparable_days)),
+          open_future_hours: rows.reduce((sum, row) => sum + row.open_future_hours, 0),
+          rate: 0,
+        }));
+      }
+    }
+
+    const now = Date.now();
+    const activeCampaigns = (db.demandCampaigns || [])
+      .filter(campaign => campaign.status === 'active' && new Date(campaign.ends_at).getTime() > now)
+      .map(campaign => {
+        const redemptions = (db.demandCampaignRedemptions || []).filter(row => row.campaign_id === campaign.id);
+        return {
+          ...campaign,
+          weekday_label: weekdayLabel(Number(campaign.weekday)),
+          redeemed_count: redemptions.filter(row => row.status === 'redeemed').length,
+          reserved_count: redemptions.filter(row => row.status === 'reserved').length,
+          redemption_count: redemptions.filter(row => ['reserved', 'redeemed'].includes(row.status)).length,
+          discount_cost: Math.round(redemptions
+            .filter(row => ['reserved', 'redeemed'].includes(row.status))
+            .reduce((sum, row) => sum + Number(row.discount_amount || 0), 0) * 100) / 100,
+        };
+      });
+    const candidate = activeCampaigns.length ? null : courtSignals
+      .filter(row => learningDays >= 30 && row.comparable_days >= 8)
+      .filter(row => ['medium', 'high'].includes(row.confidence))
+      .filter(row => ['persistent_vacancy', 'underused'].includes(row.state))
+      .filter(row => row.open_future_hours > 0)
+      .sort((a, b) => b.opportunity_value - a.opportunity_value
+        || a.utilization_pct - b.utilization_pct
+        || b.comparable_days - a.comparable_days
+        || String(a.court_id).localeCompare(String(b.court_id))
+        || a.weekday - b.weekday || a.start_hour - b.start_hour)[0] || null;
+    const recommendation = candidate ? {
+      id: localRecommendationId([
+        candidate.court_id, candidate.weekday, candidate.start_hour, candidate.end_hour,
+        rangeStart, rangeEnd, candidate.comparable_days, candidate.available_hours,
+        candidate.utilization_pct,
+      ]),
+      court_id: candidate.court_id, court_name: candidate.court_name,
+      weekday: candidate.weekday, weekday_label: candidate.weekday_label,
+      start_hour: candidate.start_hour, end_hour: candidate.end_hour,
+      utilization_pct: candidate.utilization_pct,
+      expected_empty_pct: Math.round((100 - candidate.utilization_pct) * 10) / 10,
+      booked_hours: candidate.booked_hours,
+      comparable_days: candidate.comparable_days,
+      available_hours: candidate.available_hours,
+      confidence: candidate.confidence, state: candidate.state,
+      discount_percent: 10, valid_days: 28, max_redemptions: 20,
+      open_future_hours: candidate.open_future_hours,
+      opportunity_value: candidate.opportunity_value,
+    } : null;
+    const availableHours = courtSignals.reduce((sum, row) => sum + row.available_hours, 0);
+    const bookedHours = courtSignals.reduce((sum, row) => sum + row.booked_hours, 0);
+    const futureHours = courtSignals.reduce((sum, row) => sum + row.open_future_hours, 0);
+    const expectedUnsold = courtSignals.reduce((sum, row) => sum + row.expected_unsold_hours, 0);
+    const reservations = new Set(filteredSuccesses.map(booking => booking.groupRef || booking.bookingGroupRef || booking.ref)).size;
+    return {
+      period: { from: rangeStart, to: rangeEnd, days_analyzed: learningDays, learning_days: learningDays, minimum_learning_days: 30 },
+      kpis: {
+        successful_reservations: reservations,
+        booked_hours: Math.round(bookedHours * 100) / 100,
+        available_hours: Math.round(availableHours * 100) / 100,
+        utilization_pct: availableHours > 0 ? Math.round(Math.min(100, bookedHours * 100 / availableHours) * 10) / 10 : 0,
+        predicted_28d_fill_pct: futureHours > 0 ? Math.round(Math.max(0, (futureHours - expectedUnsold) * 100 / futureHours) * 10) / 10 : 0,
+        expected_unsold_hours: Math.round(expectedUnsold * 100) / 100,
+        opportunity_value: Math.round(courtSignals.reduce((sum, row) => sum + row.opportunity_value, 0) * 100) / 100,
+        action_ready_windows: courtSignals.filter(row => learningDays >= 30
+          && row.comparable_days >= 8
+          && ['medium', 'high'].includes(row.confidence)
+          && ['persistent_vacancy', 'underused'].includes(row.state)
+          && row.open_future_hours > 0).length,
+      },
+      heatmap,
+      court_signals: courtSignals.sort((a, b) => b.opportunity_value - a.opportunity_value),
+      recommendation,
+      active_campaigns: activeCampaigns,
+      data_quality: {
+        note: 'Demand learning includes only analytics-eligible confirmed/completed play dates through yesterday. Pending, verifying, cancelled, rejected, failed, expired, and forfeited records do not influence demand.',
+        successful_statuses: ['confirmed', 'completed'], through_date: rangeEnd,
+        all_genuine_sources_included: true,
+      },
+    };
   }
 
   window.DB = {
@@ -3176,6 +3542,201 @@ window.DB = {
         courtId: filters.courtId || null,
       });
     },
+    async getDemandGrowthIntelligence(filters = {}) {
+      return buildLocalDemandGrowthIntelligence(readDb(), filters || {});
+    },
+    async createDemandCampaignFromRecommendation(recommendationId, options = {}) {
+      const session = window.Auth?.getSession?.();
+      if (!session || !['owner', 'court_owner'].includes(session.role) || (session.status && session.status !== 'active')) {
+        throw new Error('Only active system owners and court owners can create a demand campaign.');
+      }
+      const db = readDb();
+      const now = Date.now();
+      db.demandCampaigns.forEach(campaign => {
+        if (campaign.status === 'active' && new Date(campaign.ends_at).getTime() <= now) {
+          campaign.status = 'ended'; campaign.ended_at = nowIso(); campaign.updated_at = nowIso();
+        }
+      });
+      const cleanId = String(recommendationId || '').trim().toUpperCase();
+      const active = db.demandCampaigns.find(campaign => campaign.status === 'active');
+      if (active) {
+        if (active.source_recommendation_id === cleanId) {
+          writeDb(db);
+          return { created: false, idempotent: true, campaign_id: active.id, status: active.status, starts_at: active.starts_at, ends_at: active.ends_at };
+        }
+        throw new Error('A growth campaign is already active. End it before applying another recommendation.');
+      }
+      const snapshot = buildLocalDemandGrowthIntelligence(db, {
+        courtId: options.courtId ? String(options.courtId) : null,
+      });
+      const recommendation = snapshot.recommendation;
+      if (!recommendation || recommendation.id !== cleanId) {
+        throw new Error('This demand recommendation changed. Refresh Insights before applying it.');
+      }
+      const prior = db.demandCampaigns.find(campaign => campaign.source_recommendation_id === cleanId);
+      if (prior) {
+        writeDb(db);
+        return { created: false, idempotent: true, campaign_id: prior.id, status: prior.status, starts_at: prior.starts_at, ends_at: prior.ends_at };
+      }
+      const startsAt = nowIso();
+      const campaign = {
+        id: localRef('demand').toLowerCase(),
+        source_recommendation_id: cleanId,
+        court_id: recommendation.court_id,
+        court_name_snapshot: recommendation.court_name,
+        court_name: recommendation.court_name,
+        weekday: recommendation.weekday,
+        start_hour: recommendation.start_hour,
+        end_hour: recommendation.end_hour,
+        discount_percent: Math.min(10, Number(recommendation.discount_percent || 10)),
+        max_redemptions: Math.min(20, Number(recommendation.max_redemptions || 20)),
+        starts_at: startsAt,
+        ends_at: new Date(new Date(startsAt).getTime() + Math.min(28, Number(recommendation.valid_days || 28)) * 86400000).toISOString(),
+        status: 'active',
+        baseline_period_from: snapshot.period.from,
+        baseline_period_to: snapshot.period.to,
+        baseline_utilization_pct: recommendation.utilization_pct,
+        baseline_comparable_days: recommendation.comparable_days,
+        baseline_available_hours: recommendation.available_hours,
+        baseline_confidence: recommendation.confidence,
+        baseline_state: recommendation.state,
+        baseline_open_future_hours: recommendation.open_future_hours,
+        baseline_opportunity_value: recommendation.opportunity_value,
+        created_by: session.id,
+        created_at: startsAt,
+        updated_at: startsAt,
+      };
+      db.demandCampaigns.push(campaign);
+      writeDb(db);
+      return {
+        created: true, idempotent: false, campaign_id: campaign.id,
+        recommendation_id: cleanId, court_id: campaign.court_id,
+        court_name: campaign.court_name_snapshot, weekday: campaign.weekday,
+        start_hour: campaign.start_hour, end_hour: campaign.end_hour,
+        discount_percent: campaign.discount_percent,
+        max_redemptions: campaign.max_redemptions, status: campaign.status,
+        starts_at: campaign.starts_at, ends_at: campaign.ends_at,
+      };
+    },
+    async endDemandCampaign(campaignId) {
+      const session = window.Auth?.getSession?.();
+      if (!session || !['owner', 'court_owner'].includes(session.role) || (session.status && session.status !== 'active')) {
+        throw new Error('Only active system owners and court owners can end a demand campaign.');
+      }
+      const db = readDb();
+      const campaign = db.demandCampaigns.find(row => String(row.id) === String(campaignId));
+      if (!campaign) throw new Error('Demand campaign was not found.');
+      campaign.status = 'ended';
+      campaign.ended_by = session.id;
+      campaign.ended_at = campaign.ended_at || nowIso();
+      campaign.updated_at = nowIso();
+      writeDb(db);
+      return { campaign_id: campaign.id, status: campaign.status, ended_at: campaign.ended_at };
+    },
+    async applyMatchingDemandCampaign(bookingRefs) {
+      const db = readDb();
+      const refs = [...new Set((bookingRefs || []).map(String))].sort();
+      if (!refs.length) return { applied: false, reason: 'no_booking_holds' };
+      const now = Date.now();
+      db.demandCampaignRedemptions.forEach(redemption => {
+        if (redemption.status === 'reserved' && new Date(redemption.reserved_until).getTime() <= now) {
+          redemption.status = 'released'; redemption.released_at = nowIso(); redemption.updated_at = nowIso();
+        }
+      });
+      const campaign = db.demandCampaigns.find(row => row.status === 'active'
+        && new Date(row.starts_at).getTime() <= now && new Date(row.ends_at).getTime() > now);
+      if (!campaign) { writeDb(db); return { applied: false, reason: 'no_active_campaign' }; }
+      const selected = refs.map(ref => db.bookings.find(booking => String(booking.ref) === ref));
+      const today = localManilaDate();
+      if (selected.some(booking => !booking || booking.status !== 'verifying'
+        || new Date(booking.createdAt || booking.created_at).getTime() <= now - 15 * 60000
+        || String(booking.date || '') <= today)) {
+        throw new Error('The booking reservation expired or changed. Please select the slots again.');
+      }
+      const identities = new Set(selected.map(booking => booking.groupRef || booking.bookingGroupRef || booking.ref));
+      if (identities.size !== 1) throw new Error('Demand pricing can be applied to one booking group at a time.');
+      const identity = [...identities][0];
+      const activeGroup = db.bookings.filter(booking =>
+        String(booking.groupRef || booking.bookingGroupRef || booking.ref) === String(identity)
+        && !['cancelled', 'forfeited'].includes(booking.status));
+      if (activeGroup.length !== refs.length) throw new Error('The complete booking group is required for automatic demand pricing.');
+      if (selected.some(booking => booking.voucherId || Number(booking.voucherDiscountAmount || 0) > 0)) {
+        return { applied: false, reason: 'voucher_already_applied' };
+      }
+      if (selected.some(booking => booking.demandCampaignId && booking.demandCampaignId !== campaign.id)) {
+        return { applied: false, reason: 'demand_campaign_already_applied' };
+      }
+      const groupKey = refs.join('|');
+      const existing = db.demandCampaignRedemptions.find(row => row.campaign_id === campaign.id && row.booking_group_key === groupKey);
+      if (existing) {
+        return {
+          applied: existing.status !== 'released', idempotent: true,
+          campaign_id: campaign.id, discount_percent: campaign.discount_percent,
+          discount_amount: existing.discount_amount,
+          allocations: selected.filter(booking => existing.booking_refs.includes(booking.ref)).map(booking => ({
+            ref: booking.ref, gross_total: booking.demandCampaignGrossTotal,
+            discount_amount: booking.demandCampaignDiscountAmount, total: booking.total,
+          })),
+        };
+      }
+      const matching = selected.filter(booking => {
+        const slots = (booking.slots || []).map(Number);
+        return String(booking.courtId) === String(campaign.court_id)
+          && localIsoWeekday(booking.date) === Number(campaign.weekday)
+          && slots.length > 0 && slots.every(slot => Number.isFinite(slot)
+            && slot >= Number(campaign.start_hour) && slot < Number(campaign.end_hour))
+          && !booking.demandCampaignId;
+      });
+      if (!matching.length) return { applied: false, reason: 'booking_not_in_campaign_window' };
+      const usage = db.demandCampaignRedemptions.filter(row => row.campaign_id === campaign.id
+        && ['reserved', 'redeemed'].includes(row.status)).length;
+      if (usage >= Number(campaign.max_redemptions)) return { applied: false, reason: 'campaign_limit_reached' };
+      const feeRate = Number(db.settings.maintenance_fee ?? db.settings.service_fee_rate ?? 0);
+      const flatFee = String(db.settings.fee_type || 'per_hour') === 'flat';
+      const basis = matching.map(booking => {
+        const gross = Number(booking.demandCampaignGrossTotal ?? booking.grossTotal ?? booking.total ?? 0);
+        const snapshotFee = Number(booking.bookingFeeAmountSnapshot ?? booking.booking_fee_amount_snapshot);
+        const configuredFee = flatFee ? feeRate : feeRate * Number(booking.duration || booking.slots?.length || 0);
+        const fee = Math.min(gross, Number.isFinite(snapshotFee) && snapshotFee >= 0 ? snapshotFee : configuredFee);
+        return { booking, gross, eligible: Math.max(0, gross - fee) };
+      });
+      const grossAmount = basis.reduce((sum, row) => sum + row.gross, 0);
+      const eligibleAmount = basis.reduce((sum, row) => sum + row.eligible, 0);
+      const discount = Math.round(Math.min(eligibleAmount, eligibleAmount * Number(campaign.discount_percent) / 100) * 100) / 100;
+      if (discount <= 0) return { applied: false, reason: 'no_discount' };
+      let allocated = 0;
+      const allocations = basis.map((row, index) => {
+        const itemDiscount = index === basis.length - 1 ? discount - allocated
+          : Math.round(discount * row.eligible / eligibleAmount * 100) / 100;
+        allocated += itemDiscount;
+        Object.assign(row.booking, {
+          demandCampaignId: campaign.id,
+          demandCampaignDiscountPercent: Number(campaign.discount_percent),
+          demandCampaignDiscountAmount: itemDiscount,
+          demandCampaignGrossTotal: row.gross,
+          grossTotal: row.gross,
+          total: row.gross - itemDiscount,
+        });
+        return { ref: row.booking.ref, gross_total: row.gross, discount_amount: itemDiscount, total: row.booking.total };
+      });
+      const reservedUntil = new Date(Math.min(...selected.map(booking =>
+        new Date(booking.createdAt || booking.created_at).getTime() + 15 * 60000))).toISOString();
+      db.demandCampaignRedemptions.push({
+        id: localRef('demand-redemption').toLowerCase(), campaign_id: campaign.id,
+        booking_group_key: groupKey, booking_refs: matching.map(booking => booking.ref),
+        gross_amount: grossAmount, eligible_court_amount: eligibleAmount,
+        discount_amount: discount, status: 'reserved', reserved_until: reservedUntil,
+        created_at: nowIso(), updated_at: nowIso(),
+      });
+      writeDb(db);
+      return {
+        applied: true, idempotent: false, campaign_id: campaign.id,
+        campaign_name: `${campaign.court_name_snapshot} ${campaign.start_hour}:00-${campaign.end_hour}:00 demand offer`,
+        discount_percent: campaign.discount_percent, discount_amount: discount,
+        gross_amount: grossAmount, total: grossAmount - discount,
+        allocations, reserved_until: reservedUntil,
+      };
+    },
     async getMyHostBookings() {
       const session = window.Auth?.getSession?.();
       if (!session || session.role !== 'host' || (session.status && session.status !== 'active')) {
@@ -3197,6 +3758,11 @@ window.DB = {
         ...booking,
         ref: booking.ref || localRef('PB'),
         receivedAccount: receivedAccountForBooking(booking),
+        analyticsEligible: booking.analyticsEligible !== false,
+        demandCampaignId: null,
+        demandCampaignDiscountPercent: null,
+        demandCampaignDiscountAmount: 0,
+        demandCampaignGrossTotal: null,
         createdAt: booking.createdAt || nowIso(),
       };
       db.bookings.push(row);
@@ -3251,6 +3817,35 @@ window.DB = {
       if (voucher.ends_at && new Date(voucher.ends_at).getTime() <= now) throw new Error('This voucher has expired.');
       const selected = bookingRefs.map(ref => db.bookings.find(b => String(b.ref) === String(ref))).filter(Boolean);
       if (selected.length !== bookingRefs.length || selected.some(b => b.status !== 'verifying')) throw new Error('The booking reservation expired or changed.');
+      const selectedRefs = new Set(selected.map(booking => String(booking.ref)));
+      let replacedDemandCampaign = false;
+      db.demandCampaignRedemptions
+        .filter(redemption => redemption.status === 'reserved'
+          && (redemption.booking_refs || []).some(ref => selectedRefs.has(String(ref))))
+        .forEach(redemption => {
+          let releasedRows = 0;
+          selected.forEach(booking => {
+            if (String(booking.demandCampaignId || '') !== String(redemption.campaign_id || '')
+              || !(redemption.booking_refs || []).map(String).includes(String(booking.ref))) return;
+            const gross = Number(booking.demandCampaignGrossTotal ?? booking.grossTotal ?? booking.total ?? 0);
+            Object.assign(booking, {
+              total: gross,
+              grossTotal: gross,
+              demandCampaignId: null,
+              demandCampaignDiscountPercent: null,
+              demandCampaignDiscountAmount: 0,
+              demandCampaignGrossTotal: null,
+            });
+            releasedRows += 1;
+          });
+          if (releasedRows > 0) {
+            redemption.status = 'released';
+            redemption.released_at = redemption.released_at || nowIso();
+            redemption.updated_at = nowIso();
+            replacedDemandCampaign = true;
+          }
+        });
+      if (selected.some(b => b.demandCampaignId || Number(b.demandCampaignDiscountAmount || 0) > 0)) throw new Error('A finalized smart growth offer cannot be replaced by a voucher.');
       if (selected.some(b => b.voucherId && b.voucherId !== voucher.id)) throw new Error('Remove the current voucher before applying a different code.');
       const courtIds = new Set((voucher.applicable_court_ids || []).map(String));
       if (courtIds.size && selected.some(b => !courtIds.has(String(b.courtId)))) throw new Error('This voucher does not apply to one or more selected courts.');
@@ -3280,7 +3875,11 @@ window.DB = {
       });
       db.voucherRedemptions.push({ id: localRef('redemption'), voucher_id: voucher.id, booking_group_key: bookingRefs.slice().sort().join('|'), booking_refs: bookingRefs, customer_email: null, gross_amount: grossAmount, discount_amount: discount, status: 'reserved', created_at: nowIso(), reserved_until: new Date(now + 15 * 60000).toISOString() });
       writeDb(db);
-      return { id: voucher.id, code: voucher.code, name: voucher.name, discountAmount: discount, grossAmount, total: grossAmount - discount, allocations };
+      return {
+        id: voucher.id, code: voucher.code, name: voucher.name,
+        discountAmount: discount, grossAmount, total: grossAmount - discount,
+        allocations, replacedDemandCampaign,
+      };
     },
     async removeBookingVoucher(bookingRefs) {
       const db = readDb();
@@ -3298,6 +3897,7 @@ window.DB = {
     async updateBooking(ref, updates) {
       const db = readDb();
       let updated = false;
+      let updatedBooking = null;
       db.bookings = db.bookings.map(b => {
         if (String(b.ref) !== String(ref)) return b;
         updated = true;
@@ -3306,12 +3906,38 @@ window.DB = {
           next.receivedAccount = receivedAccountForBooking(next);
         }
         if (!next.receivedAccount) next.receivedAccount = receivedAccountForBooking(next);
+        updatedBooking = next;
         return next;
       });
       if (!updated) {
         const missing = new Error(`Booking ${ref} was not updated because it no longer exists.`);
         missing.code = 'BOOKING_UPDATE_NOT_ALLOWED';
         throw missing;
+      }
+      if (updatedBooking?.demandCampaignId) {
+        const redemption = db.demandCampaignRedemptions.find(row =>
+          row.campaign_id === updatedBooking.demandCampaignId
+          && (row.booking_refs || []).map(String).includes(String(ref))
+          && row.status === 'reserved');
+        if (redemption) {
+          if (['cancelled', 'forfeited'].includes(updatedBooking.status)
+            && !db.bookings.some(booking => booking.ref !== ref
+              && (redemption.booking_refs || []).includes(booking.ref)
+              && !['cancelled', 'forfeited'].includes(booking.status))) {
+            redemption.status = 'released';
+            redemption.released_at = redemption.released_at || nowIso();
+            redemption.updated_at = nowIso();
+          } else if (String(updatedBooking.email || '').trim()
+            && updatedBooking.email !== 'reserve@hold.internal'
+            && (
+              ['pending', 'confirmed', 'completed'].includes(updatedBooking.status)
+              || !!updatedBooking.receiptImageUrl
+            )) {
+            redemption.status = 'redeemed';
+            redemption.redeemed_at = redemption.redeemed_at || nowIso();
+            redemption.updated_at = nowIso();
+          }
+        }
       }
       writeDb(db);
     },
