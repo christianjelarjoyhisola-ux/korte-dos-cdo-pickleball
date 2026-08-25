@@ -2075,10 +2075,22 @@ body.dark .smart-rate-regular { color:#98a3b3; }
 .featured-deal-trigger.is-new { animation:featuredDealArrive .38s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes featuredDealArrive { from { opacity:0; transform:translateY(16px) scale(.94); } to { opacity:1; transform:none; } }
 .featured-deal-trigger-icon {
+  position:relative; isolation:isolate; overflow:hidden;
   width:38px; height:38px; flex:0 0 38px; display:grid; place-items:center;
-  border-radius:50%; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.2);
+  border-radius:50%;
+  background:linear-gradient(145deg,rgba(10,18,42,.94),rgba(47,39,111,.82));
+  border:1px solid rgba(255,255,255,.34);
+  box-shadow:0 7px 18px rgba(30,20,103,.35),inset 0 1px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(0,0,0,.18);
 }
-.featured-deal-trigger-icon svg { width:21px; height:21px; display:block; }
+.featured-deal-trigger-icon::before {
+  content:""; position:absolute; z-index:-1; inset:2px; border-radius:inherit;
+  border:1px solid rgba(190,182,255,.2);
+  background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.2),transparent 43%);
+}
+.featured-deal-trigger-icon svg { width:22px; height:22px; display:block; filter:drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
+.featured-deal-trigger-icon .featured-deal-gem { fill:rgba(255,255,255,.08); stroke:#fff; }
+.featured-deal-trigger-icon .featured-deal-gem-facet { stroke:rgba(255,255,255,.72); }
+.featured-deal-trigger-icon .featured-deal-gem-accent { fill:#dfff68; filter:drop-shadow(0 0 3px rgba(223,255,104,.52)); }
 .featured-deal-trigger-copy { min-width:0; display:flex; flex-direction:column; line-height:1.05; }
 .featured-deal-trigger-copy strong { font-size:.88rem; font-weight:950; letter-spacing:.02em; white-space:nowrap; }
 .featured-deal-trigger-copy small { margin-top:4px; color:rgba(255,255,255,.78); font-size:.57rem; font-weight:850; letter-spacing:.09em; text-transform:uppercase; white-space:nowrap; }
@@ -11058,10 +11070,9 @@ async function submitOpenPlay() {
         onclick="openFeaturedCourtDeal()">
   <span class="featured-deal-trigger-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" focusable="false">
-      <path d="M4.5 7.2V4.5h2.7L19.5 16.8v2.7h-2.7L4.5 7.2Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
-      <circle cx="8.3" cy="8.3" r="1.45" stroke="currentColor" stroke-width="1.65"/>
-      <circle cx="15.7" cy="15.7" r="1.45" stroke="currentColor" stroke-width="1.65"/>
-      <path d="m8.2 15.8 7.6-7.6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      <path class="featured-deal-gem" d="M3.8 8.4 7.35 4.6h9.3l3.55 3.8L12 19.55 3.8 8.4Z" stroke-width="1.45" stroke-linejoin="round"/>
+      <path class="featured-deal-gem-facet" d="M4.25 8.4h15.5M7.55 4.85 9.7 8.4 12 19.1l2.3-10.7 2.15-3.55" stroke-width="1.05" stroke-linecap="round" stroke-linejoin="round"/>
+      <path class="featured-deal-gem-accent" d="M18.65 2.25c.15 1.25.85 1.95 2.1 2.1-1.25.15-1.95.85-2.1 2.1-.15-1.25-.85-1.95-2.1-2.1 1.25-.15 1.95-.85 2.1-2.1Z"/>
     </svg>
   </span>
   <span class="featured-deal-trigger-copy">
