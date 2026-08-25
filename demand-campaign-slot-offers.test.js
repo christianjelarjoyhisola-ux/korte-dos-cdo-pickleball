@@ -450,3 +450,14 @@ test('Smart Rate remains separate from vouchers and retains replacement safeguar
     /demandCampaignRedemptions[\s\S]*redemption\.status\s*===\s*'reserved'[\s\S]*replacedDemandCampaign\s*=\s*true/,
   );
 });
+
+test('production verification accepts the migration\'s multiline Manila timezone call', () => {
+  const workflow = read('.github/workflows/apply-public-demand-slot-offers-production-migration.yml');
+
+  assert.match(workflow, /position\('pg_catalog\.timezone' in preview_definition\) = 0/);
+  assert.match(workflow, /position\('Asia\/Manila' in preview_definition\) = 0/);
+  assert.doesNotMatch(
+    workflow,
+    /position\(\s*'pg_catalog\.timezone\(''Asia\/Manila''' in preview_definition/i,
+  );
+});

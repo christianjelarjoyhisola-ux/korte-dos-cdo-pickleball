@@ -144,9 +144,8 @@ jobs:
              ) = 0
              or position('pg_catalog.generate_series' in preview_definition) = 0
              or position('campaign.max_redemptions' in preview_definition) = 0
-             or position(
-               'pg_catalog.timezone(''Asia/Manila''' in preview_definition
-             ) = 0 then
+             or position('pg_catalog.timezone' in preview_definition) = 0
+             or position('Asia/Manila' in preview_definition) = 0 then
             raise exception 'Public demand slot preview eligibility or pricing is incomplete';
           end if;
 
