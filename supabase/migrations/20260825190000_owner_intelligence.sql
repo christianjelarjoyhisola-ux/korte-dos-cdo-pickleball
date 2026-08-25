@@ -509,6 +509,7 @@ comment on function public.get_owner_intelligence(date, date, text) is
   'Returns PII-free historical venue performance aggregates for active system owners and court owners.';
 
 revoke all on function public.get_owner_intelligence(date, date, text) from public;
+revoke execute on function public.get_owner_intelligence(date, date, text) from anon;
 grant execute on function public.get_owner_intelligence(date, date, text) to authenticated;
 
 commit;

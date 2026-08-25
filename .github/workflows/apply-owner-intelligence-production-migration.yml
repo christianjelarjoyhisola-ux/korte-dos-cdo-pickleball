@@ -24,7 +24,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
       MIGRATION_FILE: supabase/migrations/20260825190000_owner_intelligence.sql
-      MIGRATION_SHA256: 15a6454486b9d69fa33f7514ad783ddda62fd24ab65bd9418eaac94f54371bf7
+      MIGRATION_SHA256: 5e57eb3a0527fca7a3cc782220550da3d21623c29bf999d27d28091ca7a8812d
       HISTORY_SQL: |
         create schema if not exists supabase_migrations;
 
@@ -42,7 +42,7 @@ jobs:
         values (
           '20260825190000',
           'owner_intelligence',
-          array['sha256:15a6454486b9d69fa33f7514ad783ddda62fd24ab65bd9418eaac94f54371bf7']::text[]
+          array['sha256:5e57eb3a0527fca7a3cc782220550da3d21623c29bf999d27d28091ca7a8812d']::text[]
         )
         on conflict (version) do update
         set name = excluded.name,
@@ -96,7 +96,7 @@ jobs:
             where version = '20260825190000'
               and name = 'owner_intelligence'
               and statements = array[
-                'sha256:15a6454486b9d69fa33f7514ad783ddda62fd24ab65bd9418eaac94f54371bf7'
+                'sha256:5e57eb3a0527fca7a3cc782220550da3d21623c29bf999d27d28091ca7a8812d'
               ]::text[]
           ) then
             raise exception 'Owner Intelligence migration history is missing or non-canonical';

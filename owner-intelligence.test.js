@@ -86,6 +86,7 @@ test('database contract is owner-only, PII-free, and historical by default', () 
   assert.match(sql, /account_role not in \('owner', 'court_owner'\)/);
   assert.match(sql, /range_start := coalesce\(p_from, earliest_reliable_date, range_end\)/);
   assert.match(sql, /revoke all on function public\.get_owner_intelligence/);
+  assert.match(sql, /revoke execute on function public\.get_owner_intelligence[^;]+from anon/);
   assert.match(sql, /grant execute on function public\.get_owner_intelligence[^;]+to authenticated/);
   assert.doesNotMatch(sql, /jsonb_build_object\([^)]*'email'/s);
   assert.doesNotMatch(sql, /jsonb_build_object\([^)]*'contact_number'/s);
