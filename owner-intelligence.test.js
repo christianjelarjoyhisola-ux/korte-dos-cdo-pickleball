@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -194,4 +195,42 @@ test('database contract is PII-free, separate from vouchers, future-only, and ow
   assert.match(sql,/max_redemptions[^\n]+20/i);
   assert.doesNotMatch(sql,/\bcustomer_email\b/i);
   assert.doesNotMatch(sql,/jsonb_build_object\([^)]*'(?:email|contact_number|gcash_ref|receipt_image)'/is);
+});
+
+test('digest schema hotfix is narrow, idempotent, and deployed without mutation retries', () => {
+  const migration = fs.readFileSync(path.join(
+    __dirname,
+    'supabase',
+    'migrations',
+    '20260826130000_demand_growth_digest_schema_hotfix.sql',
+  ),'utf8');
+  const workflow = fs.readFileSync(path.join(
+    __dirname,
+    '.github',
+    'workflows',
+    'apply-demand-growth-digest-hotfix.yml',
+  ),'utf8');
+  const applyStep = workflow.slice(
+    workflow.indexOf('- name: Apply Demand Growth digest hotfix exactly once'),
+    workflow.indexOf('- name: Verify production database state'),
+  );
+  const migrationSha = crypto.createHash('sha256').update(migration).digest('hex');
+
+  assert.match(migration,/to_regprocedure\('extensions\.digest\(text,text\)'\)/i);
+  assert.match(migration,/replace\([\s\S]*'public\.digest\('[\s\S]*'extensions\.digest\('/i);
+  assert.match(migration,/elsif function_definition not like '%extensions\.digest\(%'/i);
+  assert.match(migration,/revoke all on function public\.get_demand_growth_intelligence[\s\S]*from public, anon/i);
+  assert.match(migration,/grant execute on function public\.get_demand_growth_intelligence[\s\S]*to authenticated/i);
+  assert.match(migration,/notify pgrst, 'reload schema'/i);
+  assert.doesNotMatch(migration,/\b(?:create|alter|drop|truncate)\s+table\b/i);
+
+  assert.match(workflow,/name: Read-only production preflight/i);
+  assert.match(workflow,/MIGRATION_FILE: supabase\/migrations\/20260826130000_/i);
+  assert.match(workflow,new RegExp(`MIGRATION_SHA256: ${migrationSha}`));
+  assert.match(workflow,new RegExp(`sha256:${migrationSha}`));
+  assert.match(workflow,/position\('extensions\.digest\('/i);
+  assert.match(workflow,/position\('public\.digest\('/i);
+  assert.match(workflow,/skip_apply=true/i);
+  assert.match(applyStep,/one mutation POST with no automatic retry/i);
+  assert.doesNotMatch(applyStep,/--retry/);
 });

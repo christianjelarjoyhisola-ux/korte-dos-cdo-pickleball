@@ -1,0 +1,236 @@
+name: Apply Demand Growth Digest Production Hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-demand-growth-digest-hotfix.yml"
+      - "supabase/migrations/20260826130000_demand_growth_digest_schema_hotfix.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Preflight, apply once, and verify digest hotfix
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260826130000_demand_growth_digest_schema_hotfix.sql
+      MIGRATION_SHA256: a7d16b8b0f3f0d63eef16ed663d3d9ed56ebd06a4400bd63095146676e21837b
+      PREFLIGHT_SQL: |
+        with target as (
+          select to_regprocedure(
+            'public.get_demand_growth_intelligence(date,date,text)'
+          ) as oid
+        ), function_state as (
+          select case when oid is null then ''
+                      else pg_get_functiondef(oid)
+                 end as definition
+          from target
+        ), migration_history as (
+          select version, name, statements
+          from supabase_migrations.schema_migrations
+          where version = '20260826130000'
+        )
+        select jsonb_build_object(
+          'base_ready',
+            (select oid is not null from target)
+            and to_regprocedure('extensions.digest(text,text)') is not null,
+          'uses_public_digest',
+            (select position('public.digest(' in definition) > 0 from function_state),
+          'uses_extensions_digest',
+            (select position('extensions.digest(' in definition) > 0 from function_state),
+          'history_exists', exists (select 1 from migration_history),
+          'history_name', coalesce((select name from migration_history limit 1), ''),
+          'history_marker', coalesce((select statements[1] from migration_history limit 1), '')
+        ) as preflight;
+      HISTORY_SQL: |
+        begin;
+        set local lock_timeout = '5s';
+        set local statement_timeout = '30s';
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260826130000',
+          'demand_growth_digest_schema_hotfix',
+          array['sha256:a7d16b8b0f3f0d63eef16ed663d3d9ed56ebd06a4400bd63095146676e21837b']::text[]
+        )
+        on conflict (version) do nothing;
+
+        commit;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          target_function regprocedure :=
+            to_regprocedure('public.get_demand_growth_intelligence(date,date,text)');
+          digest_function regprocedure :=
+            to_regprocedure('extensions.digest(text,text)');
+          function_definition text;
+        begin
+          if target_function is null or digest_function is null then
+            raise exception 'Demand Growth function or extensions.digest is missing';
+          end if;
+
+          function_definition := pg_get_functiondef(target_function);
+          if position('extensions.digest(' in function_definition) = 0
+             or position('public.digest(' in function_definition) > 0 then
+            raise exception 'Demand Growth digest schema hotfix is not active';
+          end if;
+
+          if not coalesce((
+            select prosecdef
+              and provolatile = 's'
+              and coalesce(proconfig, '{}'::text[]) @>
+                array['search_path=pg_catalog, pg_temp']::text[]
+            from pg_proc
+            where oid = target_function
+          ), false) then
+            raise exception 'Demand Growth intelligence function lost its security attributes';
+          end if;
+
+          if has_function_privilege('anon', target_function, 'execute')
+             or not has_function_privilege('authenticated', target_function, 'execute') then
+            raise exception 'Demand Growth intelligence function grants are unsafe';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260826130000'
+              and name = 'demand_growth_digest_schema_hotfix'
+              and statements = array[
+                'sha256:a7d16b8b0f3f0d63eef16ed663d3d9ed56ebd06a4400bd63095146676e21837b'
+              ]::text[]
+          ) then
+            raise exception 'Demand Growth digest hotfix history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read-only production preflight
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          payload_file="$RUNNER_TEMP/demand-digest-preflight.json"
+          response_file="$RUNNER_TEMP/demand-digest-preflight-response.json"
+          jq -n --arg query "$PREFLIGHT_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand Growth digest preflight failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          preflight="$(jq -c '
+            if type == "array" then .[0].preflight
+            elif (.result? | type) == "array" then .result[0].preflight
+            else .preflight end
+          ' "$response_file")"
+          if [[ -z "$preflight" || "$preflight" == "null" ]]; then
+            echo "::error::Demand Growth digest preflight returned no result."
+            exit 1
+          fi
+
+          if [[ "$(jq -r '.history_exists' <<<"$preflight")" == "true" ]]; then
+            marker="$(jq -r '.history_marker' <<<"$preflight")"
+            name="$(jq -r '.history_name' <<<"$preflight")"
+            if [[ "$marker" != "sha256:$MIGRATION_SHA256" || \
+                  "$name" != "demand_growth_digest_schema_hotfix" ]]; then
+              echo "::error::Migration 20260826130000 has non-canonical history."
+              exit 1
+            fi
+            echo "skip_apply=true" >> "$GITHUB_OUTPUT"
+            echo "Canonical digest hotfix is already recorded; SQL will not run again."
+          else
+            if [[ "$(jq -r '.base_ready' <<<"$preflight")" != "true" ]]; then
+              echo "::error::Demand Growth or extensions.digest is missing; hotfix was not attempted."
+              exit 1
+            fi
+            if [[ "$(jq -r '.uses_public_digest' <<<"$preflight")" != "true" && \
+                  "$(jq -r '.uses_extensions_digest' <<<"$preflight")" != "true" ]]; then
+              echo "::error::Digest reference is in an unexpected state; hotfix was not attempted."
+              exit 1
+            fi
+            echo "skip_apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply Demand Growth digest hotfix exactly once
+        if: steps.preflight.outputs.skip_apply != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/demand-digest-hotfix.json"
+          response_file="$RUNNER_TEMP/demand-digest-hotfix-response.json"
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: (. + "\n" + $history)}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          # Deliberately one mutation POST with no automatic retry. A later run
+          # uses migration history to decide whether SQL may execute again.
+          status_code="$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 90 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand Growth digest hotfix failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/demand-digest-verification.json"
+          response_file="$RUNNER_TEMP/demand-digest-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand Growth digest verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Demand Growth digest production hotfix verified."
