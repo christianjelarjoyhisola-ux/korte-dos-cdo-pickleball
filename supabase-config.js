@@ -1081,7 +1081,12 @@ window.DB = {
       p_court_id: opts.courtId ? String(opts.courtId) : null,
     });
     if (error) {
-      console.error('getDemandGrowthIntelligence:', error);
+      console.error('getDemandGrowthIntelligence:', JSON.stringify({
+        code: error.code || '',
+        message: error.message || '',
+        details: error.details || '',
+        hint: error.hint || '',
+      }));
       throw error;
     }
     return data || {};
