@@ -6,6 +6,23 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-08-25] - Owner Intelligence and Growth Foundation
+
+### Added
+- **Historical Owner Intelligence** - owners and court owners can analyze every reliable online booking from the first stored booking through the current Manila date, with court and period filters.
+- **Demand and revenue cockpit** - added collected revenue, capacity-aware utilization, booked court-hours, reservation lifecycle, repeat activity, payment recovery, court performance, and dual-axis momentum charts.
+- **Explainable opportunity queue** - recommendations are deterministic, cite the exact weekday/time evidence, show confidence, prioritize confirmed balance recovery, and never publish discounts automatically.
+- **PII-free aggregate contract** - the browser receives only venue-level aggregates from an authenticated database RPC; customer identities, payment references, and receipt evidence remain server-side.
+- **Premium owner experience** - Insights uses a warm editorial layout, compact KPI strip, refined cards, purple analytics accents, a clean printable report, and responsive desktop/mobile presentation inspired by Dinktopia while retaining Korte branding.
+
+### Security
+- **Owner-role enforcement** - the aggregate RPC rejects every role except active system owners and court owners and revokes public execution.
+- **Historical capacity disclosure** - exact booking and payment totals are separated from estimated historical capacity where older maintenance-state history was never recorded.
+
+**Files affected:** `admin.html`, `owner-intelligence.js`, `owner-intelligence.test.js`, `supabase-config.js`, `supabase/migrations/20260825190000_owner_intelligence.sql`, `package.json`, `CHANGELOG.md`
+
+---
+
 ## [2026-08-17] - Independent GoTyme Auto-Approval
 
 ### Added

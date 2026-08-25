@@ -1,0 +1,206 @@
+name: Apply Owner Intelligence Production Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-owner-intelligence-production-migration.yml"
+      - "supabase/migrations/20260825190000_owner_intelligence.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply and verify Owner Intelligence migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260825190000_owner_intelligence.sql
+      MIGRATION_SHA256: 15a6454486b9d69fa33f7514ad783ddda62fd24ab65bd9418eaac94f54371bf7
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260825190000',
+          'owner_intelligence',
+          array['sha256:15a6454486b9d69fa33f7514ad783ddda62fd24ab65bd9418eaac94f54371bf7']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          intelligence_function regprocedure :=
+            to_regprocedure('public.get_owner_intelligence(date,date,text)');
+        begin
+          if intelligence_function is null then
+            raise exception 'Owner Intelligence function is missing';
+          end if;
+
+          if not exists (
+            select 1
+            from pg_proc
+            where oid = intelligence_function
+              and prosecdef
+          ) then
+            raise exception 'Owner Intelligence function is not SECURITY DEFINER';
+          end if;
+
+          if not has_function_privilege(
+               'authenticated',
+               'public.get_owner_intelligence(date,date,text)',
+               'execute'
+             )
+             or has_function_privilege(
+               'anon',
+               'public.get_owner_intelligence(date,date,text)',
+               'execute'
+             ) then
+            raise exception 'Owner Intelligence function grants are unsafe';
+          end if;
+
+          if pg_get_functiondef(intelligence_function) not ilike '%owner%court_owner%'
+             or pg_get_functiondef(intelligence_function) not ilike '%current_account_role%'
+             or pg_get_functiondef(intelligence_function) not ilike '%reserve@hold.internal%'
+             or pg_get_functiondef(intelligence_function) not ilike '%created_via%import%' then
+            raise exception 'Owner Intelligence data or role safeguards are incomplete';
+          end if;
+
+          if to_regclass('public.idx_bookings_owner_intelligence_range') is null then
+            raise exception 'Owner Intelligence range index is missing';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260825190000'
+              and name = 'owner_intelligence'
+              and statements = array[
+                'sha256:15a6454486b9d69fa33f7514ad783ddda62fd24ab65bd9418eaac94f54371bf7'
+              ]::text[]
+          ) then
+            raise exception 'Owner Intelligence migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rehearse and apply the Owner Intelligence migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          stripped_migration="$RUNNER_TEMP/owner-intelligence-migration.sql"
+          rehearsal_payload="$RUNNER_TEMP/owner-intelligence-rehearsal.json"
+          rehearsal_response="$RUNNER_TEMP/owner-intelligence-rehearsal-response.json"
+          payload_file="$RUNNER_TEMP/owner-intelligence-migration.json"
+          response_file="$RUNNER_TEMP/owner-intelligence-migration-response.json"
+
+          awk '
+            /^[[:space:]]*begin;[[:space:]]*$/ { next }
+            /^[[:space:]]*commit;[[:space:]]*$/ { next }
+            { print }
+          ' "$MIGRATION_FILE" > "$stripped_migration"
+
+          jq -Rs '{query: ("begin;\n" + . + "\nrollback;")}' \
+            "$stripped_migration" > "$rehearsal_payload"
+
+          rehearsal_status="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$rehearsal_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$rehearsal_payload")"
+
+          if [[ ! "$rehearsal_status" =~ ^2 ]]; then
+            echo "::error::Owner Intelligence rollback rehearsal failed with HTTP $rehearsal_status."
+            jq -c '{code, message, error}' "$rehearsal_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$stripped_migration" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Owner Intelligence migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/owner-intelligence-verification.json"
+          response_file="$RUNNER_TEMP/owner-intelligence-verification-response.json"
+
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Owner Intelligence verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Owner Intelligence production migration verified."

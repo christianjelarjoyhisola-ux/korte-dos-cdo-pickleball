@@ -1037,6 +1037,23 @@ window.DB = {
     });
   },
 
+  async getOwnerIntelligence(filters = {}) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to load Insights.');
+    }
+    const opts = filters || {};
+    const { data, error } = await _sb.rpc('get_owner_intelligence', {
+      p_from: opts.from || null,
+      p_to: opts.to || null,
+      p_court_id: opts.courtId ? String(opts.courtId) : null,
+    });
+    if (error) {
+      console.error('getOwnerIntelligence:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
   // Host booking history is intentionally separate from getBookings(). The
   // public booking page must never be promoted to a general private-data
   // surface just because a host is signed in. The RPC derives ownership from
@@ -3146,6 +3163,18 @@ window.DB = {
         .filter(b => !opts.hostUserId || String(b.hostUserId) === String(opts.hostUserId))
         .filter(b => !opts.activeOnly || (b.status !== 'cancelled' && b.status !== 'forfeited'))
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    },
+    async getOwnerIntelligence(filters = {}) {
+      const db = readDb();
+      return window.OwnerIntelligence.buildLocalSnapshot({
+        bookings: db.bookings,
+        courts: db.courts,
+        settings: db.settings,
+        blockedDates: db.blockedDates || [],
+        from: filters.from || null,
+        to: filters.to || null,
+        courtId: filters.courtId || null,
+      });
     },
     async getMyHostBookings() {
       const session = window.Auth?.getSession?.();

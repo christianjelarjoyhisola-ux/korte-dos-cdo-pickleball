@@ -50,6 +50,7 @@ $publicFiles = @(
   "open-play-parity-ui.js",
   "open-play-rating.js",
   "open-play-rotation.js",
+  "owner-intelligence.js",
   "play-manager.css",
   "play-manager.js",
   "player-live.css",

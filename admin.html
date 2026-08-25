@@ -7,6 +7,7 @@
 <link rel="icon" type="image/png" href="korte-dos-logo.png">
 <script src="chart.min.js"></script>
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
+<script src="owner-intelligence.js?v=20260825-v1"></script>
 <script src="open-play-rotation.js?v=20260729-adaptive-competitive-v1"></script>
 <script src="voucher-admin.js?v=20260810-v2"></script>
 <link rel="stylesheet" href="play-manager.css?v=20260729-adaptive-competitive-v1">
@@ -1525,6 +1526,249 @@ tr:hover td { background: var(--bg2); }
   .rp-bar-val, .rp-trend-val { font-size: .76rem; }
 }
 
+/* ── OWNER INTELLIGENCE ────────────────────────────────── */
+#sec-insights .toolbar { align-items: flex-start; margin-bottom: 12px; }
+.oi-heading { max-width: 720px; }
+.oi-eyebrow {
+  color: var(--green); font-size: .68rem; font-weight: 900; letter-spacing: .15em;
+  text-transform: uppercase; margin-bottom: 5px;
+}
+.oi-heading h2 { margin: 0 0 5px; line-height: 1; }
+.oi-heading p { margin: 0; color: var(--text3); font-size: .82rem; line-height: 1.45; }
+.oi-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.oi-filter-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px;
+  margin-bottom: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
+}
+.oi-period { display: inline-flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--bg2); overflow-x: auto; }
+.oi-period .view-btn { flex: 0 0 auto; min-height: 32px; padding: 6px 10px; font-size: .76rem !important; }
+.oi-filter-bar .fi { min-height: 36px; width: auto; padding: 7px 10px; font-size: .78rem; }
+.oi-custom-dates { display: none; gap: 6px; align-items: center; }
+.oi-filter-bar.is-custom .oi-custom-dates { display: flex; }
+.oi-range-label { margin-left: auto; color: var(--text3); font-size: .74rem; font-weight: 800; }
+.oi-loading {
+  display: none; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 12px;
+  border: 1px solid rgba(var(--green-rgb), .2); border-radius: 10px; background: rgba(var(--green-rgb), .07);
+  color: var(--text2); font-size: .8rem; font-weight: 800;
+}
+.oi-loading.on { display: flex; }
+.oi-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.oi-kpis .sc { min-height: 104px; padding: 14px; }
+.oi-kpis .sc-val { font-size: 1.65rem; }
+.oi-kpi-note { color: var(--text3); font-size: .67rem; font-weight: 700; margin-top: 5px; line-height: 1.3; }
+.oi-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr); gap: 12px; margin-bottom: 12px; }
+.oi-panel { padding: 15px; min-width: 0; }
+.oi-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.oi-panel-head h3 { margin: 0; font-size: .98rem; }
+.oi-panel-head p { margin: 3px 0 0; color: var(--text3); font-size: .72rem; line-height: 1.35; }
+.oi-chip {
+  display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg2); color: var(--text2);
+  font-size: .65rem; font-weight: 900; white-space: nowrap;
+}
+.oi-heat-wrap { overflow-x: auto; padding-bottom: 3px; }
+.oi-heat-grid { min-width: 610px; display: grid; grid-template-columns: 86px repeat(7, minmax(62px, 1fr)); gap: 5px; }
+.oi-heat-label { display: grid; place-items: center; min-height: 31px; color: var(--text3); font-size: .64rem; font-weight: 900; }
+.oi-heat-time { justify-items: start; padding-left: 3px; color: var(--text2); }
+.oi-heat-cell {
+  display: grid; place-items: center; min-height: 42px; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--green) calc(var(--oi-heat, 0) * .65%), var(--border));
+  background: color-mix(in srgb, var(--green) calc(5% + var(--oi-heat, 0) * .72%), var(--surface));
+  color: var(--text); font-family: 'DM Mono', monospace; font-size: .68rem; font-weight: 900;
+}
+.oi-heat-cell[data-learning="true"] { border-style: dashed; color: var(--text3); }
+.oi-chart-wrap { position: relative; min-height: 265px; }
+.oi-chart-wrap.compact { min-height: 220px; }
+.oi-chart-wrap canvas { width: 100% !important; height: 265px !important; }
+.oi-chart-wrap.compact canvas { height: 220px !important; }
+.oi-rec-list { display: grid; gap: 9px; }
+.oi-rec {
+  padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg2);
+}
+.oi-rec-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.oi-rec h4 { margin: 0; font-size: .85rem; line-height: 1.3; }
+.oi-confidence { font-size: .61rem; font-weight: 900; border-radius: 999px; padding: 4px 7px; white-space: nowrap; }
+.oi-confidence.high { color: var(--green); background: rgba(var(--green-rgb), .13); }
+.oi-confidence.medium { color: var(--yellow); background: rgba(var(--yellow-rgb), .14); }
+.oi-confidence.learning { color: var(--text3); background: var(--input); }
+.oi-rec p { margin: 0 0 6px; color: var(--text2); font-size: .73rem; line-height: 1.45; }
+.oi-evidence { color: var(--text3); font-size: .67rem; line-height: 1.4; }
+.oi-rec .btn { margin-top: 9px; }
+.oi-court-row { display: grid; grid-template-columns: minmax(100px, .7fr) minmax(100px, 1fr) auto; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.oi-court-row:last-child { border-bottom: 0; }
+.oi-court-track { height: 9px; overflow: hidden; border-radius: 999px; background: var(--bg2); }
+.oi-court-fill { height: 100%; border-radius: inherit; background: var(--green); }
+.oi-court-value { text-align: right; font-family: 'DM Mono', monospace; font-size: .72rem; font-weight: 900; }
+.oi-quality {
+  margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--input); color: var(--text3); font-size: .7rem; line-height: 1.5;
+}
+.oi-empty { padding: 24px 12px; text-align: center; color: var(--text3); font-size: .8rem; }
+
+/* Premium editorial treatment inspired by the Dinktopia analytics surface. */
+body.insights-mode {
+  --oi-page: #f5f3ed;
+  --oi-card: #fffefa;
+  --oi-card-soft: #f0eee8;
+  --oi-ink: #10231d;
+  --oi-muted: #69736e;
+  --oi-hairline: #dcded7;
+  --oi-accent: #6b5bea;
+  --oi-accent-soft: #eeeaff;
+  --oi-forest: #15382e;
+  --oi-amber: #f2b544;
+}
+body[data-theme="dark"].insights-mode {
+  --oi-page: #171a18;
+  --oi-card: #202420;
+  --oi-card-soft: #292e2a;
+  --oi-ink: #f4f1e8;
+  --oi-muted: #a8b0aa;
+  --oi-hairline: #353b36;
+  --oi-accent: #9b8cff;
+  --oi-accent-soft: #302b4c;
+  --oi-forest: #dcece4;
+  --oi-amber: #f4bd55;
+}
+body.insights-mode .main,
+body.insights-mode .content { background: var(--oi-page); }
+body.insights-mode .topbar {
+  background: color-mix(in srgb, var(--oi-page) 92%, transparent);
+  border-color: var(--oi-hairline); backdrop-filter: blur(14px);
+}
+body.insights-mode .topbar h2 { color: var(--oi-ink); font-family: 'DM Sans', sans-serif; font-weight: 800; letter-spacing: -.035em; text-transform: none; }
+body.insights-mode .nav-item.on { background: var(--oi-forest); color: var(--oi-card); box-shadow: 0 8px 22px rgba(20,56,46,.18); }
+body.insights-mode #sec-insights {
+  max-width: 1120px; margin: 0 auto; color: var(--oi-ink);
+  font-family: 'DM Sans', sans-serif;
+}
+body.insights-mode #sec-insights .toolbar { margin: 12px 0 22px; align-items: flex-end; }
+body.insights-mode .oi-heading { max-width: 690px; }
+body.insights-mode .oi-eyebrow { color: var(--oi-accent); font-size: .62rem; letter-spacing: .17em; margin-bottom: 9px; }
+body.insights-mode .oi-heading h2 {
+  color: var(--oi-ink); font-family: 'DM Sans', sans-serif; font-size: clamp(1.65rem, 3vw, 2.6rem);
+  font-weight: 850; letter-spacing: -.055em; line-height: 1.02; text-transform: none; max-width: 650px;
+}
+body.insights-mode .oi-heading p { color: var(--oi-muted); max-width: 640px; font-size: .77rem; font-weight: 500; }
+body.insights-mode .oi-actions .btn {
+  background: var(--oi-card); border: 1px solid var(--oi-hairline); color: var(--oi-ink);
+  box-shadow: 0 5px 16px rgba(16,35,29,.06); font-size: .7rem; font-weight: 800;
+}
+body.insights-mode .oi-actions .btn:last-child { color: var(--oi-accent); }
+body.insights-mode .oi-filter-bar {
+  padding: 7px; margin-bottom: 14px; background: color-mix(in srgb, var(--oi-card) 75%, transparent);
+  border-color: var(--oi-hairline); border-radius: 14px; box-shadow: 0 7px 24px rgba(16,35,29,.035);
+}
+body.insights-mode .oi-period { background: var(--oi-card-soft); border-radius: 10px; }
+body.insights-mode .oi-period .view-btn { color: var(--oi-muted); font-weight: 750; }
+body.insights-mode .oi-period .view-btn.active {
+  background: var(--oi-card); color: var(--oi-ink); box-shadow: 0 3px 10px rgba(16,35,29,.08);
+}
+body.insights-mode .oi-filter-bar .fi {
+  background: var(--oi-card); border-color: var(--oi-hairline); color: var(--oi-ink); border-radius: 9px;
+}
+body.insights-mode .oi-range-label { color: var(--oi-muted); font-weight: 650; }
+body.insights-mode .oi-kpis {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; margin-bottom: 10px !important;
+  background: var(--oi-card); border: 1px solid var(--oi-hairline); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 10px 32px rgba(16,35,29,.045);
+}
+body.insights-mode .oi-kpis .sc {
+  min-height: 98px; padding: 18px 17px 15px; background: transparent; border: 0; border-radius: 0;
+  border-right: 1px solid var(--oi-hairline); box-shadow: none;
+}
+body.insights-mode .oi-kpis .sc:last-child { border-right: 0; }
+body.insights-mode .oi-kpis .sc::before { display: none; }
+body.insights-mode .oi-kpis .sc-lbl { color: var(--oi-muted); font-size: .56rem; letter-spacing: .12em; }
+body.insights-mode .oi-kpis .sc-val {
+  color: var(--oi-ink); font-family: 'DM Sans', sans-serif; font-size: 1.42rem; font-weight: 850; letter-spacing: -.045em;
+}
+body.insights-mode .oi-kpis .sc-ic { display: none; }
+body.insights-mode .oi-kpi-note { color: var(--oi-muted); font-size: .62rem; font-weight: 550; }
+.oi-signal-strip {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin-bottom: 14px;
+}
+.oi-signal {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+}
+.oi-signal span { color: var(--text3); font-size: .66rem; font-weight: 750; }
+.oi-signal strong { color: var(--text); font-family: 'DM Mono', monospace; font-size: .72rem; white-space: nowrap; }
+body.insights-mode .oi-signal { background: var(--oi-card); border-color: var(--oi-hairline); }
+body.insights-mode .oi-signal span { color: var(--oi-muted); }
+body.insights-mode .oi-signal strong { color: var(--oi-ink); }
+body.insights-mode .oi-grid { grid-template-columns: minmax(0,1.65fr) minmax(285px,.82fr); gap: 12px; }
+body.insights-mode .oi-panel {
+  background: var(--oi-card); border: 1px solid var(--oi-hairline); border-radius: 16px;
+  box-shadow: 0 10px 34px rgba(16,35,29,.045); padding: 16px;
+}
+body.insights-mode .oi-panel-head h3 {
+  color: var(--oi-ink); font-family: 'DM Sans', sans-serif; font-size: .83rem;
+  font-weight: 850; letter-spacing: -.025em; text-transform: none;
+}
+body.insights-mode .oi-panel-head p { color: var(--oi-muted); font-size: .65rem; }
+body.insights-mode .oi-chip {
+  color: var(--oi-muted); background: var(--oi-card-soft); border-color: var(--oi-hairline); font-size: .58rem;
+}
+body.insights-mode .oi-heat-label { color: var(--oi-muted); }
+body.insights-mode .oi-heat-time { color: var(--oi-ink); font-weight: 750; }
+body.insights-mode .oi-heat-grid { min-width: 500px; grid-template-columns: 80px repeat(7,minmax(48px,1fr)); }
+body.insights-mode .oi-heat-cell {
+  border-color: color-mix(in srgb, var(--oi-accent) calc(8% + var(--oi-heat, 0) * .42%), var(--oi-hairline));
+  background: color-mix(in srgb, var(--oi-accent) calc(4% + var(--oi-heat, 0) * .64%), var(--oi-card));
+  color: var(--oi-ink); min-height: 39px; font-size: .62rem;
+}
+body.insights-mode .oi-rec { background: var(--oi-card-soft); border-color: var(--oi-hairline); border-radius: 12px; }
+body.insights-mode .oi-rec h4 { color: var(--oi-ink); font-family: 'DM Sans', sans-serif; font-size: .75rem; letter-spacing: -.02em; text-transform: none; }
+body.insights-mode .oi-rec p { color: var(--oi-muted); font-size: .67rem; }
+body.insights-mode .oi-evidence { color: var(--oi-muted); font-size: .61rem; }
+body.insights-mode .oi-rec .btn { background: var(--oi-card); border-color: var(--oi-hairline); color: var(--oi-ink); box-shadow: none; }
+body.insights-mode .oi-confidence.high { color: #167551; background: #e4f4ec; }
+body.insights-mode .oi-confidence.medium { color: #8b6415; background: #fff1cd; }
+body[data-theme="dark"].insights-mode .oi-confidence.high { color: #82d8b4; background: #203e33; }
+body[data-theme="dark"].insights-mode .oi-confidence.medium { color: #f4ca72; background: #463c24; }
+body.insights-mode .oi-court-row { border-color: var(--oi-hairline); }
+body.insights-mode .oi-court-row strong { color: var(--oi-ink); }
+body.insights-mode .oi-court-track { background: var(--oi-card-soft); }
+body.insights-mode .oi-court-fill { min-width: 3px; background: var(--oi-accent); }
+body.insights-mode .oi-court-value { color: var(--oi-ink); }
+body.insights-mode .oi-quality { background: var(--oi-card-soft); border-color: var(--oi-hairline); color: var(--oi-muted); }
+@media (max-width: 1080px) {
+  .oi-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .oi-grid { grid-template-columns: 1fr; }
+  body.insights-mode .oi-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  body.insights-mode .oi-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  #sec-insights .toolbar { gap: 10px; }
+  .oi-actions { width: 100%; justify-content: stretch; }
+  .oi-actions .btn { flex: 1; justify-content: center; }
+  .oi-filter-bar { align-items: stretch; }
+  .oi-period, .oi-filter-bar > select, .oi-range-label { width: 100%; }
+  .oi-range-label { margin-left: 0; text-align: center; }
+  .oi-custom-dates { width: 100%; }
+  .oi-custom-dates .fi { min-width: 0; flex: 1; }
+  .oi-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .oi-kpis .sc { min-height: 92px; padding: 12px; }
+  .oi-kpis .sc-val { font-size: 1.3rem; }
+  .oi-panel { padding: 12px; }
+  .oi-signal-strip { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  body.insights-mode .oi-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; background: transparent; border: 0; border-radius: 0; overflow: visible; box-shadow: none; }
+  body.insights-mode .oi-kpis .sc { background: var(--oi-card); border: 1px solid var(--oi-hairline); border-radius: 12px; }
+  body.insights-mode .oi-heat-grid { min-width: 610px; }
+}
+@media print {
+  body.oi-printing { background: #fff !important; color: #111 !important; }
+  body.oi-printing nav, body.oi-printing .sidebar, body.oi-printing .topbar,
+  body.oi-printing #sidebarOverlay, body.oi-printing .oi-actions,
+  body.oi-printing .oi-filter-bar, body.oi-printing #toasts { display: none !important; }
+  body.oi-printing .admin-layout, body.oi-printing .main, body.oi-printing .content { display: block !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+  body.oi-printing .adm-sec { display: none !important; }
+  body.oi-printing #sec-insights { display: block !important; }
+  body.oi-printing #sec-insights .panel, body.oi-printing #sec-insights .sc { break-inside: avoid; box-shadow: none !important; }
+  body.oi-printing .oi-grid { grid-template-columns: 1.6fr 1fr; }
+}
+
 /* ── OPEN PLAY DAY CHIPS ──────────────────────────────── */
 .op-day {
   display: inline-flex; align-items: center; gap: 5px;
@@ -2161,6 +2405,7 @@ tr:hover td { background: var(--bg2); }
     <div class="sb-section">
       <div class="nav-grp">Overview</div>
       <div class="nav-item on" data-s="dash" data-perm="dashboard" onclick="goto('dash')"><span>&#128202;</span> Dashboard</div>
+      <div class="nav-item" data-s="insights" data-perm="reports" onclick="goto('insights')"><span>&#10024;</span> Insights</div>
       <div class="nav-item" data-s="bookings" data-perm="bookings" onclick="goto('bookings')"><span>&#128203;</span> Bookings</div>
       <div class="nav-item" data-s="payreview" data-perm="payment_review" onclick="goto('payreview')"><span>&#128269;</span> Payment Review</div>
       <div class="nav-item" data-s="reports" data-perm="reports" onclick="goto('reports')"><span>&#128200;</span> Reports</div>
@@ -2467,6 +2712,98 @@ tr:hover td { background: var(--bg2); }
           <div class="pr-empty">No payment activity yet.</div>
         </div>
       </details>
+    </div>
+
+    <!-- OWNER INTELLIGENCE -->
+    <div id="sec-insights" class="adm-sec">
+      <div class="toolbar">
+        <div class="oi-heading">
+          <div class="oi-eyebrow">Korte DOS Owner Intelligence</div>
+          <h2>See where demand grows and revenue still hides.</h2>
+          <p>Historical venue performance, explainable opportunities, and owner-controlled actions from the first reliable booking through today.</p>
+        </div>
+        <div class="oi-actions">
+          <button class="btn btn-g btn-sm" type="button" onclick="renderOwnerInsights({force:true})">&#8635; Refresh</button>
+          <button class="btn btn-p btn-sm" type="button" onclick="printOwnerInsights()">&#8599; Export owner brief</button>
+        </div>
+      </div>
+
+      <div class="oi-filter-bar" id="oiFilterBar">
+        <div class="oi-period" aria-label="Insights period">
+          <button class="view-btn active" id="oi-all" type="button" onclick="setInsightsPeriod('all')">All history</button>
+          <button class="view-btn" id="oi-90" type="button" onclick="setInsightsPeriod('90')">90 days</button>
+          <button class="view-btn" id="oi-365" type="button" onclick="setInsightsPeriod('365')">12 months</button>
+          <button class="view-btn" id="oi-custom" type="button" onclick="setInsightsPeriod('custom')">Custom</button>
+        </div>
+        <select class="fi" id="oiCourt" aria-label="Filter by court" onchange="renderOwnerInsights({force:true})">
+          <option value="">All courts</option>
+        </select>
+        <div class="oi-custom-dates">
+          <input class="fi" id="oiFrom" type="date" aria-label="Insights start date" onchange="renderOwnerInsights({force:true})">
+          <span style="color:var(--text3)">&ndash;</span>
+          <input class="fi" id="oiTo" type="date" aria-label="Insights end date" onchange="renderOwnerInsights({force:true})">
+        </div>
+        <div class="oi-range-label" id="oiRangeLabel">All reliable booking history</div>
+      </div>
+
+      <div class="oi-loading" id="oiLoading"><span class="pb-ball" aria-hidden="true"></span>Analyzing booking history&hellip;</div>
+
+      <div class="stat-cards oi-kpis">
+        <div class="sc"><div class="sc-lbl">Collected Revenue</div><div class="sc-val" id="oiCollected">&#8369;0</div><div class="oi-kpi-note">Attached to selected play dates</div><div class="sc-ic">&#128176;</div></div>
+        <div class="sc"><div class="sc-lbl">Court Utilization</div><div class="sc-val" id="oiUtilization">0%</div><div class="oi-kpi-note" id="oiUtilizationNote">0 of 0 available hours</div><div class="sc-ic">&#127934;</div></div>
+        <div class="sc"><div class="sc-lbl">Completed Bookings</div><div class="sc-val" id="oiCompleted">0</div><div class="oi-kpi-note" id="oiActiveNote">0 active reservations</div><div class="sc-ic">&#9989;</div></div>
+        <div class="sc"><div class="sc-lbl">Revenue / Booked Hour</div><div class="sc-val" id="oiRevBookedHour">&#8369;0</div><div class="oi-kpi-note">Collected revenue efficiency</div><div class="sc-ic">&#9201;</div></div>
+      </div>
+
+      <div class="oi-signal-strip" aria-label="Operating signals">
+        <div class="oi-signal"><span>Booked court-hours</span><strong id="oiBookedHours">0</strong></div>
+        <div class="oi-signal"><span>Outstanding balance</span><strong id="oiOutstanding">&#8369;0</strong></div>
+        <div class="oi-signal"><span>Repeat customer rate</span><strong id="oiRepeat">0%</strong></div>
+        <div class="oi-signal"><span>Cancellation signal</span><strong id="oiCancelRate">0%</strong></div>
+      </div>
+
+      <div class="oi-grid">
+        <section class="panel oi-panel">
+          <div class="oi-panel-head">
+            <div><h3>Demand map</h3><p>Capacity-aware utilization by weekday and operating window.</p></div>
+            <span class="oi-chip" id="oiHeatConfidence">Learning from history</span>
+          </div>
+          <div class="oi-heat-wrap"><div class="oi-heat-grid" id="oiHeatmap"><div class="oi-empty">No demand data yet.</div></div></div>
+        </section>
+        <section class="panel oi-panel">
+          <div class="oi-panel-head">
+            <div><h3>Booking lifecycle</h3><p>One count per reservation group.</p></div>
+            <span class="oi-chip" id="oiLifecycleTotal">0 total</span>
+          </div>
+          <div class="oi-chart-wrap compact"><canvas id="oiLifecycleChart" aria-label="Booking lifecycle chart"></canvas></div>
+        </section>
+      </div>
+
+      <div class="oi-grid">
+        <section class="panel oi-panel">
+          <div class="oi-panel-head">
+            <div><h3>Revenue and booking momentum</h3><p>Collected revenue and reservations grouped by the selected play period.</p></div>
+            <span class="oi-chip" id="oiTrendGrain">Monthly</span>
+          </div>
+          <div class="oi-chart-wrap"><canvas id="oiTrendChart" aria-label="Revenue and booking trend chart"></canvas></div>
+        </section>
+        <section class="panel oi-panel">
+          <div class="oi-panel-head">
+            <div><h3>Opportunity queue</h3><p>Deterministic recommendations with supporting evidence.</p></div>
+            <span class="oi-chip">Owner approval required</span>
+          </div>
+          <div class="oi-rec-list" id="oiRecommendations"><div class="oi-empty">Analyzing opportunities&hellip;</div></div>
+        </section>
+      </div>
+
+      <section class="panel oi-panel">
+        <div class="oi-panel-head">
+          <div><h3>Court performance</h3><p>Collected revenue and utilization by physical court.</p></div>
+          <span class="oi-chip" id="oiOperatingDays">0 operating days</span>
+        </div>
+        <div id="oiCourtPerformance"><div class="oi-empty">No court performance yet.</div></div>
+        <div class="oi-quality" id="oiQualityNote">Capacity quality details will appear after analysis.</div>
+      </section>
     </div>
 
     <!-- REPORTS -->
@@ -4856,9 +5193,9 @@ let sess;
 /* ==============================================
    NAVIGATION
    ============================================== */
-const titles={dash:'Dashboard',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments',vouchers:'Vouchers'};
-const SECTION_PERM={dash:'dashboard',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments',vouchers:'vouchers'};
-const SECTION_LOADERS={dash:renderDash,bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings,vouchers:renderVouchers};
+const titles={dash:'Dashboard',insights:'Owner Intelligence',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments',vouchers:'Vouchers'};
+const SECTION_PERM={dash:'dashboard',insights:'reports',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments',vouchers:'vouchers'};
+const SECTION_LOADERS={dash:renderDash,insights:()=>renderOwnerInsights({force:true}),bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings,vouchers:renderVouchers};
 let _curSection=null;
 function adminRoleCanAccess(permission, role) {
   const normalizedRole = String(role || '').trim().toLowerCase();
@@ -4872,6 +5209,7 @@ async function goto(s){
   document.querySelectorAll('.adm-sec').forEach(el=>el.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('on',el.dataset.s===s));
   $('sec-'+s).classList.add('on');
+  document.body.classList.toggle('insights-mode', s === 'insights');
   $('topTitle').textContent=titles[s]||s;
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
@@ -7801,6 +8139,264 @@ async function exportCSV(){
   a.download=`picklehub_bookings_${new Date().toISOString().split('T')[0]}.csv`;
   a.click();
   toast('CSV exported!');
+}
+
+/* ==============================================
+   OWNER INTELLIGENCE
+   ============================================== */
+let _oiPeriod='all', _oiSnapshot=null, _oiRequestKey='', _oiLifecycleChart=null, _oiTrendChart=null;
+
+function oiMoney(value) {
+  return '₱' + Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 });
+}
+
+function oiNumber(value, digits = 0) {
+  return Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function oiToday() {
+  return phDateKeyFromTimestamp(new Date());
+}
+
+function oiDateBefore(days) {
+  const now = new Date();
+  now.setDate(now.getDate() - Math.max(0, Number(days || 0)));
+  return phDateKeyFromTimestamp(now);
+}
+
+function oiRange() {
+  const today = oiToday();
+  if (_oiPeriod === '90') return { from: oiDateBefore(89), to: today };
+  if (_oiPeriod === '365') return { from: oiDateBefore(364), to: today };
+  if (_oiPeriod === 'custom') return { from: $('oiFrom')?.value || '', to: $('oiTo')?.value || today };
+  return { from: '', to: '' };
+}
+
+function oiFormatDate(value) {
+  if (!value) return '';
+  return new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('en-PH', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+}
+
+function setInsightsPeriod(period) {
+  _oiPeriod = ['all','90','365','custom'].includes(period) ? period : 'all';
+  ['all','90','365','custom'].forEach(key => $('oi-'+key)?.classList.toggle('active', key === _oiPeriod));
+  $('oiFilterBar')?.classList.toggle('is-custom', _oiPeriod === 'custom');
+  if (_oiPeriod === 'custom') {
+    if (!$('oiTo').value) $('oiTo').value = oiToday();
+    if (!$('oiFrom').value) $('oiFrom').value = _oiSnapshot?.period?.earliest_reliable_booking_date || oiDateBefore(89);
+  }
+  renderOwnerInsights({ force: true });
+}
+
+async function ensureInsightsCourts(force = false) {
+  const select = $('oiCourt');
+  if (!select || (!force && select.dataset.loaded === 'true')) return;
+  const selected = select.value;
+  const courts = await DB.getCourts();
+  select.innerHTML = '<option value="">All courts</option>' + courts.map(c =>
+    `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`
+  ).join('');
+  if ([...select.options].some(option => option.value === selected)) select.value = selected;
+  select.dataset.loaded = 'true';
+}
+
+function renderInsightsKpis(snapshot) {
+  const k = snapshot?.kpis || {};
+  $('oiCollected').textContent = oiMoney(k.collected_revenue);
+  $('oiUtilization').textContent = `${oiNumber(k.utilization_pct, 1)}%`;
+  $('oiUtilizationNote').textContent = `${oiNumber(k.booked_hours, 1)} of ${oiNumber(k.available_hours, 1)} available hours`;
+  $('oiCompleted').textContent = oiNumber(k.completed_reservations);
+  $('oiActiveNote').textContent = `${oiNumber(k.active_reservations)} active reservations`;
+  $('oiRevBookedHour').textContent = oiMoney(k.revenue_per_booked_hour);
+  $('oiBookedHours').textContent = oiNumber(k.booked_hours, 1);
+  $('oiOutstanding').textContent = oiMoney(k.outstanding_balance);
+  $('oiRepeat').textContent = `${oiNumber(k.repeat_customer_rate, 1)}%`;
+  $('oiCancelRate').textContent = `${oiNumber(k.cancellation_rate, 1)}%`;
+}
+
+function renderInsightsHeatmap(snapshot) {
+  const target = $('oiHeatmap');
+  const cells = Array.isArray(snapshot?.heatmap) ? snapshot.heatmap : [];
+  if (!target || !cells.length) {
+    if (target) target.innerHTML = '<div class="oi-empty">No demand data exists for this period.</div>';
+    return;
+  }
+  const starts = [...new Set(cells.map(c => Number(c.start_hour)))].sort((a,b)=>a-b);
+  const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const cellMap = new Map(cells.map(c => [`${Number(c.start_hour)}:${Number(c.weekday)}`, c]));
+  let html = '<div class="oi-heat-label"></div>' + dayLabels.map(day => `<div class="oi-heat-label">${day}</div>`).join('');
+  starts.forEach(start => {
+    const first = cells.find(c => Number(c.start_hour) === start);
+    const end = Number(first?.end_hour || start + 3);
+    html += `<div class="oi-heat-label oi-heat-time">${esc(window.OwnerIntelligence.timeLabel(start, end))}</div>`;
+    for (let weekday=1; weekday<=7; weekday++) {
+      const cell = cellMap.get(`${start}:${weekday}`) || {};
+      const pct = Math.max(0, Math.min(100, Number(cell.utilization_pct || 0)));
+      const confidence = window.OwnerIntelligence.confidenceFor(cell);
+      const title = `${pct.toFixed(1)}% utilized · ${window.OwnerIntelligence.evidence(cell)} · ${confidence.label}`;
+      html += `<div class="oi-heat-cell" style="--oi-heat:${pct}" data-learning="${confidence.code === 'learning'}" title="${esc(title)}">${pct.toFixed(0)}%</div>`;
+    }
+  });
+  target.innerHTML = html;
+  const evidenceCells = cells.filter(cell => window.OwnerIntelligence.confidenceFor(cell).code !== 'learning').length;
+  $('oiHeatConfidence').textContent = evidenceCells
+    ? `${evidenceCells} evidence-ready windows`
+    : 'Learning from history';
+}
+
+function insightsChartColors() {
+  const styles = getComputedStyle(document.body);
+  return {
+    text: styles.getPropertyValue('--text2').trim() || '#b9c4cf',
+    grid: styles.getPropertyValue('--border').trim() || 'rgba(128,128,128,.2)',
+    green: document.body.classList.contains('insights-mode') ? (styles.getPropertyValue('--oi-accent').trim() || '#6b5bea') : (styles.getPropertyValue('--green').trim() || '#21b573'),
+    yellow: document.body.classList.contains('insights-mode') ? (styles.getPropertyValue('--oi-amber').trim() || '#f2b544') : (styles.getPropertyValue('--yellow').trim() || '#f6b93b'),
+  };
+}
+
+function renderInsightsLifecycle(snapshot) {
+  if (_oiLifecycleChart) _oiLifecycleChart.destroy();
+  const rows = Array.isArray(snapshot?.lifecycle) ? snapshot.lifecycle : [];
+  const canvas = $('oiLifecycleChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const labels = rows.map(row => String(row.status || '').replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()));
+  const values = rows.map(row => Number(row.count || 0));
+  const total = values.reduce((sum, value) => sum + value, 0);
+  $('oiLifecycleTotal').textContent = `${total} total`;
+  _oiLifecycleChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: ['#6b5bea','#49b98b','#55a7e8','#a58cff','#e26d65','#f2b544'], borderWidth: 0 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '66%',
+      plugins: {
+        legend: { position: 'bottom', labels: { color: insightsChartColors().text, boxWidth: 9, usePointStyle: true, padding: 11, font: { size: 10, weight: 700 } } },
+        tooltip: { callbacks: { label: context => `${context.label}: ${context.raw}` } },
+      },
+    },
+  });
+}
+
+function renderInsightsTrend(snapshot) {
+  if (_oiTrendChart) _oiTrendChart.destroy();
+  const rows = Array.isArray(snapshot?.trend) ? snapshot.trend : [];
+  const canvas = $('oiTrendChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const grain = snapshot?.period?.trend_grain || 'day';
+  $('oiTrendGrain').textContent = ({ day:'Daily', week:'Weekly', month:'Monthly' }[grain] || 'Period') + ' view';
+  const colors = insightsChartColors();
+  const label = value => new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('en-PH', {
+    month: 'short', day: grain === 'month' ? undefined : 'numeric', year: grain === 'month' ? '2-digit' : undefined,
+  });
+  _oiTrendChart = new Chart(canvas, {
+    data: {
+      labels: rows.map(row => label(row.date)),
+      datasets: [
+        { type: 'line', label: 'Collected revenue', data: rows.map(row => Number(row.collected_revenue || 0)), yAxisID: 'revenue', borderColor: colors.green, backgroundColor: 'rgba(33,181,115,.12)', fill: true, tension: .28, pointRadius: rows.length > 40 ? 0 : 2 },
+        { type: 'bar', label: 'Reservations', data: rows.map(row => Number(row.reservations || 0)), yAxisID: 'bookings', backgroundColor: 'rgba(232,112,91,.26)', borderColor: '#e8705b', borderWidth: 1, borderRadius: 4 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { color: colors.text, boxWidth: 10, usePointStyle: true } } },
+      scales: {
+        x: { ticks: { color: colors.text, maxTicksLimit: 12, font: { size: 9 } }, grid: { display: false } },
+        revenue: { type: 'linear', position: 'left', beginAtZero: true, ticks: { color: colors.text, callback: value => '₱'+Number(value).toLocaleString('en-PH',{notation:'compact'}) }, grid: { color: colors.grid } },
+        bookings: { type: 'linear', position: 'right', beginAtZero: true, ticks: { color: colors.text, precision: 0 }, grid: { drawOnChartArea: false } },
+      },
+    },
+  });
+}
+
+function renderInsightsRecommendations(snapshot) {
+  const target = $('oiRecommendations');
+  if (!target) return;
+  const rows = window.OwnerIntelligence?.buildRecommendations(snapshot) || [];
+  target.innerHTML = rows.map(item => `<article class="oi-rec">
+    <div class="oi-rec-top"><h4>${esc(item.title)}</h4><span class="oi-confidence ${esc(item.confidence?.code || 'learning')}">${esc(item.confidence?.label || 'Still learning')}</span></div>
+    <p>${esc(item.summary)}</p>
+    <div class="oi-evidence">Evidence: ${esc(item.evidence)}</div>
+    ${item.action && item.actionSection ? `<button class="btn btn-g btn-sm" type="button" onclick="goto('${jsArg(item.actionSection)}')">${esc(item.action)}</button>` : ''}
+  </article>`).join('') || '<div class="oi-empty">No safe recommendation is available yet.</div>';
+}
+
+function renderInsightsCourts(snapshot) {
+  const target = $('oiCourtPerformance');
+  if (!target) return;
+  const rows = Array.isArray(snapshot?.courts) ? snapshot.courts : [];
+  target.innerHTML = rows.map(row => {
+    const pct = Math.max(0, Math.min(100, Number(row.utilization_pct || 0)));
+    return `<div class="oi-court-row">
+      <div><strong>${esc(row.court_name || row.court_id)}</strong><div class="oi-evidence">${oiNumber(row.booked_hours,1)} booked hours</div></div>
+      <div class="oi-court-track"><div class="oi-court-fill" style="width:${pct}%"></div></div>
+      <div class="oi-court-value">${pct.toFixed(1)}%<br><span style="color:var(--text3)">${oiMoney(row.collected_revenue)}</span></div>
+    </div>`;
+  }).join('') || '<div class="oi-empty">No court performance exists for this period.</div>';
+  const operatingDays = Number(snapshot?.period?.operating_days || 0);
+  $('oiOperatingDays').textContent = `${operatingDays} operating day${operatingDays === 1 ? '' : 's'}`;
+  const quality = snapshot?.data_quality || {};
+  $('oiQualityNote').textContent = `${quality.reliable_booking_rows || 0} reliable booking rows analyzed. ${quality.capacity_note || ''}`.trim();
+}
+
+function renderInsightsRange(snapshot) {
+  const period = snapshot?.period || {};
+  const label = period.from && period.to
+    ? `${oiFormatDate(period.from)} – ${oiFormatDate(period.to)}`
+    : 'No reliable booking history yet';
+  $('oiRangeLabel').textContent = `${label} · ${Number(period.days_analyzed || 0)} days analyzed`;
+  if ($('oiFrom')) $('oiFrom').max = oiToday();
+  if ($('oiTo')) $('oiTo').max = oiToday();
+}
+
+async function renderOwnerInsights(options = {}) {
+  if (!window.OwnerIntelligence || typeof DB.getOwnerIntelligence !== 'function') {
+    toast('Owner Intelligence is not available in this build.', 'err');
+    return;
+  }
+  await ensureInsightsCourts(!!options.force);
+  const range = oiRange();
+  if (range.from && range.to && range.from > range.to) {
+    toast('Insights start date must be before the end date.', 'err');
+    return;
+  }
+  const filters = { from: range.from || null, to: range.to || null, courtId: $('oiCourt')?.value || null };
+  const requestKey = JSON.stringify(filters);
+  if (!options.force && _oiSnapshot && requestKey === _oiRequestKey) return;
+  $('oiLoading')?.classList.add('on');
+  try {
+    const snapshot = await DB.getOwnerIntelligence(filters);
+    _oiSnapshot = snapshot || {};
+    _oiRequestKey = requestKey;
+    renderInsightsRange(_oiSnapshot);
+    renderInsightsKpis(_oiSnapshot);
+    renderInsightsHeatmap(_oiSnapshot);
+    renderInsightsLifecycle(_oiSnapshot);
+    renderInsightsTrend(_oiSnapshot);
+    renderInsightsRecommendations(_oiSnapshot);
+    renderInsightsCourts(_oiSnapshot);
+  } catch (error) {
+    console.error('renderOwnerInsights:', error);
+    $('oiRecommendations').innerHTML = '<div class="oi-empty">Insights could not be loaded. Apply the Owner Intelligence database migration, then refresh.</div>';
+    toast('Insights could not be loaded.', 'err');
+  } finally {
+    $('oiLoading')?.classList.remove('on');
+  }
+}
+
+function printOwnerInsights() {
+  if (!_oiSnapshot) {
+    toast('Load Insights before exporting the owner brief.', 'inf');
+    return;
+  }
+  document.body.classList.add('oi-printing');
+  const cleanup = () => document.body.classList.remove('oi-printing');
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(() => window.print(), 50);
+  setTimeout(cleanup, 3000);
 }
 
 /* ==============================================
@@ -12504,7 +13100,8 @@ function toggleTheme() {
   document.body.setAttribute('data-theme', next);
   localStorage.setItem('pb_template_theme', next);
   updateThemeBtn();
-  renderDash();
+  if (_curSection === 'insights') renderOwnerInsights({ force: true });
+  else renderDash();
   setTimeout(() => {
     document.documentElement.classList.remove('theme-switching');
     document.body.classList.remove('theme-switching');
