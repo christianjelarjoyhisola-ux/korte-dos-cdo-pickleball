@@ -5569,6 +5569,8 @@ function receiptReasonFromFlags(flags) {
     OCR_UNAVAILABLE: 'OCR unavailable',
     AMOUNT_UNREADABLE: 'Amount unreadable',
     AMOUNT_REVIEW: 'Amount needs owner review',
+    VERIFICATION_PROCESSING_INCOMPLETE: 'Receipt stored; automatic verification incomplete',
+    VERIFICATION_PROCESSING_ERROR: 'Receipt stored; automatic verification failed',
   };
   return (flags || []).map(f => labels[f] || String(f).replace(/_/g, ' ')).join(', ');
 }
@@ -7805,14 +7807,31 @@ async function submitBookingLegacy(e) {
         // A timeout can happen after Storage succeeds. Proceed only when the
         // saved row proves that the evidence was attached; otherwise keep the
         // same booking form and reservation available for an upload retry.
-        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref);
+        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref, {
+          provider: payMethod,
+          stagedReceiptPath: _receiptUploadState?.file === receiptFile
+            ? _receiptUploadState?.result?.stagedReceiptPath
+            : null,
+        });
         if (!booking._receiptResult) {
           keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
           return;
         }
       }
       if (!booking._receiptResult?.receiptImageUrl) {
+        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref, {
+          provider: payMethod,
+          stagedReceiptPath: _receiptUploadState?.file === receiptFile
+            ? _receiptUploadState?.result?.stagedReceiptPath
+            : null,
+        });
+      }
+      if (!booking._receiptResult?.receiptImageUrl) {
         keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
+        return;
+      }
+      if (booking._receiptResult.bookingActive === false) {
+        showExpiredRecoveredReceipt(booking.ref);
         return;
       }
       const ocrStatus = booking._receiptResult?.status;
@@ -8072,14 +8091,31 @@ async function submitBooking(e) {
           receiptFile,
         );
       } catch(err) {
-        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref);
+        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref, {
+          provider: payMethod,
+          stagedReceiptPath: _receiptUploadState?.file === receiptFile
+            ? _receiptUploadState?.result?.stagedReceiptPath
+            : null,
+        });
         if (!booking._receiptResult) {
           keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
           return;
         }
       }
       if (!booking._receiptResult?.receiptImageUrl) {
+        booking._receiptResult = await recoverStoredBookingReceipt(booking.ref, {
+          provider: payMethod,
+          stagedReceiptPath: _receiptUploadState?.file === receiptFile
+            ? _receiptUploadState?.result?.stagedReceiptPath
+            : null,
+        });
+      }
+      if (!booking._receiptResult?.receiptImageUrl) {
         keepReceiptUploadForRetry(`Receipt upload is incomplete for booking ${booking.ref}. Please retry before the timer ends.`);
+        return;
+      }
+      if (booking._receiptResult.bookingActive === false) {
+        showExpiredRecoveredReceipt(booking.ref);
         return;
       }
       const ocrStatus = booking._receiptResult?.status;
@@ -8226,7 +8262,49 @@ function keepReceiptUploadForRetry(message = 'Receipt upload was not completed. 
   toast(message, 'err');
 }
 
-async function recoverStoredBookingReceipt(bookingRef) {
+function showExpiredRecoveredReceipt(bookingRef) {
+  const message = `Your receipt was safely stored for booking ${bookingRef}, but the reservation expired before verification finished. Please contact the court owner and do not pay or book again.`;
+  const st = $('bReceiptStatus');
+  if (st) {
+    st.style.display = '';
+    st.style.background = 'rgba(184,126,0,.12)';
+    st.style.color = '#b87e00';
+    st.textContent = message;
+  }
+  stopSlotCountdown();
+  _lastSubmitAt = Date.now();
+  saveGuestBookingResume({ receiptStoredAfterExpiry: true });
+  toast(message, 'inf');
+}
+
+async function recoverStoredBookingReceipt(bookingRef, options = {}) {
+  const stagedReceiptPath = String(options.stagedReceiptPath || '').trim();
+  if (typeof DB.recoverBookingReceipt === 'function') {
+    try {
+      const recovered = await DB.recoverBookingReceipt({
+        bookingRef,
+        provider: options.provider || $('bPay')?.value || 'gcash',
+        stagedReceiptPath,
+      });
+      if (recovered?.receiptImageUrl) {
+        return {
+          status: recovered.status === 'auto_approved' ? 'auto_approved' : 'manual_review',
+          message: recovered.publicReason || recovered.message || 'Receipt safely stored for owner review.',
+          flags: recovered.flags || [],
+          extracted: recovered.extracted || null,
+          confidence: recovered.confidence ?? 0,
+          receiptImageUrl: recovered.receiptImageUrl,
+          receiptImageHash: recovered.receiptImageHash || null,
+          receiptPhash: recovered.receiptPhash || null,
+          receiptVerificationId: recovered.receiptVerificationId || null,
+          receiptVerifiedAt: recovered.receiptVerifiedAt || new Date().toISOString(),
+          bookingActive: recovered.bookingActive !== false,
+        };
+      }
+    } catch (recoveryError) {
+      console.error('Stored court receipt recovery failed:', recoveryError);
+    }
+  }
   const stored = await DB.getBookingByRef(bookingRef).catch(() => null);
   if (!stored?.receiptImageUrl) return null;
   const confirmed = stored.status === 'confirmed' &&
@@ -8245,6 +8323,7 @@ async function recoverStoredBookingReceipt(bookingRef) {
     receiptImageHash: stored.receiptImageHash || null,
     receiptPhash: stored.receiptPhash || null,
     receiptVerifiedAt: stored.receiptVerifiedAt || null,
+    bookingActive: !['cancelled', 'forfeited'].includes(String(stored.status || '').toLowerCase()),
   };
 }
 
@@ -8335,6 +8414,7 @@ async function verifyUploadedReceipt(
       receiptImageHash: res?.receiptImageHash || null,
       receiptPhash: res?.receiptPhash || null,
       receiptVerifiedAt: res?.receiptVerifiedAt || new Date().toISOString(),
+      bookingActive: res?.bookingActive !== false,
     };
   } catch (err) {
     if (st) { st.style.background = 'rgba(229,57,53,.1)'; st.style.color = '#e53935'; st.textContent = 'Receipt upload failed. Please attach the screenshot again and retry.'; }
@@ -10352,7 +10432,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260814-voucher-roles-v1"></script>
+<script src="supabase-config.js?v=20260825-receipt-recovery-v1"></script>
 
 <!-- MOBILE STICKY BOOK NOW BAR -->
 <div id="mobileBookBar" class="mobile-book-bar" style="display:none">

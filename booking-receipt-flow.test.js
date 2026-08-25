@@ -11,6 +11,10 @@ const manualRestoreMigration = fs.readFileSync(
   'supabase/migrations/20260813043000_restore_cancelled_manual_payment.sql',
   'utf8',
 );
+const stagedReceiptReconciliationMigration = fs.readFileSync(
+  'supabase/migrations/20260825143000_reconcile_staged_court_receipts.sql',
+  'utf8',
+);
 
 function functionSource(source, name, nextName) {
   const start = source.indexOf(`async function ${name}(`);
@@ -58,6 +62,66 @@ test('court receipt selection uploads before Continue and verification reuses it
   assert.match(receiptEdge, /if \(action === "stage"\)/);
   assert.match(receiptEdge, /private storage checkpoint/);
   assert.match(receiptEdge, /from\("receipts"\)\.download\(stagedReceiptPath\)/);
+});
+
+test('stored court receipts recover to owner review when verification is interrupted', () => {
+  assert.match(supabaseConfig, /async recoverBookingReceipt\(payload\)/);
+  assert.match(supabaseConfig, /action: 'recover_court_booking_receipt'/);
+  assert.match(
+    indexHtml,
+    /recoverStoredBookingReceipt\(booking\.ref, \{[\s\S]*stagedReceiptPath:[\s\S]*_receiptUploadState\?\.result\?\.stagedReceiptPath/,
+  );
+  assert.match(indexHtml, /DB\.recoverBookingReceipt\(\{[\s\S]*stagedReceiptPath/);
+  assert.match(receiptEdge, /if \(action === "recover_court_booking_receipt"\)/);
+  assert.match(receiptEdge, /recoverCourtReceiptAfterFailure/);
+  assert.match(receiptEdge, /VERIFICATION_PROCESSING_INCOMPLETE/);
+  assert.match(
+    receiptEdge,
+    /status: "pending",[\s\S]*payment_status: "for_verification"/,
+  );
+});
+
+test('expired recovery preserves evidence without silently reclaiming a slot', () => {
+  assert.match(
+    receiptEdge,
+    /15-minute hold expired[\s\S]*without silently reoccupying[\s\S]*\.in\("status", \["cancelled", "forfeited"\]\)/,
+  );
+  assert.match(indexHtml, /bookingActive === false[\s\S]*showExpiredRecoveredReceipt/);
+  assert.match(
+    indexHtml,
+    /showExpiredRecoveredReceipt[\s\S]*do not pay or book again/,
+  );
+});
+
+test('stale hold expiry reconciles Storage evidence before cancellation', () => {
+  assert.match(
+    stagedReceiptReconciliationMigration,
+    /join storage\.objects[\s\S]*object\.bucket_id = 'receipts'/,
+  );
+  assert.match(
+    stagedReceiptReconciliationMigration,
+    /status = 'pending'[\s\S]*payment_status = 'for_verification'[\s\S]*receipt_image_url = staged\.object_path/,
+  );
+  assert.match(
+    stagedReceiptReconciliationMigration,
+    /VERIFICATION_PROCESSING_INCOMPLETE/,
+  );
+  assert.match(
+    stagedReceiptReconciliationMigration,
+    /and not exists \([\s\S]*join storage\.objects[\s\S]*object\.name like evidence_booking\.ref \|\| '\/%'/,
+  );
+});
+
+test('lost stage responses recover from the private booking prefix', () => {
+  assert.match(
+    receiptEdge,
+    /if \(!stagedReceiptPath\)[\s\S]*\.from\("receipts"\)\.list\(bookingRef/,
+  );
+  assert.match(receiptEdge, /sortBy: \{ column: "updated_at", order: "desc" \}/);
+  assert.match(
+    supabaseConfig,
+    /\.\.\.\(stagedReceiptPath \? \{ stagedReceiptPath \} : \{\}\)/,
+  );
 });
 
 test('payment review queue requires stored receipt evidence', () => {

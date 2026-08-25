@@ -2409,6 +2409,32 @@ window.DB = {
     return json;
   },
 
+  async recoverBookingReceipt(payload) {
+    const bookingRef = String(payload?.bookingRef || '').trim();
+    const stagedReceiptPath = String(payload?.stagedReceiptPath || '').trim();
+    if (!bookingRef) throw new Error('A booking reference is required for receipt recovery.');
+    const fnUrl = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-gcash-receipt`;
+    const res = await _pbFetchWithTimeout(fnUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        action: 'recover_court_booking_receipt',
+        bookingRef,
+        provider: String(payload?.provider || 'gcash'),
+        ...(stagedReceiptPath ? { stagedReceiptPath } : {}),
+      }),
+    }, Math.min(PB_RECEIPT_TIMEOUT_MS, 30000));
+    const txt = await res.text();
+    const json = _safeJsonParse(txt);
+    if (!res.ok) throw new Error(json?.error || txt || `HTTP ${res.status}`);
+    if (!json?.receiptImageUrl) throw new Error('Stored receipt recovery did not finish.');
+    return json;
+  },
+
   // Verify an uploaded GCash/GoTyme/PNB receipt image via the Edge Function.
   // payload: { bookingRef, provider, imageFile, contentType }.
   // imageBase64 remains supported for older deployed clients.
@@ -4416,6 +4442,19 @@ window.DB = {
         contentType: receiptFile.type || 'image/jpeg',
         size: receiptFile.size,
       };
+    },
+    async recoverBookingReceipt(payload = {}) {
+      const bookingRef = String(payload.bookingRef || '').trim();
+      const stagedReceiptPath = String(payload.stagedReceiptPath || '').trim();
+      if (!bookingRef) throw new Error('A booking reference is required for receipt recovery.');
+      if (!stagedReceiptPath) {
+        throw new Error('No local stored receipt checkpoint was found.');
+      }
+      return this.verifyGcashReceipt({
+        bookingRef,
+        provider: String(payload.provider || 'gcash'),
+        stagedReceiptPath,
+      });
     },
     async verifyGcashReceipt(payload = {}) {
       const bookingRef = String(payload.bookingRef || '').trim();

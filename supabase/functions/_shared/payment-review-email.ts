@@ -300,6 +300,8 @@ export function paymentReviewFlagLabel(flag: unknown): string {
       "Submitted from an older booking page and needs an owner check",
     VERIFICATION_PROCESSING_ERROR:
       "Automatic receipt verification did not finish",
+    VERIFICATION_PROCESSING_INCOMPLETE:
+      "Receipt was stored but automatic verification did not finish",
   };
   if (labels[key]) return labels[key];
   if (!key) return "Receipt needs a manual decision";

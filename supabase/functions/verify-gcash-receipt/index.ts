@@ -201,6 +201,13 @@ type InlineReceiptRecoveryState = PreparedInlineRegistration & {
   auditId: number | null;
 };
 
+type CourtReceiptRecoveryState = {
+  bookingRef: string;
+  provider: PaymentProvider;
+  objectPath: string;
+  imageHash: string;
+};
+
 const DIGITAL_PAYMENT_METHODS = new Set<PaymentProvider>([
   "gcash",
   "bdopay",
@@ -1230,6 +1237,7 @@ async function alertStoredPendingReceiptAfterFailure(
   db: any,
   bookingRef: string,
   provider: PaymentProvider,
+  allowTerminal = false,
 ) {
   try {
     const { data: row, error } = await db
@@ -1240,8 +1248,10 @@ async function alertStoredPendingReceiptAfterFailure(
       .eq("ref", bookingRef)
       .maybeSingle();
     if (
-      error || !row || row.status !== "pending" ||
-      row.payment_status !== "for_verification" ||
+      error || !row ||
+      (!allowTerminal && (
+        row.status !== "pending" || row.payment_status !== "for_verification"
+      )) ||
       !String(row.receipt_image_url || "").trim() ||
       !/^[a-f0-9]{64}$/i.test(String(row.receipt_image_hash || ""))
     ) {
@@ -1249,7 +1259,8 @@ async function alertStoredPendingReceiptAfterFailure(
     }
 
     const booking = row as Record<string, unknown>;
-    const group = await loadBookingGroup(db, booking);
+    const loadedGroup = await loadBookingGroup(db, booking);
+    const group = loadedGroup.length ? loadedGroup : [booking];
     const expectedAmount = group.reduce(
       (sum, item) => sum + toNumber(item.downpayment),
       0,
@@ -1281,6 +1292,230 @@ async function alertStoredPendingReceiptAfterFailure(
       errMsg(notificationError),
     );
   }
+}
+
+function runReceiptRecoveryInBackground(promise: Promise<unknown>) {
+  const edgeRuntime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil: (task: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  const guarded = promise.catch((error) => {
+    console.error("receipt recovery notification failed:", errMsg(error));
+  });
+  if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(guarded);
+}
+
+async function ensureCourtReceiptRecoveryAudit(
+  db: any,
+  state: CourtReceiptRecoveryState,
+  booking: Record<string, unknown>,
+): Promise<number> {
+  const existing = await db.from("receipt_verifications")
+    .select("id")
+    .eq("booking_ref", state.bookingRef)
+    .eq("image_hash", state.imageHash)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!existing.error && existing.data?.id) {
+    return positiveReceiptVerificationId(existing.data.id);
+  }
+
+  const provider = paymentMethodProvider(booking.payment_method) || state.provider;
+  const submittedReference = normalizeReferenceForProvider(
+    String(booking.gcash_ref || ""),
+    provider,
+  );
+  const inserted = await db.from("receipt_verifications")
+    .insert({
+      booking_ref: state.bookingRef,
+      result: "manual_review",
+      flags: ["VERIFICATION_PROCESSING_INCOMPLETE"],
+      extracted: {
+        provider,
+        verificationContext: "court_booking",
+        submittedReference,
+        processingCheckpoint: "receipt_stored",
+        processingFailure:
+          "Automatic receipt processing did not complete after the image was stored.",
+      },
+      confidence: 0,
+      image_hash: state.imageHash,
+      phash: null,
+      raw_ocr_text: null,
+    })
+    .select("id")
+    .maybeSingle();
+  if (inserted.error || !inserted.data?.id) {
+    throw inserted.error || new Error("Receipt recovery audit was not stored");
+  }
+  return positiveReceiptVerificationId(inserted.data.id);
+}
+
+async function recoverCourtReceiptAfterFailure(
+  db: any,
+  state: CourtReceiptRecoveryState,
+): Promise<{
+  recovered: boolean;
+  active: boolean;
+  status: string;
+  paymentStatus: string;
+  receiptImageUrl: string;
+  receiptImageHash: string;
+  receiptVerificationId: number;
+}> {
+  const pathParts = state.objectPath.split("/");
+  if (
+    pathParts.length !== 2 ||
+    pathParts[0] !== state.bookingRef ||
+    !new RegExp(`^${state.imageHash}\\.(jpg|png|webp|heic)$`, "i").test(
+      pathParts[1],
+    )
+  ) {
+    throw new Error("Stored receipt checkpoint is invalid");
+  }
+
+  const loaded = await db.from("bookings")
+    .select(
+      "ref,booking_group_ref,status,payment_status,payment_method,gcash_ref,receipt_image_url,receipt_image_hash",
+    )
+    .eq("ref", state.bookingRef)
+    .maybeSingle();
+  if (loaded.error || !loaded.data) {
+    throw loaded.error || new Error("Booking could not be loaded for receipt recovery");
+  }
+  const booking = loaded.data as Record<string, unknown>;
+  const groupRef = String(booking.booking_group_ref || "");
+  const groupLookup = groupRef
+    ? await db.from("bookings")
+      .select("ref,status,payment_status,receipt_image_url,receipt_image_hash")
+      .eq("booking_group_ref", groupRef)
+    : { data: [booking], error: null };
+  if (groupLookup.error || !groupLookup.data?.length) {
+    throw groupLookup.error || new Error("Booking group could not be loaded for receipt recovery");
+  }
+  const groupRows = groupLookup.data as Array<Record<string, unknown>>;
+  const conflictingEvidence = groupRows.some((row) => {
+    const path = String(row.receipt_image_url || "").trim();
+    const hash = String(row.receipt_image_hash || "").toLowerCase();
+    return path && (path !== state.objectPath || hash !== state.imageHash);
+  });
+  if (conflictingEvidence) {
+    throw new Error("A different receipt is already attached to this booking");
+  }
+  const auditId = await ensureCourtReceiptRecoveryAudit(db, state, booking);
+  const currentImage = String(booking.receipt_image_url || "").trim();
+  const currentHash = String(booking.receipt_image_hash || "").toLowerCase();
+  const currentStatus = String(booking.status || "").toLowerCase();
+  const currentPayment = String(booking.payment_status || "").toLowerCase();
+  if (
+    groupRows.every((row) =>
+      String(row.receipt_image_url || "").trim() === state.objectPath &&
+      String(row.receipt_image_hash || "").toLowerCase() === state.imageHash &&
+      String(row.status || "").toLowerCase() !== "verifying"
+    )
+  ) {
+    if (["cancelled", "forfeited"].includes(currentStatus)) {
+      runReceiptRecoveryInBackground(
+        alertStoredPendingReceiptAfterFailure(
+          db,
+          state.bookingRef,
+          state.provider,
+          true,
+        ),
+      );
+    }
+    return {
+      recovered: false,
+      active: ["pending", "verifying"].includes(currentStatus),
+      status: currentStatus,
+      paymentStatus: currentPayment,
+      receiptImageUrl: currentImage,
+      receiptImageHash: currentHash,
+      receiptVerificationId: auditId,
+    };
+  }
+
+  const evidenceUpdate = {
+    receipt_image_url: state.objectPath,
+    receipt_image_hash: state.imageHash,
+    receipt_status: "manual_review",
+    receipt_flags: ["VERIFICATION_PROCESSING_INCOMPLETE"],
+    receipt_confidence: 0,
+  };
+  const allActive = groupRows.every((row) =>
+    ["verifying", "pending"].includes(String(row.status || "").toLowerCase())
+  );
+  const activeUpdate = allActive
+    ? await bookingUpdateQuery(db, booking, {
+      ...evidenceUpdate,
+      status: "pending",
+      payment_status: "for_verification",
+    })
+      .in("status", ["verifying", "pending"])
+      .or(
+        `and(receipt_image_url.is.null,receipt_image_hash.is.null),and(receipt_image_url.eq.${state.objectPath},receipt_image_hash.eq.${state.imageHash})`,
+      )
+      .select("ref,status,payment_status")
+    : { data: [], error: null };
+  if (
+    !activeUpdate.error &&
+    activeUpdate.data?.length === groupRows.length &&
+    groupRows.length > 0
+  ) {
+    runReceiptRecoveryInBackground(
+      alertStoredPendingReceiptAfterFailure(
+        db,
+        state.bookingRef,
+        state.provider,
+      ),
+    );
+    return {
+      recovered: true,
+      active: true,
+      status: "pending",
+      paymentStatus: "for_verification",
+      receiptImageUrl: state.objectPath,
+      receiptImageHash: state.imageHash,
+      receiptVerificationId: auditId,
+    };
+  }
+
+  // If the 15-minute hold expired while the verification request was in
+  // flight, preserve the financial evidence without silently reoccupying a
+  // slot that may already belong to another customer.
+  const terminalUpdate = await bookingUpdateQuery(db, booking, evidenceUpdate)
+    .in("status", ["cancelled", "forfeited"])
+    .or(
+      `and(receipt_image_url.is.null,receipt_image_hash.is.null),and(receipt_image_url.eq.${state.objectPath},receipt_image_hash.eq.${state.imageHash})`,
+    )
+    .select("ref,status,payment_status");
+  if (
+    !terminalUpdate.error &&
+    terminalUpdate.data?.length === groupRows.length &&
+    groupRows.length > 0
+  ) {
+    const terminal = terminalUpdate.data[0];
+    runReceiptRecoveryInBackground(
+      alertStoredPendingReceiptAfterFailure(
+        db,
+        state.bookingRef,
+        state.provider,
+        true,
+      ),
+    );
+    return {
+      recovered: true,
+      active: false,
+      status: String(terminal.status || "cancelled"),
+      paymentStatus: String(terminal.payment_status || currentPayment),
+      receiptImageUrl: state.objectPath,
+      receiptImageHash: state.imageHash,
+      receiptVerificationId: auditId,
+    };
+  }
+
+  throw activeUpdate.error || terminalUpdate.error ||
+    new Error("Stored receipt could not be attached to the booking");
 }
 
 // ── handler ─────────────────────────────────────────────────────────────────
@@ -2554,6 +2789,82 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (action === "recover_court_booking_receipt") {
+    const bookingRef = String(body.bookingRef || "").trim().toUpperCase();
+    let stagedReceiptPath = String(body.stagedReceiptPath || "").trim();
+    const provider = normalizedProvider(String(body.provider || "gcash"));
+    if (!/^PB-[A-Z0-9]+-[A-Z0-9]+$/.test(bookingRef)) {
+      return json({ error: "A valid stored receipt checkpoint is required" }, 400);
+    }
+    if (!stagedReceiptPath) {
+      // The browser may have completed the upload but lost the HTTP response.
+      // Storage is the durable journal, so locate the newest valid object in
+      // this booking's private prefix instead of asking the customer to pay or
+      // upload again.
+      const listed = await db.storage.from("receipts").list(bookingRef, {
+        limit: 20,
+        offset: 0,
+        sortBy: { column: "updated_at", order: "desc" },
+      });
+      if (listed.error) {
+        return json({ error: "Stored receipt checkpoints could not be listed" }, 500);
+      }
+      const candidate = (listed.data || []).find((item: { name?: string }) =>
+        /^[a-f0-9]{64}\.(jpg|png|webp|heic)$/i.test(String(item.name || ""))
+      );
+      if (candidate?.name) stagedReceiptPath = `${bookingRef}/${candidate.name}`;
+    }
+    const pathParts = stagedReceiptPath.split("/");
+    if (
+      pathParts.length !== 2 ||
+      pathParts[0] !== bookingRef ||
+      !/^[a-f0-9]{64}\.(jpg|png|webp|heic)$/i.test(pathParts[1])
+    ) {
+      return json({ error: "No stored receipt checkpoint was found" }, 404);
+    }
+    const { data: storedImage, error: storedError } = await db.storage
+      .from("receipts").download(stagedReceiptPath);
+    if (storedError || !storedImage) {
+      return json({ error: "Stored receipt checkpoint could not be loaded" }, 404);
+    }
+    const storedBytes = new Uint8Array(await storedImage.arrayBuffer());
+    if (!storedBytes.length || storedBytes.length > MAX_BYTES) {
+      return json({ error: "Stored receipt checkpoint is invalid" }, 400);
+    }
+    const imageHash = await sha256Hex(storedBytes);
+    if (!pathParts[1].toLowerCase().startsWith(`${imageHash}.`)) {
+      return json({ error: "Stored receipt checkpoint hash does not match" }, 409);
+    }
+    try {
+      const recovered = await recoverCourtReceiptAfterFailure(db, {
+        bookingRef,
+        provider,
+        objectPath: stagedReceiptPath,
+        imageHash,
+      });
+      return json({
+        ok: true,
+        status: "manual_review",
+        receiptStatus: "manual_review",
+        flags: ["VERIFICATION_PROCESSING_INCOMPLETE"],
+        publicReason: recovered.active
+          ? "Receipt safely stored. Your booking is pending owner review."
+          : "Receipt safely stored, but the reservation expired. Please contact the court owner and do not pay again.",
+        receiptImageUrl: recovered.receiptImageUrl,
+        receiptImageHash: recovered.receiptImageHash,
+        receiptVerificationId: recovered.receiptVerificationId,
+        bookingActive: recovered.active,
+        bookingStatus: recovered.status,
+        paymentStatus: recovered.paymentStatus,
+        warning:
+          "Automatic verification did not finish; the stored receipt was recovered for owner review.",
+      });
+    } catch (error) {
+      console.error("court receipt checkpoint recovery failed:", errMsg(error));
+      return json({ error: "Stored receipt could not be recovered" }, 500);
+    }
+  }
+
   // ── admin-only: mint a signed URL to view a stored receipt ────────────────
   if (action === "sign") {
     const bookingRef = String(body.bookingRef || "");
@@ -2622,6 +2933,7 @@ Deno.serve(async (req) => {
   let recoveryBookingRef = "";
   let recoveryProvider: PaymentProvider = "gcash";
   let inlineRecoveryState: InlineReceiptRecoveryState | null = null;
+  let courtRecoveryState: CourtReceiptRecoveryState | null = null;
   try {
     const bookingRef = String(body.bookingRef || "");
     let provider = normalizedProvider(String(body.provider || "gcash"));
@@ -3026,6 +3338,14 @@ Deno.serve(async (req) => {
     const objectPath = `${bookingRef}/${imageHash}.${ext}`;
     if (stagedReceiptPath && stagedReceiptPath !== objectPath) {
       return json({ error: "Uploaded receipt checkpoint does not match the image" }, 409);
+    }
+    if (hasPersistedBooking) {
+      courtRecoveryState = {
+        bookingRef,
+        provider,
+        objectPath,
+        imageHash,
+      };
     }
     console.log("receipt checkpoint: storing", {
       bookingRef,
@@ -4271,6 +4591,39 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("verify-gcash-receipt error:", errMsg(err));
+    if (courtRecoveryState) {
+      try {
+        const recovered = await recoverCourtReceiptAfterFailure(
+          db,
+          courtRecoveryState,
+        );
+        return json({
+          ok: true,
+          status: "manual_review",
+          receiptStatus: "manual_review",
+          flags: ["VERIFICATION_PROCESSING_INCOMPLETE"],
+          publicReason: recovered.active
+            ? "Receipt safely stored. Your booking is pending owner review."
+            : "Receipt safely stored, but the reservation expired. Please contact the court owner and do not pay again.",
+          receiptImageUrl: recovered.receiptImageUrl,
+          receiptImageHash: recovered.receiptImageHash,
+          receiptVerificationId: recovered.receiptVerificationId,
+          bookingActive: recovered.active,
+          bookingStatus: recovered.status,
+          paymentStatus: recovered.paymentStatus,
+          warning:
+            "Automatic verification did not finish; the stored receipt was recovered for owner review.",
+          message: recovered.active
+            ? "Receipt received. Your booking is pending while the court owner reviews the payment."
+            : "Receipt received after the reservation expired. The court owner can review the stored payment evidence.",
+        });
+      } catch (recoveryError) {
+        console.error(
+          "court booking receipt recovery failed:",
+          errMsg(recoveryError),
+        );
+      }
+    }
     if (inlineRecoveryState) {
       try {
         const recovered = await recoverInlineReceiptAfterFailure(

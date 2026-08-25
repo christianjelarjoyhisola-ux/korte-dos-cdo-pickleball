@@ -19,7 +19,7 @@ test('host My Bookings uses its identity-scoped RPC instead of general booking r
 });
 
 test('host My Bookings survives a mixed cached page and data-layer version', () => {
-  assert.match(index, /supabase-config\.js\?v=20260814-voucher-roles-v1/);
+  assert.match(index, /supabase-config\.js\?v=20260825-receipt-recovery-v1/);
   assert.match(index, /typeof DB\?\.getMyHostBookings === 'function'/);
   assert.match(index, /client\.rpc\('get_my_host_bookings'\)/);
 });

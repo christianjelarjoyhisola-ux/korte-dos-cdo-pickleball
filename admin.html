@@ -4368,6 +4368,8 @@ const RECEIPT_FLAG_LABELS = {
   GOTYME_ACCOUNT_MISMATCH:'GoTyme GCash account suffix needs checking',
   GOTYME_TOTAL_UNREADABLE:'GoTyme amount, fee, or total unreadable',
   GOTYME_AUTO_APPROVE_DISABLED:'GoTyme auto-approval disabled; pending owner review',
+  VERIFICATION_PROCESSING_INCOMPLETE:'Receipt stored — automatic verification incomplete',
+  VERIFICATION_PROCESSING_ERROR:'Receipt stored — automatic verification failed',
   SESSION_CAPACITY_REVIEW:'Session filled — owner action required',
   LEGACY_CLIENT_REVIEW:'Older booking page — owner review required',
 };
@@ -12869,7 +12871,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260816-atomic-host-payment-v1"></script>
+<script src="supabase-config.js?v=20260825-receipt-recovery-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260731-host-balance-payment-v2"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
