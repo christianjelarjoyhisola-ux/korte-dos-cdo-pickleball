@@ -107,16 +107,14 @@ jobs:
             raise exception 'One or more Demand Growth RPCs are missing';
           end if;
 
-          if not exists (
-            select 1 from pg_class
+          if (
+            select count(*) from pg_class
             where oid in (
               'public.demand_campaigns'::regclass,
               'public.demand_campaign_redemptions'::regclass
             )
               and relrowsecurity
-            group by true
-            having count(*) = 2
-          ) then
+          ) <> 2 then
             raise exception 'Demand campaign RLS is not enabled';
           end if;
 
@@ -130,13 +128,11 @@ jobs:
             raise exception 'bookings.analytics_eligible is not safely defaulted';
           end if;
 
-          if not exists (
-            select 1 from pg_proc
+          if (
+            select count(*) from pg_proc
             where oid in (intelligence_function, create_function, apply_function, end_function)
               and prosecdef
-            group by true
-            having count(*) = 4
-          ) then
+          ) <> 4 then
             raise exception 'Demand Growth RPCs must all be SECURITY DEFINER';
           end if;
 
