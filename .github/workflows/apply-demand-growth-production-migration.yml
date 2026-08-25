@@ -1,0 +1,334 @@
+name: Apply Demand Growth Production Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-demand-growth-production-migration.yml"
+      - "supabase/migrations/20260826120000_demand_growth_campaigns.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-database-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Preflight, apply once, and verify Demand Growth schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260826120000_demand_growth_campaigns.sql
+      MIGRATION_SHA256: 1fdc6e11ebbe221dca6acf89b05e8f3dd85116245340a404e78ff6968d528c66
+      PREFLIGHT_SQL: |
+        with migration_history as (
+          select version, name, statements
+          from supabase_migrations.schema_migrations
+          where version = '20260826120000'
+        )
+        select jsonb_build_object(
+          'base_ready',
+            to_regclass('public.bookings') is not null
+            and to_regclass('public.courts') is not null
+            and to_regclass('public.vouchers') is not null
+            and to_regclass('public.voucher_redemptions') is not null
+            and to_regprocedure('public.apply_booking_voucher(text,text[])') is not null
+            and to_regprocedure('public.current_account_role()') is not null,
+          'schema_present',
+            to_regclass('public.demand_campaigns') is not null
+            or to_regclass('public.demand_campaign_redemptions') is not null
+            or to_regprocedure('public.get_demand_growth_intelligence(date,date,text)') is not null
+            or exists (
+              select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'bookings'
+                and column_name = 'analytics_eligible'
+            ),
+          'history_exists', exists (select 1 from migration_history),
+          'history_name', coalesce((select name from migration_history limit 1), ''),
+          'history_marker', coalesce((select statements[1] from migration_history limit 1), '')
+        ) as preflight;
+      HISTORY_SQL: |
+        begin;
+        set local lock_timeout = '5s';
+        set local statement_timeout = '30s';
+
+        create schema if not exists supabase_migrations;
+
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260826120000',
+          'demand_growth_campaigns',
+          array['sha256:1fdc6e11ebbe221dca6acf89b05e8f3dd85116245340a404e78ff6968d528c66']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+
+        commit;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          intelligence_function regprocedure :=
+            to_regprocedure('public.get_demand_growth_intelligence(date,date,text)');
+          create_function regprocedure :=
+            to_regprocedure('public.create_demand_campaign_from_recommendation(text,text)');
+          apply_function regprocedure :=
+            to_regprocedure('public.apply_matching_demand_campaign(text[])');
+          end_function regprocedure :=
+            to_regprocedure('public.end_demand_campaign(uuid)');
+          voucher_function regprocedure :=
+            to_regprocedure('public.apply_booking_voucher(text,text[])');
+          guard_function regprocedure :=
+            to_regprocedure('public.guard_public_booking_hold_update()');
+        begin
+          if to_regclass('public.demand_campaigns') is null
+             or to_regclass('public.demand_campaign_redemptions') is null then
+            raise exception 'Demand campaign tables are missing';
+          end if;
+
+          if intelligence_function is null or create_function is null
+             or apply_function is null or end_function is null
+             or voucher_function is null or guard_function is null then
+            raise exception 'One or more Demand Growth RPCs are missing';
+          end if;
+
+          if not exists (
+            select 1 from pg_class
+            where oid in (
+              'public.demand_campaigns'::regclass,
+              'public.demand_campaign_redemptions'::regclass
+            )
+              and relrowsecurity
+            group by true
+            having count(*) = 2
+          ) then
+            raise exception 'Demand campaign RLS is not enabled';
+          end if;
+
+          if not exists (
+            select 1 from information_schema.columns
+            where table_schema = 'public' and table_name = 'bookings'
+              and column_name = 'analytics_eligible'
+              and is_nullable = 'NO'
+              and column_default ilike '%true%'
+          ) then
+            raise exception 'bookings.analytics_eligible is not safely defaulted';
+          end if;
+
+          if not exists (
+            select 1 from pg_proc
+            where oid in (intelligence_function, create_function, apply_function, end_function)
+              and prosecdef
+            group by true
+            having count(*) = 4
+          ) then
+            raise exception 'Demand Growth RPCs must all be SECURITY DEFINER';
+          end if;
+
+          if has_function_privilege('anon', intelligence_function, 'execute')
+             or has_function_privilege('anon', create_function, 'execute')
+             or has_function_privilege('anon', end_function, 'execute')
+             or not has_function_privilege('anon', apply_function, 'execute') then
+            raise exception 'Demand Growth anonymous RPC grants are unsafe';
+          end if;
+
+          if not has_function_privilege('authenticated', intelligence_function, 'execute')
+             or not has_function_privilege('authenticated', create_function, 'execute')
+             or not has_function_privilege('authenticated', apply_function, 'execute')
+             or not has_function_privilege('authenticated', end_function, 'execute') then
+            raise exception 'Demand Growth authenticated RPC grants are incomplete';
+          end if;
+
+          if has_table_privilege('anon', 'public.demand_campaigns', 'select')
+             or has_table_privilege('anon', 'public.demand_campaign_redemptions', 'select') then
+            raise exception 'Demand campaign tables expose anonymous reads';
+          end if;
+
+          if to_regclass('public.demand_campaigns_one_active_uidx') is null
+             or to_regclass('public.idx_bookings_demand_growth_eligible') is null then
+            raise exception 'Demand Growth safety indexes are missing';
+          end if;
+
+          if not exists (
+            select 1 from pg_trigger
+            where tgrelid = 'public.bookings'::regclass
+              and tgname = 'trg_sync_demand_campaign_redemption'
+              and not tgisinternal
+          ) or not exists (
+            select 1 from pg_trigger
+            where tgrelid = 'public.bookings'::regclass
+              and tgname = 'trg_prepare_demand_campaign_booking_defaults'
+              and not tgisinternal
+          ) then
+            raise exception 'Demand campaign booking triggers are missing';
+          end if;
+
+          if pg_get_functiondef(intelligence_function) not ilike '%analytics_eligible = true%'
+             or pg_get_functiondef(intelligence_function) not ilike '%confirmed%completed%'
+             or pg_get_functiondef(intelligence_function) not ilike '%local_today - 1%'
+             or pg_get_functiondef(apply_function) not ilike '%app.demand_campaign_apply%'
+             or pg_get_functiondef(voucher_function) not ilike '%demand_campaign_redemptions%'
+             or pg_get_functiondef(voucher_function) not ilike '%replacedDemandCampaign%'
+             or pg_get_functiondef(guard_function) not ilike '%app.demand_campaign_apply%' then
+            raise exception 'Demand Growth eligibility or hold mutation safeguards are incomplete';
+          end if;
+
+          if exists (
+            select 1 from pg_constraint
+            where conrelid = 'public.bookings'::regclass
+              and conname in (
+                'bookings_demand_campaign_discount_nonnegative',
+                'bookings_demand_campaign_percent_range',
+                'bookings_no_voucher_campaign_stacking'
+              )
+              and not convalidated
+          ) then
+            raise exception 'Demand Growth booking constraints were not validated';
+          end if;
+
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260826120000'
+              and name = 'demand_growth_campaigns'
+              and statements = array[
+                'sha256:1fdc6e11ebbe221dca6acf89b05e8f3dd85116245340a404e78ff6968d528c66'
+              ]::text[]
+          ) then
+            raise exception 'Demand Growth migration history is missing or non-canonical';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read-only production schema preflight
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          preflight_payload="$RUNNER_TEMP/demand-growth-preflight.json"
+          preflight_response="$RUNNER_TEMP/demand-growth-preflight-response.json"
+          jq -n --arg query "$PREFLIGHT_SQL" '{query: $query}' > "$preflight_payload"
+
+          preflight_status="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            --output "$preflight_response" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$preflight_payload")"
+
+          if [[ ! "$preflight_status" =~ ^2 ]]; then
+            echo "::error::Demand Growth read-only preflight failed with HTTP $preflight_status."
+            jq -c '{code, message, error}' "$preflight_response" 2>/dev/null || true
+            exit 1
+          fi
+
+          preflight="$(jq -c '
+            if type == "array" then .[0].preflight
+            elif (.result? | type) == "array" then .result[0].preflight
+            else .preflight end
+          ' "$preflight_response")"
+          if [[ -z "$preflight" || "$preflight" == "null" ]]; then
+            echo "::error::Demand Growth preflight returned no schema result."
+            exit 1
+          fi
+          if [[ "$(jq -r '.base_ready' <<<"$preflight")" != "true" ]]; then
+            echo "::error::Demand Growth base schema is incomplete; migration was not attempted."
+            exit 1
+          fi
+
+          if [[ "$(jq -r '.history_exists' <<<"$preflight")" == "true" ]]; then
+            marker="$(jq -r '.history_marker' <<<"$preflight")"
+            if [[ "$marker" != "sha256:$MIGRATION_SHA256" ]]; then
+              echo "::error::Migration 20260826120000 already exists with a different checksum."
+              exit 1
+            fi
+            echo "skip_apply=true" >> "$GITHUB_OUTPUT"
+            echo "Canonical Demand Growth migration is already recorded; full DDL will not run again."
+          else
+            if [[ "$(jq -r '.schema_present' <<<"$preflight")" == "true" ]]; then
+              echo "::error::Demand Growth schema exists without canonical migration history; refusing a second or partial DDL run."
+              exit 1
+            fi
+            echo "skip_apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply Demand Growth migration exactly once
+        if: steps.preflight.outputs.skip_apply != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/demand-growth-migration.json"
+          response_file="$RUNNER_TEMP/demand-growth-migration-response.json"
+
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: (. + "\n" + $history)}' \
+            "$MIGRATION_FILE" > "$payload_file"
+
+          # Deliberately one POST with no automatic retry. If its response is
+          # ambiguous, the next read-only preflight detects applied/partial
+          # state instead of issuing the full DDL a second time.
+          status_code="$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 150 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand Growth migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/demand-growth-verification.json"
+          response_file="$RUNNER_TEMP/demand-growth-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Demand Growth production verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Demand Growth production migration verified."
