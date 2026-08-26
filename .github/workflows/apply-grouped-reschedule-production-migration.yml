@@ -24,7 +24,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
       MIGRATION_FILE: supabase/migrations/20260826190000_atomic_group_reschedule.sql
-      MIGRATION_SHA256: 2c3613d9a8ea2333989199a79e51fbcf58c15db422a7a0022eee5ab6f534273e
+      MIGRATION_SHA256: dcc5369743448ab794128167fdabbe2325e6fb5b16bd1230aef10f152635e3bb
       HISTORY_SQL: |
         create schema if not exists supabase_migrations;
         create table if not exists supabase_migrations.schema_migrations (
@@ -38,7 +38,7 @@ jobs:
         values (
           '20260826190000',
           'atomic_group_reschedule',
-          array['sha256:2c3613d9a8ea2333989199a79e51fbcf58c15db422a7a0022eee5ab6f534273e']::text[]
+          array['sha256:dcc5369743448ab794128167fdabbe2325e6fb5b16bd1230aef10f152635e3bb']::text[]
         )
         on conflict (version) do update
         set name = excluded.name,
@@ -73,7 +73,7 @@ jobs:
             where version = '20260826190000'
               and name = 'atomic_group_reschedule'
               and statements = array[
-                'sha256:2c3613d9a8ea2333989199a79e51fbcf58c15db422a7a0022eee5ab6f534273e'
+                'sha256:dcc5369743448ab794128167fdabbe2325e6fb5b16bd1230aef10f152635e3bb'
               ]::text[]
           ) then
             raise exception 'Atomic grouped reschedule migration history is missing';

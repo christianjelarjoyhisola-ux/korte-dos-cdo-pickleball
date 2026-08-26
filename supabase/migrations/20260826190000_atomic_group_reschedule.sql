@@ -131,6 +131,7 @@ end;
 $$;
 
 revoke all on function public.reschedule_booking_group(text[], date, integer, integer) from public;
+revoke all on function public.reschedule_booking_group(text[], date, integer, integer) from anon;
 grant execute on function public.reschedule_booking_group(text[], date, integer, integer) to authenticated;
 
 comment on function public.reschedule_booking_group(text[], date, integer, integer)
