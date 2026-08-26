@@ -13,17 +13,16 @@ function profitMigration() {
   const directory = path.join(ROOT, 'supabase', 'migrations');
   const candidates = fs.readdirSync(directory)
     .filter(name => name.endsWith('.sql'))
-    .sort()
-    .reverse();
-  const name = candidates.find(candidate => {
+    .sort();
+  const names = candidates.filter(candidate => {
     const source = fs.readFileSync(path.join(directory, candidate), 'utf8');
     return /profit_learning_experiments/i.test(source)
       && /profit_learning_occurrences/i.test(source);
   });
-  assert.ok(name, 'an additive Profit Learning V2 migration must exist');
+  assert.ok(names.length, 'an additive Profit Learning V2 migration must exist');
   return {
-    name,
-    source: fs.readFileSync(path.join(directory, name), 'utf8'),
+    name: names.at(-1),
+    source: names.map(name => fs.readFileSync(path.join(directory, name), 'utf8')).join('\n'),
   };
 }
 
@@ -32,10 +31,23 @@ function sqlFunction(source, name) {
     `create\\s+or\\s+replace\\s+function\\s+public\\.${name}\\s*\\(`,
     'i',
   );
-  const match = startPattern.exec(source);
+  const matches = [...source.matchAll(new RegExp(startPattern.source, 'ig'))];
+  const match = matches.at(-1);
   assert.ok(match, `SQL function ${name} must exist`);
   const rest = source.slice(match.index + match[0].length);
   const next = rest.search(/\ncreate\s+or\s+replace\s+function\s+public\./i);
+  return source.slice(match.index, next < 0 ? source.length : match.index + match[0].length + next);
+}
+
+function sqlTable(source, name) {
+  const startPattern = new RegExp(
+    `create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?public\\.${name}\\b`,
+    'i',
+  );
+  const match = startPattern.exec(source);
+  assert.ok(match, `SQL table ${name} must exist`);
+  const rest = source.slice(match.index + match[0].length);
+  const next = rest.search(/\ncreate\s+table\s+/i);
   return source.slice(match.index, next < 0 ? source.length : match.index + match[0].length + next);
 }
 
@@ -58,7 +70,7 @@ function monday(dateText) {
   return new Date(`${dateText}T12:00:00Z`).getUTCDay() === 1;
 }
 
-test('intelligence is one-hour and carries a regular-price protected-test action', () => {
+test('Best Move targets one regular-price occurrence within a 28-day horizon', () => {
   delete require.cache[require.resolve('./owner-intelligence.js')];
   const Intelligence = require('./owner-intelligence.js');
   const snapshot = Intelligence.buildLocalSnapshot({
@@ -100,7 +112,11 @@ test('intelligence is one-hour and carries a regular-price protected-test action
   assert.ok(snapshot.recommendation, 'an evidence-ready weak one-hour slot should be actionable');
   assert.equal(snapshot.recommendation.action_type, 'facebook_regular_price');
   assert.equal(snapshot.recommendation.discount_percent, 0);
-  assert.equal(snapshot.recommendation.target_pairs, 8);
+  assert.equal(snapshot.recommendation.target_occurrences, 1);
+  assert.equal(snapshot.recommendation.horizon_days, 28);
+  if (snapshot.recommendation.target_pairs !== undefined) {
+    assert.equal(snapshot.recommendation.target_pairs, 1, 'legacy storage compatibility may describe one target only');
+  }
   assert.equal(snapshot.recommendation.end_hour, snapshot.recommendation.start_hour + 1);
   assert.ok(Number(snapshot.recommendation.hourly_rate ?? snapshot.recommendation.rate) > 0);
   assert.equal(snapshot.recommendation.valid_days, undefined);
@@ -178,17 +194,19 @@ test('V2 persistence is additive, occurrence-level, unique, immutable, and owner
     assert.match(sql, new RegExp(`create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?public\\.${table}\\b`, 'i'));
   }
 
-  const occurrenceStart = sql.search(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.profit_learning_occurrences\b/i);
-  const occurrenceEnd = sql.slice(occurrenceStart + 1).search(/\ncreate\s+table\s+/i);
-  const occurrenceTable = sql.slice(
-    occurrenceStart,
-    occurrenceEnd < 0 ? sql.length : occurrenceStart + 1 + occurrenceEnd,
-  );
+  const experimentTable = sqlTable(sql, 'profit_learning_experiments');
+  const occurrenceTable = sqlTable(sql, 'profit_learning_occurrences');
+  if (/\btarget_pairs\b/i.test(experimentTable)) {
+    assert.match(sql, /alter\s+column\s+target_pairs\s+set\s+default\s+1/i);
+  }
   for (const column of ['experiment_id', 'court_id', 'slot_hour']) {
     assert.match(occurrenceTable, new RegExp(`\\b${column}\\b`, 'i'));
   }
   assert.match(occurrenceTable, /\b(?:occurrence_date|play_date)\b/i);
   assert.match(occurrenceTable, /\b(?:assignment_arm|arm)\b/i);
+  assert.match(occurrenceTable, /'treatment'/i);
+  // Historical paired runs remain readable; the latest creation RPC below is
+  // the contract that permits only one treatment occurrence.
   assert.match(
     sql,
     /unique\s*(?:index[^\n]*on\s+public\.profit_learning_occurrences\s*)?\(\s*(?:experiment_id\s*,\s*)?court_id\s*,\s*(?:occurrence_date|play_date)\s*,\s*slot_hour\s*\)/i,
@@ -241,8 +259,24 @@ test('V2 uses separate RPCs and frontend methods without booking-price mutation 
   const createExperiment = sqlFunction(sql, 'create_profit_learning_experiment_from_recommendation');
   assert.match(createExperiment, /facebook_regular_price/i);
   assert.match(createExperiment, /discount_percent[\s\S]{0,100}\b0\b/i);
+  assert.match(createExperiment, /target_occurrences[\s\S]{0,100}\b1\b/i);
+  assert.match(createExperiment, /horizon_days[\s\S]{0,100}\b28\b/i);
+  assert.match(createExperiment, /insert\s+into\s+public\.profit_learning_occurrences/i);
+  assert.match(createExperiment, /'treatment'/i);
+  assert.doesNotMatch(createExperiment, /'control'/i);
   assert.doesNotMatch(createExperiment, /(?:insert\s+into|update|delete\s+from)\s+public\.bookings/i);
   assert.doesNotMatch(createExperiment, /apply_matching_demand_campaign|demand_campaign_discount/i);
+});
+
+test('Best Move creates one treatment occurrence no more than 28 days ahead', () => {
+  const { source: sql } = profitMigration();
+  const createExperiment = sqlFunction(sql, 'create_profit_learning_experiment_from_recommendation');
+
+  assert.match(sql, /'target_occurrences'\s*,\s*1/i);
+  assert.match(sql, /'horizon_days'\s*,\s*28/i);
+  assert.match(createExperiment, /(?:local_today|current_date)[\s\S]{0,160}(?:\+\s*28|interval\s*'28\s+days')/i);
+  assert.match(createExperiment, /limit\s+1/i, 'candidate selection must stop after one exact occurrence');
+  assert.doesNotMatch(createExperiment, /generate_series\s*\(\s*1\s*,\s*(?:8|16)/i);
 });
 
 test('occurrence outcomes allowlist paid success and make failed operational states zero', () => {
@@ -272,11 +306,19 @@ test('premium owner surface is one clear card with action-aware Facebook copy', 
   assert.match(html, /No discount required(?: yet)?/i);
   assert.match(html, /Existing bookings and hourly prices (?:stay|remain) unchanged/i);
   assert.match(html, /Create Facebook post/i);
+  assert.doesNotMatch(html, /(?:8|eight)\s+matched\s+pairs?/i);
 
   const captionStart = html.indexOf('function buildDemandPostCaption(');
   assert.ok(captionStart >= 0, 'Facebook caption composer must remain available');
   const captionEnd = html.indexOf('\nfunction ', captionStart + 20);
   const caption = html.slice(captionStart, captionEnd < 0 ? html.length : captionEnd);
+  assert.match(
+    caption,
+    /(?:rows\.slice\s*\(\s*0\s*,\s*1\s*\)|rows\s*\[\s*0\s*\]|featured\s*\[\s*0\s*\])/i,
+    'the Post Kit must select one exact occurrence/date only',
+  );
+  assert.doesNotMatch(caption, /rows\.slice\s*\(\s*0\s*,\s*(?:[2-9]|\d{2,})\s*\)/i);
+  assert.doesNotMatch(caption, /More selected offer times|matching (?:dates|times)|weekly window/i);
   assert.match(caption, /facebook_regular_price/i);
   assert.match(caption, /regular price|no discount/i);
   assert.match(caption, /discount|%\s*OFF|SAVE/i, 'discount actions keep their own truthful copy');

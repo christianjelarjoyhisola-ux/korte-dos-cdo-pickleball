@@ -4136,7 +4136,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
     <div class="m-hd">
       <div>
         <h2 id="dgPostKitTitle">FACEBOOK POST KIT</h2>
-        <div class="dg-postkit-sub" id="dgPostKitSubtitle">A ready-to-post graphic and persuasive caption built from the active offer.</div>
+        <div class="dg-postkit-sub" id="dgPostKitSubtitle">One ready-to-post graphic for one exact court date and one-hour slot.</div>
       </div>
       <button class="m-x" type="button" aria-label="Close Facebook Post Kit" onclick="closeDemandPostKit()">&#10005;</button>
     </div>
@@ -4145,13 +4145,13 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
         <span class="dg-postkit-label" id="dgPostKitPreviewLabel">Post graphic</span>
         <div class="dg-postkit-preview-frame">
           <canvas id="dgPostKitCanvas" width="1080" height="1350" role="img" aria-label="Korte DOS active offer Facebook post graphic"></canvas>
-          <div class="dg-postkit-loading" id="dgPostKitLoading" role="status" aria-live="polite">Building exact offer artwork&hellip;</div>
+          <div class="dg-postkit-loading" id="dgPostKitLoading" role="status" aria-live="polite">Building exact one-hour artwork&hellip;</div>
         </div>
         <div class="dg-postkit-size"><span>Facebook feed portrait</span><span>1080 &times; 1350 PNG</span></div>
       </section>
       <section class="dg-postkit-editor" aria-labelledby="dgPostKitCaptionLabel">
         <div class="dg-postkit-facts" id="dgPostKitFacts" aria-label="Offer facts"></div>
-        <div class="dg-postkit-status" id="dgPostKitStatus" role="status" aria-live="polite">Checking the next exact offer times&hellip;</div>
+        <div class="dg-postkit-status" id="dgPostKitStatus" role="status" aria-live="polite">Checking the exact court time&hellip;</div>
         <div>
           <span class="dg-postkit-label">Caption style</span>
           <div class="dg-postkit-variants" role="group" aria-label="Caption style">
@@ -8961,7 +8961,7 @@ function renderDemandHeatmap(snapshot) {
   let html = '<div class="oi-heat-label"></div>' + days.map(day => `<div class="oi-heat-label">${day}</div>`).join('');
   starts.forEach(start => {
     const first = cells.find(cell => Number(cell.start_hour) === start);
-    const end = Number(first?.end_hour || start + 3);
+    const end = Number(first?.end_hour || start + 1);
     html += `<div class="oi-heat-label oi-heat-time">${esc(window.OwnerIntelligence.timeLabel(start,end))}</div>`;
     for (let weekday=1; weekday<=7; weekday+=1) {
       const cell = map.get(`${start}:${weekday}`) || {};
@@ -8983,6 +8983,18 @@ function renderDemandHeatmap(snapshot) {
   callout.innerHTML = '<span aria-hidden="true">&#10022;</span><p><strong>Learning demand.</strong> Korte DOS will abstain until a weak window has enough comparable history for a safe action.</p>';
 }
 
+function earliestTreatmentOccurrence(snapshot, experiment, options = {}) {
+  const today = oiToday();
+  return (Array.isArray(snapshot?.active_occurrences) ? snapshot.active_occurrences : [])
+    .filter(item => String(item.experiment_id) === String(experiment?.id)
+      && item.arm === 'treatment'
+      && (!options.futureOnly || String(item.play_date || '') >= today)
+      && (!options.unpostedOnly || !item.facebook_published_at))
+    .sort((a,b) => String(a.play_date || '').localeCompare(String(b.play_date || ''))
+      || Number(a.slot_hour) - Number(b.slot_hour))
+    .slice(0,1)[0] || null;
+}
+
 function renderDemandRecommendation(snapshot) {
   const target = $('dgRecommendation');
   const title = $('dgActionTitle');
@@ -8994,19 +9006,23 @@ function renderDemandRecommendation(snapshot) {
     .filter(item => item.status === 'active');
   if (experiments.length) {
     const experiment = experiments[0];
-    const occurrences = (snapshot?.active_occurrences || [])
-      .filter(item => String(item.experiment_id) === String(experiment.id));
-    const posted = occurrences.filter(item => item.arm === 'treatment' && item.facebook_published_at).length;
-    const treatment = occurrences.filter(item => item.arm === 'treatment').length;
-    title.textContent = `${experiment.court_name || 'Selected court'} · ${window.OwnerIntelligence.timeLabel(experiment.start_hour ?? experiment.slot_hour,experiment.end_hour)}`;
+    const occurrence = earliestTreatmentOccurrence(snapshot,experiment,{ futureOnly:true, unpostedOnly:true })
+      || earliestTreatmentOccurrence(snapshot,experiment,{ futureOnly:true })
+      || earliestTreatmentOccurrence(snapshot,experiment);
+    const slotHour = Number(occurrence?.slot_hour ?? experiment.start_hour ?? experiment.slot_hour);
+    const endHour = Number(occurrence?.end_hour ?? slotHour + 1);
+    const courtName = occurrence?.court_name || experiment.court_name || experiment.court_id || 'Selected court';
+    const dateLabel = occurrence?.play_date ? oiFormatDate(occurrence.play_date) : 'Next assigned date';
+    const price = Number(occurrence?.regular_rate || experiment.hourly_rate || 0);
+    title.textContent = `${courtName} · ${dateLabel} · ${window.OwnerIntelligence.timeLabel(slotHour,endHour)}`;
     badge.className = 'dg-confidence high';
     badge.textContent = 'Protected';
-    target.innerHTML = `<strong>Protected test in progress</strong>
-      <p>Korte DOS reserved eight comparable promotion pairs for this exact one-hour slot. Post only the assigned treatment dates so the result remains trustworthy.</p>
+    target.innerHTML = `<strong>${occurrence?.facebook_published_at ? 'Featured hour posted' : 'Your next exact Facebook post'}</strong>
+      <p>Promote this assigned court opening only. The player sees the regular one-hour price, and every existing booking stays unchanged.</p>
       <div class="dg-action-scope">
-        <div><span>Promotion posts prepared</span><b>${posted}/${treatment || 8}</b></div>
-        <div><span>Player price</span><b>Regular price</b></div>
-        <div><span>Scheduled through</span><b>${esc(oiFormatDate(experiment.scheduled_through) || 'Assigned dates')}</b></div>
+        <div><span>Court</span><b>${esc(courtName)}</b></div>
+        <div><span>Date &amp; time</span><b>${esc(dateLabel)} · ${esc(window.OwnerIntelligence.timeLabel(slotHour,endHour))}</b></div>
+        <div><span>Player price</span><b>${price > 0 ? `${oiMoney(price)} / hour` : 'Regular one-hour price'}</b></div>
       </div>
       <button class="dg-apply" type="button" onclick="openProfitLearningPostKit('${jsArg(experiment.id)}')">Create Facebook post</button>
       <small class="dg-guardrail">No discount required yet. Existing bookings and hourly prices remain unchanged.</small>`;
@@ -9046,11 +9062,11 @@ function renderDemandRecommendation(snapshot) {
     <p>Test a Facebook promotion at regular price for ${esc(recommendation.court_name || 'the selected court')} · ${esc(recommendation.weekday_label)} · ${esc(window.OwnerIntelligence.timeLabel(recommendation.start_hour,recommendation.end_hour))}. ${evidence} across ${oiNumber(recommendation.comparable_days)} comparable days makes this the clearest opportunity.</p>
     <div class="dg-action-scope">
       <div><span>Exact one-hour price</span><b>${rate > 0 ? oiMoney(rate) : 'Regular price'}</b></div>
-      <div><span>Evidence target</span><b>${oiNumber(recommendation.target_pairs || 8)} matched pairs</b></div>
+      <div><span>Date</span><b>Next eligible date assigned after approval</b></div>
       <div><span>Price action</span><b>Regular price · No discount required yet</b></div>
     </div>
     <button class="dg-apply" id="dgApplyButton" type="button" onclick="applyDemandRecommendation()">Start protected test</button>
-    <details class="dg-method"><summary>Why this?</summary><div><p>Eight matched pairs means eight promoted dates compared with eight similar dates that are not promoted. Korte DOS measures additional paid bookings and secured court revenue before recommending any discount.</p></div></details>
+    <details class="dg-method"><summary>Why this?</summary><div><p>This exact one-hour pattern has the clearest evidence-ready opportunity. After approval, Korte DOS assigns the first safe promotion date and keeps comparison details in the background.</p></div></details>
     <small class="dg-guardrail">Existing bookings and hourly prices remain unchanged.</small>`;
 }
 
@@ -9063,14 +9079,19 @@ function renderActiveDemandCampaigns(snapshot) {
   section.hidden = !rows.length && !experiments.length;
   if (!rows.length && !experiments.length) { target.innerHTML = ''; return; }
   const experimentHtml = experiments.map(item => {
-    const occurrences = (snapshot?.active_occurrences || []).filter(row => String(row.experiment_id) === String(item.id));
-    const treatment = occurrences.filter(row => row.arm === 'treatment');
-    const posted = treatment.filter(row => row.facebook_published_at).length;
+    const occurrence = earliestTreatmentOccurrence(snapshot,item,{ futureOnly:true, unpostedOnly:true })
+      || earliestTreatmentOccurrence(snapshot,item,{ futureOnly:true })
+      || earliestTreatmentOccurrence(snapshot,item);
+    const slotHour = Number(occurrence?.slot_hour ?? item.start_hour ?? item.slot_hour);
+    const endHour = Number(occurrence?.end_hour ?? slotHour + 1);
+    const courtName = occurrence?.court_name || item.court_name || item.court_id || 'Court';
+    const dateLabel = occurrence?.play_date ? oiFormatDate(occurrence.play_date) : 'Next assigned date';
+    const price = Number(occurrence?.regular_rate || item.hourly_rate || 0);
     return `<article class="dg-active-row">
-      <div><h4>Regular-price Facebook test</h4><p>${esc(item.court_name || item.court_id || 'Court')} · ${esc(window.OwnerIntelligence.timeLabel(item.start_hour ?? item.slot_hour,item.end_hour))} · eight protected comparison pairs</p></div>
-      <div class="dg-active-stat"><strong>${posted}/${treatment.length || 8}</strong><span>promotion dates posted</span></div>
-      <div class="dg-active-stat"><strong>${oiFormatDate(item.scheduled_through)}</strong><span>scheduled through</span></div>
-      <div class="dg-active-stat"><strong>${oiMoney(0)}</strong><span>discount invested</span></div>
+      <div><h4>Next regular-price Facebook post</h4><p>${esc(courtName)} · ${esc(dateLabel)} · ${esc(window.OwnerIntelligence.timeLabel(slotHour,endHour))}</p></div>
+      <div class="dg-active-stat"><strong>${price > 0 ? oiMoney(price) : 'Regular'}</strong><span>one-hour price</span></div>
+      <div class="dg-active-stat"><strong>${occurrence?.facebook_published_at ? 'Posted' : 'Ready'}</strong><span>post status</span></div>
+      <div class="dg-active-stat"><strong>${oiMoney(0)}</strong><span>discount</span></div>
       <div class="dg-active-actions">
         <button class="dg-post" type="button" onclick="openProfitLearningPostKit('${jsArg(item.id)}')">Create Facebook post</button>
         <button class="dg-end" type="button" onclick="endProfitLearningExperiment('${jsArg(item.id)}')">End test</button>
@@ -9213,7 +9234,9 @@ function normalizeDemandPostFeaturedRows(payload, campaign) {
     if (normalized.endsAt && new Date(normalized.endsAt).getTime() <= Date.now()) return;
     unique.set(`${normalized.courtId}|${normalized.offerDate}|${normalized.slotHour}`, normalized);
   });
-  return [...unique.values()].sort((a,b) => a.offerDate.localeCompare(b.offerDate) || a.slotHour - b.slotHour);
+  return [...unique.values()]
+    .sort((a,b) => a.offerDate.localeCompare(b.offerDate) || a.slotHour - b.slotHour)
+    .slice(0,1);
 }
 
 function demandPostBookingUrl() {
@@ -9236,13 +9259,16 @@ function buildDemandPostCaption(state, variant = 'energetic') {
   const court = String(campaign.court_name || campaign.courtName || state?.court?.name || 'Selected court');
   const weekday = demandPostWeekday(campaign);
   const windowLabel = demandPostTimeRange(campaign.start_hour ?? campaign.startHour, campaign.end_hour ?? campaign.endHour);
-  const schedule = `${court} · ${weekday}s · ${windowLabel}`;
-  const rowLines = rows.slice(0,5).map(row =>
+  const featured = rows.slice(0,1)[0] || null;
+  const schedule = featured
+    ? `${court} · ${demandPostDate(featured.offerDate)} · ${demandPostTimeRange(featured.slotHour,featured.slotHour + 1)}`
+    : `${court} · ${weekday} · ${windowLabel}`;
+  const rowLines = rows.slice(0,1).map(row =>
     `• ${demandPostDate(row.offerDate)} · ${demandPostTimeRange(row.slotHour,row.slotHour + 1)} — ${demandPostMoney(row.offerRate)} (regular ${demandPostMoney(row.regularRate)})`
   );
   const availability = rowLines.length
-    ? `Next discounted times:\n${rowLines.join('\n')}${rows.length > rowLines.length ? '\n• More selected offer times may be available online.' : ''}`
-    : `Offer window: ${schedule}`;
+    ? `Discounted court time:\n${rowLines[0]}`
+    : `Featured court time: ${schedule}`;
   const endsAt = campaign.ends_at || campaign.endsAt || campaign.scheduled_through || rows[0]?.endsAt;
   const ending = demandPostEnd(endsAt)
     ? `Offer is scheduled to end ${demandPostEnd(endsAt)}; availability can end earlier as players book.`
@@ -9251,20 +9277,16 @@ function buildDemandPostCaption(state, variant = 'energetic') {
   const hashtags = '#KorteDOS #PickleballCDO #CDOPickleball';
 
   if (regularPriceAction) {
-    const regularLines = rows.slice(0,5).map(row =>
-      `• ${demandPostDate(row.offerDate)} · ${demandPostTimeRange(row.slotHour,row.slotHour + 1)} — ${demandPostMoney(row.regularRate)}`
-    );
-    const selectedTimes = regularLines.length
-      ? `Selected court times:\n${regularLines.join('\n')}${rows.length > regularLines.length ? '\n• More selected dates are available online.' : ''}`
-      : `Featured hour: ${schedule}`;
-    if (variant === 'clean') return `YOUR NEXT PICKLEBALL HOUR IS OPEN\n\n${schedule}\n\n${selectedTimes}\n\nRegular price. No discount required—just a good hour to get your game in.\n\nBook: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
-    if (variant === 'barkada') return `Barkada, this hour needs your next rally. 🏓\n\n${schedule}\n\n${selectedTimes}\n\nRegular price, no discount—bring the group and own the court.\n\nTara, book na: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
-    return `🏓 LIMITED COURT TIMES FOR YOUR NEXT GAME\n\n${schedule}\n\n${selectedTimes}\n\nBook this one-hour court time at the regular price. No discount required—availability is limited as players reserve.\n\nReady to play? Book here: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+    const price = featured ? demandPostMoney(featured.regularRate) : 'Regular price';
+    const exactSlot = `${schedule}\n${price} for one hour`;
+    if (variant === 'clean') return `YOUR NEXT PICKLEBALL HOUR IS OPEN\n\n${exactSlot}\n\nOne court. One date. One hour at the regular price.\n\nBook: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+    if (variant === 'barkada') return `Barkada, this hour is ready for your next rally. 🏓\n\n${exactSlot}\n\nBring the group and own this one-hour court time at the regular price.\n\nTara, book na: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+    return `🏓 YOUR NEXT COURT HOUR\n\n${exactSlot}\n\nBook this exact one-hour court time at the regular price while it is open.\n\nReady to play? Book here: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
   }
 
-  if (variant === 'clean') return `${percent}% OFF SELECT COURT TIMES\n\n${schedule}\n\n${availability}\n\nThe discount applies automatically to matching new bookings. ${ending}\n\nBook: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
-  if (variant === 'barkada') return `Barkada game, better rate. 🏓\n\nSave ${percent}% on selected ${court} times at Korte DOS.\n\n${availability}\n\nThe discount applies automatically to matching new bookings. ${ending}\n\nTara, book na: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
-  return `🏓 SAVE ${percent}% ON YOUR NEXT GAME\n\nYour next rally at Korte DOS comes with a better court rate.\n\n${availability}\n\nThe discount applies automatically to matching new bookings. ${ending}\n\nReady to play? Book here: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+  if (variant === 'clean') return `${percent}% OFF THIS COURT HOUR\n\n${schedule}\n\n${availability}\n\nThe discount applies automatically to this matching new booking. ${ending}\n\nBook: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+  if (variant === 'barkada') return `Barkada game, better rate. 🏓\n\nSave ${percent}% on this ${court} hour at Korte DOS.\n\n${availability}\n\nThe discount applies automatically to this matching new booking. ${ending}\n\nTara, book na: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
+  return `🏓 SAVE ${percent}% ON YOUR NEXT GAME\n\nYour next rally at Korte DOS comes with a better court rate.\n\n${availability}\n\nThe discount applies automatically to this matching new booking. ${ending}\n\nReady to play? Book here: ${book}\n📍 Bayabas, Cagayan de Oro City\n\n${hashtags}`;
 }
 
 function demandPostRoundRect(ctx,x,y,width,height,radius) {
@@ -9333,7 +9355,7 @@ async function renderDemandPostCanvas(state) {
   if (document.fonts?.ready) await document.fonts.ready.catch(() => {});
   if (_dgPostKitState !== state) return false;
   const campaign = state.campaign;
-  const rows = state.featured || [];
+  const rows = (state.featured || []).slice(0,1);
   const regularPriceAction = isRegularPriceDemandAction(campaign);
   const courtPhoto = demandPostSafePhoto(state.court?.photo);
   const logoUrl = new URL('korte-dos-logo.png',location.href).href;
@@ -9385,7 +9407,9 @@ async function renderDemandPostCanvas(state) {
 
   const endsAt = campaign.ends_at || campaign.endsAt || rows[0]?.endsAt;
   const endLabel = demandPostEnd(endsAt,{compact:true});
-  const badge = endLabel ? `THROUGH ${endLabel}` : 'LIMITED COURT TIMES';
+  const badge = regularPriceAction && rows[0]
+    ? demandPostDate(rows[0].offerDate,{weekday:false}).toUpperCase()
+    : endLabel ? `THROUGH ${endLabel}` : 'LIMITED COURT TIME';
   demandPostCanvasFont(ctx,22,900);
   const badgeWidth = Math.max(170,ctx.measureText(badge).width + 48);
   ctx.fillStyle = 'rgba(255,255,255,.13)'; demandPostRoundRect(ctx,width - badgeWidth - 62,72,badgeWidth,54,27); ctx.fill();
@@ -9397,22 +9421,24 @@ async function renderDemandPostCanvas(state) {
   if (regularPriceAction) {
     ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,'PLAY',650,290,400,'Bebas Neue',180); ctx.fillText('PLAY',65,535);
     ctx.fillStyle = '#ef5b36'; demandPostFitFont(ctx,'THIS HOUR',390,112,400,'Bebas Neue',74); ctx.fillText('THIS HOUR',650,520);
-    ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,'LIMITED ONE-HOUR COURT TIMES',940,64,900,'DM Sans',39); ctx.fillText('LIMITED ONE-HOUR COURT TIMES',70,683);
+    ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,'ONE PREMIUM COURT HOUR',940,64,900,'DM Sans',39); ctx.fillText('ONE PREMIUM COURT HOUR',70,683);
   } else {
     ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,percent,650,310,400,'Bebas Neue',190); ctx.fillText(percent,65,570);
     ctx.fillStyle = '#ef5b36'; demandPostFitFont(ctx,'OFF',270,178,400,'Bebas Neue',110); ctx.fillText('OFF',770,548);
-    ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,'SELECT COURT TIMES',940,76,900,'DM Sans',48); ctx.fillText('SELECT COURT TIMES',70,683);
+    ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,'THIS COURT HOUR',940,76,900,'DM Sans',48); ctx.fillText('THIS COURT HOUR',70,683);
   }
 
   const court = String(campaign.court_name || campaign.courtName || state.court?.name || 'Selected court').toUpperCase();
-  const windowLabel = `${court} • ${demandPostWeekday(campaign).toUpperCase()}S • ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}`;
+  const windowLabel = rows[0]
+    ? `${court} • ${demandPostDate(rows[0].offerDate).toUpperCase()} • ${demandPostTimeRange(rows[0].slotHour,rows[0].slotHour + 1)}`
+    : `${court} • ${demandPostWeekday(campaign).toUpperCase()} • ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}`;
   ctx.fillStyle = 'rgba(255,255,255,.82)'; demandPostFitFont(ctx,windowLabel,940,42,800,'DM Sans',27); ctx.fillText(windowLabel,70,760);
 
   ctx.fillStyle = 'rgba(8,27,44,.88)'; demandPostRoundRect(ctx,70,815,940,370,30); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 2; demandPostRoundRect(ctx,70,815,940,370,30); ctx.stroke();
   if (rows.length) {
-    ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,22,900); ctx.fillText(regularPriceAction ? 'FEATURED COURT TIMES' : 'NEXT DISCOUNTED TIMES',100,862);
-    rows.slice(0,3).forEach((row,index) => {
+    ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,22,900); ctx.fillText(regularPriceAction ? 'FEATURED COURT HOUR' : 'DISCOUNTED COURT HOUR',100,862);
+    rows.slice(0,1).forEach((row,index) => {
       const y = 882 + index * 88;
       ctx.fillStyle = index % 2 ? 'rgba(255,255,255,.055)' : 'rgba(255,255,255,.09)'; demandPostRoundRect(ctx,94,y,892,78,18); ctx.fill();
       const slotLabel = `${demandPostDate(row.offerDate,{weekday:false}).toUpperCase()} • ${demandPostTimeRange(row.slotHour,row.slotHour + 1,{compact:true})}`;
@@ -9427,9 +9453,6 @@ async function renderDemandPostCanvas(state) {
         ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,43,900); ctx.fillText(demandPostMoney(row.offerRate),955,y + 57);
       }
     });
-    if (rows.length > 3) {
-      ctx.fillStyle = 'rgba(255,255,255,.66)'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; demandPostCanvasFont(ctx,19,800); ctx.fillText('MORE OFFER TIMES ONLINE',100,1163);
-    }
   } else {
     ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,22,900); ctx.fillText('OFFER WINDOW',100,870);
     ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,court,860,58,900,'DM Sans',36); ctx.fillText(court,100,960);
@@ -9444,8 +9467,8 @@ async function renderDemandPostCanvas(state) {
   ctx.textAlign = 'right'; demandPostFitFont(ctx,'KORTEDOSCDO.CLUB',560,31,900,'DM Sans',23); ctx.fillText('KORTEDOSCDO.CLUB',980,1257);
 
   canvas.setAttribute('aria-label',regularPriceAction
-    ? `Featured regular-price ${court} times, ${demandPostWeekday(campaign)} ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}.`
-    : `${percent} off selected ${court} times, ${demandPostWeekday(campaign)} ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}.`);
+    ? `Featured regular-price ${court} hour, ${rows[0] ? demandPostDate(rows[0].offerDate) : demandPostWeekday(campaign)} ${rows[0] ? demandPostTimeRange(rows[0].slotHour,rows[0].slotHour + 1) : demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}.`
+    : `${percent} off one ${court} hour, ${rows[0] ? demandPostDate(rows[0].offerDate) : demandPostWeekday(campaign)} ${rows[0] ? demandPostTimeRange(rows[0].slotHour,rows[0].slotHour + 1) : demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour)}.`);
   state.blob = null;
   return true;
 }
@@ -9467,23 +9490,24 @@ function renderDemandPostKitEditor(state) {
   const percent = demandPostPercent(campaign.discount_percent ?? campaign.discountPercent);
   const regularPriceAction = isRegularPriceDemandAction(campaign);
   const court = String(campaign.court_name || campaign.courtName || state.court?.name || 'Selected court');
-  const endLabel = demandPostEnd(campaign.ends_at || campaign.endsAt || state.featured[0]?.endsAt,{compact:true});
+  const featured = (state.featured || []).slice(0,1)[0] || null;
   if (facts) facts.innerHTML = [
     regularPriceAction ? 'Regular price' : `${percent}% off`,
     court,
-    `${demandPostWeekday(campaign,{short:true})} ${demandPostTimeRange(campaign.start_hour ?? campaign.startHour,campaign.end_hour ?? campaign.endHour,{compact:true})}`,
-    endLabel ? `Ends ${endLabel}` : '',
+    featured ? demandPostDate(featured.offerDate) : '',
+    featured ? demandPostTimeRange(featured.slotHour,featured.slotHour + 1,{compact:true}) : '',
+    featured && regularPriceAction ? `${demandPostMoney(featured.regularRate)} / hour` : '',
   ].filter(Boolean).map(value => `<span>${esc(value)}</span>`).join('');
   const status = $('dgPostKitStatus');
   if (status) {
     status.classList.toggle('schedule-only',!state.featured.length);
     status.textContent = state.featured.length
       ? (regularPriceAction
-        ? 'The artwork uses the exact assigned treatment dates and regular one-hour price. Opening Facebook records these dates as promoted for the protected comparison.'
-        : 'The artwork uses exact upcoming offer times and prices returned by the live public offer feed. Availability can change after this check.')
+        ? 'The artwork shows only this assigned court date, one-hour slot, and regular price. Opening Facebook marks this occurrence as promoted.'
+        : 'The artwork shows only this exact discounted court date and one-hour price. Availability can change after this check.')
       : (regularPriceAction
-        ? 'No unposted treatment date is available right now. Refresh Insights after the next assignment becomes available.'
-        : 'No exact discounted time is open right now, so publishing is disabled. Refresh after a matching slot becomes available.');
+        ? 'No assigned one-hour post is available right now. Refresh Insights when the next occurrence is ready.'
+        : 'No exact discounted court hour is open right now, so publishing is disabled.');
   }
   const publishButton = $('dgPostKitModal')?.querySelector('[data-demand-post-publish]');
   if (publishButton) publishButton.textContent = regularPriceAction
@@ -9505,7 +9529,9 @@ async function openProfitLearningPostKit(experimentId) {
       && item.arm === 'treatment'
       && !item.facebook_published_at
       && String(item.play_date || '') >= oiToday())
-    .slice(0,5)
+    .sort((a,b) => String(a.play_date || '').localeCompare(String(b.play_date || ''))
+      || Number(a.slot_hour) - Number(b.slot_hour))
+    .slice(0,1)
     .map(item => ({
       occurrenceId: item.id,
       courtId: String(item.court_id || experiment.court_id || ''),
@@ -9515,7 +9541,7 @@ async function openProfitLearningPostKit(experimentId) {
       offerRate: Number(item.regular_rate || experiment.hourly_rate || 0),
     }));
   if (!rows.length) {
-    toast('No unposted treatment date is available right now.','inf');
+    toast('No assigned one-hour post is available right now.','inf');
     return;
   }
   const modal = $('dgPostKitModal');
@@ -9573,7 +9599,7 @@ async function openDemandPostKit(campaignId) {
   if ($('dgPostKitFacts')) $('dgPostKitFacts').innerHTML = '';
   if ($('dgPostKitStatus')) {
     $('dgPostKitStatus').classList.remove('schedule-only');
-    $('dgPostKitStatus').textContent = 'Checking the next exact offer times…';
+    $('dgPostKitStatus').textContent = 'Checking the exact court hour…';
   }
   requestAnimationFrame(() => modal.querySelector('[role="dialog"]')?.focus());
 
@@ -9683,13 +9709,13 @@ async function revalidateDemandPostKitForPublish() {
   if (state?.profitLearning && isRegularPriceDemandAction(state.campaign)) {
     const active = (_oiSnapshot?.active_experiments || []).some(item => String(item.id) === String(state.campaign.experiment_id) && item.status === 'active');
     if (!active || !state.featured.length) {
-      toast('The protected test or its assigned dates changed. Refresh Insights and reopen the Post Kit.','inf');
+      toast('The protected test or its assigned court hour changed. Refresh Insights and reopen the Post Kit.','inf');
       return false;
     }
     return true;
   }
   if (!state?.campaign || typeof DB.getPublicDemandCampaignFeaturedOffers !== 'function') {
-    toast('Live discounted times could not be confirmed. Refresh Insights and try again.','err');
+    toast('The exact discounted court hour could not be confirmed. Refresh Insights and try again.','err');
     return false;
   }
   let payload;
@@ -9791,7 +9817,7 @@ async function copyDemandPostCaption({ quiet = false } = {}) {
   try {
     if (!await revalidateDemandPostKitForPublish()) return false;
   } catch (error) {
-    if (!quiet) toast(error?.message || 'Live discounted times could not be confirmed.','err');
+    if (!quiet) toast(error?.message || 'The exact discounted court hour could not be confirmed.','err');
     return false;
   } finally {
     setDemandPostKitBusy(false);
@@ -9830,7 +9856,7 @@ async function shareDemandPostKit() {
       await navigator.share({
         files:[file],
         title:isRegularPriceDemandAction(_dgPostKitState.campaign)
-          ? 'Korte DOS featured court times'
+          ? 'Korte DOS featured court hour'
           : `Korte DOS ${demandPostPercent(_dgPostKitState.campaign.discount_percent ?? _dgPostKitState.campaign.discountPercent)}% offer`,
         text:caption,
       });
@@ -9871,15 +9897,15 @@ async function openDemandPostFacebook() {
         asset: 'portrait_png_1080x1350',
       });
       state.featured.forEach(row => { row.facebookPublishedAt = new Date().toISOString(); });
-      toast('Facebook opened and these assigned dates were marked as posted. Attach the PNG and caption.','ok');
+      toast('Facebook opened and this assigned court hour was marked as posted. Attach the PNG and caption.','ok');
     } else {
       toast('Facebook opened. Attach the downloaded PNG and paste your caption.','inf');
     }
   } catch (error) {
     facebookWindow?.close();
     toast(error?.message || (state.profitLearning
-      ? 'The assigned promotion dates could not be recorded.'
-      : 'Live discounted times could not be confirmed.'),'err');
+      ? 'The assigned promotion hour could not be recorded.'
+      : 'The exact discounted court hour could not be confirmed.'),'err');
   } finally {
     setDemandPostKitBusy(false);
   }
@@ -9907,7 +9933,7 @@ async function applyDemandRecommendation() {
     if (String(experiment?.status || '').toLowerCase() !== 'active') {
       throw new Error('The protected test was not activated. Refresh Insights and try again.');
     }
-    toast('Protected test started. Create the assigned Facebook posts when you are ready.', 'ok');
+    toast('Protected test started. Create the first assigned Facebook post when you are ready.', 'ok');
     await renderOwnerInsights({ force:true });
   } catch (error) {
     console.error('applyDemandRecommendation:', error);

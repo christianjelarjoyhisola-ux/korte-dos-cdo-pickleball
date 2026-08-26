@@ -161,7 +161,9 @@ test('the engine recommends a regular-price Facebook test after the learning gat
   assert.equal(snapshot.recommendation.state, 'persistent_vacancy');
   assert.equal(snapshot.recommendation.action_type, 'facebook_regular_price');
   assert.equal(snapshot.recommendation.discount_percent, 0);
-  assert.equal(snapshot.recommendation.target_pairs, 8);
+  assert.equal(snapshot.recommendation.target_occurrences, 1);
+  assert.equal(snapshot.recommendation.horizon_days, 28);
+  assert.equal(snapshot.recommendation.target_pairs, 1);
   assert.equal('valid_days' in snapshot.recommendation, false);
   assert.equal('max_redemptions' in snapshot.recommendation, false);
 });

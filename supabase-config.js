@@ -1207,6 +1207,14 @@ window.DB = {
       p_to: opts.to || null,
       p_court_id: opts.courtId ? String(opts.courtId) : null,
     };
+    // Close a finished one-hour action before requesting the next Best Move.
+    // This RPC is analytics-only and never writes booking or pricing data.
+    const advance = await _sb.rpc('advance_profit_learning_best_move');
+    const advanceMissing = advance.error && (advance.error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(advance.error.message || '')));
+    if (advance.error && !advanceMissing) {
+      console.warn('advanceProfitLearningBestMove:', advance.error);
+    }
     let { data, error } = await _sb.rpc('get_profit_learning_v2_intelligence', args);
     const v2Missing = error && (error.code === 'PGRST202' ||
       /schema cache|could not find the function/i.test(String(error.message || '')));
@@ -3603,7 +3611,7 @@ window.DB = {
     const treatmentRevenue = treatment.reduce((sum, row) => sum + row.secured_court_revenue, 0);
     const controlRevenue = control.reduce((sum, row) => sum + row.secured_court_revenue, 0);
     const incrementalRevenue = Math.round((treatmentRevenue - controlRevenue) * 100) / 100;
-    const targetPairs = Number(experiment.target_pairs || 8);
+    const targetPairs = Number(experiment.target_pairs || 1);
     const resultStatus = completedPairs.length < targetPairs
       ? (completedPairs.length && incrementalRevenue > 0 ? 'promising' : 'too_early')
       : incrementalRevenue > 0 ? 'profitable' : incrementalRevenue < 0 ? 'harmful' : 'inconclusive';
@@ -3881,7 +3889,7 @@ window.DB = {
         };
       });
     const activeExperiments = (db.profitLearningExperiments || [])
-      .filter(experiment => experiment.status === 'active')
+      .filter(experiment => experiment.status === 'active' && Number(experiment.target_pairs || 1) === 1)
       .map(experiment => localProfitLearningExperimentSummary(db, experiment));
     const candidate = (activeCampaigns.length || activeExperiments.length) ? null : courtSignals
       .filter(row => learningDays >= 30 && row.comparable_days >= 8)
@@ -3912,7 +3920,9 @@ window.DB = {
       hourly_rate: candidate.rate,
       action_type: 'facebook_regular_price',
       discount_percent: 0,
-      target_pairs: 8,
+      target_occurrences: 1,
+      horizon_days: 28,
+      target_pairs: 1,
       open_future_hours: candidate.open_future_hours,
       opportunity_value: candidate.opportunity_value,
     } : null;
@@ -3990,7 +4000,22 @@ window.DB = {
       });
     },
     async getDemandGrowthIntelligence(filters = {}) {
-      return buildLocalDemandGrowthIntelligence(readDb(), filters || {});
+      const db = readDb();
+      const today = localManilaDate();
+      let changed = false;
+      (db.profitLearningExperiments || []).forEach(experiment => {
+        if (experiment.status === 'active'
+          && Number(experiment.target_pairs || 1) === 1
+          && experiment.scheduled_through
+          && String(experiment.scheduled_through) < today) {
+          experiment.status = 'completed';
+          experiment.ended_at = nowIso();
+          experiment.updated_at = experiment.ended_at;
+          changed = true;
+        }
+      });
+      if (changed) writeDb(db);
+      return buildLocalDemandGrowthIntelligence(db, filters || {});
     },
     async createProfitLearningExperimentFromRecommendation(recommendationId, options = {}) {
       const session = window.Auth?.getSession?.();
@@ -4002,6 +4027,15 @@ window.DB = {
         throw new Error('End the active smart offer before starting a protected growth test.');
       }
       const cleanId = String(recommendationId || '').trim().toUpperCase();
+      // Local demo data can contain a legacy eight-pair run. Retire it so it
+      // cannot block the new single, near-term Best Move.
+      (db.profitLearningExperiments || []).forEach(row => {
+        if (row.status === 'active' && Number(row.target_pairs || 8) !== 1) {
+          row.status = 'stopped';
+          row.ended_at = nowIso();
+          row.updated_at = row.ended_at;
+        }
+      });
       const existing = (db.profitLearningExperiments || []).find(row => row.status === 'active');
       if (existing) {
         if (String(existing.source_recommendation_id).toUpperCase() === cleanId) {
@@ -4021,11 +4055,10 @@ window.DB = {
       const court = (db.courts || []).find(row => String(row.id) === String(recommendation.court_id));
       if (!court || court.blocked) throw new Error('The recommended court is not available.');
       const blockedDates = new Set((db.blockedDates || []).map(row => String(row?.date || row)));
-      const targetPairs = Math.max(1, Number(recommendation.target_pairs || 8));
-      const requiredOccurrences = targetPairs * 2;
+      const targetOccurrences = 1;
       const candidates = [];
       const today = localManilaDate();
-      for (let offset = 1; offset <= 196 && candidates.length < requiredOccurrences; offset += 1) {
+      for (let offset = 1; offset <= 28 && candidates.length < targetOccurrences; offset += 1) {
         const playDate = localDateAdd(today, offset);
         if (localIsoWeekday(playDate) !== Number(recommendation.weekday)
           || blockedDates.has(playDate)
@@ -4039,8 +4072,8 @@ window.DB = {
         if (!(rate > 0)) continue;
         candidates.push({ playDate, rate });
       }
-      if (candidates.length < requiredOccurrences) {
-        throw new Error(`Korte DOS needs ${requiredOccurrences} future sellable occurrences for a protected ${targetPairs}-comparison test.`);
+      if (candidates.length < targetOccurrences) {
+        throw new Error('No eligible one-hour court time is available in the next 28 days. Choose another Best Move.');
       }
       const createdAt = nowIso();
       const experiment = {
@@ -4055,7 +4088,9 @@ window.DB = {
         end_hour: Number(recommendation.start_hour) + 1,
         action_type: 'facebook_regular_price',
         treatment_action: 'facebook_regular_price',
-        target_pairs: targetPairs,
+        target_occurrences: 1,
+        horizon_days: 28,
+        target_pairs: 1,
         status: 'active',
         baseline_period_from: snapshot.period?.from || null,
         baseline_period_to: snapshot.period?.to || null,
@@ -4067,29 +4102,21 @@ window.DB = {
         started_at: createdAt,
       };
       db.profitLearningExperiments.push(experiment);
-      for (let pairIndex = 0; pairIndex < targetPairs; pairIndex += 1) {
-        const pairNo = pairIndex + 1;
-        const pair = candidates.slice(pairIndex * 2, pairIndex * 2 + 2);
-        const digest = localRecommendationId([cleanId, pairNo]);
-        const treatmentFirst = Number.parseInt(digest.slice(-1), 16) % 2 === 0;
-        pair.forEach((candidate, index) => {
-          const arm = (index === 0) === treatmentFirst ? 'treatment' : 'control';
-          db.profitLearningOccurrences.push({
-            id: localRef('occ').toLowerCase(),
-            experiment_id: experiment.id,
-            pair_no: pairNo,
-            batch_no: 1,
-            court_id: experiment.court_id,
-            play_date: candidate.playDate,
-            slot_hour: experiment.slot_hour,
-            arm,
-            regular_rate_snapshot: candidate.rate,
-            pricing_digest: localRecommendationId([experiment.court_id, candidate.playDate, experiment.slot_hour, candidate.rate]),
-            assigned_at: createdAt,
-          });
-        });
-      }
-      experiment.scheduled_through = candidates[requiredOccurrences - 1].playDate;
+      const candidate = candidates[0];
+      db.profitLearningOccurrences.push({
+        id: localRef('occ').toLowerCase(),
+        experiment_id: experiment.id,
+        pair_no: 1,
+        batch_no: 1,
+        court_id: experiment.court_id,
+        play_date: candidate.playDate,
+        slot_hour: experiment.slot_hour,
+        arm: 'treatment',
+        regular_rate_snapshot: candidate.rate,
+        pricing_digest: localRecommendationId([experiment.court_id, candidate.playDate, experiment.slot_hour, candidate.rate]),
+        assigned_at: createdAt,
+      });
+      experiment.scheduled_through = candidate.playDate;
       writeDb(db);
       return { created: true, idempotent: false, ...localProfitLearningExperimentSummary(db, experiment) };
     },

@@ -308,9 +308,10 @@ test('owner Facebook Post Kit creates a truthful portrait graphic and fail-soft 
   assert.match(modal, /canvas[^>]+width="1080"[^>]+height="1350"/i);
   assert.match(modal, /data-variant="energetic"[\s\S]*data-variant="clean"[\s\S]*data-variant="barkada"/);
   assert.match(postKit, /DB\.getPublicDemandCampaignFeaturedOffers\(\)/);
-  assert.match(postKit, /NEXT DISCOUNTED TIMES/);
+  assert.match(postKit, /DISCOUNTED COURT HOUR/);
+  assert.match(postKit, /\.slice\(0,1\)/);
   assert.match(postKit, /row\.offerDate[\s\S]*row\.slotHour[\s\S]*row\.offerRate/);
-  assert.match(postKit, /No exact discounted time is open right now, so publishing is disabled/i);
+  assert.match(postKit, /No exact discounted court hour is open right now, so publishing is disabled/i);
   assert.match(postKit, /navigator\.share/);
   assert.match(modal, /Download PNG/);
   assert.match(modal, /Copy Caption/);

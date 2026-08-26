@@ -352,7 +352,11 @@
       hourly_rate: number(best.rate),
       action_type: 'facebook_regular_price',
       discount_percent: 0,
-      target_pairs: 8,
+      // One Best Move is one exact, bookable court-hour. Historical demand is
+      // already the baseline, so owners never need to wait months for pairs.
+      target_occurrences: 1,
+      horizon_days: 28,
+      target_pairs: 1,
       open_future_hours: number(best.open_future_hours),
       opportunity_value: number(best.opportunity_value),
     };
