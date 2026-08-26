@@ -9239,11 +9239,18 @@ function normalizeDemandPostFeaturedRows(payload, campaign) {
     .slice(0,1);
 }
 
-function demandPostBookingUrl() {
+function demandPostBookingUrl(state = _dgPostKitState, source = 'facebook') {
   const hostname = String(location.hostname || '').toLowerCase();
-  return ['kortedoscdo.club','www.kortedoscdo.club'].includes(hostname)
+  const base = ['kortedoscdo.club','www.kortedoscdo.club'].includes(hostname)
     ? `${location.origin}/`
     : 'https://kortedoscdo.club/';
+  const token = String(state?.placementToken || state?.featured?.[0]?.placementToken || '').trim();
+  if (!token) return base;
+  const url = new URL(base);
+  url.searchParams.set('courtPick',token);
+  url.searchParams.set('utm_source',source === 'qr' ? 'qr' : 'facebook');
+  url.searchParams.set('utm_medium','court_pick');
+  return url.href;
 }
 
 function isRegularPriceDemandAction(campaign) {
@@ -9273,7 +9280,7 @@ function buildDemandPostCaption(state, variant = 'energetic') {
   const ending = demandPostEnd(endsAt)
     ? `Offer is scheduled to end ${demandPostEnd(endsAt)}; availability can end earlier as players book.`
     : 'Offer availability can change as players book.';
-  const book = demandPostBookingUrl();
+  const book = demandPostBookingUrl(state);
   const hashtags = '#KorteDOS #PickleballCDO #CDOPickleball';
 
   if (regularPriceAction) {
@@ -9347,11 +9354,11 @@ function demandPostLoadImage(source) {
   });
 }
 
-async function demandPostWebsiteQr() {
+async function demandPostWebsiteQr(url = 'https://kortedoscdo.club/') {
   if (!window.PaddleRageQRCode?.toCanvas) return null;
   const canvas = document.createElement('canvas');
   try {
-    await window.PaddleRageQRCode.toCanvas(canvas,'https://kortedoscdo.club/',{
+    await window.PaddleRageQRCode.toCanvas(canvas,url,{
       errorCorrectionLevel:'M',
       width:180,
       margin:2,
@@ -9379,7 +9386,7 @@ async function renderDemandPostCanvas(state) {
   const [logo,photo,websiteQr] = await Promise.all([
     demandPostLoadImage(logoUrl),
     demandPostLoadImage(courtPhoto),
-    demandPostWebsiteQr(),
+    demandPostWebsiteQr(demandPostBookingUrl(state,'qr')),
   ]);
   if (_dgPostKitState !== state) return false;
   const width = canvas.width;
@@ -9579,8 +9586,19 @@ async function openProfitLearningPostKit(experimentId) {
   if (!modal) return;
   _dgPostKitLastFocus = document.activeElement;
   ++_dgPostKitRequestSeq;
-  const courts = typeof DB.getCourts === 'function' ? await DB.getCourts().catch(() => []) : [];
+  const [courtsResult,featuredHourResult] = await Promise.allSettled([
+    typeof DB.getCourts === 'function' ? DB.getCourts() : Promise.resolve([]),
+    typeof DB.getPublicFeaturedCourtHour === 'function' ? DB.getPublicFeaturedCourtHour({ force:true }) : Promise.resolve(null),
+  ]);
+  const courts = courtsResult.status === 'fulfilled' && Array.isArray(courtsResult.value) ? courtsResult.value : [];
   const court = (courts || []).find(item => String(item.id) === String(experiment.court_id)) || null;
+  const featuredHour = featuredHourResult.status === 'fulfilled' ? featuredHourResult.value : null;
+  const publicPlacement = featuredHour
+    && String(featuredHour.courtId) === String(rows[0].courtId)
+    && String(featuredHour.playDate) === String(rows[0].offerDate)
+    && Number(featuredHour.slotHour) === Number(rows[0].slotHour)
+      ? featuredHour : null;
+  if (publicPlacement?.placementToken) rows[0].placementToken = publicPlacement.placementToken;
   const campaign = {
     ...experiment,
     experiment_id: experiment.id,
@@ -9591,7 +9609,15 @@ async function openProfitLearningPostKit(experimentId) {
     end_hour: Number(experiment.end_hour ?? Number(experiment.slot_hour) + 1),
     discount_percent: 0,
   };
-  _dgPostKitState = { campaign, featured: rows, court, variant:'energetic', blob:null, profitLearning:true };
+  _dgPostKitState = {
+    campaign,
+    featured: rows,
+    court,
+    placementToken: publicPlacement?.placementToken || '',
+    variant:'energetic',
+    blob:null,
+    profitLearning:true,
+  };
   modal.hidden = false;
   modal.inert = false;
   modal.setAttribute('aria-hidden','false');
@@ -9741,6 +9767,29 @@ async function revalidateDemandPostKitForPublish() {
     const active = (_oiSnapshot?.active_experiments || []).some(item => String(item.id) === String(state.campaign.experiment_id) && item.status === 'active');
     if (!active || !state.featured.length) {
       toast('The protected test or its assigned court hour changed. Refresh Insights and reopen the Post Kit.','inf');
+      return false;
+    }
+    const row = state.featured[0];
+    const placement = typeof DB.getPublicFeaturedCourtHour === 'function'
+      ? await DB.getPublicFeaturedCourtHour({ force:true }).catch(() => null)
+      : null;
+    if (requestSeq !== _dgPostKitRequestSeq || state !== _dgPostKitState) return false;
+    const matches = placement
+      && String(placement.courtId) === String(row.courtId)
+      && String(placement.playDate) === String(row.offerDate)
+      && Number(placement.slotHour) === Number(row.slotHour);
+    if (!matches) {
+      toast('That featured court hour is no longer publicly available. Refresh Insights for the next Best Move.','inf');
+      return false;
+    }
+    if (String(state.placementToken || '') !== String(placement.placementToken || '')) {
+      state.placementToken = placement.placementToken;
+      row.placementToken = placement.placementToken;
+      state.blob = null;
+      await renderDemandPostCanvas(state);
+      if (requestSeq !== _dgPostKitRequestSeq || state !== _dgPostKitState) return false;
+      renderDemandPostKitEditor(state);
+      toast('The booking link was refreshed. Review the artwork, then publish again.','inf');
       return false;
     }
     return true;
@@ -15132,7 +15181,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260826-sellable-demand-v1"></script>
+<script src="supabase-config.js?v=20260826-court-pick-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>

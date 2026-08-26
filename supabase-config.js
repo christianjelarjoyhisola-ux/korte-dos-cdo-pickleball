@@ -140,8 +140,10 @@ const PB_FAST_CACHE_MS = {
   openPlay: 3500,
   demandSlotOffers: 3500,
   demandFeaturedOffers: 3500,
+  featuredCourtHour: 3500,
 };
 const PB_PUBLIC_OFFER_TIMEOUT_MS = 1500;
+const PB_FEATURED_COURT_SESSION_KEY = 'pb_featured_court_session_v1';
 const _pbFastCache = new Map();
 
 function _pbClone(value) {
@@ -185,6 +187,17 @@ async function _pbCached(scope, params, ttlMs, loader) {
 function _pbClearFastCache(scopes = []) {
   const list = Array.isArray(scopes) ? scopes.filter(Boolean) : [scopes].filter(Boolean);
   if (list.length === 0) { _pbFastCache.clear(); return; }
+  if (list.some(scope => [
+    'courts',
+    'bookings',
+    'publicBookingSlots',
+    'blockedDates',
+    'settings',
+    'publicDemandCampaignSlotOffers',
+    'publicDemandCampaignFeaturedOffers',
+  ].includes(scope)) && !list.includes('publicFeaturedCourtHour')) {
+    list.push('publicFeaturedCourtHour');
+  }
   for (const key of [..._pbFastCache.keys()]) {
     if (list.some(scope => key === scope || key.startsWith(`${scope}:`))) _pbFastCache.delete(key);
   }
@@ -677,6 +690,81 @@ function publicDemandCampaignFeaturedOfferFromRow(r) {
   };
 }
 
+function publicFeaturedCourtHourFromRow(r) {
+  const placementToken = String(r?.placement_token || '').trim();
+  const courtId = String(r?.court_id || '').trim();
+  const courtName = String(r?.court_name || '').trim();
+  const playDate = String(r?.play_date || '').trim();
+  const slotHour = Number(r?.slot_hour);
+  const endHour = Number(r?.end_hour);
+  const regularRate = Number(r?.regular_rate);
+  const expiresAt = String(r?.expires_at || '').trim();
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(placementToken)) return null;
+  if (!courtId || !courtName || !/^\d{4}-\d{2}-\d{2}$/.test(playDate)) return null;
+  if (!Number.isInteger(slotHour) || slotHour < 0 || slotHour > 23) return null;
+  if (!Number.isInteger(endHour) || endHour !== slotHour + 1 || endHour > 24) return null;
+  if (!Number.isFinite(regularRate) || regularRate <= 0) return null;
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) return null;
+  return {
+    placementToken,
+    courtId,
+    courtName,
+    playDate,
+    slotHour,
+    endHour,
+    regularRate,
+    expiresAt,
+  };
+}
+
+function _pbSecureRandomUuid() {
+  try {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().toLowerCase();
+    if (!globalThis.crypto?.getRandomValues) return '';
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  } catch (_) {
+    return '';
+  }
+}
+
+function _pbFeaturedCourtSessionToken() {
+  try {
+    const existing = String(sessionStorage.getItem(PB_FEATURED_COURT_SESSION_KEY) || '').trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(existing)) return existing;
+    const created = _pbSecureRandomUuid();
+    if (!created) return '';
+    sessionStorage.setItem(PB_FEATURED_COURT_SESSION_KEY, created);
+    return sessionStorage.getItem(PB_FEATURED_COURT_SESSION_KEY) === created ? created : '';
+  } catch (_) {
+    // Funnel measurement is optional. Storage restrictions must never affect booking.
+    return '';
+  }
+}
+
+function _pbFeaturedCourtSource() {
+  try {
+    const params = new URLSearchParams(location.search || '');
+    const source = String(params.get('utm_source') || '').trim().toLowerCase();
+    const medium = String(params.get('utm_medium') || '').trim().toLowerCase();
+    if (source === 'qr' || medium === 'qr') return 'qr';
+    if (source === 'facebook' || source === 'fb' || params.has('fbclid')) return 'facebook';
+    const referrer = String(document.referrer || '').toLowerCase();
+    if (!referrer) return 'direct';
+    const referrerHost = new URL(referrer).hostname.toLowerCase();
+    if (/(^|\.)facebook\.com$|(^|\.)fb\.com$/.test(referrerHost)) return 'facebook';
+    if (/google\.|bing\.com$|duckduckgo\.com$|yahoo\./.test(referrerHost)) return 'organic';
+    return 'unknown';
+  } catch (_) {
+    return 'unknown';
+  }
+}
+
 const PB_RESERVATION_HOLD_MINUTES = 15;
 
 function bookingHoldsSlotForConflict(b) {
@@ -1051,13 +1139,13 @@ window.DB = {
   async saveCourt(court) {
     const { error } = await _sb.from('courts').upsert(courtToRow(court));
     if (error) { console.error('saveCourt:', error); throw error; }
-    _pbClearFastCache(['courts', 'publicDemandCampaignFeaturedOffers']);
+    _pbClearFastCache(['courts', 'publicDemandCampaignFeaturedOffers', 'publicFeaturedCourtHour']);
   },
 
   async deleteCourt(id) {
     const { error } = await _sb.from('courts').delete().eq('id', id);
     if (error) console.error('deleteCourt:', error);
-    _pbClearFastCache(['courts', 'publicDemandCampaignFeaturedOffers']);
+    _pbClearFastCache(['courts', 'publicDemandCampaignFeaturedOffers', 'publicFeaturedCourtHour']);
   },
 
   // ---- BOOKINGS ----
@@ -1176,6 +1264,83 @@ window.DB = {
     }
   },
 
+  async getPublicFeaturedCourtHour(options = {}) {
+    if (options?.force === true) _pbClearFastCache(['publicFeaturedCourtHour']);
+    try {
+      return await _pbCached(
+        'publicFeaturedCourtHour',
+        {},
+        PB_FAST_CACHE_MS.featuredCourtHour,
+        async () => {
+          let timeoutId = null;
+          const timedOut = Symbol('public-featured-court-timeout');
+          try {
+            const request = Promise.resolve(
+              _publicBookingSb.rpc('get_public_featured_court_hour', {}),
+            ).catch(() => null);
+            const timeout = new Promise(resolve => {
+              timeoutId = setTimeout(
+                () => resolve(timedOut),
+                PB_PUBLIC_OFFER_TIMEOUT_MS,
+              );
+            });
+            const response = await Promise.race([request, timeout]);
+            if (response === timedOut || !response || response.error) return null;
+            const row = Array.isArray(response.data) ? response.data[0] : null;
+            return publicFeaturedCourtHourFromRow(row);
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+          }
+        },
+      );
+    } catch (_) {
+      // The placement is optional. Its discovery read must never block booking.
+      return null;
+    }
+  },
+
+  async recordFeaturedCourtPlacementEvent(placementToken, eventType) {
+    const token = String(placementToken || '').trim();
+    const event = String(eventType || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token)) {
+      return { recorded: false };
+    }
+    if (!['impression', 'open', 'slot_click', 'booking_started'].includes(event)) {
+      return { recorded: false };
+    }
+    const sessionToken = _pbFeaturedCourtSessionToken();
+    if (!sessionToken) return { recorded: false };
+
+    let timeoutId = null;
+    const timedOut = Symbol('public-featured-court-event-timeout');
+    try {
+      const request = Promise.resolve(
+        _publicBookingSb.rpc('record_public_featured_court_event', {
+          p_placement_token: token,
+          p_event_type: event,
+          p_session_token: sessionToken,
+          p_source: _pbFeaturedCourtSource(),
+        }),
+      ).catch(() => null);
+      const timeout = new Promise(resolve => {
+        timeoutId = setTimeout(
+          () => resolve(timedOut),
+          PB_PUBLIC_OFFER_TIMEOUT_MS,
+        );
+      });
+      const response = await Promise.race([request, timeout]);
+      if (response === timedOut || !response || response.error) return { recorded: false };
+      return response.data && typeof response.data === 'object'
+        ? response.data
+        : { recorded: false };
+    } catch (_) {
+      // Analytics are deliberately fail-soft and cannot interrupt booking.
+      return { recorded: false };
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  },
+
   async getOwnerIntelligence(filters = {}) {
     if (!(await _pbHasAuthSession())) {
       throw new Error('An authenticated owner session is required to load Insights.');
@@ -1215,6 +1380,9 @@ window.DB = {
     if (advance.error && !advanceMissing) {
       console.warn('advanceProfitLearningBestMove:', advance.error);
     }
+    if (advance.data?.completed === true) {
+      _pbClearFastCache(['publicFeaturedCourtHour']);
+    }
     let { data, error } = await _sb.rpc('get_profit_learning_v2_intelligence', args);
     const v2Missing = error && (error.code === 'PGRST202' ||
       /schema cache|could not find the function/i.test(String(error.message || '')));
@@ -1245,7 +1413,7 @@ window.DB = {
       console.error('createProfitLearningExperimentFromRecommendation:', error);
       throw error;
     }
-    _pbClearFastCache(['demandGrowthIntelligence']);
+    _pbClearFastCache(['demandGrowthIntelligence', 'publicFeaturedCourtHour']);
     return data || {};
   },
 
@@ -1264,7 +1432,7 @@ window.DB = {
       console.error('recordProfitLearningFacebookPublication:', error);
       throw error;
     }
-    _pbClearFastCache(['demandGrowthIntelligence']);
+    _pbClearFastCache(['demandGrowthIntelligence', 'publicFeaturedCourtHour']);
     return data || {};
   },
 
@@ -1308,7 +1476,7 @@ window.DB = {
       console.error('endProfitLearningExperiment:', error);
       throw error;
     }
-    _pbClearFastCache(['demandGrowthIntelligence']);
+    _pbClearFastCache(['demandGrowthIntelligence', 'publicFeaturedCourtHour']);
     return data || {};
   },
 
@@ -3418,6 +3586,7 @@ window.DB = {
       profitLearningExperiments: [],
       profitLearningOccurrences: [],
       profitLearningOccurrenceEvents: [],
+      profitLearningPublicPlacementEvents: [],
       profitLearningOccurrenceOutcomes: [],
       settings: defaultSettings(),
       agreements: [],
@@ -3470,6 +3639,7 @@ window.DB = {
       profitLearningExperiments: Array.isArray(parsed.profitLearningExperiments) ? parsed.profitLearningExperiments : [],
       profitLearningOccurrences: Array.isArray(parsed.profitLearningOccurrences) ? parsed.profitLearningOccurrences : [],
       profitLearningOccurrenceEvents: Array.isArray(parsed.profitLearningOccurrenceEvents) ? parsed.profitLearningOccurrenceEvents : [],
+      profitLearningPublicPlacementEvents: Array.isArray(parsed.profitLearningPublicPlacementEvents) ? parsed.profitLearningPublicPlacementEvents : [],
       profitLearningOccurrenceOutcomes: Array.isArray(parsed.profitLearningOccurrenceOutcomes) ? parsed.profitLearningOccurrenceOutcomes : [],
       agreements: Array.isArray(parsed.agreements) ? parsed.agreements : [],
       weeklyFees: Array.isArray(parsed.weeklyFees) ? parsed.weeklyFees : [],
@@ -3535,6 +3705,64 @@ window.DB = {
     return Math.round(Math.max(0, Number(rate || 0)) * 100) / 100;
   }
 
+  function localFeaturedScheduleHourUnavailable(db, date, slotHour, courtId) {
+    const scheduleJson = key => {
+      const raw = db.settings?.[key];
+      if (!raw) return {};
+      if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+      try { return JSON.parse(String(raw)) || {}; } catch (_) { return {}; }
+    };
+    const enabled = config => config?.enabled === true
+      || String(config?.enabled || '').toLowerCase() === 'true';
+    const appliesToCourt = config => {
+      const ids = Array.isArray(config?.courtIds)
+        ? config.courtIds.map(String).filter(Boolean) : [];
+      return ids.length === 0 || ids.includes(String(courtId));
+    };
+    const matchesTime = config => {
+      const start = Number(config?.start);
+      const end = Number(config?.end);
+      if (!Number.isInteger(start) || start < 0 || start > 23
+        || !Number.isInteger(end) || end < 0 || end > 24 || start === end) return false;
+      return start < end
+        ? slotHour >= start && slotHour < end
+        : slotHour >= start || slotHour < end;
+    };
+    const occurrenceDate = config =>
+      Number(config?.start) > Number(config?.end) && slotHour < Number(config?.end)
+        ? localDateAdd(date, -1) : date;
+    const calendarDay = value => new Date(`${value}T12:00:00Z`).getUTCDay();
+
+    const openPlay = scheduleJson('open_play_config');
+    if (enabled(openPlay) && appliesToCourt(openPlay) && matchesTime(openPlay)) {
+      const scheduledDate = occurrenceDate(openPlay);
+      const weekly = Array.isArray(openPlay.days)
+        && openPlay.days.map(Number).includes(calendarDay(scheduledDate));
+      const specific = Array.isArray(openPlay.specificDates)
+        && openPlay.specificDates.map(String).includes(scheduledDate);
+      if (weekly || specific) return true;
+    }
+
+    const maintenance = scheduleJson('maintenance_config');
+    const rules = Array.isArray(maintenance.rules)
+      ? maintenance.rules : Object.keys(maintenance).length ? [maintenance] : [];
+    return rules.some(rule => {
+      if (!enabled(rule) || !appliesToCourt(rule) || !matchesTime(rule)) return false;
+      const scheduledDate = occurrenceDate(rule);
+      const mode = String(rule.mode || 'specific').toLowerCase();
+      if (mode === 'weekly') {
+        return Array.isArray(rule.recurring?.days)
+          && rule.recurring.days.map(Number).includes(calendarDay(scheduledDate));
+      }
+      if (mode === 'monthly') {
+        return Number(rule.recurring?.day) === Number(scheduledDate.slice(8, 10));
+      }
+      return mode === 'specific'
+        && Array.isArray(rule.dates)
+        && rule.dates.map(String).includes(scheduledDate);
+    });
+  }
+
   function localRecommendationId(parts) {
     const text = parts.join('|');
     const hash = seed => {
@@ -3582,13 +3810,18 @@ window.DB = {
     const published = new Set(events
       .filter(row => row.event_type === 'facebook_published')
       .map(row => String(row.occurrence_id)));
+    const placementActivated = new Set(events
+      .filter(row => row.event_type === 'placement_activated')
+      .map(row => String(row.occurrence_id)));
     const today = localManilaDate();
     const mature = occurrences.filter(row => String(row.play_date) < today);
     const outcomes = mature.map(row => {
       const booked = (db.bookings || []).some(booking => localProfitBookingOccupies(
         booking, row.court_id, row.play_date, row.slot_hour, { successfulOnly: true },
       ));
-      const delivered = row.arm === 'control' || published.has(String(row.id));
+      const delivered = row.arm === 'control'
+        || published.has(String(row.id))
+        || placementActivated.has(String(row.id));
       return {
         occurrence_id: row.id,
         pair_no: Number(row.pair_no),
@@ -3987,6 +4220,128 @@ window.DB = {
         .filter(b => !opts.activeOnly || (b.status !== 'cancelled' && b.status !== 'forfeited'))
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     },
+    async getPublicFeaturedCourtHour() {
+      const db = readDb();
+      const today = localManilaDate();
+      const now = Date.now();
+      const experiment = (db.profitLearningExperiments || []).find(row =>
+        row.status === 'active'
+        && Number(row.target_pairs || 0) === 1
+        && String(row.treatment_action || row.action_type || '').toLowerCase() === 'facebook_regular_price'
+        && Number(row.discount_percent || 0) === 0);
+      if (!experiment) return null;
+      if ((db.demandCampaigns || []).some(row => row.status === 'active'
+        && new Date(row.starts_at || 0).getTime() <= now
+        && new Date(row.ends_at || 0).getTime() > now)) return null;
+      const occurrence = (db.profitLearningOccurrences || [])
+        .filter(row => String(row.experiment_id) === String(experiment.id)
+          && row.arm === 'treatment')
+        .sort((a, b) => String(a.play_date).localeCompare(String(b.play_date))
+          || Number(a.slot_hour) - Number(b.slot_hour))[0];
+      if (!occurrence) return null;
+
+      const playDate = String(occurrence.play_date || '').slice(0, 10);
+      const slotHour = Number(occurrence.slot_hour);
+      const endHour = slotHour + 1;
+      const expiresAt = new Date(
+        `${playDate}T${String(slotHour).padStart(2, '0')}:00:00+08:00`,
+      );
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(playDate)
+        || !Number.isInteger(slotHour) || slotHour < 0 || slotHour > 23
+        || !Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= now
+        || localDateDiff(today, playDate) < 0 || localDateDiff(today, playDate) > 28) return null;
+
+      const court = (db.courts || []).find(row =>
+        String(row.id) === String(occurrence.court_id));
+      if (!court || court.blocked) return null;
+      const blockedDates = new Set((db.blockedDates || []).map(row =>
+        String(row?.date || row)));
+      if (blockedDates.has(playDate)) return null;
+      const openHour = Number(db.settings?.open_hour ?? 0);
+      const closeHour = Number(db.settings?.close_hour ?? 24);
+      if (!Number.isInteger(openHour) || openHour < 0 || openHour > 23
+        || !Number.isInteger(closeHour) || closeHour < 1 || closeHour > 24
+        || slotHour < openHour || slotHour >= closeHour) return null;
+      if (localFeaturedScheduleHourUnavailable(
+        db, playDate, slotHour, occurrence.court_id,
+      )) return null;
+      if ((db.bookings || []).some(booking => localProfitBookingOccupies(
+        booking, occurrence.court_id, playDate, slotHour,
+      ))) return null;
+
+      const regularRate = localDemandSlotRate(db, occurrence.court_id, slotHour);
+      if (!(regularRate > 0)
+        || Math.abs(regularRate - Number(occurrence.regular_rate_snapshot || 0)) > 0.001) return null;
+
+      let changed = false;
+      if (!String(occurrence.public_placement_token || '').trim()) {
+        occurrence.public_placement_token = localRef('placement').toLowerCase();
+        changed = true;
+      }
+      const activationExists = (db.profitLearningOccurrenceEvents || []).some(event =>
+        String(event.occurrence_id) === String(occurrence.id)
+        && event.event_type === 'placement_activated');
+      if (!activationExists) {
+        db.profitLearningOccurrenceEvents.push({
+          id: localRef('event').toLowerCase(),
+          experiment_id: experiment.id,
+          occurrence_id: occurrence.id,
+          event_type: 'placement_activated',
+          event_at: nowIso(),
+          actor_id: experiment.created_by || null,
+          metadata: { surface: 'public_booking', price_mode: 'regular' },
+        });
+        changed = true;
+      }
+      if (changed) writeDb(db);
+
+      return {
+        placementToken: String(occurrence.public_placement_token),
+        courtId: String(occurrence.court_id),
+        courtName: String(court.name || experiment.court_name || occurrence.court_id),
+        playDate,
+        slotHour,
+        endHour,
+        regularRate,
+        expiresAt: expiresAt.toISOString(),
+      };
+    },
+    async recordFeaturedCourtPlacementEvent(placementToken, eventType) {
+      const token = String(placementToken || '').trim();
+      const event = String(eventType || '').trim().toLowerCase();
+      if (!token || !['impression', 'open', 'slot_click', 'booking_started'].includes(event)) {
+        return { recorded: false };
+      }
+      const sessionToken = _pbFeaturedCourtSessionToken();
+      if (!sessionToken) return { recorded: false };
+      const placement = await this.getPublicFeaturedCourtHour();
+      if (!placement || token !== placement.placementToken) return { recorded: false };
+
+      const db = readDb();
+      const occurrence = (db.profitLearningOccurrences || []).find(row =>
+        String(row.public_placement_token || '') === token);
+      if (!occurrence) return { recorded: false };
+      const sessionHash = localRecommendationId([
+        'featured-court-session', token, sessionToken,
+      ]).toLowerCase();
+      const duplicate = (db.profitLearningPublicPlacementEvents || []).some(row =>
+        String(row.occurrence_id) === String(occurrence.id)
+        && row.event_type === event
+        && row.session_hash === sessionHash);
+      if (duplicate) return { recorded: false, idempotent: true };
+
+      db.profitLearningPublicPlacementEvents.push({
+        id: localRef('placement-event').toLowerCase(),
+        experiment_id: occurrence.experiment_id,
+        occurrence_id: occurrence.id,
+        event_type: event,
+        session_hash: sessionHash,
+        source_channel: _pbFeaturedCourtSource(),
+        event_at: nowIso(),
+      });
+      writeDb(db);
+      return { recorded: true };
+    },
     async getOwnerIntelligence(filters = {}) {
       const db = readDb();
       return window.OwnerIntelligence.buildLocalSnapshot({
@@ -4062,9 +4417,9 @@ window.DB = {
         const playDate = localDateAdd(today, offset);
         if (localIsoWeekday(playDate) !== Number(recommendation.weekday)
           || blockedDates.has(playDate)
-          || window.OwnerIntelligence?.scheduleHourUnavailable?.(
-            playDate, Number(recommendation.start_hour), recommendation.court_id, db.settings || {},
-          ) === true
+          || localFeaturedScheduleHourUnavailable(
+            db, playDate, Number(recommendation.start_hour), recommendation.court_id,
+          )
           || (db.bookings || []).some(booking => localProfitBookingOccupies(
             booking, recommendation.court_id, playDate, recommendation.start_hour,
           ))) continue;
@@ -4103,7 +4458,7 @@ window.DB = {
       };
       db.profitLearningExperiments.push(experiment);
       const candidate = candidates[0];
-      db.profitLearningOccurrences.push({
+      const occurrence = {
         id: localRef('occ').toLowerCase(),
         experiment_id: experiment.id,
         pair_no: 1,
@@ -4114,7 +4469,18 @@ window.DB = {
         arm: 'treatment',
         regular_rate_snapshot: candidate.rate,
         pricing_digest: localRecommendationId([experiment.court_id, candidate.playDate, experiment.slot_hour, candidate.rate]),
+        public_placement_token: localRef('placement').toLowerCase(),
         assigned_at: createdAt,
+      };
+      db.profitLearningOccurrences.push(occurrence);
+      db.profitLearningOccurrenceEvents.push({
+        id: localRef('event').toLowerCase(),
+        experiment_id: experiment.id,
+        occurrence_id: occurrence.id,
+        event_type: 'placement_activated',
+        event_at: createdAt,
+        actor_id: session.id,
+        metadata: { surface: 'public_booking', price_mode: 'regular' },
       });
       experiment.scheduled_through = candidate.playDate;
       writeDb(db);

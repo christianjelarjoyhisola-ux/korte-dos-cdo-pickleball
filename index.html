@@ -2055,7 +2055,64 @@ body.dark .smart-rate-regular { color:#98a3b3; }
   .smart-rate-badge .smart-rate-off-word { display:none; }
 }
 
-/* ── LIMITED COURT DEAL — featured public offer ── */
+/* ── COURT PICK — regular-price featured court hour ── */
+.court-pick-inline[hidden] { display:none !important; }
+.court-pick-inline {
+  position:relative; isolation:isolate; overflow:hidden;
+  display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:18px;
+  margin:-4px 0 14px; padding:16px 18px;
+  border:1px solid rgba(174,197,53,.48); border-radius:16px;
+  background:
+    radial-gradient(circle at 88% 0,rgba(222,242,48,.18),transparent 35%),
+    linear-gradient(135deg,rgba(8,30,46,.98),rgba(15,42,58,.96));
+  box-shadow:0 14px 34px rgba(8,24,38,.2),inset 0 1px 0 rgba(255,255,255,.08);
+  color:#fff;
+}
+.court-pick-inline::before {
+  content:""; position:absolute; z-index:-1; inset:0;
+  background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.045),transparent 70%);
+  pointer-events:none;
+}
+.court-pick-inline-main { min-width:0; }
+.court-pick-inline-kicker {
+  display:flex; align-items:center; gap:7px; color:#e1ef4d;
+  font-size:.58rem; font-weight:950; letter-spacing:.15em; text-transform:uppercase;
+}
+.court-pick-inline-kicker::before {
+  content:""; width:7px; height:7px; flex:0 0 7px; border-radius:50%;
+  background:#dff230; box-shadow:0 0 0 4px rgba(223,242,48,.12),0 0 16px rgba(223,242,48,.46);
+}
+.court-pick-inline h3 {
+  margin:5px 0 5px; color:#fff; font-family:'Bebas Neue',sans-serif;
+  font-size:1.62rem; line-height:1; letter-spacing:.045em;
+}
+.court-pick-inline-copy { color:rgba(255,255,255,.72); font-size:.7rem; font-weight:700; line-height:1.35; }
+.court-pick-inline-details {
+  display:flex; align-items:center; flex-wrap:wrap; gap:7px 10px; margin-top:10px;
+  color:rgba(255,255,255,.9); font-size:.72rem; font-weight:850;
+}
+.court-pick-inline-details span { display:inline-flex; align-items:center; gap:5px; }
+.court-pick-inline-details span + span::before { content:"•"; margin-right:5px; color:rgba(223,242,48,.62); }
+.court-pick-inline-price { color:#e5f354; font-size:.86rem; font-weight:950; white-space:nowrap; }
+.court-pick-inline-rate-note { color:rgba(255,255,255,.58); font-size:.58rem; font-style:normal; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+.court-pick-inline-action {
+  min-width:154px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  border:0; border-radius:11px; padding:10px 15px; cursor:pointer;
+  background:linear-gradient(135deg,#e4f33a,#b8d92a); color:#102235;
+  box-shadow:0 9px 22px rgba(173,207,25,.22); font:950 .72rem 'Outfit',sans-serif;
+  letter-spacing:.055em; text-transform:uppercase; transition:transform .16s ease,box-shadow .16s ease;
+}
+.court-pick-inline-action:hover { transform:translateY(-1px); box-shadow:0 12px 27px rgba(173,207,25,.3); }
+.court-pick-inline-action:active { transform:none; }
+.court-pick-inline-action:focus-visible { outline:3px solid #eef78b; outline-offset:3px; }
+body.host-mode .court-pick-inline { display:none !important; }
+@media(max-width:700px) {
+  .court-pick-inline { grid-template-columns:1fr; gap:12px; margin:0 0 13px; padding:14px; }
+  .court-pick-inline h3 { font-size:1.48rem; }
+  .court-pick-inline-action { width:100%; min-height:42px; }
+}
+
+/* ── LIMITED COURT DEAL / COURT PICK — featured public offer ── */
 .featured-deal-trigger[hidden],
 .featured-deal-backdrop[hidden],
 .featured-deal-panel[hidden] { display:none !important; }
@@ -2094,6 +2151,18 @@ body.dark .smart-rate-regular { color:#98a3b3; }
 .featured-deal-trigger-copy { min-width:0; display:flex; flex-direction:column; line-height:1.05; }
 .featured-deal-trigger-copy strong { font-size:.88rem; font-weight:950; letter-spacing:.02em; white-space:nowrap; }
 .featured-deal-trigger-copy small { margin-top:4px; color:rgba(255,255,255,.78); font-size:.57rem; font-weight:850; letter-spacing:.09em; text-transform:uppercase; white-space:nowrap; }
+.featured-deal-trigger.court-pick-mode {
+  border-color:rgba(238,247,139,.42);
+  background:linear-gradient(135deg,#183b4d 0%,#0c293c 62%,#071f31 100%);
+  box-shadow:0 14px 36px rgba(6,25,40,.42),inset 0 1px 0 rgba(255,255,255,.18);
+}
+.featured-deal-trigger.court-pick-mode:hover { box-shadow:0 18px 42px rgba(6,25,40,.5),inset 0 1px 0 rgba(255,255,255,.22); }
+.featured-deal-trigger.court-pick-mode .featured-deal-trigger-icon {
+  background:linear-gradient(145deg,rgba(31,65,79,.98),rgba(7,30,45,.9));
+  border-color:rgba(228,243,58,.45);
+}
+.featured-deal-trigger.court-pick-mode .featured-deal-gem-accent { fill:#e4f33a; }
+.featured-deal-trigger.court-pick-mode .featured-deal-trigger-copy strong { color:#ecf58a; }
 .featured-deal-backdrop {
   position:fixed; inset:0; z-index:1121; background:rgba(5,13,25,.14);
   backdrop-filter:blur(1px); animation:featuredDealFade .16s ease both;
@@ -2156,6 +2225,13 @@ body.dark .smart-rate-regular { color:#98a3b3; }
 .featured-deal-regular-price { margin-top:3px; color:var(--muted); font-size:.61rem; font-weight:750; text-decoration:line-through; white-space:nowrap; }
 .featured-deal-save { margin-top:5px; border-radius:999px; padding:3px 6px; background:rgba(var(--lime-rgb),.16); color:var(--lime-ink); font-size:.5rem; font-weight:950; letter-spacing:.04em; text-transform:uppercase; white-space:nowrap; }
 .featured-deal-more { padding:2px 4px 4px; color:var(--muted); font-size:.64rem; font-weight:800; text-align:center; }
+.featured-deal-persuasion {
+  padding:2px 2px 4px; color:var(--muted); font-size:.7rem; font-weight:750; line-height:1.45;
+}
+.featured-deal-regular-label {
+  margin-top:4px; color:var(--muted); font-size:.54rem; font-weight:850;
+  letter-spacing:.06em; text-transform:uppercase; white-space:nowrap;
+}
 .featured-deal-action-wrap { flex:0 0 auto; padding:10px 14px 14px; }
 .featured-deal-action {
   width:100%; min-height:46px; display:flex; align-items:center; justify-content:center; gap:8px;
@@ -2172,6 +2248,30 @@ body.dark .smart-rate-regular { color:#98a3b3; }
 }
 body.dark .featured-deal-kicker,body.dark .featured-deal-title span,body.dark .featured-deal-offer-price { color:#b7aeff; }
 body.dark .featured-deal-date { border-color:rgba(174,161,255,.4); }
+.featured-deal-panel.court-pick-mode { border-color:rgba(194,218,42,.42); }
+.featured-deal-panel.court-pick-mode .featured-deal-head {
+  border-bottom-color:rgba(194,218,42,.22);
+  background:
+    radial-gradient(circle at 88% 0,rgba(222,242,48,.2),transparent 42%),
+    linear-gradient(145deg,rgba(18,67,74,.18),rgba(var(--ac),.025));
+}
+.featured-deal-panel.court-pick-mode .featured-deal-kicker,
+.featured-deal-panel.court-pick-mode .featured-deal-title span,
+.featured-deal-panel.court-pick-mode .featured-deal-offer-price { color:#9eae19; }
+body.dark .featured-deal-panel.court-pick-mode .featured-deal-kicker,
+body.dark .featured-deal-panel.court-pick-mode .featured-deal-title span,
+body.dark .featured-deal-panel.court-pick-mode .featured-deal-offer-price { color:#e4f354; }
+.featured-deal-panel.court-pick-mode .featured-deal-date { border-color:rgba(194,218,42,.36); color:#94a419; }
+.featured-deal-panel.court-pick-mode .featured-deal-slot {
+  border-color:rgba(194,218,42,.28);
+  background:linear-gradient(135deg,rgba(194,218,42,.09),transparent 66%),var(--input);
+}
+.featured-deal-panel.court-pick-mode .featured-deal-slot:hover { border-color:rgba(194,218,42,.62); }
+.featured-deal-panel.court-pick-mode .featured-deal-save { background:rgba(var(--lime-rgb),.14); }
+.featured-deal-panel.court-pick-mode .featured-deal-action {
+  background:linear-gradient(135deg,#d8e934,#a9cc26); color:#102235;
+  box-shadow:0 8px 20px rgba(160,191,31,.24);
+}
 body.host-mode .featured-deal-trigger,
 body.host-mode .featured-deal-backdrop,
 body.host-mode .featured-deal-panel { display:none !important; }
@@ -3435,6 +3535,17 @@ body.host-mode .courts { padding-bottom:140px; }
       <input class="shared-date-native" type="date" id="courtSharedDate" onchange="onSharedCourtDate(this.value)" aria-label="Booking date" />
     </div>
   </div>
+  <aside id="courtPickInline" class="court-pick-inline" aria-labelledby="courtPickInlineTitle" hidden>
+    <div class="court-pick-inline-main">
+      <div class="court-pick-inline-kicker">Korte DOS Court Pick</div>
+      <h3 id="courtPickInlineTitle">Make this court hour yours.</h3>
+      <div class="court-pick-inline-copy">One open hour. Your court. Your game.</div>
+      <div class="court-pick-inline-details" id="courtPickInlineDetails"></div>
+    </div>
+    <button class="court-pick-inline-action" type="button" onclick="openCourtPickPanel()">
+      See court pick <span aria-hidden="true">&rarr;</span>
+    </button>
+  </aside>
   <div id="courtTabs" class="court-tabs"></div>
   <div class="courts" id="courtsGrid">
     <div class="pb-loader">
@@ -5904,6 +6015,12 @@ let _featuredDealReturnFocus = null;
 let _featuredDealInitialized = false;
 let _featuredDealHasEntered = false;
 let _featuredDealSyncFrame = 0;
+let _featuredDealMode = 'smart-offer';
+let _featuredDealOpening = false;
+let _featuredCourtPick = null;
+let _courtPickAutoOpening = false;
+const _courtPickEventPending = new Set();
+const COURT_PICK_EVENT_TYPES = new Set(['impression','open','slot_click','booking_started']);
 
 function featuredDealPercent(value) {
   const number = Math.max(0, Number(value || 0));
@@ -5935,35 +6052,119 @@ function setFeaturedDealHidden(node, hidden) {
   if (node && node.hidden !== hidden) node.hidden = hidden;
 }
 
+function normalizedFeaturedCourtPick(value) {
+  if (!value || typeof value !== 'object') return null;
+  const placementToken = String(value.placementToken || '').trim();
+  const courtId = String(value.courtId || '').trim();
+  const playDate = String(value.playDate || '').trim();
+  const slotHour = Number(value.slotHour);
+  const endHour = Number(value.endHour);
+  const regularRate = Number(value.regularRate);
+  const expiresAt = value.expiresAt ? String(value.expiresAt) : '';
+  if (!placementToken || !courtId || !/^\d{4}-\d{2}-\d{2}$/.test(playDate)) return null;
+  if (!Number.isInteger(slotHour) || slotHour < 0 || slotHour > 23 || endHour !== slotHour + 1) return null;
+  if (!Number.isFinite(regularRate) || regularRate < 0 || playDate < todayStr()) return null;
+  const expiryMs = expiresAt ? new Date(expiresAt).getTime() : NaN;
+  if (Number.isFinite(expiryMs) && expiryMs <= Date.now()) return null;
+  return {
+    placementToken,
+    courtId,
+    courtName: String(value.courtName || `Court ${courtId}`).trim() || `Court ${courtId}`,
+    playDate,
+    slotHour,
+    endHour,
+    regularRate,
+    expiresAt,
+  };
+}
+
+function courtPickSessionKey(eventType, token) {
+  return `korte-dos-court-pick:${eventType}:${encodeURIComponent(String(token || ''))}`;
+}
+
+function courtPickSessionHas(eventType, token) {
+  try { return sessionStorage.getItem(courtPickSessionKey(eventType, token)) === '1'; }
+  catch (_) { return false; }
+}
+
+function markCourtPickSession(eventType, token) {
+  try { sessionStorage.setItem(courtPickSessionKey(eventType, token), '1'); }
+  catch (_) {}
+}
+
+function recordCourtPickEvent(eventType, options = {}) {
+  const pick = options.pick || _featuredCourtPick;
+  const token = pick?.placementToken;
+  if (!token || !COURT_PICK_EVENT_TYPES.has(eventType) || typeof DB?.recordFeaturedCourtPlacementEvent !== 'function') return;
+  const once = !!options.once;
+  const key = `${eventType}:${token}`;
+  if ((once && courtPickSessionHas(eventType, token)) || _courtPickEventPending.has(key)) return;
+  _courtPickEventPending.add(key);
+  Promise.resolve(DB.recordFeaturedCourtPlacementEvent(token, eventType))
+    .then(result => {
+      if (once && (result?.recorded === true || result?.idempotent === true)) {
+        markCourtPickSession(eventType, token);
+      }
+    })
+    .catch(() => {})
+    .finally(() => _courtPickEventPending.delete(key));
+}
+
+function renderFeaturedDealTrigger() {
+  const trigger = $('featuredDealTrigger');
+  const triggerHeadline = $('featuredDealTriggerPercent');
+  const triggerSubline = $('featuredDealTriggerCount');
+  if (!trigger) return;
+  const smartOffer = _featuredDealOffers[0] || null;
+  const showSmartOffer = !!smartOffer;
+  trigger.dataset.mode = showSmartOffer ? 'smart-offer' : 'court-pick';
+  trigger.classList.toggle('court-pick-mode', !showSmartOffer && !!_featuredCourtPick);
+  if (showSmartOffer) {
+    const count = _featuredDealOffers.length;
+    if (triggerHeadline) triggerHeadline.textContent = `${featuredDealPercent(smartOffer.discountPercent)}% OFF`;
+    if (triggerSubline) triggerSubline.textContent = `${count} ${count === 1 ? 'slot' : 'slots'} open`;
+  } else if (_featuredCourtPick) {
+    if (triggerHeadline) triggerHeadline.textContent = 'COURT PICK';
+    if (triggerSubline) triggerSubline.textContent = '1 hour open';
+  }
+}
+
 function renderFeaturedCourtDeal(offers = window.BookingDemandCampaign?.featuredOffers?.() || []) {
   const available = Array.isArray(offers) ? offers : [];
   const firstAvailable = available[0];
   _featuredDealOffers = firstAvailable
     ? available.filter(offer => offer.date === firstAvailable.date && String(offer.courtId) === String(firstAvailable.courtId))
     : [];
-  const triggerPercent = $('featuredDealTriggerPercent');
-  const triggerCount = $('featuredDealTriggerCount');
-  const panelPercent = $('featuredDealPercent');
-  const panelCount = $('featuredDealCount');
-  const slots = $('featuredDealSlots');
-  if (!_featuredDealOffers.length) {
-    if (slots) slots.innerHTML = '';
-    syncFeaturedCourtDealVisibility();
-    return;
+  renderFeaturedDealTrigger();
+  if (_featuredDealMode === 'smart-offer') {
+    if (_featuredDealOffers.length) renderSmartOfferPanel();
+    else if ($('featuredDealSlots')) $('featuredDealSlots').innerHTML = '';
   }
+  syncFeaturedCourtDealVisibility();
+}
 
+function renderSmartOfferPanel() {
+  if (!_featuredDealOffers.length) return;
   const first = _featuredDealOffers[0];
   const percent = featuredDealPercent(first.discountPercent);
   const count = _featuredDealOffers.length;
-  const slotWord = count === 1 ? 'slot' : 'slots';
   const headlineDate = featuredDealDateParts(first.date);
   const headlineCourt = first.courtName || `Court ${first.courtId}`;
-  if (triggerPercent) triggerPercent.textContent = `${percent}% OFF`;
-  if (triggerCount) triggerCount.textContent = `${count} ${slotWord} open`;
-  if (panelPercent) panelPercent.textContent = `${percent}%`;
-  if (panelCount) panelCount.textContent = `${headlineDate.day}, ${headlineDate.short} • ${headlineCourt}`;
+  const panel = $('featuredDealPanel');
+  const title = $('featuredDealTitle');
+  const action = $('featuredDealAction');
+  panel?.classList.remove('court-pick-mode');
+  if ($('featuredDealKicker')) $('featuredDealKicker').textContent = 'Limited court deal';
+  if (title) title.innerHTML = `<span id="featuredDealPercent">${esc(percent)}%</span> OFF`;
+  if ($('featuredDealCount')) $('featuredDealCount').textContent = `${headlineDate.day}, ${headlineDate.short} • ${headlineCourt}`;
+  if ($('featuredDealClose')) $('featuredDealClose').setAttribute('aria-label', 'Close limited court deal');
+  if (action) {
+    action.innerHTML = 'View deal schedule <span aria-hidden="true">&rarr;</span>';
+    action.setAttribute('onclick', 'goToFeaturedCourtDeal()');
+  }
 
   const shown = _featuredDealOffers.slice(0, 6);
+  const slots = $('featuredDealSlots');
   if (slots) {
     slots.innerHTML = shown.map(offer => {
       const date = featuredDealDateParts(offer.date);
@@ -5983,7 +6184,51 @@ function renderFeaturedCourtDeal(offers = window.BookingDemandCampaign?.featured
       ? `<div class="featured-deal-more">+${_featuredDealOffers.length - shown.length} more discounted ${_featuredDealOffers.length - shown.length === 1 ? 'slot' : 'slots'}</div>`
       : '');
   }
+}
+
+function renderFeaturedCourtPick(pick = _featuredCourtPick) {
+  _featuredCourtPick = normalizedFeaturedCourtPick(pick);
+  const inline = $('courtPickInline');
+  const details = $('courtPickInlineDetails');
+  setFeaturedDealHidden(inline, !_featuredCourtPick);
+  if (_featuredCourtPick && details) {
+    const date = featuredDealDateParts(_featuredCourtPick.playDate);
+    const timeLabel = `${fmtT(_featuredCourtPick.slotHour)} – ${fmtT(_featuredCourtPick.endHour)}`;
+    details.innerHTML = `<span>${esc(date.full)}</span><span>${esc(_featuredCourtPick.courtName)}</span><span>${esc(timeLabel)}</span><span><strong class="court-pick-inline-price">${esc(fmtSlotRate(_featuredCourtPick.regularRate))}</strong>&nbsp;<em class="court-pick-inline-rate-note">regular price</em></span>`;
+  } else if (details) {
+    details.innerHTML = '';
+  }
+  renderFeaturedDealTrigger();
+  if (_featuredDealMode === 'court-pick' && _featuredCourtPick) renderCourtPickPanel();
   syncFeaturedCourtDealVisibility();
+}
+
+function renderCourtPickPanel() {
+  const pick = _featuredCourtPick;
+  if (!pick) return;
+  const date = featuredDealDateParts(pick.playDate);
+  const timeLabel = `${fmtT(pick.slotHour)} – ${fmtT(pick.endHour)}`;
+  const panel = $('featuredDealPanel');
+  const title = $('featuredDealTitle');
+  const action = $('featuredDealAction');
+  panel?.classList.add('court-pick-mode');
+  if ($('featuredDealKicker')) $('featuredDealKicker').textContent = 'Korte DOS Court Pick';
+  if (title) title.innerHTML = '<span>OWN</span> THIS HOUR';
+  if ($('featuredDealCount')) $('featuredDealCount').textContent = `${date.day}, ${date.short} • ${pick.courtName}`;
+  if ($('featuredDealClose')) $('featuredDealClose').setAttribute('aria-label', 'Close Korte DOS Court Pick');
+  if ($('featuredDealSlots')) {
+    const accessible = `${date.full}, ${pick.courtName}, ${timeLabel}, ${fmtSlotRate(pick.regularRate)} regular price, available now`;
+    $('featuredDealSlots').innerHTML = `<div class="featured-deal-persuasion">One open hour. One clear choice. Make this court time yours while it is still available.</div>
+      <button class="featured-deal-slot" type="button" aria-label="${esc(accessible)}" onclick="goToFeaturedCourtPick()">
+        <time class="featured-deal-date" datetime="${esc(pick.playDate)}"><span>${esc(date.day)}</span><strong>${esc(date.short)}</strong></time>
+        <div class="featured-deal-slot-main"><div class="featured-deal-court">${esc(pick.courtName)}</div><strong class="featured-deal-time">${esc(timeLabel)}</strong></div>
+        <div class="featured-deal-pricing"><strong class="featured-deal-offer-price">${esc(fmtSlotRate(pick.regularRate))}</strong><span class="featured-deal-regular-label">Regular price</span><span class="featured-deal-save">Available now</span></div>
+      </button>`;
+  }
+  if (action) {
+    action.innerHTML = 'Book this hour <span aria-hidden="true">&rarr;</span>';
+    action.setAttribute('onclick', 'goToFeaturedCourtPick()');
+  }
 }
 
 async function refreshFeaturedCourtDeal(options = {}) {
@@ -5997,21 +6242,79 @@ async function refreshFeaturedCourtDeal(options = {}) {
   }
 }
 
+async function refreshFeaturedCourtPick(options = {}) {
+  try {
+    const value = typeof DB?.getPublicFeaturedCourtHour === 'function'
+      ? await DB.getPublicFeaturedCourtHour(options)
+      : null;
+    const pick = normalizedFeaturedCourtPick(value);
+    renderFeaturedCourtPick(pick);
+    return pick;
+  } catch (_) {
+    renderFeaturedCourtPick(null);
+    return null;
+  }
+}
+
+async function refreshFeaturedPromotions(options = {}) {
+  const [offers, pick] = await Promise.all([
+    refreshFeaturedCourtDeal(options),
+    refreshFeaturedCourtPick(),
+  ]);
+  return { offers, pick };
+}
+
+function courtPickDeepLinkToken() {
+  try { return String(new URLSearchParams(location.search).get('courtPick') || '').trim(); }
+  catch (_) { return ''; }
+}
+
+function courtPickAutoOpenKey(token) {
+  return courtPickSessionKey('auto-opened', token);
+}
+
+function courtPickWasAutoOpened(token) {
+  try { return sessionStorage.getItem(courtPickAutoOpenKey(token)) === '1'; }
+  catch (_) { return false; }
+}
+
+function markCourtPickAutoOpened(token) {
+  try { sessionStorage.setItem(courtPickAutoOpenKey(token), '1'); }
+  catch (_) {}
+}
+
+async function maybeAutoOpenCourtPick() {
+  const token = courtPickDeepLinkToken();
+  if (!_featuredDealInitialized || _featuredDealOpening || _courtPickAutoOpening || !token || courtPickWasAutoOpened(token)) return;
+  if (!_featuredCourtPick || _featuredCourtPick.placementToken !== token || featuredDealBlockingSurfaceOpen()) return;
+  _courtPickAutoOpening = true;
+  try {
+    await openFeaturedCourtDeal('court-pick');
+  } finally {
+    _courtPickAutoOpening = false;
+  }
+}
+
 function syncFeaturedCourtDealVisibility() {
   if (!_featuredDealInitialized) return;
   const trigger = $('featuredDealTrigger');
   const panel = $('featuredDealPanel');
-  const hasOffers = (window.BookingDemandCampaign?.featuredOffers?.() || []).length > 0;
+  const hasOffers = _featuredDealOffers.length > 0;
+  const hasCourtPick = !!_featuredCourtPick;
   const blocked = featuredDealBlockingSurfaceOpen();
-  if ((!hasOffers || blocked) && panel && !panel.hidden) closeFeaturedCourtDeal(false);
+  const activeModeAvailable = _featuredDealMode === 'court-pick' ? hasCourtPick : hasOffers;
+  if ((!activeModeAvailable || blocked) && panel && !panel.hidden) closeFeaturedCourtDeal(false);
   const panelOpen = !!panel && !panel.hidden;
-  const showTrigger = hasOffers && !blocked && !panelOpen;
+  const showTrigger = (hasOffers || hasCourtPick) && !blocked && !panelOpen;
+  renderFeaturedDealTrigger();
   setFeaturedDealHidden(trigger, !showTrigger);
   if (showTrigger && !_featuredDealHasEntered) {
     _featuredDealHasEntered = true;
     trigger.classList.add('is-new');
     trigger.addEventListener('animationend', () => trigger.classList.remove('is-new'), { once:true });
   }
+  if (hasCourtPick && !blocked && !document.hidden) recordCourtPickEvent('impression', { once:true });
+  if (hasCourtPick && !blocked && !panelOpen) Promise.resolve().then(maybeAutoOpenCourtPick);
 }
 
 function scheduleFeaturedCourtDealSync() {
@@ -6022,17 +6325,42 @@ function scheduleFeaturedCourtDealSync() {
   });
 }
 
-async function openFeaturedCourtDeal() {
-  if (featuredDealBlockingSurfaceOpen()) return;
-  const offers = await refreshFeaturedCourtDeal({ force:true });
-  if (!offers.length || featuredDealBlockingSurfaceOpen()) return;
-  _featuredDealReturnFocus = document.activeElement;
-  setFeaturedDealHidden($('featuredDealBackdrop'), false);
-  setFeaturedDealHidden($('featuredDealPanel'), false);
-  $('featuredDealTrigger')?.setAttribute('aria-expanded', 'true');
-  document.body.classList.add('featured-deal-open');
-  syncFeaturedCourtDealVisibility();
-  requestAnimationFrame(() => $('featuredDealPanel')?.querySelector('.featured-deal-close')?.focus());
+async function openFeaturedCourtDeal(mode = '') {
+  if (_featuredDealOpening || featuredDealBlockingSurfaceOpen()) return false;
+  _featuredDealOpening = true;
+  try {
+    const triggerMode = $('featuredDealTrigger')?.dataset.mode || '';
+    _featuredDealMode = mode === 'court-pick' || (!mode && triggerMode === 'court-pick') ? 'court-pick' : 'smart-offer';
+    const available = _featuredDealMode === 'court-pick'
+      ? await refreshFeaturedCourtPick({ force:true })
+      : await refreshFeaturedCourtDeal({ force:true });
+    if ((_featuredDealMode === 'court-pick' ? !available : !available.length) || featuredDealBlockingSurfaceOpen()) return false;
+    if (_featuredDealMode === 'court-pick') renderCourtPickPanel();
+    else renderSmartOfferPanel();
+    _featuredDealReturnFocus = document.activeElement;
+    setFeaturedDealHidden($('featuredDealBackdrop'), false);
+    setFeaturedDealHidden($('featuredDealPanel'), false);
+    $('featuredDealTrigger')?.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('featured-deal-open');
+    syncFeaturedCourtDealVisibility();
+    if (_featuredDealMode === 'court-pick') {
+      recordCourtPickEvent('open');
+      const deepLinkToken = courtPickDeepLinkToken();
+      if (deepLinkToken && deepLinkToken === _featuredCourtPick?.placementToken) markCourtPickAutoOpened(deepLinkToken);
+    }
+    requestAnimationFrame(() => $('featuredDealPanel')?.querySelector('.featured-deal-close')?.focus());
+    return true;
+  } finally {
+    _featuredDealOpening = false;
+  }
+}
+
+async function openCourtPickPanel() {
+  if (cardSelectionList().length) {
+    toast('Your selected court time is safe. Finish or clear it before opening the Court Pick.', 'inf');
+    return;
+  }
+  await openFeaturedCourtDeal('court-pick');
 }
 
 function closeFeaturedCourtDeal(returnFocus = true) {
@@ -6073,6 +6401,7 @@ function featuredCourtDealKeydown(event) {
 }
 
 async function goToFeaturedCourtDeal(courtId = '', date = '', slotHour = null) {
+  _featuredDealMode = 'smart-offer';
   const offers = await refreshFeaturedCourtDeal({ force:true });
   const exactRequested = !!courtId && !!date && Number.isFinite(Number(slotHour));
   const target = exactRequested
@@ -6114,12 +6443,73 @@ function initFeaturedCourtDeal() {
   const observer = new MutationObserver(scheduleFeaturedCourtDealSync);
   observer.observe(document.body, { subtree:true, attributes:true, attributeFilter:['class','style','hidden'] });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) refreshFeaturedCourtDeal({ force:true });
+    if (!document.hidden) {
+      refreshFeaturedCourtDeal({ force:true });
+      refreshFeaturedCourtPick({ force:true });
+    }
   });
   setInterval(() => {
-    if (!document.hidden) refreshFeaturedCourtDeal({ force:true });
+    if (!document.hidden) {
+      refreshFeaturedCourtDeal({ force:true });
+      refreshFeaturedCourtPick({ force:true });
+    }
   }, 60000);
-  refreshFeaturedCourtDeal();
+  refreshFeaturedPromotions();
+}
+
+async function goToFeaturedCourtPick() {
+  const clickedPick = _featuredCourtPick;
+  if (!clickedPick) return;
+  recordCourtPickEvent('slot_click', { pick:clickedPick });
+  if (cardSelectionList().length) {
+    toast('Your current court selection was not changed.', 'inf');
+    return;
+  }
+
+  const target = await refreshFeaturedCourtPick({ force:true });
+  if (!target || target.placementToken !== clickedPick.placementToken) {
+    closeFeaturedCourtDeal(false);
+    toast('That Court Pick was just taken. Please choose another available time.', 'inf');
+    return;
+  }
+  if (featuredDealBlockingSurfaceOpen()) return;
+
+  closeFeaturedCourtDeal(false);
+  sharedCourtDate = normalizedCourtBrowseDate(target.playDate);
+  syncSharedCourtDateUI(sharedCourtDate);
+  await window.BookingDemandCampaign?.loadOffersForDate?.(target.playDate, { force:true });
+  await renderCourts();
+
+  if (cardSelectionList().length) {
+    toast('Your current court selection was not changed.', 'inf');
+    return;
+  }
+  switchCourtTab(String(target.courtId));
+  const courtCard = [...document.querySelectorAll('#courtsGrid .cc')]
+    .find(card => String(card.dataset.id) === String(target.courtId));
+  const courtSlot = [...(courtCard?.querySelectorAll('.cc-slot-btn[type="button"]') || [])]
+    .find(slot => Number(slot.dataset.h) === Number(target.slotHour));
+  if (!courtSlot) {
+    renderFeaturedCourtPick(null);
+    toast('That Court Pick was just taken. Here are the other available times.', 'inf');
+    (courtCard || $('courts'))?.scrollIntoView({ behavior:'smooth', block:'center' });
+    return;
+  }
+
+  await toggleCardSlot(String(target.courtId), target.playDate, Number(target.slotHour));
+  const selected = getCardSelection(target.courtId);
+  const selectedSlot = !!selected && selected.date === target.playDate && selected.slots.includes(Number(target.slotHour));
+  if (!selectedSlot) {
+    toast('That hour could not be selected. Please choose another available time.', 'inf');
+    return;
+  }
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  courtSlot.scrollIntoView({ behavior:reduceMotion ? 'auto' : 'smooth', block:'center' });
+  courtSlot.focus({ preventScroll:true });
+  courtSlot.classList.add('featured-deal-target');
+  setTimeout(() => courtSlot.classList.remove('featured-deal-target'), 1800);
+  recordCourtPickEvent('booking_started', { pick:target });
+  toast('Court Pick selected. Tap Book Now to continue.', 'ok');
 }
 
 /* =============================================
@@ -10069,7 +10459,7 @@ async function refreshLiveViews() {
   await loadOperatingHours();
   sharedCourtDate = openDate;
   await renderCourts();
-  refreshFeaturedCourtDeal({ force:true });
+  refreshFeaturedPromotions({ force:true });
 
   // Keep the legacy wizard slot grid live too.
   if (court && $('bDate').value) renderSlots();
@@ -11062,9 +11452,10 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260826-sellable-demand-v1"></script>
+<script src="supabase-config.js?v=20260826-court-pick-v1"></script>
 
 <!-- PUBLIC LIMITED COURT DEAL -->
+<!-- This premium surface also renders the regular-price Korte DOS Court Pick. -->
 <button id="featuredDealTrigger" class="featured-deal-trigger" type="button" hidden
         aria-haspopup="dialog" aria-controls="featuredDealPanel" aria-expanded="false"
         onclick="openFeaturedCourtDeal()">
@@ -11085,10 +11476,10 @@ async function submitOpenPlay() {
          aria-labelledby="featuredDealTitle" aria-describedby="featuredDealCount" hidden>
   <span class="featured-deal-grab" aria-hidden="true"></span>
   <header class="featured-deal-head">
-    <div class="featured-deal-kicker">Limited court deal</div>
+    <div class="featured-deal-kicker" id="featuredDealKicker">Limited court deal</div>
     <h2 class="featured-deal-title" id="featuredDealTitle"><span id="featuredDealPercent">10%</span> OFF</h2>
     <div class="featured-deal-count" id="featuredDealCount">Discounted slots available</div>
-    <button class="featured-deal-close" type="button" aria-label="Close limited court deal" onclick="closeFeaturedCourtDeal()">&times;</button>
+    <button class="featured-deal-close" id="featuredDealClose" type="button" aria-label="Close limited court deal" onclick="closeFeaturedCourtDeal()">&times;</button>
   </header>
   <div class="featured-deal-slots" id="featuredDealSlots"></div>
   <div class="featured-deal-action-wrap">
