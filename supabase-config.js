@@ -1502,6 +1502,21 @@ window.DB = {
     _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
   },
 
+  async rescheduleBookingGroup(refs, updates) {
+    const bookingRefs = [...new Set((Array.isArray(refs) ? refs : []).map(String).filter(Boolean))];
+    if (!bookingRefs.length) throw new Error('No booking references were supplied.');
+
+    const { data, error } = await _sb.rpc('reschedule_booking_group', {
+      p_booking_refs: bookingRefs,
+      p_new_date: updates.date,
+      p_start_hour: Number((updates.slots || [])[0]),
+      p_duration: Number(updates.duration),
+    });
+    if (error) { console.error('rescheduleBookingGroup:', error); throw error; }
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
+    return data;
+  },
+
   // Stamp a set of bookings as billed on a given weekly statement (idempotent
   // audit trail; a booking is only ever billed once).
   async markBookingsBilled(refs, weeklyFeeId) {
@@ -4317,6 +4332,37 @@ window.DB = {
         }
       }
       writeDb(db);
+    },
+    async rescheduleBookingGroup(refs, updates) {
+      const bookingRefs = [...new Set((Array.isArray(refs) ? refs : []).map(String).filter(Boolean))];
+      if (!bookingRefs.length) throw new Error('No booking references were supplied.');
+      const db = readDb();
+      const found = db.bookings.filter(booking => bookingRefs.includes(String(booking.ref)));
+      if (found.length !== bookingRefs.length) {
+        const missing = new Error('The complete reservation could not be rescheduled. No partial move was accepted.');
+        missing.code = 'BOOKING_GROUP_UPDATE_NOT_ALLOWED';
+        throw missing;
+      }
+      if (!found.every(booking => ['pending', 'confirmed'].includes(String(booking.status || '').toLowerCase()))) {
+        throw new Error('Only pending or confirmed reservations can be rescheduled.');
+      }
+      const allowed = ['date', 'startTime', 'endTime', 'duration', 'slots'];
+      const scheduleUpdates = Object.fromEntries(allowed
+        .filter(key => updates[key] !== undefined)
+        .map(key => [key, updates[key]]));
+      for (const booking of found) {
+        const conflicts = db.bookings.filter(other => !bookingRefs.includes(String(other.ref))
+          && String(other.courtId) === String(booking.courtId)
+          && String(other.date) === String(scheduleUpdates.date));
+        if (hasSlotConflict(conflicts, { ...booking, ...scheduleUpdates })) {
+          throw new Error('One or more time slots are already booked for this court and date.');
+        }
+      }
+      db.bookings = db.bookings.map(booking => bookingRefs.includes(String(booking.ref))
+        ? { ...booking, ...scheduleUpdates }
+        : booking);
+      writeDb(db);
+      return bookingRefs.map(ref => ({ ref }));
     },
     async markBookingsBilled(refs, weeklyFeeId) {
       if (!Array.isArray(refs) || refs.length === 0) return;

@@ -4528,7 +4528,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
         </div>
         <div class="fg" style="margin:0;flex:1">
           <label class="fl">Duration</label>
-          <select class="fi" id="rsDuration" onchange="updateRsEndTime()">
+          <select class="fi" id="rsDuration" disabled title="Duration is preserved so the paid price does not change">
             <option value="1">1 hour</option>
             <option value="2" selected>2 hours</option>
             <option value="3">3 hours</option>
@@ -5384,6 +5384,13 @@ function quickPaymentApprovalButton(b) {
   const label = state.manualProviderConfirmation ? 'Restore & Confirm' : 'Confirm Payment';
   return `<button class="btn btn-p btn-sm" type="button" onclick="quickConfirmPayment('${jsArg(actionRef)}',this)">${label}</button>`;
 }
+function canRescheduleBooking(b) {
+  const items = Array.isArray(b?.allItems) && b.allItems.length
+    ? b.allItems
+    : (Array.isArray(b?.items) && b.items.length ? b.items : [b]);
+  return items.length > 0
+    && items.every(item => ['pending', 'confirmed'].includes(String(item?.status || '').toLowerCase()));
+}
 function bookingActionsHtml(b, canDelete){
   const grouped = Array.isArray(b.items) && b.items.length > 1;
   const actionRef = b.primaryRef || b.ref;
@@ -5393,7 +5400,7 @@ function bookingActionsHtml(b, canDelete){
   const canCorrectForfeiture = forfeited && b.hostBooking && ['owner','court_owner'].includes(String(sess?.role || ''));
   return `${quickPaymentApprovalButton(b)}
     ${bookingDetailsButton(b)}
-    ${!grouped && !['cancelled','forfeited'].includes(b.status)?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')">Reschedule</button>`:''}
+    ${canRescheduleBooking(b)?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')" title="${grouped ? 'Move every court in this reservation together' : 'Move this booking'}">Reschedule</button>`:''}
     ${b.email && (forfeited || hasBalance)?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Notice':'Balance Reminder'}</button>`:''}
     ${b.status==='confirmed' && b.email && !hasBalance?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
     ${canRecordManualPayment?`<button class="btn btn-p btn-sm" onclick="updatePaymentStatus('${jsArg(actionRef)}','paid')">Record Fully Paid</button>`:''}
@@ -8436,16 +8443,45 @@ function updateRsEndTime() {
   $('rsEndTimeDisplay').textContent = fmtHour(start + dur);
 }
 
+let _rescheduleContext = null;
+
 async function openRescheduleModal(ref) {
   const group = await getBookingGroupByRef(ref);
-  if (group?.isGroup) { toast('Grouped bookings must be rescheduled court-by-court from individual booking records.', 'inf'); return; }
-  const b = await DB.getBookingByRef(ref);
+  const activeItems = group?.allItems || group?.items || [];
+  const b = group?.items?.[0] || await DB.getBookingByRef(ref);
   if (!b) { toast('Booking not found.', 'err'); return; }
+  if (!canRescheduleBooking({ allItems: activeItems })) {
+    toast('Only pending or confirmed reservations can be rescheduled.', 'err');
+    return;
+  }
 
-  $('rsOldCourt').textContent = b.courtName;
-  $('rsOldDate').textContent = fmtD(b.date);
-  $('rsOldTime').textContent = `${b.startTime} – ${b.endTime}`;
-  $('rsName').textContent = b.fullName;
+  const scheduleKey = item => JSON.stringify({
+    date: item.date,
+    startTime: item.startTime,
+    endTime: item.endTime,
+    duration: Number(item.duration || item.slots?.length || 0),
+    slots: (item.slots || []).map(Number),
+  });
+  if (activeItems.length > 1 && new Set(activeItems.map(scheduleKey)).size !== 1) {
+    toast('This grouped reservation has different schedules. Reschedule its court entries individually to preserve each paid duration.', 'err');
+    return;
+  }
+
+  const refs = [...new Set(activeItems.map(item => String(item.ref || '')).filter(Boolean))];
+  const isGroup = refs.length > 1;
+  _rescheduleContext = {
+    ref: b.ref,
+    refs,
+    isGroup,
+    courtName: isGroup ? bookingGroupCourtLabel(activeItems) : b.courtName,
+  };
+
+  $('rsOldCourt').textContent = isGroup
+    ? `${_rescheduleContext.courtName} · ${refs.length} courts move together`
+    : b.courtName;
+  $('rsOldDate').textContent = group?.dateLabel || fmtD(b.date);
+  $('rsOldTime').textContent = group?.timeLabel || `${b.startTime} – ${b.endTime}`;
+  $('rsName').textContent = group?.fullName || b.fullName;
 
   // Default to tomorrow
   const tomorrow = new Date();
@@ -8469,7 +8505,8 @@ async function openRescheduleModal(ref) {
 }
 
 async function saveReschedule() {
-  const ref = $('rescheduleModal').dataset.ref;
+  const context = _rescheduleContext ? { ..._rescheduleContext, refs: [..._rescheduleContext.refs] } : null;
+  const ref = context?.ref || $('rescheduleModal').dataset.ref;
   if (!ref) return;
 
   const oldDate = $('rescheduleModal').dataset.oldDate;
@@ -8489,16 +8526,21 @@ async function saveReschedule() {
   const newEndTime = fmtHour(endH);
 
   try {
-    await DB.updateBooking(ref, {
+    const scheduleUpdates = {
       date: newDate,
       startTime: newStartTime,
       endTime: newEndTime,
       duration: dur,
       slots,
-    });
+    };
+    if (context?.isGroup) {
+      await DB.rescheduleBookingGroup(context.refs, scheduleUpdates);
+    } else {
+      await DB.updateBooking(ref, scheduleUpdates);
+    }
 
     closeModal('rescheduleModal');
-    toast('Booking rescheduled!');
+    toast(context?.isGroup ? 'All courts in the reservation were rescheduled!' : 'Booking rescheduled!');
     await renderBookings();
     renderDash();
 
@@ -8508,7 +8550,7 @@ async function saveReschedule() {
         bookingRef: bk.ref,
         email: bk.email,
         fullName: bk.fullName,
-        courtName: bk.courtName,
+        courtName: context?.courtName || bk.courtName,
         oldDate,
         oldStartTime,
         oldEndTime,
@@ -8528,7 +8570,7 @@ async function saveReschedule() {
       ]);
     }).catch(() => {});
   } catch(e) {
-    toast('Failed to reschedule booking.', 'err');
+    toast(e?.message || 'Failed to reschedule booking.', 'err');
   }
 }
 
