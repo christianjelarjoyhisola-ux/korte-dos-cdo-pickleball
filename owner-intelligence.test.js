@@ -477,6 +477,17 @@ test('the visible Insights surface is demand-only and inline browser code parses
   assert.match(html,/if \(requestSeq !== _oiRequestSeq\) return;/);
 });
 
+test('selecting All courts is preserved when the Insights court list refreshes', () => {
+  const html = fs.readFileSync(path.join(__dirname,'admin.html'),'utf8');
+  const start = html.indexOf('async function ensureInsightsCourts(');
+  const end = html.indexOf('\nfunction renderInsightsKpis(', start);
+  assert.ok(start >= 0 && end > start, 'court option refresh helper must exist');
+  const helper = html.slice(start, end);
+  assert.match(helper, /selectedValues\s*=\s*new Map\(selects\.map\(select\s*=>\s*\[select,\s*select\.value\]\)\)/);
+  assert.match(helper, /const selected\s*=\s*selectedValues\.get\(select\)\s*\|\|\s*''/);
+  assert.doesNotMatch(helper, /\$\('dgCourt'\)\?\.value\s*\|\|\s*\$\('oiCourt'\)\?\.value/);
+});
+
 test('demand campaign booking integration is automatic and fail-open at normal price', () => {
   const html = fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
   const controller = fs.readFileSync(path.join(__dirname,'demand-campaign-booking.js'),'utf8');

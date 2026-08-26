@@ -8644,9 +8644,10 @@ function setInsightsPeriod(period) {
 async function ensureInsightsCourts(force = false) {
   const selects = [$('dgCourt'), $('oiCourt')].filter(Boolean);
   if (!selects.length || (!force && selects.every(select => select.dataset.loaded === 'true'))) return;
-  const selected = $('dgCourt')?.value || $('oiCourt')?.value || '';
+  const selectedValues = new Map(selects.map(select => [select, select.value]));
   const courts = await DB.getCourts();
   selects.forEach(select => {
+    const selected = selectedValues.get(select) || '';
     select.innerHTML = '<option value="">All courts</option>' + courts.map(c =>
       `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`
     ).join('');
