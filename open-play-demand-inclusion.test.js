@@ -39,7 +39,7 @@ test('the guarded production patch matches the checksum-locked V2 function sourc
   assert.equal(oldBlocks.length, 2);
   oldBlocks.forEach(block => assert.ok(profitV2.includes(block), 'guarded source block must match V2'));
   assert.match(migration, /definition does not match the expected checksum-locked source/i);
-  assert.match(migration, /if pg_catalog\.position\('scheduled_open_play_slots as materialized'/i);
+  assert.match(migration, /if pg_catalog\.strpos\(current_definition, 'scheduled_open_play_slots as materialized'/i);
 });
 
 test('Open Play demand production migration is checksum locked and verified', () => {

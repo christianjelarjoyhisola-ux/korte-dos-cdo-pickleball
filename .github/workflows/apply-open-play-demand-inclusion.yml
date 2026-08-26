@@ -24,7 +24,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
       MIGRATION_FILE: supabase/migrations/20260826200000_open_play_demand_inclusion.sql
-      MIGRATION_SHA256: 08ffb89be824b226daa82a126c7e5801d63f65f2747320431e3efe4b41d9d10a
+      MIGRATION_SHA256: 36e18841865f7a916d22616e705e9d8b237a6020bf69d6b578c1b40d4e4f3184
       PREFLIGHT_SQL: |
         with history as (
           select statements
@@ -53,7 +53,7 @@ jobs:
         values (
           '20260826200000',
           'open_play_demand_inclusion',
-          array['sha256:08ffb89be824b226daa82a126c7e5801d63f65f2747320431e3efe4b41d9d10a']::text[]
+          array['sha256:36e18841865f7a916d22616e705e9d8b237a6020bf69d6b578c1b40d4e4f3184']::text[]
         )
         on conflict (version) do update
         set name = excluded.name, statements = excluded.statements;
@@ -86,7 +86,7 @@ jobs:
             where version = '20260826200000'
               and name = 'open_play_demand_inclusion'
               and statements = array[
-                'sha256:08ffb89be824b226daa82a126c7e5801d63f65f2747320431e3efe4b41d9d10a'
+                'sha256:36e18841865f7a916d22616e705e9d8b237a6020bf69d6b578c1b40d4e4f3184'
               ]::text[]
           ) then
             raise exception 'Open Play demand migration history is missing';

@@ -139,18 +139,18 @@ begin
   end if;
 
   current_definition := pg_catalog.pg_get_functiondef(target);
-  if pg_catalog.position('scheduled_open_play_slots as materialized' in current_definition) > 0 then
+  if pg_catalog.strpos(current_definition, 'scheduled_open_play_slots as materialized') > 0 then
     return;
   end if;
-  if pg_catalog.position(old_capacity in current_definition) = 0
-     or pg_catalog.position(old_booked in current_definition) = 0 then
+  if pg_catalog.strpos(current_definition, old_capacity) = 0
+     or pg_catalog.strpos(current_definition, old_booked) = 0 then
     raise exception 'Profit Learning V2 definition does not match the expected checksum-locked source';
   end if;
 
   patched_definition := pg_catalog.replace(current_definition, old_capacity, new_capacity);
   patched_definition := pg_catalog.replace(patched_definition, old_booked, new_booked);
   if patched_definition = current_definition
-     or pg_catalog.position('scheduled_open_play_slots as materialized' in patched_definition) = 0 then
+     or pg_catalog.strpos(patched_definition, 'scheduled_open_play_slots as materialized') = 0 then
     raise exception 'Open Play demand patch was not applied';
   end if;
   execute patched_definition;
