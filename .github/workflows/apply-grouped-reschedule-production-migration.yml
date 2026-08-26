@@ -1,0 +1,139 @@
+name: Apply Grouped Reschedule Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-grouped-reschedule-production-migration.yml"
+      - "supabase/migrations/20260826190000_atomic_group_reschedule.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply and verify atomic grouped rescheduling
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260826190000_atomic_group_reschedule.sql
+      MIGRATION_SHA256: 2c3613d9a8ea2333989199a79e51fbcf58c15db422a7a0022eee5ab6f534273e
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260826190000',
+          'atomic_group_reschedule',
+          array['sha256:2c3613d9a8ea2333989199a79e51fbcf58c15db422a7a0022eee5ab6f534273e']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          target regprocedure := to_regprocedure(
+            'public.reschedule_booking_group(text[],date,integer,integer)'
+          );
+        begin
+          if target is null then
+            raise exception 'Atomic grouped reschedule function is missing';
+          end if;
+          if not coalesce((
+            select prosecdef
+              and prorettype = 'jsonb'::regtype
+              and coalesce(proconfig, '{}'::text[]) @>
+                array['search_path=public, pg_temp']::text[]
+            from pg_proc
+            where oid = target
+          ), false) then
+            raise exception 'Atomic grouped reschedule security attributes are invalid';
+          end if;
+          if has_function_privilege('anon', target, 'execute')
+             or not has_function_privilege('authenticated', target, 'execute') then
+            raise exception 'Atomic grouped reschedule grants are invalid';
+          end if;
+          if not exists (
+            select 1
+            from supabase_migrations.schema_migrations
+            where version = '20260826190000'
+              and name = 'atomic_group_reschedule'
+              and statements = array[
+                'sha256:2c3613d9a8ea2333989199a79e51fbcf58c15db422a7a0022eee5ab6f534273e'
+              ]::text[]
+          ) then
+            raise exception 'Atomic grouped reschedule migration history is missing';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply checksum-locked migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          stripped_migration="$RUNNER_TEMP/grouped-reschedule.sql"
+          sed -e '1{/^[[:space:]]*begin;[[:space:]]*$/Id;}' \
+              -e '${/^[[:space:]]*commit;[[:space:]]*$/Id;}' \
+              "$MIGRATION_FILE" > "$stripped_migration"
+          payload_file="$RUNNER_TEMP/grouped-reschedule.json"
+          response_file="$RUNNER_TEMP/grouped-reschedule-response.json"
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$stripped_migration" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Grouped reschedule migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/grouped-reschedule-verification.json"
+          response_file="$RUNNER_TEMP/grouped-reschedule-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Grouped reschedule verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
