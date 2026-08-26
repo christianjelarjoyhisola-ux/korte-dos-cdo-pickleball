@@ -283,7 +283,34 @@ test('Maintenance and Open Play matching supports recurrence, court scope, and d
   assert.equal(Intelligence.scheduleHourUnavailable('2026-08-19', 19, 'c1', settings), false);
 });
 
-test('blocked operating hours count as neither unsold capacity nor booked demand', () => {
+test('only Open Play Session blocks count as occupied demand', () => {
+  const settings = {
+    open_hour:'6', close_hour:'9',
+    maintenance_config: { rules: [
+      { enabled:true, label:'openplay', mode:'specific', dates:['2026-08-18'], start:6, end:8, courtIds:['c1'] },
+      { enabled:true, label:'private', mode:'specific', dates:['2026-08-18'], start:8, end:9, courtIds:['c1'] },
+    ] },
+  };
+  assert.equal(Intelligence.scheduleHourIsOpenPlay('2026-08-18', 6, 'c1', settings), true);
+  assert.equal(Intelligence.scheduleHourIsOpenPlay('2026-08-18', 8, 'c1', settings), false);
+
+  const snapshot = local({
+    settings,
+    bookings: [{
+      ref:'LEARNING-ANCHOR', courtId:'c1', date:'2026-08-17', status:'completed',
+      paymentStatus:'paid', analyticsEligible:true, slots:[8],
+    }],
+  });
+  const openPlayCell = snapshot.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 6);
+  const privateCell = snapshot.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 8);
+  assert.equal(openPlayCell.available_hours, 2);
+  assert.equal(openPlayCell.booked_hours, 1);
+  assert.ok(openPlayCell.utilization_pct > 0);
+  assert.equal(privateCell.available_hours, 1);
+  assert.equal(privateCell.booked_hours, 0);
+});
+
+test('non-Open-Play blocked hours count as neither capacity nor demand', () => {
   const bookings = [
     { ref:'BLOCKED-HOUR', courtId:'c1', date:'2026-08-18', status:'completed', slots:[6] },
     { ref:'SELLABLE-HOUR', courtId:'c1', date:'2026-08-18', status:'completed', slots:[8] },
@@ -302,8 +329,8 @@ test('blocked operating hours count as neither unsold capacity nor booked demand
     bookings,
   });
 
-  assert.equal(excluded.kpis.available_hours, base.kpis.available_hours - 2);
-  assert.equal(excluded.kpis.booked_hours, 1);
+  assert.equal(excluded.kpis.available_hours, base.kpis.available_hours - 1);
+  assert.equal(excluded.kpis.booked_hours, 2);
   assert.equal(excluded.kpis.successful_reservations, 1);
   assert.equal(
     excluded.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 6).comparable_days,

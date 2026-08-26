@@ -184,43 +184,64 @@
     return start > end && slotHour < end ? addDays(date, -1) : date;
   }
 
+  function openPlayConfigMatches(value, hour, courtId, config) {
+    if (!config || !isEnabled(config.enabled)
+      || !scheduleAppliesToCourt(config, courtId)
+      || !scheduleHourInRange(hour, config.start, config.end)) return false;
+    const occurrenceDate = scheduleOccurrenceDate(value, hour, config.start, config.end);
+    const calendarDay = scheduleCalendarDay(occurrenceDate);
+    const weekdays = Array.isArray(config.days) ? config.days.map(Number) : [];
+    const specificDates = Array.isArray(config.specificDates)
+      ? config.specificDates.map(String)
+      : Array.isArray(config.specific_dates) ? config.specific_dates.map(String) : [];
+    return weekdays.includes(calendarDay) || specificDates.includes(occurrenceDate);
+  }
+
+  function maintenanceRuleMatches(value, hour, courtId, rule) {
+    if (!rule || !isEnabled(rule.enabled)
+      || !scheduleAppliesToCourt(rule, courtId)
+      || !scheduleHourInRange(hour, rule.start, rule.end)) return false;
+    const occurrenceDate = scheduleOccurrenceDate(value, hour, rule.start, rule.end);
+    const calendarDay = scheduleCalendarDay(occurrenceDate);
+    const mode = String(rule.mode || 'specific').toLowerCase();
+    if (mode === 'monthly') return Number(rule.recurring?.day) === Number(occurrenceDate.slice(8, 10));
+    if (mode === 'weekly') {
+      const weekdays = Array.isArray(rule.recurring?.days) ? rule.recurring.days.map(Number) : [];
+      return weekdays.includes(calendarDay);
+    }
+    if (mode !== 'specific') return false;
+    const dates = Array.isArray(rule.dates) ? rule.dates.map(String) : [];
+    return dates.includes(occurrenceDate);
+  }
+
+  function scheduleHourIsOpenPlay(value, hour, courtId, settings = {}) {
+    const date = dateOnly(value);
+    if (scheduleCalendarDay(date) === null) return false;
+    const openPlay = parseScheduleSetting(settings, 'open_play_config');
+    if (openPlayConfigMatches(date, hour, courtId, openPlay)) return true;
+    const maintenance = parseScheduleSetting(settings, 'maintenance_config');
+    const rules = Array.isArray(maintenance.rules)
+      ? maintenance.rules
+      : Object.keys(maintenance).length ? [maintenance] : [];
+    return rules.some(rule => {
+      const label = String(rule?.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      return ['openplay', 'openplaysession'].includes(label)
+        && maintenanceRuleMatches(date, hour, courtId, rule);
+    });
+  }
+
   function scheduleHourUnavailable(value, hour, courtId, settings = {}) {
     const date = dateOnly(value);
     if (scheduleCalendarDay(date) === null) return false;
 
     const openPlay = parseScheduleSetting(settings, 'open_play_config');
-    if (isEnabled(openPlay.enabled)
-      && scheduleAppliesToCourt(openPlay, courtId)
-      && scheduleHourInRange(hour, openPlay.start, openPlay.end)) {
-      const occurrenceDate = scheduleOccurrenceDate(date, hour, openPlay.start, openPlay.end);
-      const calendarDay = scheduleCalendarDay(occurrenceDate);
-      const weekdays = Array.isArray(openPlay.days) ? openPlay.days.map(Number) : [];
-      const specificDates = Array.isArray(openPlay.specificDates)
-        ? openPlay.specificDates.map(String)
-        : Array.isArray(openPlay.specific_dates) ? openPlay.specific_dates.map(String) : [];
-      if (weekdays.includes(calendarDay) || specificDates.includes(occurrenceDate)) return true;
-    }
+    if (openPlayConfigMatches(date, hour, courtId, openPlay)) return true;
 
     const maintenance = parseScheduleSetting(settings, 'maintenance_config');
     const maintenanceRules = Array.isArray(maintenance.rules)
       ? maintenance.rules
       : Object.keys(maintenance).length ? [maintenance] : [];
-    return maintenanceRules.some(rule => {
-      if (!rule || !isEnabled(rule.enabled)
-        || !scheduleAppliesToCourt(rule, courtId)
-        || !scheduleHourInRange(hour, rule.start, rule.end)) return false;
-      const occurrenceDate = scheduleOccurrenceDate(date, hour, rule.start, rule.end);
-      const calendarDay = scheduleCalendarDay(occurrenceDate);
-      const mode = String(rule.mode || 'specific').toLowerCase();
-      if (mode === 'monthly') return Number(rule.recurring?.day) === Number(occurrenceDate.slice(8, 10));
-      if (mode === 'weekly') {
-        const weekdays = Array.isArray(rule.recurring?.days) ? rule.recurring.days.map(Number) : [];
-        return weekdays.includes(calendarDay);
-      }
-      if (mode !== 'specific') return false;
-      const dates = Array.isArray(rule.dates) ? rule.dates.map(String) : [];
-      return dates.includes(occurrenceDate);
-    });
+    return maintenanceRules.some(rule => maintenanceRuleMatches(date, hour, courtId, rule));
   }
 
   function pricingTiers(value) {
@@ -383,7 +404,8 @@
       return normalizedSlots(row, openHour).some(piece =>
         piece.hour >= openHour
         && piece.hour < closeHour
-        && !scheduleHourUnavailable(date, piece.hour, courtId, input.settings));
+        && (!scheduleHourUnavailable(date, piece.hour, courtId, input.settings)
+          || scheduleHourIsOpenPlay(date, piece.hour, courtId, input.settings)));
     };
     const earliest = venueRows.filter(rowHasEligibleHistoricalHour)
       .map(row => dateOnly(row.date)).filter(Boolean).sort()[0] || null;
@@ -407,6 +429,7 @@
       }
     }));
 
+    let scheduledOpenPlayHours = 0;
     historyDates.forEach(date => {
       if (blockedDates.has(date)) return;
       const weekday = isoWeekday(date);
@@ -417,10 +440,16 @@
         if (createdDate && createdDate > date) return;
         slots.forEach(slot => {
           const cell = courtCells.get(`${court.id}:${weekday}:${slot.start}`);
-          if (scheduleHourUnavailable(date, slot.start, court.id, input.settings)) return;
+          const isOpenPlay = scheduleHourIsOpenPlay(date, slot.start, court.id, input.settings);
+          if (scheduleHourUnavailable(date, slot.start, court.id, input.settings) && !isOpenPlay) return;
           cell.available_hours += 1;
           cell.weighted_available_hours += recencyWeight;
           cell.comparable_days += 1;
+          if (isOpenPlay) {
+            cell.booked_hours += 1;
+            cell.weighted_booked_hours += recencyWeight;
+            scheduledOpenPlayHours += 1;
+          }
           const venueKey = `${weekday}:${slot.start}`;
           if (!venueComparableDates.has(venueKey)) venueComparableDates.set(venueKey, new Set());
           venueComparableDates.get(venueKey).add(date);
@@ -430,7 +459,7 @@
 
     const eligibleReservationIds = new Set();
     let eligibleBookingRows = 0;
-    let eligibleBookedHours = 0;
+    let eligibleBookedHours = scheduledOpenPlayHours;
     rows.forEach((row, rowIndex) => {
       const courtId = String(row.courtId || row.court_id);
       const date = dateOnly(row.date);
@@ -444,7 +473,9 @@
       let rowContributed = false;
       normalizedSlots(row, openHour).forEach(piece => {
         const cell = courtCells.get(`${courtId}:${weekday}:${piece.hour}`);
-        if (!cell || scheduleHourUnavailable(date, piece.hour, courtId, input.settings)) return;
+        const isOpenPlay = scheduleHourIsOpenPlay(date, piece.hour, courtId, input.settings);
+        if (!cell || scheduleHourUnavailable(date, piece.hour, courtId, input.settings) && !isOpenPlay) return;
+        if (isOpenPlay) return;
         cell.booked_hours += piece.hours;
         cell.weighted_booked_hours += piece.hours * recencyWeight;
         eligibleBookedHours += piece.hours;
@@ -574,6 +605,7 @@
     cellLabel,
     evidence,
     scheduleHourUnavailable,
+    scheduleHourIsOpenPlay,
     recommendationFromSignals,
     buildRecommendations,
     buildLocalSnapshot,

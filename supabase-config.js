@@ -3666,6 +3666,8 @@ window.DB = {
     if (selectedCourtId && courts.length === 0) throw new Error('The selected court does not exist.');
     const scheduleUnavailable = (date, hour, courtId) =>
       window.OwnerIntelligence?.scheduleHourUnavailable?.(date, hour, courtId, db.settings || {}) === true;
+    const scheduleOpenPlay = (date, hour, courtId) =>
+      window.OwnerIntelligence?.scheduleHourIsOpenPlay?.(date, hour, courtId, db.settings || {}) === true;
     const openHour = Math.max(0, Math.min(23, Number(db.settings?.open_hour || 6)));
     const closeHour = Math.max(openHour + 1, Math.min(24, Number(db.settings?.close_hour || 22)));
     const blocked = new Set((db.blockedDates || []).map(row => String(row?.date || row)));
@@ -3695,7 +3697,8 @@ window.DB = {
       if (!court || !date || blocked.has(date) || (courtCreated && courtCreated > date)) return false;
       return bookingHourUnits(booking).some(piece => piece.hour >= openHour
         && piece.hour < closeHour
-        && !scheduleUnavailable(date, piece.hour, booking.courtId));
+        && (!scheduleUnavailable(date, piece.hour, booking.courtId)
+          || scheduleOpenPlay(date, piece.hour, booking.courtId)));
     });
     const earliest = eligibleVenueSuccessful.map(booking => booking.date).filter(Boolean).sort()[0] || yesterday;
     const rangeEnd = [filters.to || yesterday, yesterday].sort()[0];
@@ -3733,9 +3736,11 @@ window.DB = {
         if (courtCreated && courtCreated > date) continue;
         for (const band of bands) {
           const signal = signalMap.get(`${court.id}|${weekday}|${band.start_hour}`);
-          if (scheduleUnavailable(date, band.start_hour, court.id)) continue;
+          const isOpenPlay = scheduleOpenPlay(date, band.start_hour, court.id);
+          if (scheduleUnavailable(date, band.start_hour, court.id) && !isOpenPlay) continue;
           signal.available_hours += 1;
           signal.comparable_days += 1;
+          if (isOpenPlay) signal.booked_hours += 1;
           const venueKey = `${weekday}|${band.start_hour}`;
           if (!venueComparableDates.has(venueKey)) venueComparableDates.set(venueKey, new Set());
           venueComparableDates.get(venueKey).add(date);
@@ -3763,7 +3768,9 @@ window.DB = {
       for (const piece of bookingHourUnits(booking)) {
         const band = bands.find(item => piece.hour >= item.start_hour && piece.hour < item.end_hour);
         const signal = band && signalMap.get(`${booking.courtId}|${weekday}|${band.start_hour}`);
-        if (signal && !scheduleUnavailable(bookingDate, piece.hour, booking.courtId)) {
+        const isOpenPlay = scheduleOpenPlay(bookingDate, piece.hour, booking.courtId);
+        if (signal && (!scheduleUnavailable(bookingDate, piece.hour, booking.courtId) || isOpenPlay)) {
+          if (isOpenPlay) continue;
           signal.booked_hours += piece.hours;
           contributed = true;
         }
