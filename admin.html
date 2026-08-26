@@ -9347,6 +9347,23 @@ function demandPostLoadImage(source) {
   });
 }
 
+async function demandPostWebsiteQr() {
+  if (!window.PaddleRageQRCode?.toCanvas) return null;
+  const canvas = document.createElement('canvas');
+  try {
+    await window.PaddleRageQRCode.toCanvas(canvas,'https://kortedoscdo.club/',{
+      errorCorrectionLevel:'M',
+      width:180,
+      margin:2,
+      color:{ dark:'#081d30', light:'#ffffff' },
+    });
+    return canvas;
+  } catch (error) {
+    console.warn('Facebook Post Kit website QR:',error);
+    return null;
+  }
+}
+
 async function renderDemandPostCanvas(state) {
   const canvas = $('dgPostKitCanvas');
   const ctx = canvas?.getContext('2d');
@@ -9359,7 +9376,11 @@ async function renderDemandPostCanvas(state) {
   const regularPriceAction = isRegularPriceDemandAction(campaign);
   const courtPhoto = demandPostSafePhoto(state.court?.photo);
   const logoUrl = new URL('korte-dos-logo.png',location.href).href;
-  const [logo,photo] = await Promise.all([demandPostLoadImage(logoUrl),demandPostLoadImage(courtPhoto)]);
+  const [logo,photo,websiteQr] = await Promise.all([
+    demandPostLoadImage(logoUrl),
+    demandPostLoadImage(courtPhoto),
+    demandPostWebsiteQr(),
+  ]);
   if (_dgPostKitState !== state) return false;
   const width = canvas.width;
   const height = canvas.height;
@@ -9453,6 +9474,16 @@ async function renderDemandPostCanvas(state) {
         ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,43,900); ctx.fillText(demandPostMoney(row.offerRate),955,y + 57);
       }
     });
+    if (websiteQr) {
+      ctx.fillStyle = '#ffffff'; demandPostRoundRect(ctx,94,982,196,196,22); ctx.fill();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(websiteQr,102,990,180,180);
+      ctx.imageSmoothingEnabled = true;
+      ctx.fillStyle = '#d7df48'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      demandPostCanvasFont(ctx,24,900); ctx.fillText('SCAN TO BOOK',325,1040);
+      ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,'KORTEDOSCDO.CLUB',620,44,900,'DM Sans',30); ctx.fillText('KORTEDOSCDO.CLUB',325,1092);
+      ctx.fillStyle = 'rgba(255,255,255,.68)'; demandPostCanvasFont(ctx,22,750); ctx.fillText('Open the booking website',325,1135);
+    }
   } else {
     ctx.fillStyle = '#d7df48'; demandPostCanvasFont(ctx,22,900); ctx.fillText('OFFER WINDOW',100,870);
     ctx.fillStyle = '#ffffff'; demandPostFitFont(ctx,court,860,58,900,'DM Sans',36); ctx.fillText(court,100,960);

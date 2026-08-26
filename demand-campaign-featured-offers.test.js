@@ -310,6 +310,8 @@ test('owner Facebook Post Kit creates a truthful portrait graphic and fail-soft 
   assert.match(postKit, /DB\.getPublicDemandCampaignFeaturedOffers\(\)/);
   assert.match(postKit, /DISCOUNTED COURT HOUR/);
   assert.match(postKit, /\.slice\(0,1\)/);
+  assert.match(postKit, /PaddleRageQRCode\.toCanvas[\s\S]*?https:\/\/kortedoscdo\.club\//);
+  assert.match(postKit, /SCAN TO BOOK/);
   assert.match(postKit, /row\.offerDate[\s\S]*row\.slotHour[\s\S]*row\.offerRate/);
   assert.match(postKit, /No exact discounted court hour is open right now, so publishing is disabled/i);
   assert.match(postKit, /navigator\.share/);
