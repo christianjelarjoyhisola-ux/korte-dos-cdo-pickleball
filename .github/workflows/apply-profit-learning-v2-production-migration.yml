@@ -1,0 +1,255 @@
+name: Apply Profit Learning V2 Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-profit-learning-v2-production-migration.yml"
+      - "supabase/migrations/20260826180000_profit_learning_v2.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply and verify protected profit learning
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20260826180000_profit_learning_v2.sql
+      MIGRATION_SHA256: 00a984ecb4d3f94ebc11696e43fa64a2224021c7aee910a019284ee79e9c6ad3
+      PREFLIGHT_SQL: |
+        with migration_history as (
+          select version, name, statements
+          from supabase_migrations.schema_migrations
+          where version = '20260826180000'
+        )
+        select jsonb_build_object(
+          'base_ready',
+            to_regclass('public.bookings') is not null
+            and to_regclass('public.courts') is not null
+            and to_regprocedure('public.current_account_role()') is not null
+            and to_regprocedure('public.has_account_role(text[])') is not null
+            and to_regprocedure('public.calculate_booking_court_total(text,text[])') is not null
+            and to_regprocedure('public.demand_schedule_hour_is_unavailable(date,integer,text,jsonb,jsonb)') is not null,
+          'schema_present',
+            to_regclass('public.profit_learning_experiments') is not null
+            or to_regclass('public.profit_learning_occurrences') is not null
+            or to_regclass('public.profit_learning_occurrence_events') is not null
+            or to_regclass('public.profit_learning_occurrence_outcomes') is not null
+            or to_regprocedure('public.get_profit_learning_v2_intelligence(date,date,text)') is not null,
+          'history_exists', exists (select 1 from migration_history),
+          'history_marker', coalesce((select statements[1] from migration_history limit 1), '')
+        ) as preflight;
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+        alter table supabase_migrations.schema_migrations
+          add column if not exists statements text[];
+        alter table supabase_migrations.schema_migrations
+          add column if not exists name text;
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20260826180000',
+          'profit_learning_v2',
+          array['sha256:00a984ecb4d3f94ebc11696e43fa64a2224021c7aee910a019284ee79e9c6ad3']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name,
+            statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          intelligence_function regprocedure :=
+            to_regprocedure('public.get_profit_learning_v2_intelligence(date,date,text)');
+          create_function regprocedure :=
+            to_regprocedure('public.create_profit_learning_experiment_from_recommendation(text,text)');
+          publication_function regprocedure :=
+            to_regprocedure('public.record_profit_learning_facebook_publication(uuid,uuid[],jsonb)');
+          finalize_function regprocedure :=
+            to_regprocedure('public.finalize_profit_learning_occurrence_outcomes(uuid)');
+          results_function regprocedure :=
+            to_regprocedure('public.get_profit_learning_experiment_results(uuid)');
+          end_function regprocedure :=
+            to_regprocedure('public.end_profit_learning_experiment(uuid)');
+        begin
+          if to_regclass('public.profit_learning_experiments') is null
+             or to_regclass('public.profit_learning_occurrences') is null
+             or to_regclass('public.profit_learning_occurrence_events') is null
+             or to_regclass('public.profit_learning_occurrence_outcomes') is null then
+            raise exception 'Profit Learning V2 tables are missing';
+          end if;
+
+          if intelligence_function is null or create_function is null
+             or publication_function is null or finalize_function is null
+             or results_function is null or end_function is null then
+            raise exception 'One or more Profit Learning V2 RPCs are missing';
+          end if;
+
+          if (
+            select count(*) from pg_class
+            where oid in (
+              'public.profit_learning_experiments'::regclass,
+              'public.profit_learning_occurrences'::regclass,
+              'public.profit_learning_occurrence_events'::regclass,
+              'public.profit_learning_occurrence_outcomes'::regclass
+            ) and relrowsecurity
+          ) <> 4 then
+            raise exception 'Profit Learning V2 RLS is incomplete';
+          end if;
+
+          if (
+            select count(*) from pg_proc
+            where oid in (
+              intelligence_function, create_function, publication_function,
+              finalize_function, results_function, end_function
+            ) and prosecdef
+          ) <> 6 then
+            raise exception 'Profit Learning V2 RPCs must be SECURITY DEFINER';
+          end if;
+
+          if has_function_privilege('anon', intelligence_function, 'execute')
+             or has_function_privilege('anon', create_function, 'execute')
+             or has_function_privilege('anon', publication_function, 'execute')
+             or has_function_privilege('anon', finalize_function, 'execute')
+             or has_function_privilege('anon', results_function, 'execute')
+             or has_function_privilege('anon', end_function, 'execute') then
+            raise exception 'Profit Learning V2 exposes an anonymous RPC';
+          end if;
+
+          if not has_function_privilege('authenticated', intelligence_function, 'execute')
+             or not has_function_privilege('authenticated', create_function, 'execute')
+             or not has_function_privilege('authenticated', publication_function, 'execute')
+             or not has_function_privilege('authenticated', finalize_function, 'execute')
+             or not has_function_privilege('authenticated', results_function, 'execute')
+             or not has_function_privilege('authenticated', end_function, 'execute') then
+            raise exception 'Profit Learning V2 authenticated RPC grants are incomplete';
+          end if;
+
+          if has_table_privilege('anon', 'public.profit_learning_experiments', 'select')
+             or has_table_privilege('anon', 'public.profit_learning_occurrences', 'select')
+             or has_table_privilege('anon', 'public.profit_learning_occurrence_events', 'select')
+             or has_table_privilege('anon', 'public.profit_learning_occurrence_outcomes', 'select') then
+            raise exception 'Profit Learning V2 tables expose anonymous reads';
+          end if;
+
+          if to_regclass('public.profit_learning_one_active_uidx') is null
+             or to_regclass('public.profit_learning_one_publication_uidx') is null then
+            raise exception 'Profit Learning V2 safety indexes are missing';
+          end if;
+
+          if not exists (
+            select 1 from supabase_migrations.schema_migrations
+            where version = '20260826180000'
+              and name = 'profit_learning_v2'
+              and statements = array[
+                'sha256:00a984ecb4d3f94ebc11696e43fa64a2224021c7aee910a019284ee79e9c6ad3'
+              ]::text[]
+          ) then
+            raise exception 'Profit Learning V2 migration history is missing';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read-only production preflight
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" |
+            sha256sum --check --strict -
+
+          payload="$RUNNER_TEMP/profit-learning-preflight.json"
+          response="$RUNNER_TEMP/profit-learning-preflight-response.json"
+          jq -n --arg query "$PREFLIGHT_SQL" '{query: $query}' > "$payload"
+          status="$(curl --silent --show-error --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 --output "$response" --write-out '%{http_code}' \
+            --request POST --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" --data-binary "@$payload")"
+          if [[ ! "$status" =~ ^2 ]]; then
+            echo "::error::Profit Learning V2 preflight failed with HTTP $status."
+            jq -c '{code, message, error}' "$response" 2>/dev/null || true
+            exit 1
+          fi
+
+          result="$(jq -c 'if type == "array" then .[0].preflight elif (.result? | type) == "array" then .result[0].preflight else .preflight end' "$response")"
+          if [[ -z "$result" || "$result" == "null" ]]; then
+            echo "::error::Profit Learning V2 preflight returned no result."
+            exit 1
+          fi
+          if [[ "$(jq -r '.base_ready' <<<"$result")" != "true" ]]; then
+            echo "::error::Profit Learning V2 prerequisites are incomplete."
+            exit 1
+          fi
+          if [[ "$(jq -r '.history_exists' <<<"$result")" == "true" ]]; then
+            if [[ "$(jq -r '.history_marker' <<<"$result")" != "sha256:$MIGRATION_SHA256" ]]; then
+              echo "::error::Migration 20260826180000 has a different checksum."
+              exit 1
+            fi
+            echo "skip_apply=true" >> "$GITHUB_OUTPUT"
+          else
+            if [[ "$(jq -r '.schema_present' <<<"$result")" == "true" ]]; then
+              echo "::error::Profit Learning V2 schema exists without canonical history; refusing a partial rerun."
+              exit 1
+            fi
+            echo "skip_apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply checksum-locked migration exactly once
+        if: steps.preflight.outputs.skip_apply != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stripped="$RUNNER_TEMP/profit-learning-v2.sql"
+          sed -e '1{/^[[:space:]]*begin;[[:space:]]*$/Id;}' \
+              -e '${/^[[:space:]]*commit;[[:space:]]*$/Id;}' \
+              "$MIGRATION_FILE" > "$stripped"
+          payload="$RUNNER_TEMP/profit-learning-v2.json"
+          response="$RUNNER_TEMP/profit-learning-v2-response.json"
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$stripped" > "$payload"
+
+          status="$(curl --silent --show-error --connect-timeout 15 --max-time 180 \
+            --output "$response" --write-out '%{http_code}' --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" --data-binary "@$payload")"
+          if [[ ! "$status" =~ ^2 ]]; then
+            echo "::error::Profit Learning V2 migration failed with HTTP $status."
+            jq -c '{code, message, error}' "$response" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$RUNNER_TEMP/profit-learning-v2-verification.json"
+          response="$RUNNER_TEMP/profit-learning-v2-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload"
+          status="$(curl --silent --show-error --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 --output "$response" --write-out '%{http_code}' \
+            --request POST --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" --data-binary "@$payload")"
+          if [[ ! "$status" =~ ^2 ]]; then
+            echo "::error::Profit Learning V2 verification failed with HTTP $status."
+            jq -c '{code, message, error}' "$response" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Profit Learning V2 production migration verified."

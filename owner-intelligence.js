@@ -62,9 +62,9 @@
     }
     const days = number(cell?.comparable_days ?? cell?.comparableDays);
     const hours = number(cell?.available_hours ?? cell?.availableHours);
-    if (days >= 16 && hours >= 48) return { code: 'high', label: 'High confidence' };
-    if (days >= 8 && hours >= 24) return { code: 'medium', label: 'Medium confidence' };
-    if (days >= 4 && hours >= 12) return { code: 'low', label: 'Low confidence' };
+    if (days >= 16 && hours >= 16) return { code: 'high', label: 'High confidence' };
+    if (days >= 8 && hours >= 8) return { code: 'medium', label: 'Medium confidence' };
+    if (days >= 4 && hours >= 4) return { code: 'low', label: 'Low confidence' };
     return { code: 'learning', label: 'Still learning' };
   }
 
@@ -223,18 +223,58 @@
     });
   }
 
-  function isSuccessful(row) {
+  function pricingTiers(value) {
+    let parsed = value;
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch (_) { parsed = []; }
+    }
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(tier => ({
+      from: number(tier?.from),
+      to: number(tier?.to),
+      rate: Number(tier?.rate),
+    })).filter(tier => Number.isInteger(tier.from)
+      && tier.from >= 0 && tier.from <= 23
+      && Number.isInteger(tier.to) && tier.to >= 0 && tier.to <= 24
+      && tier.from !== tier.to
+      && Number.isFinite(tier.rate) && tier.rate >= 0);
+  }
+
+  function rateForSlot(input, court, hour) {
+    const slotHour = Math.floor(number(hour));
+    const suppliedValue = typeof input?.slotRate === 'function'
+      ? input.slotRate(court, slotHour, input.settings || {})
+      : null;
+    const supplied = suppliedValue === null || suppliedValue === undefined || suppliedValue === ''
+      ? NaN
+      : Number(suppliedValue);
+    if (Number.isFinite(supplied) && supplied >= 0) return supplied;
+
+    const courtSchedule = pricingTiers(court?.rateSchedule ?? court?.rate_schedule);
+    const venueSchedule = pricingTiers(input?.settings?.pricing_tiers);
+    const tiers = courtSchedule.length ? courtSchedule : venueSchedule;
+    const matching = tiers.find(tier => tier.from < tier.to
+      ? slotHour >= tier.from && slotHour < tier.to
+      : slotHour >= tier.from || slotHour < tier.to);
+    if (matching) return matching.rate;
+    return Math.max(0, number(court?.rate));
+  }
+
+  function isPaidSuccessfulBooking(row, options = {}) {
     const status = String(row?.status || '').toLowerCase();
+    const paymentStatus = String(row?.paymentStatus ?? row?.payment_status ?? '').trim().toLowerCase();
     const eligible = row?.analyticsEligible ?? row?.analytics_eligible;
     return eligible !== false
       && ['confirmed', 'completed'].includes(status)
+      && (['paid', 'downpayment_paid'].includes(paymentStatus)
+        || (!paymentStatus && options.allowLegacyMissingPaymentStatus === true))
       && String(row?.email || '').toLowerCase() !== 'reserve@hold.internal';
   }
 
-  function logicalSuccessfulRows(rows, throughDate, courtId = null) {
+  function logicalSuccessfulRows(rows, throughDate, courtId = null, options = {}) {
     const logical = new Map();
     (Array.isArray(rows) ? rows : [])
-      .filter(isSuccessful)
+      .filter(row => isPaidSuccessfulBooking(row, options))
       .filter(row => dateOnly(row.date) && dateOnly(row.date) <= throughDate)
       .filter(row => !courtId || String(row.courtId || row.court_id) === String(courtId))
       .forEach(row => {
@@ -248,15 +288,20 @@
 
   function signalId(signal, throughDate) {
     return [
-      'demand-v1', signal.court_id, signal.weekday, signal.start_hour,
-      signal.end_hour, throughDate, Math.round(number(signal.utilization_pct) * 10),
+      'profit-v2', signal.court_id, signal.weekday, signal.start_hour,
+      signal.end_hour, signal.rate, throughDate, Math.round(number(signal.utilization_pct) * 10),
     ].join(':');
   }
 
+  function hasActiveGrowthTest(snapshot) {
+    return [...(snapshot?.active_experiments || []), ...(snapshot?.active_campaigns || [])]
+      .some(item => String(item?.status || '').toLowerCase() === 'active');
+  }
+
   function recommendationFromSignals(snapshot) {
-    if (snapshot?.recommendation) return snapshot.recommendation;
     const learningDays = number(snapshot?.period?.learning_days ?? snapshot?.period?.days_analyzed);
-    if (learningDays < MINIMUM_LEARNING_DAYS || (snapshot?.active_campaigns || []).some(item => item.status === 'active')) return null;
+    if (learningDays < MINIMUM_LEARNING_DAYS || hasActiveGrowthTest(snapshot)) return null;
+    if (snapshot?.recommendation) return snapshot.recommendation;
     const candidates = (Array.isArray(snapshot?.court_signals) ? snapshot.court_signals : [])
       .map(signal => ({ ...signal, confidence: confidenceFor(signal).code, state: signal.state || demandState(signal) }))
       .filter(signal => ['medium', 'high'].includes(signal.confidence))
@@ -282,9 +327,11 @@
       available_hours: number(best.available_hours),
       confidence: best.confidence,
       state: best.state,
-      discount_percent: 10,
-      valid_days: FORECAST_DAYS,
-      max_redemptions: 20,
+      rate: number(best.rate),
+      hourly_rate: number(best.rate),
+      action_type: 'facebook_regular_price',
+      discount_percent: 0,
+      target_pairs: 8,
       open_future_hours: number(best.open_future_hours),
       opportunity_value: number(best.opportunity_value),
     };
@@ -320,8 +367,11 @@
       .map(value => dateOnly(value?.date || value)));
     const openHour = clamp(parseInt(input.settings?.open_hour || 6, 10) || 6, 0, 23);
     const closeHour = clamp(parseInt(input.settings?.close_hour || 22, 10) || 22, openHour + 1, 24);
-    const venueRows = logicalSuccessfulRows(input.bookings, throughDate, null);
-    const rows = logicalSuccessfulRows(input.bookings, throughDate, input.courtId);
+    const successfulOptions = {
+      allowLegacyMissingPaymentStatus: input.allowLegacyMissingPaymentStatus === true,
+    };
+    const venueRows = logicalSuccessfulRows(input.bookings, throughDate, null, successfulOptions);
+    const rows = logicalSuccessfulRows(input.bookings, throughDate, input.courtId, successfulOptions);
     const allCourtMap = new Map((Array.isArray(input.courts) ? input.courts : [])
       .map(court => [String(court.id), court]));
     const rowHasEligibleHistoricalHour = row => {
@@ -338,18 +388,19 @@
     const earliest = venueRows.filter(rowHasEligibleHistoricalHour)
       .map(row => dateOnly(row.date)).filter(Boolean).sort()[0] || null;
     const historyDates = earliest ? datesBetween(earliest, throughDate) : [];
-    const bands = [];
-    for (let start = openHour; start < closeHour; start += 3) bands.push({ start, end: Math.min(start + 3, closeHour) });
+    const slots = [];
+    for (let start = openHour; start < closeHour; start += 1) slots.push({ start, end: start + 1 });
 
     const courtCells = new Map();
     const selectedCourtMap = new Map(selectedCourts.map(court => [String(court.id), court]));
     const venueComparableDates = new Map();
-    selectedCourts.forEach(court => bands.forEach(band => {
+    selectedCourts.forEach(court => slots.forEach(slot => {
       for (let weekday = 1; weekday <= 7; weekday += 1) {
-        const key = `${court.id}:${weekday}:${band.start}`;
+        const key = `${court.id}:${weekday}:${slot.start}`;
         courtCells.set(key, {
-          court_id: String(court.id), court_name: court.name || `Court ${court.id}`, rate: number(court.rate),
-          weekday, weekday_label: WEEKDAYS[weekday - 1], start_hour: band.start, end_hour: band.end,
+          court_id: String(court.id), court_name: court.name || `Court ${court.id}`,
+          rate: rateForSlot(input, court, slot.start),
+          weekday, weekday_label: WEEKDAYS[weekday - 1], start_hour: slot.start, end_hour: slot.end,
           booked_hours: 0, available_hours: 0, weighted_booked_hours: 0, weighted_available_hours: 0,
           comparable_days: 0, open_future_hours: 0,
         });
@@ -364,17 +415,13 @@
       selectedCourts.forEach(court => {
         const createdDate = dateOnly(court.createdAt || court.created_at);
         if (createdDate && createdDate > date) return;
-        bands.forEach(band => {
-          const cell = courtCells.get(`${court.id}:${weekday}:${band.start}`);
-          let hours = 0;
-          for (let hour = band.start; hour < band.end; hour += 1) {
-            if (!scheduleHourUnavailable(date, hour, court.id, input.settings)) hours += 1;
-          }
-          if (!hours) return;
-          cell.available_hours += hours;
-          cell.weighted_available_hours += hours * recencyWeight;
+        slots.forEach(slot => {
+          const cell = courtCells.get(`${court.id}:${weekday}:${slot.start}`);
+          if (scheduleHourUnavailable(date, slot.start, court.id, input.settings)) return;
+          cell.available_hours += 1;
+          cell.weighted_available_hours += recencyWeight;
           cell.comparable_days += 1;
-          const venueKey = `${weekday}:${band.start}`;
+          const venueKey = `${weekday}:${slot.start}`;
           if (!venueComparableDates.has(venueKey)) venueComparableDates.set(venueKey, new Set());
           venueComparableDates.get(venueKey).add(date);
         });
@@ -396,8 +443,7 @@
       const recencyWeight = Math.pow(0.5, age / RECENCY_HALF_LIFE_DAYS);
       let rowContributed = false;
       normalizedSlots(row, openHour).forEach(piece => {
-        const band = bands.find(item => piece.hour >= item.start && piece.hour < item.end);
-        const cell = band && courtCells.get(`${courtId}:${weekday}:${band.start}`);
+        const cell = courtCells.get(`${courtId}:${weekday}:${piece.hour}`);
         if (!cell || scheduleHourUnavailable(date, piece.hour, courtId, input.settings)) return;
         cell.booked_hours += piece.hours;
         cell.weighted_booked_hours += piece.hours * recencyWeight;
@@ -425,13 +471,11 @@
     datesBetween(addDays(today, 1), addDays(today, FORECAST_DAYS)).forEach(date => {
       if (blockedDates.has(date)) return;
       const weekday = isoWeekday(date);
-      selectedCourts.filter(court => !court.blocked).forEach(court => bands.forEach(band => {
-        const cell = courtCells.get(`${court.id}:${weekday}:${band.start}`);
-        for (let hour = band.start; hour < band.end; hour += 1) {
-          if (scheduleHourUnavailable(date, hour, court.id, input.settings)) continue;
-          const occupiedHours = number(futureOccupied.get(`${court.id}:${date}:${hour}`));
-          cell.open_future_hours += Math.max(0, 1 - occupiedHours);
-        }
+      selectedCourts.filter(court => !court.blocked).forEach(court => slots.forEach(slot => {
+        const cell = courtCells.get(`${court.id}:${weekday}:${slot.start}`);
+        if (scheduleHourUnavailable(date, slot.start, court.id, input.settings)) return;
+        const occupiedHours = number(futureOccupied.get(`${court.id}:${date}:${slot.start}`));
+        cell.open_future_hours += Math.max(0, 1 - occupiedHours);
       }));
     });
 
@@ -452,17 +496,17 @@
     });
 
     const heatmap = [];
-    bands.forEach(band => {
+    slots.forEach(slot => {
       for (let weekday = 1; weekday <= 7; weekday += 1) {
-        const pieces = courtSignals.filter(cell => cell.weekday === weekday && cell.start_hour === band.start);
+        const pieces = courtSignals.filter(cell => cell.weekday === weekday && cell.start_hour === slot.start);
         const booked = pieces.reduce((sum, cell) => sum + number(cell.booked_hours), 0);
         const available = pieces.reduce((sum, cell) => sum + number(cell.available_hours), 0);
         const weightedBooked = pieces.reduce((sum, cell) => sum + number(cell.weighted_booked_hours), 0);
         const weightedAvailable = pieces.reduce((sum, cell) => sum + number(cell.weighted_available_hours), 0);
         const cell = {
-          weekday, weekday_label: WEEKDAYS[weekday - 1], start_hour: band.start, end_hour: band.end,
+          weekday, weekday_label: WEEKDAYS[weekday - 1], start_hour: slot.start, end_hour: slot.end,
           booked_hours: booked, available_hours: available,
-          comparable_days: venueComparableDates.get(`${weekday}:${band.start}`)?.size || 0,
+          comparable_days: venueComparableDates.get(`${weekday}:${slot.start}`)?.size || 0,
           utilization_pct: weightedAvailable > 0 ? clamp(weightedBooked * 100 / weightedAvailable) : 0,
         };
         cell.confidence = confidenceFor(cell).code;
@@ -479,7 +523,10 @@
     const opportunityValue = courtSignals.reduce((sum, cell) => sum + number(cell.opportunity_value), 0);
     const learningDays = historyDates.length;
     const activeCampaigns = (Array.isArray(input.campaigns) ? input.campaigns : [])
-      .filter(item => item.status === 'active' && (!input.courtId || String(item.court_id || item.courtId) === String(input.courtId)));
+      .filter(item => String(item.status || '').toLowerCase() === 'active');
+    const experimentRows = input.experiments || input.profitExperiments || input.profit_experiments || [];
+    const activeExperiments = (Array.isArray(experimentRows) ? experimentRows : [])
+      .filter(item => String(item.status || '').toLowerCase() === 'active');
     const snapshot = {
       period: {
         from: earliest, to: throughDate, generated_at: new Date().toISOString(),
@@ -500,11 +547,12 @@
       heatmap,
       court_signals: courtSignals,
       active_campaigns: activeCampaigns,
+      active_experiments: activeExperiments,
       data_quality: {
         successful_booking_rows: eligibleBookingRows,
         excluded_operational_rows: Math.max(0, (Array.isArray(input.bookings) ? input.bookings.length : 0) - rows.length),
         capacity_note: 'Demand uses sellable court-hours only. Blocked dates, all enabled Maintenance rule types, and Open Play hours are excluded using the currently saved venue schedules.',
-        model_note: `Recent comparable weeks carry more weight (${RECENCY_HALF_LIFE_DAYS}-day half-life). Failed attempts and payment states never influence demand.`,
+        model_note: `Recent comparable weeks carry more weight (${RECENCY_HALF_LIFE_DAYS}-day half-life). Only paid or downpayment-paid confirmed/completed bookings influence demand; failed operational and payment states never do.`,
       },
     };
     snapshot.recommendation = recommendationFromSignals(snapshot);
@@ -516,6 +564,9 @@
     FORECAST_DAYS,
     RECENCY_HALF_LIFE_DAYS,
     number,
+    pricingTiers,
+    rateForSlot,
+    isPaidSuccessfulBooking,
     confidenceFor,
     wilsonBounds,
     demandState,

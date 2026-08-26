@@ -14,13 +14,16 @@ function local(overrides = {}) {
     courts: [{ id:'c1', name:'Court 1', rate:360 }],
     blockedDates: [],
     bookings: [],
+    // Older fixtures predate payment-status snapshots. Production callers do
+    // not get this compatibility path unless they request it explicitly.
+    allowLegacyMissingPaymentStatus: true,
     ...overrides,
   });
 }
 
 function visibleLocalGrowth(db, filters = {}) {
   const source = fs.readFileSync(path.join(__dirname, 'supabase-config.js'), 'utf8');
-  const start = source.indexOf('  function buildLocalDemandGrowthIntelligence(db, filters = {})');
+  const start = source.indexOf('  function localDemandPricingTiers(value)');
   const end = source.indexOf('\n\n  window.DB = {', start);
   assert.ok(start >= 0 && end > start, 'visible local Demand Growth function must be extractable');
   const localDateAdd = (value, amount) => {
@@ -37,6 +40,9 @@ function visibleLocalGrowth(db, filters = {}) {
     ),
     localIsoWeekday: value => ((new Date(`${value}T12:00:00Z`).getUTCDay() + 6) % 7) + 1,
     localRecommendationId: parts => `TEST-${parts.join('-')}`,
+    _safeJsonParse: value => {
+      try { return JSON.parse(value); } catch (_) { return null; }
+    },
     result: null,
   };
   const sandbox = { ...context, inputDb: db, inputFilters: filters };
@@ -49,10 +55,46 @@ function visibleLocalGrowth(db, filters = {}) {
 }
 
 test('confidence gates price actions until comparable evidence is medium or high', () => {
-  assert.equal(Intelligence.confidenceFor({ comparable_days:3, available_hours:48 }).code, 'learning');
-  assert.equal(Intelligence.confidenceFor({ comparable_days:4, available_hours:12 }).code, 'low');
-  assert.equal(Intelligence.confidenceFor({ comparable_days:8, available_hours:24 }).code, 'medium');
-  assert.equal(Intelligence.confidenceFor({ comparable_days:16, available_hours:48 }).code, 'high');
+  assert.equal(Intelligence.confidenceFor({ comparable_days:3, available_hours:3 }).code, 'learning');
+  assert.equal(Intelligence.confidenceFor({ comparable_days:4, available_hours:4 }).code, 'low');
+  assert.equal(Intelligence.confidenceFor({ comparable_days:8, available_hours:8 }).code, 'medium');
+  assert.equal(Intelligence.confidenceFor({ comparable_days:16, available_hours:16 }).code, 'high');
+});
+
+test('historical success requires a paid state with an explicit legacy escape hatch', () => {
+  const base = { status:'completed', analyticsEligible:true, email:'player@example.com' };
+  assert.equal(Intelligence.isPaidSuccessfulBooking({ ...base, paymentStatus:'paid' }), true);
+  assert.equal(Intelligence.isPaidSuccessfulBooking({ ...base, payment_status:'downpayment_paid' }), true);
+  assert.equal(Intelligence.isPaidSuccessfulBooking({ ...base, paymentStatus:'unpaid' }), false);
+  assert.equal(Intelligence.isPaidSuccessfulBooking({ ...base, paymentStatus:'rejected' }), false);
+  assert.equal(Intelligence.isPaidSuccessfulBooking(base), false);
+  assert.equal(Intelligence.isPaidSuccessfulBooking(base, { allowLegacyMissingPaymentStatus:true }), true);
+  assert.equal(Intelligence.isPaidSuccessfulBooking({ ...base, status:'cancelled', paymentStatus:'paid' }), false);
+});
+
+test('snapshot learning excludes confirmed/completed rows without collected payment', () => {
+  const snapshot = local({
+    allowLegacyMissingPaymentStatus: false,
+    bookings: [
+      { ref:'PAID', courtId:'c1', date:'2026-06-01', status:'completed', paymentStatus:'paid', slots:[8] },
+      { ref:'DEPOSIT', courtId:'c1', date:'2026-06-02', status:'confirmed', paymentStatus:'downpayment_paid', slots:[9] },
+      { ref:'UNPAID', courtId:'c1', date:'2026-06-03', status:'confirmed', paymentStatus:'unpaid', slots:[10] },
+      { ref:'LEGACY-MISSING', courtId:'c1', date:'2026-06-04', status:'completed', slots:[11] },
+    ],
+  });
+  assert.equal(snapshot.kpis.successful_reservations, 2);
+  assert.equal(snapshot.kpis.booked_hours, 2);
+  assert.equal(snapshot.data_quality.successful_booking_rows, 2);
+});
+
+test('slot pricing prefers an override, then court tiers, venue tiers, and flat rate', () => {
+  const settings = { pricing_tiers: JSON.stringify([{ from:9, to:10, rate:420 }]) };
+  const court = { id:'c1', rate:360, rateSchedule:[{ from:8, to:9, rate:300 }] };
+  assert.equal(Intelligence.rateForSlot({ settings, slotRate:(_court,hour) => hour === 7 ? 275 : null }, court, 7), 275);
+  assert.equal(Intelligence.rateForSlot({ settings }, court, 8), 300);
+  assert.equal(Intelligence.rateForSlot({ settings }, court, 9), 360, 'court schedule owns pricing and falls back to the court flat rate');
+  assert.equal(Intelligence.rateForSlot({ settings }, { id:'c2', rate:380 }, 9), 420);
+  assert.equal(Intelligence.rateForSlot({ settings }, { id:'c2', rate:380 }, 10), 380);
 });
 
 test('an evidence-rich zero-booking window is persistent vacancy, not invisible', () => {
@@ -107,7 +149,7 @@ test('manual real bookings count while failed operational states never train dem
   assert.ok(!JSON.stringify(snapshot).match(/cancel|forfeit|reject/i));
 });
 
-test('the engine recommends an evidence-rich 0% window after the learning gate', () => {
+test('the engine recommends a regular-price Facebook test after the learning gate', () => {
   const snapshot = local({
     bookings: [
       { ref:'BASELINE', courtId:'c1', date:'2026-06-01', status:'completed', slots:[18], duration:1 },
@@ -117,12 +159,14 @@ test('the engine recommends an evidence-rich 0% window after the learning gate',
   assert.ok(snapshot.recommendation);
   assert.equal(snapshot.recommendation.utilization_pct, 0);
   assert.equal(snapshot.recommendation.state, 'persistent_vacancy');
-  assert.equal(snapshot.recommendation.discount_percent, 10);
-  assert.equal(snapshot.recommendation.valid_days, 28);
-  assert.equal(snapshot.recommendation.max_redemptions, 20);
+  assert.equal(snapshot.recommendation.action_type, 'facebook_regular_price');
+  assert.equal(snapshot.recommendation.discount_percent, 0);
+  assert.equal(snapshot.recommendation.target_pairs, 8);
+  assert.equal('valid_days' in snapshot.recommendation, false);
+  assert.equal('max_redemptions' in snapshot.recommendation, false);
 });
 
-test('the engine abstains before 30 learning days and while a campaign is active', () => {
+test('the engine abstains before 30 learning days and during legacy or V2 activity', () => {
   const tooEarly = local({
     bookings: [{ ref:'BASE', courtId:'c1', date:'2026-08-10', status:'completed', slots:[18] }],
   });
@@ -134,6 +178,45 @@ test('the engine abstains before 30 learning days and while a campaign is active
   });
   assert.equal(active.recommendation, null);
   assert.equal(active.active_campaigns.length, 1);
+
+  const activeV2 = local({
+    courtId: 'c1',
+    bookings: [{ ref:'BASE', courtId:'c1', date:'2026-06-01', status:'completed', slots:[18] }],
+    experiments: [{ id:'experiment-1', status:'active', court_id:'another-court' }],
+  });
+  assert.equal(activeV2.recommendation, null);
+  assert.equal(activeV2.active_experiments.length, 1);
+  assert.equal(Intelligence.recommendationFromSignals({
+    period: { learning_days:60 },
+    recommendation: { id:'stale-recommendation' },
+    active_experiments: [{ status:'active' }],
+  }), null, 'active experiments must suppress even a supplied stale recommendation');
+});
+
+test('8–9, 9–10, and 10–11 remain independent signals with exact prices', () => {
+  const snapshot = local({
+    settings: { open_hour:'8', close_hour:'11' },
+    courts: [{
+      id:'c1', name:'Court 1', rate:600,
+      rateSchedule: [
+        { from:8, to:9, rate:300 },
+        { from:9, to:10, rate:400 },
+        { from:10, to:11, rate:500 },
+      ],
+    }],
+    bookings: [{
+      ref:'MULTI-HOUR', courtId:'c1', date:'2026-06-01', status:'completed', paymentStatus:'paid', slots:[8,9], duration:2,
+    }],
+  });
+  const monday = snapshot.court_signals
+    .filter(cell => cell.weekday === 1)
+    .sort((a,b) => a.start_hour - b.start_hour);
+  assert.deepEqual(monday.map(cell => [cell.start_hour,cell.end_hour,cell.rate,cell.booked_hours]), [
+    [8,9,300,1],
+    [9,10,400,1],
+    [10,11,500,0],
+  ]);
+  assert.equal(new Set(snapshot.court_signals.map(cell => `${cell.start_hour}:${cell.end_hour}`)).size, 3);
 });
 
 test('future confirmed bookings and fresh holds reduce open inventory but do not teach history', () => {
@@ -224,11 +307,15 @@ test('blocked operating hours count as neither unsold capacity nor booked demand
   assert.equal(excluded.kpis.successful_reservations, 1);
   assert.equal(
     excluded.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 6).comparable_days,
-    base.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 6).comparable_days,
+    base.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 6).comparable_days - 1,
+  );
+  assert.equal(
+    excluded.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 8).comparable_days,
+    base.heatmap.find(cell => cell.weekday === 2 && cell.start_hour === 8).comparable_days,
   );
 });
 
-test('a fully blocked historical band removes the date from comparable days', () => {
+test('a fully blocked historical hour removes the date from comparable days', () => {
   const bookings = [
     { ref:'SELLABLE-ANCHOR', courtId:'c1', date:'2026-08-17', status:'completed', slots:[8] },
     { ref:'BLOCKED-BASELINE', courtId:'c1', date:'2026-08-18', status:'completed', slots:[6] },
@@ -248,7 +335,7 @@ test('a fully blocked historical band removes the date from comparable days', ()
   });
   const baseTuesday = base.court_signals.find(cell => cell.weekday === 2 && cell.start_hour === 6);
   const tuesday = snapshot.court_signals.find(cell => cell.weekday === 2 && cell.start_hour === 6);
-  assert.equal(tuesday.available_hours, baseTuesday.available_hours - 3);
+  assert.equal(tuesday.available_hours, baseTuesday.available_hours - 1);
   assert.equal(tuesday.comparable_days, baseTuesday.comparable_days - 1);
   assert.equal(snapshot.kpis.booked_hours, 1);
   assert.equal(snapshot.kpis.successful_reservations, 1);
@@ -338,10 +425,10 @@ test('the visible local Insights engine uses the same sellable-hour exclusions',
     courts: [{ id:'c1', name:'Court 1', rate:360, createdAt:'2026-06-01T00:00:00Z', blocked:false }],
     blockedDates: ['2026-08-19'],
     bookings: [
-      { ref:'ANCHOR', courtId:'c1', date:'2026-08-17', status:'completed', analyticsEligible:true, slots:[6] },
-      { ref:'MAINT', courtId:'c1', date:'2026-08-18', status:'completed', analyticsEligible:true, slots:[6] },
-      { ref:'SELLABLE', courtId:'c1', date:'2026-08-18', status:'completed', analyticsEligible:true, slots:[8] },
-      { ref:'CLOSED-DATE', courtId:'c1', date:'2026-08-19', status:'completed', analyticsEligible:true, slots:[8] },
+      { ref:'ANCHOR', courtId:'c1', date:'2026-08-17', status:'completed', paymentStatus:'paid', analyticsEligible:true, slots:[6] },
+      { ref:'MAINT', courtId:'c1', date:'2026-08-18', status:'completed', paymentStatus:'paid', analyticsEligible:true, slots:[6] },
+      { ref:'SELLABLE', courtId:'c1', date:'2026-08-18', status:'completed', paymentStatus:'paid', analyticsEligible:true, slots:[8] },
+      { ref:'CLOSED-DATE', courtId:'c1', date:'2026-08-19', status:'completed', paymentStatus:'paid', analyticsEligible:true, slots:[8] },
     ],
     demandCampaigns: [], demandCampaignRedemptions: [],
   };
@@ -362,7 +449,7 @@ test('the visible local Insights engine preserves fractional duration and avoids
     courts: [{ id:'c1', name:'Court 1', rate:360, createdAt:'2026-06-01T00:00:00Z', blocked:false }],
     blockedDates: [], demandCampaigns: [], demandCampaignRedemptions: [],
     bookings: [{
-      ref:'FRACTIONAL', courtId:'c1', date:'2026-08-17', status:'completed', analyticsEligible:true,
+      ref:'FRACTIONAL', courtId:'c1', date:'2026-08-17', status:'completed', paymentStatus:'paid', analyticsEligible:true,
       slots:[], startTime:'6:00 AM', duration:1.5,
     }],
   };
@@ -381,7 +468,8 @@ test('the visible Insights surface is demand-only and inline browser code parses
   const html = fs.readFileSync(path.join(__dirname,'admin.html'),'utf8');
   const visible = html.slice(html.indexOf('<div class="dg-shell">'), html.indexOf('<div class="oi-legacy"'));
   assert.match(visible, /Find weak hours\. Fill more courts\./);
-  assert.match(html, /Start \$\{oiNumber\(discount\)\}% smart offer/);
+  assert.match(html, /Start protected test/);
+  assert.match(html, /Test a Facebook promotion at regular price/);
   assert.doesNotMatch(visible, /payment review|outstanding balance|revenue momentum|payments collected|booking pipeline/i);
   const blocks = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
   blocks.forEach((match,index) => assert.doesNotThrow(() => new vm.Script(match[1],{filename:`admin-inline-${index}.js`})));
@@ -418,11 +506,11 @@ test('an ended Smart Offer can restart without a false live state or losing its 
     'apply-demand-campaign-restart.yml',
   ),'utf8');
 
-  assert.match(html,/const campaign = await DB\.createDemandCampaignFromRecommendation/);
-  assert.match(html,/String\(campaign\?\.status \|\| ''\)\.toLowerCase\(\) !== 'active'/);
+  assert.match(html,/const experiment = await DB\.createProfitLearningExperimentFromRecommendation/);
+  assert.match(html,/String\(experiment\?\.status \|\| ''\)\.toLowerCase\(\) !== 'active'/);
   assert.match(html,/courtId:\s*\$\('dgCourt'\)\?\.value \|\| null/);
   assert.doesNotMatch(
-    html.slice(html.indexOf('async function applyDemandRecommendation()'), html.indexOf('async function endDemandCampaign(')),
+    html.slice(html.indexOf('async function applyDemandRecommendation()'), html.indexOf('async function endProfitLearningExperiment(')),
     /courtId:\s*recommendation\.court_id/,
   );
 

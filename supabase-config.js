@@ -1193,19 +1193,26 @@ window.DB = {
     return data || {};
   },
 
-  // Demand Growth is deliberately narrower than Owner Intelligence: the
-  // database returns successful-play aggregates, one revalidated action, and
-  // active experiments. It contains no customer or payment detail.
+  // Profit Learning V2 is deliberately narrower than Owner Intelligence: the
+  // database returns paid-play aggregates at one-hour granularity, one
+  // revalidated action, and PII-free experiment progress. It never participates
+  // in booking, receipt, voucher, or payment writes.
   async getDemandGrowthIntelligence(filters = {}) {
     if (!(await _pbHasAuthSession())) {
       throw new Error('An authenticated owner session is required to load Demand Intelligence.');
     }
     const opts = filters || {};
-    const { data, error } = await _sb.rpc('get_demand_growth_intelligence', {
+    const args = {
       p_from: opts.from || null,
       p_to: opts.to || null,
       p_court_id: opts.courtId ? String(opts.courtId) : null,
-    });
+    };
+    let { data, error } = await _sb.rpc('get_profit_learning_v2_intelligence', args);
+    const v2Missing = error && (error.code === 'PGRST202' ||
+      /schema cache|could not find the function/i.test(String(error.message || '')));
+    if (v2Missing) {
+      ({ data, error } = await _sb.rpc('get_demand_growth_intelligence', args));
+    }
     if (error) {
       console.error('getDemandGrowthIntelligence:', JSON.stringify({
         code: error.code || '',
@@ -1215,6 +1222,85 @@ window.DB = {
       }));
       throw error;
     }
+    return data || {};
+  },
+
+  async createProfitLearningExperimentFromRecommendation(recommendationId, options = {}) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to start a protected growth test.');
+    }
+    const { data, error } = await _sb.rpc('create_profit_learning_experiment_from_recommendation', {
+      p_recommendation_id: String(recommendationId || '').trim().toUpperCase(),
+      p_court_id: options.courtId ? String(options.courtId) : null,
+    });
+    if (error) {
+      console.error('createProfitLearningExperimentFromRecommendation:', error);
+      throw error;
+    }
+    _pbClearFastCache(['demandGrowthIntelligence']);
+    return data || {};
+  },
+
+  async recordProfitLearningFacebookPublication(experimentId, occurrenceIds = [], metadata = {}) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to record a Facebook promotion.');
+    }
+    const ids = [...new Set((occurrenceIds || []).map(String).filter(Boolean))];
+    if (!ids.length) throw new Error('Choose at least one promoted occurrence.');
+    const { data, error } = await _sb.rpc('record_profit_learning_facebook_publication', {
+      p_experiment_id: experimentId,
+      p_occurrence_ids: ids,
+      p_metadata: metadata || {},
+    });
+    if (error) {
+      console.error('recordProfitLearningFacebookPublication:', error);
+      throw error;
+    }
+    _pbClearFastCache(['demandGrowthIntelligence']);
+    return data || {};
+  },
+
+  async finalizeProfitLearningOccurrenceOutcomes(experimentId) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to refresh growth-test outcomes.');
+    }
+    const { data, error } = await _sb.rpc('finalize_profit_learning_occurrence_outcomes', {
+      p_experiment_id: experimentId,
+    });
+    if (error) {
+      console.error('finalizeProfitLearningOccurrenceOutcomes:', error);
+      throw error;
+    }
+    _pbClearFastCache(['demandGrowthIntelligence']);
+    return data || {};
+  },
+
+  async getProfitLearningExperimentResults(experimentId) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to view growth-test results.');
+    }
+    const { data, error } = await _sb.rpc('get_profit_learning_experiment_results', {
+      p_experiment_id: experimentId,
+    });
+    if (error) {
+      console.error('getProfitLearningExperimentResults:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  async endProfitLearningExperiment(experimentId) {
+    if (!(await _pbHasAuthSession())) {
+      throw new Error('An authenticated owner session is required to end a protected growth test.');
+    }
+    const { data, error } = await _sb.rpc('end_profit_learning_experiment', {
+      p_experiment_id: experimentId,
+    });
+    if (error) {
+      console.error('endProfitLearningExperiment:', error);
+      throw error;
+    }
+    _pbClearFastCache(['demandGrowthIntelligence']);
     return data || {};
   },
 
@@ -3321,6 +3407,10 @@ window.DB = {
       voucherRedemptions: [],
       demandCampaigns: [],
       demandCampaignRedemptions: [],
+      profitLearningExperiments: [],
+      profitLearningOccurrences: [],
+      profitLearningOccurrenceEvents: [],
+      profitLearningOccurrenceOutcomes: [],
       settings: defaultSettings(),
       agreements: [],
       weeklyFees: [],
@@ -3369,6 +3459,10 @@ window.DB = {
       voucherRedemptions: Array.isArray(parsed.voucherRedemptions) ? parsed.voucherRedemptions : [],
       demandCampaigns: Array.isArray(parsed.demandCampaigns) ? parsed.demandCampaigns : [],
       demandCampaignRedemptions: Array.isArray(parsed.demandCampaignRedemptions) ? parsed.demandCampaignRedemptions : [],
+      profitLearningExperiments: Array.isArray(parsed.profitLearningExperiments) ? parsed.profitLearningExperiments : [],
+      profitLearningOccurrences: Array.isArray(parsed.profitLearningOccurrences) ? parsed.profitLearningOccurrences : [],
+      profitLearningOccurrenceEvents: Array.isArray(parsed.profitLearningOccurrenceEvents) ? parsed.profitLearningOccurrenceEvents : [],
+      profitLearningOccurrenceOutcomes: Array.isArray(parsed.profitLearningOccurrenceOutcomes) ? parsed.profitLearningOccurrenceOutcomes : [],
       agreements: Array.isArray(parsed.agreements) ? parsed.agreements : [],
       weeklyFees: Array.isArray(parsed.weeklyFees) ? parsed.weeklyFees : [],
     };
@@ -3446,6 +3540,124 @@ window.DB = {
     return `DG-${hash(2166136261)}${hash(2246822507)}${hash(3266489909)}`;
   }
 
+  function localProfitBookingHours(booking, fallbackHour = 6) {
+    const explicit = (booking?.slots || []).map(Number).filter(Number.isFinite);
+    if (explicit.length) return [...new Set(explicit.map(Math.floor))];
+    const match = String(booking?.startTime || booking?.start_time || '').match(/^\s*(\d{1,2})(?::\d{2})?\s*(AM|PM)?/i);
+    let start = match ? Number(match[1]) : fallbackHour;
+    if (match?.[2]) start = (start % 12) + (match[2].toUpperCase() === 'PM' ? 12 : 0);
+    const duration = Math.max(0, Number(booking?.duration || 0));
+    return Array.from({ length: Math.ceil(duration) }, (_, offset) => start + offset)
+      .filter(hour => hour >= 0 && hour < 24);
+  }
+
+  function localProfitBookingOccupies(booking, courtId, playDate, slotHour, { successfulOnly = false } = {}) {
+    if (String(booking?.courtId || booking?.court_id || '') !== String(courtId)
+      || String(booking?.date || '') !== String(playDate)) return false;
+    if (successfulOnly && window.OwnerIntelligence?.isPaidSuccessfulBooking?.(booking) !== true) return false;
+    if (!successfulOnly) {
+      const status = String(booking?.status || '').toLowerCase();
+      const createdAt = new Date(booking?.createdAt || booking?.created_at || '').getTime();
+      const freshVerifying = status === 'verifying' && Number.isFinite(createdAt)
+        && createdAt > Date.now() - 15 * 60000;
+      if (!['pending', 'confirmed', 'completed'].includes(status) && !freshVerifying) return false;
+    }
+    return localProfitBookingHours(booking).includes(Number(slotHour));
+  }
+
+  function localProfitLearningExperimentSummary(db, experiment) {
+    const occurrences = (db.profitLearningOccurrences || [])
+      .filter(row => String(row.experiment_id) === String(experiment.id))
+      .sort((a, b) => String(a.play_date).localeCompare(String(b.play_date)) || Number(a.slot_hour) - Number(b.slot_hour));
+    const events = (db.profitLearningOccurrenceEvents || [])
+      .filter(row => String(row.experiment_id) === String(experiment.id));
+    const published = new Set(events
+      .filter(row => row.event_type === 'facebook_published')
+      .map(row => String(row.occurrence_id)));
+    const today = localManilaDate();
+    const mature = occurrences.filter(row => String(row.play_date) < today);
+    const outcomes = mature.map(row => {
+      const booked = (db.bookings || []).some(booking => localProfitBookingOccupies(
+        booking, row.court_id, row.play_date, row.slot_hour, { successfulOnly: true },
+      ));
+      const delivered = row.arm === 'control' || published.has(String(row.id));
+      return {
+        occurrence_id: row.id,
+        pair_no: Number(row.pair_no),
+        arm: row.arm,
+        eligible: delivered,
+        successful_paid_booking_count: booked ? 1 : 0,
+        booked_hours: booked ? 1 : 0,
+        secured_court_revenue: booked ? Number(row.regular_rate_snapshot || 0) : 0,
+      };
+    });
+    const byPair = new Map();
+    outcomes.forEach(row => {
+      if (!byPair.has(row.pair_no)) byPair.set(row.pair_no, {});
+      byPair.get(row.pair_no)[row.arm] = row;
+    });
+    const completedPairs = [...byPair.values()].filter(pair =>
+      pair.control?.eligible && pair.treatment?.eligible);
+    const treatment = completedPairs.map(pair => pair.treatment);
+    const control = completedPairs.map(pair => pair.control);
+    const treatmentRevenue = treatment.reduce((sum, row) => sum + row.secured_court_revenue, 0);
+    const controlRevenue = control.reduce((sum, row) => sum + row.secured_court_revenue, 0);
+    const incrementalRevenue = Math.round((treatmentRevenue - controlRevenue) * 100) / 100;
+    const targetPairs = Number(experiment.target_pairs || 8);
+    const resultStatus = completedPairs.length < targetPairs
+      ? (completedPairs.length && incrementalRevenue > 0 ? 'promising' : 'too_early')
+      : incrementalRevenue > 0 ? 'profitable' : incrementalRevenue < 0 ? 'harmful' : 'inconclusive';
+    const upcomingTreatmentOccurrences = occurrences
+      .filter(row => row.arm === 'treatment' && String(row.play_date) >= today)
+      .map(row => ({
+        id: row.id,
+        occurrence_id: row.id,
+        court_id: row.court_id,
+        court_name: experiment.court_name,
+        play_date: row.play_date,
+        offer_date: row.play_date,
+        slot_hour: Number(row.slot_hour),
+        start_hour: Number(row.slot_hour),
+        end_hour: Number(row.slot_hour) + 1,
+        regular_rate_snapshot: Number(row.regular_rate_snapshot || 0),
+        rate: Number(row.regular_rate_snapshot || 0),
+        pair_no: Number(row.pair_no),
+        published: published.has(String(row.id)),
+      }));
+    const summarizedOccurrences = occurrences.map(row => ({
+      ...row,
+      experiment_id: experiment.id,
+      end_hour: Number(row.slot_hour) + 1,
+      regular_rate: Number(row.regular_rate_snapshot || 0),
+      facebook_published_at: events.find(event => String(event.occurrence_id) === String(row.id)
+        && event.event_type === 'facebook_published')?.event_at || null,
+      outcome_finalized: outcomes.some(outcome => String(outcome.occurrence_id) === String(row.id)),
+    }));
+    return {
+      ...experiment,
+      action_type: experiment.action_type || 'facebook_regular_price',
+      target_pairs: targetPairs,
+      completed_pairs: completedPairs.length,
+      assigned_occurrences: occurrences.length,
+      treatment_occurrences: occurrences.filter(row => row.arm === 'treatment').length,
+      control_occurrences: occurrences.filter(row => row.arm === 'control').length,
+      published_occurrences: published.size,
+      upcoming_treatment_occurrences: upcomingTreatmentOccurrences,
+      occurrences: summarizedOccurrences,
+      results: {
+        status: resultStatus,
+        completed_pairs: completedPairs.length,
+        target_pairs: targetPairs,
+        treatment_paid_bookings: treatment.reduce((sum, row) => sum + row.successful_paid_booking_count, 0),
+        control_paid_bookings: control.reduce((sum, row) => sum + row.successful_paid_booking_count, 0),
+        treatment_secured_court_revenue: Math.round(treatmentRevenue * 100) / 100,
+        control_secured_court_revenue: Math.round(controlRevenue * 100) / 100,
+        incremental_secured_court_revenue: incrementalRevenue,
+        promotion_cost: 0,
+      },
+    };
+  }
+
   function buildLocalDemandGrowthIntelligence(db, filters = {}) {
     const today = localManilaDate();
     const yesterday = localDateAdd(today, -1);
@@ -3471,8 +3683,7 @@ window.DB = {
     };
 
     const venueSuccessful = (db.bookings || []).filter(booking =>
-      booking.analyticsEligible !== false
-      && ['confirmed', 'completed'].includes(String(booking.status || '').toLowerCase())
+      window.OwnerIntelligence?.isPaidSuccessfulBooking?.(booking) === true
       && String(booking.date || '') <= yesterday);
     const successful = venueSuccessful.filter(booking =>
       !selectedCourtId || String(booking.courtId) === selectedCourtId);
@@ -3493,8 +3704,8 @@ window.DB = {
     const learningDays = localDateDiff(rangeStart, rangeEnd) + 1;
 
     const bands = [];
-    for (let hour = openHour; hour < closeHour; hour += 3) {
-      bands.push({ start_hour: hour, end_hour: Math.min(hour + 3, closeHour) });
+    for (let hour = openHour; hour < closeHour; hour += 1) {
+      bands.push({ start_hour: hour, end_hour: hour + 1 });
     }
     const weekdayLabel = weekday => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][weekday - 1];
     const signalMap = new Map();
@@ -3505,7 +3716,7 @@ window.DB = {
           const key = `${court.id}|${weekday}|${band.start_hour}`;
           signalMap.set(key, {
             court_id: String(court.id), court_name: court.name || String(court.id),
-            rate: Math.max(0, Number(court.rate || 0)), weekday,
+            rate: localDemandSlotRate(db, court.id, band.start_hour), weekday,
             weekday_label: weekdayLabel(weekday), ...band,
             booked_hours: 0, available_hours: 0, comparable_days: 0,
             open_future_hours: 0,
@@ -3522,12 +3733,8 @@ window.DB = {
         if (courtCreated && courtCreated > date) continue;
         for (const band of bands) {
           const signal = signalMap.get(`${court.id}|${weekday}|${band.start_hour}`);
-          let eligibleHours = 0;
-          for (let hour = band.start_hour; hour < band.end_hour; hour += 1) {
-            if (!scheduleUnavailable(date, hour, court.id)) eligibleHours += 1;
-          }
-          if (!eligibleHours) continue;
-          signal.available_hours += eligibleHours;
+          if (scheduleUnavailable(date, band.start_hour, court.id)) continue;
+          signal.available_hours += 1;
           signal.comparable_days += 1;
           const venueKey = `${weekday}|${band.start_hour}`;
           if (!venueComparableDates.has(venueKey)) venueComparableDates.set(venueKey, new Set());
@@ -3573,9 +3780,7 @@ window.DB = {
       for (const court of courts.filter(item => !item.blocked)) {
         for (const band of bands) {
           const signal = signalMap.get(`${court.id}|${weekday}|${band.start_hour}`);
-          for (let hour = band.start_hour; hour < band.end_hour; hour += 1) {
-            if (!scheduleUnavailable(date, hour, court.id)) signal.open_future_hours += 1;
-          }
+          if (!scheduleUnavailable(date, band.start_hour, court.id)) signal.open_future_hours += 1;
         }
       }
     }
@@ -3668,7 +3873,10 @@ window.DB = {
             .reduce((sum, row) => sum + Number(row.discount_amount || 0), 0) * 100) / 100,
         };
       });
-    const candidate = activeCampaigns.length ? null : courtSignals
+    const activeExperiments = (db.profitLearningExperiments || [])
+      .filter(experiment => experiment.status === 'active')
+      .map(experiment => localProfitLearningExperimentSummary(db, experiment));
+    const candidate = (activeCampaigns.length || activeExperiments.length) ? null : courtSignals
       .filter(row => learningDays >= 30 && row.comparable_days >= 8)
       .filter(row => ['medium', 'high'].includes(row.confidence))
       .filter(row => ['persistent_vacancy', 'underused'].includes(row.state))
@@ -3693,7 +3901,11 @@ window.DB = {
       comparable_days: candidate.comparable_days,
       available_hours: candidate.available_hours,
       confidence: candidate.confidence, state: candidate.state,
-      discount_percent: 10, valid_days: 28, max_redemptions: 20,
+      rate: candidate.rate,
+      hourly_rate: candidate.rate,
+      action_type: 'facebook_regular_price',
+      discount_percent: 0,
+      target_pairs: 8,
       open_future_hours: candidate.open_future_hours,
       opportunity_value: candidate.opportunity_value,
     } : null;
@@ -3722,9 +3934,12 @@ window.DB = {
       court_signals: courtSignals.sort((a, b) => b.opportunity_value - a.opportunity_value),
       recommendation,
       active_campaigns: activeCampaigns,
+      active_experiments: activeExperiments,
+      active_occurrences: activeExperiments.flatMap(experiment => experiment.occurrences || []),
       data_quality: {
-        note: 'Demand learning includes only sellable court-hours and analytics-eligible confirmed/completed play through yesterday. Blocked dates, every enabled Maintenance rule type, and Open Play hours are excluded using the currently saved venue schedules. Pending, verifying, cancelled, rejected, failed, expired, and forfeited records do not influence demand.',
-        successful_statuses: ['confirmed', 'completed'], through_date: rangeEnd,
+        note: 'Demand learning includes only sellable one-hour slots and paid or downpayment-paid analytics-eligible confirmed/completed play through yesterday. Blocked dates, every enabled Maintenance rule type, and Open Play hours are excluded using the currently saved venue schedules. Pending, verifying, cancelled, rejected, failed, expired, and forfeited records do not influence demand.',
+        successful_statuses: ['confirmed', 'completed'],
+        successful_payment_statuses: ['paid', 'downpayment_paid'], through_date: rangeEnd,
         all_genuine_sources_included: true,
       },
     };
@@ -3769,6 +3984,176 @@ window.DB = {
     },
     async getDemandGrowthIntelligence(filters = {}) {
       return buildLocalDemandGrowthIntelligence(readDb(), filters || {});
+    },
+    async createProfitLearningExperimentFromRecommendation(recommendationId, options = {}) {
+      const session = window.Auth?.getSession?.();
+      if (!session || !['owner', 'court_owner'].includes(session.role) || (session.status && session.status !== 'active')) {
+        throw new Error('Only active system owners and court owners can start a protected growth test.');
+      }
+      const db = readDb();
+      if ((db.demandCampaigns || []).some(row => row.status === 'active')) {
+        throw new Error('End the active smart offer before starting a protected growth test.');
+      }
+      const cleanId = String(recommendationId || '').trim().toUpperCase();
+      const existing = (db.profitLearningExperiments || []).find(row => row.status === 'active');
+      if (existing) {
+        if (String(existing.source_recommendation_id).toUpperCase() === cleanId) {
+          return { created: false, idempotent: true, ...localProfitLearningExperimentSummary(db, existing) };
+        }
+        throw new Error('One protected growth test is already active. End it before starting another.');
+      }
+      const snapshot = buildLocalDemandGrowthIntelligence(db, {
+        courtId: options.courtId ? String(options.courtId) : null,
+      });
+      const recommendation = snapshot.recommendation;
+      if (!recommendation || String(recommendation.id).toUpperCase() !== cleanId
+        || recommendation.action_type !== 'facebook_regular_price'
+        || Number(recommendation.end_hour) !== Number(recommendation.start_hour) + 1) {
+        throw new Error('This growth recommendation changed. Refresh Insights before starting it.');
+      }
+      const court = (db.courts || []).find(row => String(row.id) === String(recommendation.court_id));
+      if (!court || court.blocked) throw new Error('The recommended court is not available.');
+      const blockedDates = new Set((db.blockedDates || []).map(row => String(row?.date || row)));
+      const targetPairs = Math.max(1, Number(recommendation.target_pairs || 8));
+      const requiredOccurrences = targetPairs * 2;
+      const candidates = [];
+      const today = localManilaDate();
+      for (let offset = 1; offset <= 196 && candidates.length < requiredOccurrences; offset += 1) {
+        const playDate = localDateAdd(today, offset);
+        if (localIsoWeekday(playDate) !== Number(recommendation.weekday)
+          || blockedDates.has(playDate)
+          || window.OwnerIntelligence?.scheduleHourUnavailable?.(
+            playDate, Number(recommendation.start_hour), recommendation.court_id, db.settings || {},
+          ) === true
+          || (db.bookings || []).some(booking => localProfitBookingOccupies(
+            booking, recommendation.court_id, playDate, recommendation.start_hour,
+          ))) continue;
+        const rate = localDemandSlotRate(db, recommendation.court_id, recommendation.start_hour);
+        if (!(rate > 0)) continue;
+        candidates.push({ playDate, rate });
+      }
+      if (candidates.length < requiredOccurrences) {
+        throw new Error(`Korte DOS needs ${requiredOccurrences} future sellable occurrences for a protected ${targetPairs}-comparison test.`);
+      }
+      const createdAt = nowIso();
+      const experiment = {
+        id: localRef('profit').toLowerCase(),
+        source_recommendation_id: cleanId,
+        court_id: String(recommendation.court_id),
+        court_name: recommendation.court_name || court.name || String(recommendation.court_id),
+        weekday: Number(recommendation.weekday),
+        weekday_label: recommendation.weekday_label,
+        slot_hour: Number(recommendation.start_hour),
+        start_hour: Number(recommendation.start_hour),
+        end_hour: Number(recommendation.start_hour) + 1,
+        action_type: 'facebook_regular_price',
+        treatment_action: 'facebook_regular_price',
+        target_pairs: targetPairs,
+        status: 'active',
+        baseline_period_from: snapshot.period?.from || null,
+        baseline_period_to: snapshot.period?.to || null,
+        baseline_utilization_pct: Number(recommendation.utilization_pct || 0),
+        baseline_comparable_days: Number(recommendation.comparable_days || 0),
+        baseline_hourly_rate: Number(recommendation.hourly_rate ?? recommendation.rate ?? 0),
+        created_by: session.id,
+        created_at: createdAt,
+        started_at: createdAt,
+      };
+      db.profitLearningExperiments.push(experiment);
+      for (let pairIndex = 0; pairIndex < targetPairs; pairIndex += 1) {
+        const pairNo = pairIndex + 1;
+        const pair = candidates.slice(pairIndex * 2, pairIndex * 2 + 2);
+        const digest = localRecommendationId([cleanId, pairNo]);
+        const treatmentFirst = Number.parseInt(digest.slice(-1), 16) % 2 === 0;
+        pair.forEach((candidate, index) => {
+          const arm = (index === 0) === treatmentFirst ? 'treatment' : 'control';
+          db.profitLearningOccurrences.push({
+            id: localRef('occ').toLowerCase(),
+            experiment_id: experiment.id,
+            pair_no: pairNo,
+            batch_no: 1,
+            court_id: experiment.court_id,
+            play_date: candidate.playDate,
+            slot_hour: experiment.slot_hour,
+            arm,
+            regular_rate_snapshot: candidate.rate,
+            pricing_digest: localRecommendationId([experiment.court_id, candidate.playDate, experiment.slot_hour, candidate.rate]),
+            assigned_at: createdAt,
+          });
+        });
+      }
+      experiment.scheduled_through = candidates[requiredOccurrences - 1].playDate;
+      writeDb(db);
+      return { created: true, idempotent: false, ...localProfitLearningExperimentSummary(db, experiment) };
+    },
+    async recordProfitLearningFacebookPublication(experimentId, occurrenceIds = [], metadata = {}) {
+      const session = window.Auth?.getSession?.();
+      if (!session || !['owner', 'court_owner'].includes(session.role) || (session.status && session.status !== 'active')) {
+        throw new Error('Only active system owners and court owners can record a Facebook promotion.');
+      }
+      const db = readDb();
+      const experiment = (db.profitLearningExperiments || []).find(row =>
+        String(row.id) === String(experimentId) && row.status === 'active');
+      if (!experiment) throw new Error('The protected growth test is not active.');
+      const ids = new Set((occurrenceIds || []).map(String));
+      const rows = (db.profitLearningOccurrences || []).filter(row =>
+        String(row.experiment_id) === String(experiment.id) && ids.has(String(row.id)));
+      if (!rows.length || rows.some(row => row.arm !== 'treatment')) {
+        throw new Error('Only assigned promotion occurrences can be marked as posted.');
+      }
+      const today = localManilaDate();
+      if (rows.some(row => String(row.play_date) < today)) {
+        throw new Error('A past occurrence cannot be marked as newly promoted.');
+      }
+      const added = [];
+      rows.forEach(row => {
+        const duplicate = (db.profitLearningOccurrenceEvents || []).some(event =>
+          String(event.occurrence_id) === String(row.id) && event.event_type === 'facebook_published');
+        if (duplicate) return;
+        const event = {
+          id: localRef('event').toLowerCase(), experiment_id: experiment.id,
+          occurrence_id: row.id, event_type: 'facebook_published', event_at: nowIso(),
+          actor_id: session.id, metadata: metadata || {},
+        };
+        db.profitLearningOccurrenceEvents.push(event);
+        added.push(event);
+      });
+      writeDb(db);
+      return { recorded: added.length, experiment_id: experiment.id };
+    },
+    async finalizeProfitLearningOccurrenceOutcomes(experimentId) {
+      const session = window.Auth?.getSession?.();
+      if (!session || !['owner', 'court_owner'].includes(session.role) || (session.status && session.status !== 'active')) {
+        throw new Error('Only active system owners and court owners can refresh growth-test outcomes.');
+      }
+      const db = readDb();
+      const experiment = (db.profitLearningExperiments || []).find(row => String(row.id) === String(experimentId));
+      if (!experiment) throw new Error('The protected growth test was not found.');
+      const summary = localProfitLearningExperimentSummary(db, experiment);
+      writeDb(db);
+      return { experiment_id: experiment.id, ...summary.results };
+    },
+    async getProfitLearningExperimentResults(experimentId) {
+      const db = readDb();
+      const experiment = (db.profitLearningExperiments || []).find(row => String(row.id) === String(experimentId));
+      if (!experiment) throw new Error('The protected growth test was not found.');
+      return localProfitLearningExperimentSummary(db, experiment).results;
+    },
+    async endProfitLearningExperiment(experimentId) {
+      const session = window.Auth?.getSession?.();
+      if (!session || !['owner', 'court_owner'].includes(session.role) || (session.status && session.status !== 'active')) {
+        throw new Error('Only active system owners and court owners can end a protected growth test.');
+      }
+      const db = readDb();
+      const experiment = (db.profitLearningExperiments || []).find(row => String(row.id) === String(experimentId));
+      if (!experiment) throw new Error('The protected growth test was not found.');
+      if (experiment.status === 'active') {
+        experiment.status = 'stopped';
+        experiment.ended_by = session.id;
+        experiment.ended_at = nowIso();
+      }
+      writeDb(db);
+      return { experiment_id: experiment.id, status: experiment.status, ended_at: experiment.ended_at || null };
     },
     async getPublicDemandCampaignSlotOffers(date) {
       const offerDate = String(date || '').trim();
@@ -3931,6 +4316,9 @@ window.DB = {
           campaign.status = 'ended'; campaign.ended_at = nowIso(); campaign.updated_at = nowIso();
         }
       });
+      if ((db.profitLearningExperiments || []).some(experiment => experiment.status === 'active')) {
+        throw new Error('End the active protected growth test before starting a smart offer.');
+      }
       const cleanId = String(recommendationId || '').trim().toUpperCase();
       const active = db.demandCampaigns.find(campaign => campaign.status === 'active');
       if (active) {
