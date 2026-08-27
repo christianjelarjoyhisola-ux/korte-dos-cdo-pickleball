@@ -57,12 +57,16 @@ import { deliverPaymentReviewNotification } from "../_shared/payment-review-emai
 import {
   buildMariBankTransactionKey,
   checkMariBankDestinationAccount,
+  checkMariBankDestinationMobileNumber,
   extractMariBankDestinationAccount,
+  extractMariBankDestinationMobileNumber,
   extractMariBankReference,
   extractMariBankSenderLast4,
   extractMariBankTotalAmount,
   extractMariBankTransferAmount,
   extractMariBankTransferFee,
+  hasMariBankDestinationAccountLabel,
+  hasMariBankDestinationRecipient,
   hasSuccessfulMariBankTransfer,
   isMariBankReceipt,
   isMariBankReference,
@@ -492,6 +496,16 @@ function parseReceiptDateTimeForProvider(
 
 function digitsOnly(s: string): string {
   return (s || "").replace(/\D/g, "");
+}
+
+function philippineMobileLast4(value: string): string | null {
+  const digits = digitsOnly(value);
+  if (
+    !/^9\d{9}$/.test(digits) &&
+    !/^09\d{9}$/.test(digits) &&
+    !/^639\d{9}$/.test(digits)
+  ) return null;
+  return digits.slice(-4);
 }
 
 function normalizeReferenceForProvider(
@@ -3639,6 +3653,9 @@ Deno.serve(async (req) => {
     const extractedMariBankAccount = provider === "maribank"
       ? extractMariBankDestinationAccount(ocrText)
       : null;
+    const extractedMariBankDestinationMobile = provider === "maribank"
+      ? extractMariBankDestinationMobileNumber(ocrText)
+      : null;
     const extractedMariBankSenderLast4 = provider === "maribank"
       ? extractMariBankSenderLast4(ocrText)
       : null;
@@ -3704,6 +3721,9 @@ Deno.serve(async (req) => {
     const receiptAgeMinutes = bookingStartedAt && receiptDateTime
       ? (receiptDateTime.getTime() - bookingStartedAt.getTime()) / 60000
       : null;
+    let mariBankDestinationEvidence: "qr_account" | "mobile_number" | null =
+      null;
+    let mariBankTimestampVerified = false;
     if (provider === "gcash" && typedRef.length !== 13) {
       flags.push("REF_FORMAT_INVALID");
     }
@@ -3890,9 +3910,10 @@ Deno.serve(async (req) => {
           flags.push("NUMBER_UNREADABLE");
         }
       } else if (provider === "maribank") {
-        // MariBank's generated receipt exposes the GCash QR account token,
-        // rather than the destination mobile number. Require that stable token
-        // plus the unmasked receiver name and completed Realtime InstaPay state.
+        // MariBank has two native destination layouts. Older receipts expose
+        // the configured opaque GCash QR account token; current receipts expose
+        // a labeled Mobile No. inside the To -> G-Xchange/GCash block. The
+        // mobile layout is a narrow fallback and requires fresh timestamp proof.
         if (!extractedRef) flags.push("MARIBANK_REFERENCE_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) {
           flags.push("REF_MISMATCH");
@@ -3932,24 +3953,72 @@ Deno.serve(async (req) => {
         if (!hasGcashGxiDestination(ocrText)) {
           flags.push("GXI_DESTINATION_UNREADABLE");
         }
-        if (!hasExpectedReceiverName(ocrText, expectedName)) {
+        const destinationRecipientMatches = hasMariBankDestinationRecipient(
+          ocrText,
+          expectedName,
+        );
+        if (!destinationRecipientMatches) {
           flags.push("RECEIVER_NAME_UNREADABLE");
         }
         const accountCheck = checkMariBankDestinationAccount(
           ocrText,
           expectedGcashQrAccountId,
         );
-        if (accountCheck === "wrong") {
-          // Exact match is required for auto-approval, but a one-character OCR
-          // substitution in this long token is not enough evidence to cancel a
-          // paid booking. Keep it pending for the owner to inspect.
-          flags.push("WRONG_GCASH_ACCOUNT");
-        } else if (accountCheck === "unreadable") {
-          flags.push("ACCOUNT_UNREADABLE");
-        } else if (accountCheck === "unconfigured") {
-          // Missing destination configuration is not evidence of customer
-          // fraud, but it must prevent automatic approval.
-          flags.push("ACCOUNT_UNCONFIGURED");
+        const mobileCheck = checkMariBankDestinationMobileNumber(
+          ocrText,
+          expectedNumber,
+        );
+        mariBankTimestampVerified = Boolean(
+          receiptDate &&
+            receiptDateTime &&
+            bookingStartedDate &&
+            bookingStartedAt &&
+            receiptDate === bookingStartedDate &&
+            receiptAgeMinutes != null &&
+            receiptAgeMinutes >= -PAYMENT_EARLY_TOLERANCE_MINUTES &&
+            receiptAgeMinutes <= PAYMENT_WINDOW_MINUTES,
+        );
+        const hasMariBankDestinationProof = accountCheck === "match" || (
+          accountCheck === "unreadable" &&
+          !hasMariBankDestinationAccountLabel(ocrText) &&
+          mobileCheck === "match" &&
+          destinationRecipientMatches &&
+          receiptDate &&
+          receiptDateTime &&
+          mariBankTimestampVerified
+        );
+
+        if (accountCheck === "match") {
+          mariBankDestinationEvidence = "qr_account";
+          // A readable contradictory Mobile No. must not be hidden by a valid
+          // legacy token. OCR uncertainty remains pending, never auto-cancelled.
+          if (mobileCheck === "wrong") flags.push("WRONG_GCASH_ACCOUNT");
+        } else if (
+          hasMariBankDestinationProof &&
+          accountCheck === "unreadable"
+        ) {
+          mariBankDestinationEvidence = "mobile_number";
+        }
+
+        if (!hasMariBankDestinationProof) {
+          if (accountCheck === "wrong" || mobileCheck === "wrong") {
+            // A mismatch in a screenshot is review evidence, not enough reason
+            // to cancel a paid booking automatically.
+            flags.push("WRONG_GCASH_ACCOUNT");
+          } else if (
+            accountCheck === "unconfigured" || mobileCheck === "unconfigured"
+          ) {
+            flags.push("ACCOUNT_UNCONFIGURED");
+          } else if (
+            accountCheck === "unreadable" &&
+            !hasMariBankDestinationAccountLabel(ocrText) &&
+            mobileCheck === "match" &&
+            !mariBankTimestampVerified
+          ) {
+            flags.push("MARIBANK_TIMESTAMP_UNVERIFIED");
+          } else {
+            flags.push("ACCOUNT_UNREADABLE");
+          }
         }
       } else if (provider === "gotyme") {
         // GoTyme is accepted only as the sending bank for an instant InstaPay
@@ -4159,6 +4228,14 @@ Deno.serve(async (req) => {
           duplicateFlag: "DUPLICATE_MARIBANK_TRANSACTION",
         });
       }
+      // The exact binary receipt hash is a second, race-safe replay key. It
+      // catches reuse even if somebody edits the short typed reference while
+      // keeping retries for the same booking idempotent.
+      dedupeKeys.push({
+        key: `maribank_receipt_image:${imageHash}`,
+        providerKey: "maribank_receipt_image",
+        duplicateFlag: "DUPLICATE_MARIBANK_TRANSACTION",
+      });
     }
 
     const alreadyClaimedByThisBooking = new Set<string>();
@@ -4254,6 +4331,13 @@ Deno.serve(async (req) => {
       bpiTransactionRefNo: extractedBpiTransactionRefNo,
       mariBankReferenceNumber: provider === "maribank" ? extractedRef : null,
       mariBankDestinationAccount: extractedMariBankAccount,
+      mariBankDestinationEvidence,
+      mariBankDestinationMobileLast4: provider === "maribank"
+        ? extractedMariBankDestinationMobile?.slice(-4) || null
+        : null,
+      expectedReceiverMobileLast4: provider === "maribank"
+        ? philippineMobileLast4(expectedNumber)
+        : null,
       mariBankSenderLast4: extractedMariBankSenderLast4,
       mariBankTotalAmount: extractedMariBankTotalAmount,
       mariBankTransferFee: extractedMariBankTransferFee,

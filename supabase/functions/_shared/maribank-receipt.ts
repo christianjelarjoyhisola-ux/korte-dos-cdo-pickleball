@@ -421,8 +421,107 @@ export function hasSuccessfulMariBankTransfer(text: string): boolean {
 }
 
 const MARIBANK_ACCOUNT_LABEL = /\b(?:acct|account)\s*(?:no|number)?\b/i;
+const MARIBANK_MOBILE_LABEL = /\bmobile\s*(?:no|number)?\.?\b/i;
 const ACCOUNT_FRAGMENT_FIELD =
   /\b(?:transfer|amount|fee|total|reference|method|processing|transaction|date|time|from|to|gcash|xchange|maribank|receipt|realtime|instapay|free)\b/i;
+
+function normalizePhilippineMobile(value: string): string | null {
+  const digits = digitsOnly(value);
+  if (/^9\d{9}$/.test(digits)) return digits;
+  if (/^09\d{9}$/.test(digits)) return digits.slice(1);
+  if (/^639\d{9}$/.test(digits)) return digits.slice(2);
+  return null;
+}
+
+function philippineMobileCandidates(value: string): Set<string> {
+  const candidates = new Set<string>();
+  const pattern = /(?<!\d)(?:(?:\+?63|0)[\s().-]*)?9(?:[\s().-]*\d){9}(?!\d)/g;
+  for (const match of String(value || "").matchAll(pattern)) {
+    const normalized = normalizePhilippineMobile(match[0]);
+    if (normalized) candidates.add(normalized);
+  }
+  return candidates;
+}
+
+export function hasMariBankDestinationAccountLabel(text: string): boolean {
+  return nonEmptyLines(text).some((line) => MARIBANK_ACCOUNT_LABEL.test(line));
+}
+
+// New MariBank transaction receipts identify the GCash destination with a
+// labeled Mobile No. instead of the older opaque QR account token. Only read a
+// mobile from the reconstructed To -> G-Xchange/GCash destination block; a
+// sender/account number elsewhere on the receipt is never destination proof.
+export function extractMariBankDestinationMobileNumber(
+  text: string,
+): string | null {
+  const value = normalizeOcrText(text);
+  if (
+    !hasStrongMariBankContext(value) ||
+    !/\bg-?\s*xchange\s*\/\s*gcash\b/i.test(value)
+  ) return null;
+
+  const lines = nonEmptyLines(value);
+  const labelIndexes = lines
+    .map((line, index) => MARIBANK_MOBILE_LABEL.test(line) ? index : -1)
+    .filter((index) => index >= 0);
+  if (labelIndexes.length !== 1) return null;
+
+  const labelIndex = labelIndexes[0];
+  const destinationWindow = lines.slice(
+    Math.max(0, labelIndex - 5),
+    Math.min(lines.length, labelIndex + 3),
+  ).join("\n");
+  if (
+    !/\bg-?\s*xchange\s*\/\s*gcash\b/i.test(destinationWindow) ||
+    !/(?:^|\n)\s*to(?:\s|$)/i.test(destinationWindow)
+  ) return null;
+
+  const candidates = new Set<string>();
+  for (const index of [labelIndex - 1, labelIndex, labelIndex + 1]) {
+    if (index < 0 || index >= lines.length) continue;
+    const source = index === labelIndex
+      ? lines[index].replace(MARIBANK_MOBILE_LABEL, "")
+      : lines[index];
+    philippineMobileCandidates(source).forEach((candidate) =>
+      candidates.add(candidate)
+    );
+  }
+  return candidates.size === 1 ? [...candidates][0] : null;
+}
+
+export function checkMariBankDestinationMobileNumber(
+  text: string,
+  expectedRaw: string,
+): MariBankDestinationCheck {
+  const expected = normalizePhilippineMobile(expectedRaw);
+  if (!expected) return "unconfigured";
+  const extracted = extractMariBankDestinationMobileNumber(text);
+  if (!extracted) return "unreadable";
+  return extracted === expected ? "match" : "wrong";
+}
+
+export function hasMariBankDestinationRecipient(
+  text: string,
+  expectedRaw: string,
+): boolean {
+  const aliases = [expectedRaw, "Korte Dos"]
+    .map((value) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, ""))
+    .filter((value) => value.length >= 3);
+  if (!aliases.length) return false;
+
+  const lines = nonEmptyLines(text);
+  const matchingBlocks = new Set<string>();
+  lines.forEach((line, index) => {
+    if (!/\bg-?\s*xchange\s*\/\s*gcash\b/i.test(line)) return;
+    const block = lines.slice(Math.max(0, index - 3), index + 3).join("\n");
+    if (!/(?:^|\n)\s*to(?:\s|$)/i.test(block)) return;
+    const normalizedBlock = block.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (aliases.some((alias) => normalizedBlock.includes(alias))) {
+      matchingBlocks.add(normalizedBlock);
+    }
+  });
+  return matchingBlocks.size === 1;
+}
 
 function fragmentedMariBankAccountCandidate(lines: string[]): string | null {
   if (!lines.length) return null;

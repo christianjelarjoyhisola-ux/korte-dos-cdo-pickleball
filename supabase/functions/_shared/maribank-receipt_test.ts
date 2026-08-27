@@ -1,12 +1,16 @@
 import {
   buildMariBankTransactionKey,
   checkMariBankDestinationAccount,
+  checkMariBankDestinationMobileNumber,
   extractMariBankDestinationAccount,
+  extractMariBankDestinationMobileNumber,
   extractMariBankReference,
   extractMariBankSenderLast4,
   extractMariBankTotalAmount,
   extractMariBankTransferAmount,
   extractMariBankTransferFee,
+  hasMariBankDestinationAccountLabel,
+  hasMariBankDestinationRecipient,
   hasSuccessfulMariBankTransfer,
   isMariBankReceipt,
   isMariBankReference,
@@ -158,6 +162,29 @@ Total Amount PHP 2,160.00
 Reference Number 074188
 Transfer Method InstaPay
 Processing Time Realtime
+`;
+
+// Reconstructed verbatim from the supplied native MariBank receipt. This
+// layout identifies the GCash destination with Mobile No. instead of Acct No.
+const mobileNumber4320Layout = `
+MariBank
+Transaction Receipt
+PHP 4,320.00
+From
+ALJYN JOY J.
+MariBank: *******2817
+To
+Korte Dos
+G-Xchange / GCash
+Mobile No.: 09453984516
+Transfer Amount PHP 4,320.00
+Transfer Fee FREE
+Total Amount PHP 4,320.00
+Reference Number 158230
+Transfer Method InstaPay
+Processing Time Realtime
+Transaction Date & Time 26 Aug 2026, 22:08
+Receipt generated from MariBank app
 `;
 
 Deno.test("recognizes the current MariBank realtime InstaPay receipt", () => {
@@ -500,6 +527,144 @@ Deno.test("extracts and validates the GCash destination account token", () => {
     ) !== "unreadable"
   ) {
     throw new Error("Expected unreadable destination");
+  }
+});
+
+Deno.test("extracts every supplied field from the native 4,320 Mobile No. receipt", () => {
+  if (!isMariBankReceipt(mobileNumber4320Layout)) {
+    throw new Error("The supplied Mobile No. receipt was not recognized");
+  }
+  if (!hasSuccessfulMariBankTransfer(mobileNumber4320Layout)) {
+    throw new Error("The supplied Mobile No. transfer was not completed");
+  }
+  if (extractMariBankTransferAmount(mobileNumber4320Layout) !== 4320) {
+    throw new Error("The supplied transfer principal was not extracted");
+  }
+  if (extractMariBankTransferFee(mobileNumber4320Layout) !== 0) {
+    throw new Error("The supplied FREE transfer fee was not extracted");
+  }
+  if (extractMariBankTotalAmount(mobileNumber4320Layout) !== 4320) {
+    throw new Error("The supplied transfer total was not extracted");
+  }
+  if (
+    extractMariBankReference(mobileNumber4320Layout, "158230") !== "158230"
+  ) {
+    throw new Error("The supplied six-digit reference was not extracted");
+  }
+  if (
+    extractMariBankDestinationMobileNumber(mobileNumber4320Layout) !==
+      "9453984516"
+  ) {
+    throw new Error("The supplied destination mobile was not normalized");
+  }
+  const parsed = parseMariBankDateTime(mobileNumber4320Layout);
+  if (parsed.date !== "2026-08-26") {
+    throw new Error(`Unexpected supplied receipt date: ${parsed.date}`);
+  }
+  if (parsed.shifted?.toISOString() !== "2026-08-26T22:08:00.000Z") {
+    throw new Error(
+      `Unexpected supplied receipt time: ${parsed.shifted?.toISOString()}`,
+    );
+  }
+});
+
+Deno.test("matches only one destination-scoped MariBank mobile number", () => {
+  for (const expected of ["09453984516", "+63 945 398 4516", "9453984516"]) {
+    if (
+      checkMariBankDestinationMobileNumber(mobileNumber4320Layout, expected) !==
+        "match"
+    ) {
+      throw new Error(`Expected destination mobile match for ${expected}`);
+    }
+  }
+
+  if (
+    checkMariBankDestinationMobileNumber(
+      mobileNumber4320Layout,
+      "09171234567",
+    ) !== "wrong"
+  ) {
+    throw new Error("A clearly different destination mobile was not wrong");
+  }
+
+  const ambiguous = mobileNumber4320Layout.replace(
+    "Mobile No.: 09453984516",
+    "Mobile No.: 09453984516\nMobile No.: 09171234567",
+  );
+  if (extractMariBankDestinationMobileNumber(ambiguous) !== null) {
+    throw new Error("Competing destination mobiles produced a selected value");
+  }
+  if (
+    checkMariBankDestinationMobileNumber(ambiguous, "09453984516") !==
+      "unreadable"
+  ) {
+    throw new Error("Competing destination mobiles were not left unreadable");
+  }
+});
+
+Deno.test("never confuses a MariBank sender mobile with the GCash destination", () => {
+  const senderOnly = mobileNumber4320Layout
+    .replace("MariBank: *******2817", "MariBank: 09453984516")
+    .replace("Mobile No.: 09453984516\n", "");
+  if (extractMariBankDestinationMobileNumber(senderOnly) !== null) {
+    throw new Error("The sender's MariBank mobile was extracted as destination");
+  }
+  if (
+    checkMariBankDestinationMobileNumber(senderOnly, "09453984516") !==
+      "unreadable"
+  ) {
+    throw new Error("A sender-only mobile was accepted as recipient proof");
+  }
+
+  const senderConflict = mobileNumber4320Layout.replace(
+    "MariBank: *******2817",
+    "MariBank: 09171234567",
+  );
+  if (
+    checkMariBankDestinationMobileNumber(senderConflict, "09453984516") !==
+      "match"
+  ) {
+    throw new Error("An unrelated sender mobile polluted destination evidence");
+  }
+});
+
+Deno.test("distinguishes account-token receipts from mobile-number receipts", () => {
+  if (hasMariBankDestinationAccountLabel(mobileNumber4320Layout)) {
+    throw new Error("Mobile No. layout was mistaken for an account-token layout");
+  }
+  if (!hasMariBankDestinationAccountLabel(sample)) {
+    throw new Error("Acct No. destination label was not detected");
+  }
+
+  const unreadableAccount = sample.replace(
+    "Acct No.: DWQM4TK496R3UA1BS",
+    "Acct No.: unreadable\nMobile No.: 09453984516",
+  );
+  if (!hasMariBankDestinationAccountLabel(unreadableAccount)) {
+    throw new Error("An unreadable account value hid the Acct No. label");
+  }
+});
+
+Deno.test("requires the configured recipient name inside the MariBank destination block", () => {
+  if (!hasMariBankDestinationRecipient(mobileNumber4320Layout, "Korte Dos")) {
+    throw new Error("Destination-scoped recipient name did not match");
+  }
+
+  const senderNameOnly = mobileNumber4320Layout
+    .replace("ALJYN JOY J.", "Korte Dos")
+    .replace("To\nKorte Dos", "To\nOTHER MERCHANT");
+  if (hasMariBankDestinationRecipient(senderNameOnly, "Korte Dos")) {
+    throw new Error("A sender name satisfied destination recipient proof");
+  }
+
+  const footerNameOnly = mobileNumber4320Layout
+    .replace("To\nKorte Dos", "To\nOTHER MERCHANT")
+    .replace(
+      "Receipt generated from MariBank app",
+      "Memo Korte Dos\nReceipt generated from MariBank app",
+    );
+  if (hasMariBankDestinationRecipient(footerNameOnly, "Korte Dos")) {
+    throw new Error("A footer name satisfied destination recipient proof");
   }
 });
 

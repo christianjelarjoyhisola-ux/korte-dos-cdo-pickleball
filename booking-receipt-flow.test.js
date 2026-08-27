@@ -6,6 +6,10 @@ const indexHtml = fs.readFileSync('index.html', 'utf8');
 const adminHtml = fs.readFileSync('admin.html', 'utf8');
 const supabaseConfig = fs.readFileSync('supabase-config.js', 'utf8');
 const receiptEdge = fs.readFileSync('supabase/functions/verify-gcash-receipt/index.ts', 'utf8');
+const mariBankReceiptParser = fs.readFileSync(
+  'supabase/functions/_shared/maribank-receipt.ts',
+  'utf8',
+);
 const reviewEdge = fs.readFileSync('supabase/functions/review-payment-receipt/index.ts', 'utf8');
 const manualRestoreMigration = fs.readFileSync(
   'supabase/migrations/20260813043000_restore_cancelled_manual_payment.sql',
@@ -260,4 +264,96 @@ test('mobile booking actions offer a guarded one-step payment confirmation', () 
     adminHtml,
     /async function quickConfirmPayment\(ref, button\)[\s\S]*manualReason\.length < 10[\s\S]*DB\.reviewPaymentReceipt\(ref, 'approve', manualReason, \{[\s\S]*manualProviderConfirmation: state\.manualProviderConfirmation/,
   );
+});
+
+test('MariBank recipient proof uses an exact QR account or a guarded destination mobile fallback', () => {
+  assert.match(
+    mariBankReceiptParser,
+    /export function extractMariBankDestinationMobileNumber\(/,
+  );
+  assert.match(
+    mariBankReceiptParser,
+    /export function checkMariBankDestinationMobileNumber\(/,
+  );
+  assert.match(
+    mariBankReceiptParser,
+    /export function hasMariBankDestinationAccountLabel\(/,
+  );
+  assert.match(
+    mariBankReceiptParser,
+    /export function hasMariBankDestinationRecipient\(/,
+  );
+
+  const branchStart = receiptEdge.indexOf('} else if (provider === "maribank") {');
+  const branchEnd = receiptEdge.indexOf('} else if (provider === "gotyme") {', branchStart);
+  assert.ok(branchStart >= 0 && branchEnd > branchStart, 'MariBank verifier branch should exist');
+  const branch = receiptEdge.slice(branchStart, branchEnd);
+
+  assert.match(branch, /checkMariBankDestinationAccount\(\s*ocrText,/);
+  assert.match(branch, /checkMariBankDestinationMobileNumber\(\s*ocrText,\s*expectedNumber/);
+  assert.match(branch, /hasMariBankDestinationAccountLabel\(ocrText\)/);
+  assert.match(branch, /hasMariBankDestinationRecipient\(\s*ocrText,\s*expectedName/);
+  assert.match(
+    branch,
+    /accountCheck === "match"\s*\|\|\s*\([\s\S]*accountCheck === "unreadable"[\s\S]*!hasMariBankDestinationAccountLabel\(ocrText\)[\s\S]*mobileCheck === "match"[\s\S]*destinationRecipientMatches[\s\S]*mariBankTimestampVerified[\s\S]*\)/,
+    'mobile proof must be a narrow fallback, never a bypass of a readable QR account',
+  );
+
+  assert.match(
+    branch,
+    /mariBankTimestampVerified\s*=\s*Boolean\([\s\S]*receiptDate\s*&&[\s\S]*receiptDateTime\s*&&[\s\S]*bookingStartedDate\s*&&[\s\S]*bookingStartedAt\s*&&/,
+    'mobile fallback needs a readable same-date timestamp inside the payment window',
+  );
+  assert.match(branch, /receiptDate === bookingStartedDate/);
+  assert.match(
+    branch,
+    /receiptAgeMinutes >= -PAYMENT_EARLY_TOLERANCE_MINUTES/,
+  );
+  assert.match(branch, /receiptAgeMinutes <= PAYMENT_WINDOW_MINUTES/);
+  assert.match(branch, /flags\.push\("MARIBANK_TIMESTAMP_UNVERIFIED"\)/);
+  assert.doesNotMatch(
+    branch,
+    /flags\.push\("(?:DATE_NOT_TODAY|TIME_FUTURE|TIME_EXPIRED)"\)/,
+    'MariBank timestamp OCR uncertainty must stay pending instead of hard rejection',
+  );
+});
+
+test('MariBank exact image replay is hard-blocked through the race-safe payment ledger', () => {
+  assert.match(
+    receiptEdge,
+    /provider === "maribank"[\s\S]*key:\s*`maribank_receipt_image:\$\{imageHash\}`[\s\S]*providerKey:\s*"maribank_receipt_image"[\s\S]*duplicateFlag:\s*"DUPLICATE_MARIBANK_TRANSACTION"/,
+  );
+  assert.match(receiptEdge, /"DUPLICATE_MARIBANK_TRANSACTION",?[\s\S]*\]\);/);
+
+  const claimStart = receiptEdge.indexOf('// Race-safe claim of payment ledger keys.');
+  const claimEnd = receiptEdge.indexOf('const confidence =', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart, 'race-safe claim block should exist');
+  const claim = receiptEdge.slice(claimStart, claimEnd);
+  assert.match(claim, /if \(result === "auto_approved" && hasPersistedBooking\)/);
+  assert.match(claim, /from\("used_gcash_refs"\)[\s\S]*\.insert\(/);
+  assert.match(claim, /\.eq\("gcash_ref", item\.key\)/);
+  assert.match(claim, /result = "rejected"/);
+});
+
+test('MariBank audit metadata retains only masked destination mobile evidence', () => {
+  const extractedStart = receiptEdge.indexOf('const extracted = {');
+  const extractedEnd = receiptEdge.indexOf('const auditExtracted =', extractedStart);
+  assert.ok(extractedStart >= 0 && extractedEnd > extractedStart, 'audit extraction block should exist');
+  const extracted = receiptEdge.slice(extractedStart, extractedEnd);
+
+  assert.match(extracted, /mariBankDestinationEvidence/);
+  assert.match(
+    extracted,
+    /mariBankDestinationMobileLast4:[\s\S]*extractedMariBankDestinationMobile\?\.slice\(-4\)/,
+  );
+  assert.match(
+    extracted,
+    /expectedReceiverMobileLast4:[\s\S]*philippineMobileLast4\(expectedNumber\)/,
+  );
+  assert.doesNotMatch(
+    extracted,
+    /mariBankDestinationMobile(?:Number)?:/,
+    'the full customer or merchant mobile must not enter receipt audit JSON',
+  );
+  assert.doesNotMatch(extracted, /expectedReceiverMobile(?:Number)?:/);
 });

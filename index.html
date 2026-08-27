@@ -5883,7 +5883,10 @@ function receiptReasonFromFlags(flags) {
     AMOUNT_MISMATCH: 'Amount mismatch',
     REF_MISMATCH: 'Reference mismatch',
     DATE_MISMATCH: 'Date mismatch',
+    DATE_UNREADABLE: 'Receipt date unreadable',
     DATE_NOT_TODAY: 'Wrong payment date',
+    TIME_UNREADABLE: 'Receipt time unreadable',
+    TIME_STALE: 'Receipt time needs checking',
     TIME_EXPIRED: 'Payment time expired',
     TIME_FUTURE: 'Receipt before booking',
     SUSPECTED_FAKE: 'Receipt content not recognized',
@@ -5897,6 +5900,7 @@ function receiptReasonFromFlags(flags) {
     BPI_TRANSACTION_UNREADABLE: 'BPI Transaction Ref. No. unreadable',
     MARIBANK_UNREADABLE: 'MariBank transaction receipt unreadable',
     MARIBANK_REFERENCE_UNREADABLE: 'MariBank Reference Number unreadable',
+    MARIBANK_TIMESTAMP_UNVERIFIED: 'MariBank receipt time needs checking',
     GOTYME_UNREADABLE: 'GoTyme receipt details unreadable',
     GOTYME_REFERENCE_UNREADABLE: 'GoTyme Reference No. unreadable',
     GOTYME_TRACE_ID_UNREADABLE: 'GoTyme Trace ID unreadable',
@@ -5911,10 +5915,11 @@ function receiptReasonFromFlags(flags) {
     INSTAPAY_QRPH_UNREADABLE: 'InstaPay/QRPh text unreadable',
     GXI_DESTINATION_UNREADABLE: 'GXI/GCash destination unreadable',
     RECEIVER_NAME_UNREADABLE: 'Receiver name unreadable',
-    NUMBER_UNREADABLE: 'Receiver number unreadable',
-    WRONG_GCASH_ACCOUNT: 'Wrong GCash destination account',
-    ACCOUNT_UNREADABLE: 'GCash destination account unreadable',
-    ACCOUNT_UNCONFIGURED: 'GCash destination account is not configured',
+    WRONG_GCASH_NUMBER: 'GCash receiver number does not match',
+    NUMBER_UNREADABLE: 'GCash receiver number unreadable',
+    WRONG_GCASH_ACCOUNT: 'GCash destination does not match',
+    ACCOUNT_UNREADABLE: 'GCash destination unreadable',
+    ACCOUNT_UNCONFIGURED: 'GCash destination is not configured',
     EDITED_METADATA: 'Edited image metadata',
     LOW_OCR_CONFIDENCE: 'Low OCR confidence',
     OCR_UNAVAILABLE: 'OCR unavailable',
@@ -8423,7 +8428,7 @@ function syncGcashSharedPanel(method) {
     const maribankGuide = ['Scan GCash QR in MariBank.', 'Pay exact amount via InstaPay.', 'Use the 6-digit Reference Number.', 'Upload full MariBank receipt.'];
     $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-long').forEach((el, i) => { if (maribankGuide[i]) el.textContent = maribankGuide[i]; });
     $('gcashBox')?.querySelectorAll('.payment-guide-step span span.payment-guide-short').forEach((el, i) => { if (maribankGuide[i]) el.textContent = maribankGuide[i]; });
-    if (receiptHelp) receiptHelp.innerHTML = 'MariBank to GCash/G-Xchange only.<br>Enter the exact 6-digit Reference Number, including any leading zero.<br>Upload the full transaction receipt showing the amount, recipient, reference, and date/time.';
+    if (receiptHelp) receiptHelp.innerHTML = 'MariBank to GCash/G-Xchange only.<br>Enter the exact 6-digit Reference Number, including any leading zero.<br>Upload the full receipt showing Korte DOS, the GCash Mobile No. or Acct No., exact amount, and Reference Number. Do not crop the destination section.';
   }
   if (isGotyme && receiptHelp) {
     receiptHelp.innerHTML = 'GoTyme to GCash/G-Xchange via InstaPay only.<br>Enter the full Reference No. beginning with ITO, not the 6-digit Trace ID.<br>Upload the complete receipt showing the recipient, amount, Reference No., and date/time.';

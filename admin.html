@@ -5092,15 +5092,15 @@ function shortDateTime(v){
 }
 const RECEIPT_PAYMENT_WINDOW_MINUTES = 15;
 const RECEIPT_FLAG_LABELS = {
-  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', DUPLICATE_MARIBANK_TRANSACTION:'MariBank transaction already used', WRONG_GCASH_NUMBER:'Wrong receiver number', WRONG_GCASH_ACCOUNT:'Wrong GCash QR account',
+  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', DUPLICATE_MARIBANK_TRANSACTION:'MariBank transaction already used', WRONG_GCASH_NUMBER:'GCash receiver number does not match', WRONG_GCASH_ACCOUNT:'GCash destination does not match',
   AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:`Paid after ${RECEIPT_PAYMENT_WINDOW_MINUTES} min`,
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
   EDITED_METADATA:'Edited image metadata', SUSPECTED_FAKE:'Not a receipt', REF_FORMAT_INVALID:'Bad reference format',
   REF_UNREADABLE:'Reference unreadable', MARIBANK_REFERENCE_UNREADABLE:'MariBank reference unreadable', INVOICE_UNREADABLE:'Invoice unreadable', LOW_OCR_CONFIDENCE:'Blurry / low OCR', OCR_UNAVAILABLE:'OCR unavailable', AMOUNT_UNREADABLE:'Amount unreadable',
   AMOUNT_REVIEW:'Amount needs owner review',
-  DATE_UNREADABLE:'Date unreadable', TIME_UNREADABLE:'Time unreadable', NUMBER_UNREADABLE:'Receiver number unreadable',
-  BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', BPI_UNREADABLE:'BPI success unreadable', BPI_CONFIRMATION_UNREADABLE:'BPI confirmation unreadable', BPI_TRANSACTION_UNREADABLE:'BPI transaction ref unreadable', MARIBANK_UNREADABLE:'MariBank receipt status unreadable', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable', ACCOUNT_UNREADABLE:'GCash QR account unreadable', ACCOUNT_UNCONFIGURED:'GCash QR account not configured',
+  DATE_UNREADABLE:'Date unreadable', TIME_UNREADABLE:'Time unreadable', NUMBER_UNREADABLE:'GCash receiver number unreadable',
+  BDO_PAY_UNREADABLE:'BDO Pay/InstaPay unreadable', MAYA_UNREADABLE:'Maya unreadable', BPI_UNREADABLE:'BPI success unreadable', BPI_CONFIRMATION_UNREADABLE:'BPI confirmation unreadable', BPI_TRANSACTION_UNREADABLE:'BPI transaction ref unreadable', MARIBANK_UNREADABLE:'MariBank receipt status unreadable', MARIBANK_TIMESTAMP_UNVERIFIED:'MariBank receipt time needs checking', INSTAPAY_QRPH_UNREADABLE:'InstaPay/QRPh unreadable', GXI_DESTINATION_UNREADABLE:'GXI/GCash destination unreadable', RECEIVER_NAME_UNREADABLE:'Receiver name unreadable', ACCOUNT_UNREADABLE:'GCash destination unreadable', ACCOUNT_UNCONFIGURED:'GCash destination not configured',
   GOTYME_UNREADABLE:'GoTyme receipt unreadable',
   GOTYME_REFERENCE_UNREADABLE:'GoTyme Reference No. unreadable',
   GOTYME_TRACE_ID_UNREADABLE:'GoTyme Trace ID unreadable',
@@ -5225,8 +5225,27 @@ function receiptTimeValue(extracted){
   }
   return '--';
 }
-function receiptReceiverValue(extracted){
+function receiptMaskedLast4(value){
+  const digits = String(value ?? '').replace(/\D/g, '');
+  if (digits.length < 4) return '';
+  return `••••${digits.slice(-4)}`;
+}
+function receiptReceiverValue(extracted, method = ''){
   if (!extracted) return '--';
+  const isMaribank = String(method || extracted.provider || '').toLowerCase() === 'maribank';
+  if (isMaribank) {
+    const expectedMobile = receiptMaskedLast4(
+      extracted.expectedReceiverMobileLast4 || extracted.expectedReceiverNumber,
+    );
+    const parts = [
+      extracted.expectedReceiverName,
+      expectedMobile ? `GCash mobile ${expectedMobile}` : '',
+      extracted.expectedReceiverAccountId
+        ? `QR account ${extracted.expectedReceiverAccountId}`
+        : '',
+    ].filter(Boolean);
+    return parts.length ? esc(parts.join(' / ')) : '--';
+  }
   const parts = [
     extracted.expectedReceiverName,
     extracted.expectedReceiverNumber,
@@ -5237,6 +5256,7 @@ function receiptReceiverValue(extracted){
 function receiptDetailsHtml(b){
   const ex = b.receiptExtracted || {};
   const method = String(b?.paymentMethod || b?.payment_method || ex.provider || '').toLowerCase();
+  const isMaribank = method === 'maribank';
   const isGotyme = method === 'gotyme';
   const enteredRef = b?.gcashRef ?? b?.gcash_ref;
   const hasEnteredRef = enteredRef !== null && enteredRef !== undefined && String(enteredRef).trim() !== '';
@@ -5281,9 +5301,32 @@ function receiptDetailsHtml(b){
       ex.goTymeDestinationInstitution,
     ].filter(Boolean).join(' \u2192 ')), true],
   ] : [];
+  const mariBankMobile = receiptMaskedLast4(ex.mariBankDestinationMobileLast4);
+  const mariBankSender = receiptMaskedLast4(ex.mariBankSenderLast4);
+  const mariBankEvidence = ex.mariBankDestinationEvidence || (
+    mariBankMobile ? 'mobile_number' : ex.mariBankDestinationAccount ? 'qr_account' : ''
+  );
+  const mariBankEvidenceLabel = mariBankEvidence === 'mobile_number'
+    ? 'GCash mobile number'
+    : mariBankEvidence === 'qr_account'
+      ? 'GCash QR account'
+      : '';
+  const mariBankRows = isMaribank ? [
+    ...(mariBankEvidenceLabel ? [['Destination Type', receiptDetailValue(mariBankEvidenceLabel)]] : []),
+    ...(mariBankMobile ? [['Destination Mobile', receiptDetailValue(mariBankMobile)]] : []),
+    ...(ex.mariBankDestinationAccount ? [['Destination QR Account', receiptDetailValue(ex.mariBankDestinationAccount)]] : []),
+    ...(mariBankSender ? [['Sender Account', receiptDetailValue(mariBankSender)]] : []),
+    ...(ex.mariBankTransferFee !== null && ex.mariBankTransferFee !== undefined
+      ? [['Transfer Fee', receiptAmountValue(ex.mariBankTransferFee)]]
+      : []),
+    ...(ex.mariBankTotalAmount !== null && ex.mariBankTotalAmount !== undefined
+      ? [['Receipt Total', receiptAmountValue(ex.mariBankTotalAmount)]]
+      : []),
+  ] : [];
   const rows = [
     ['OCR Ref', receiptDetailValue(ex.ref)],
     ...(hasEnteredRef ? [['Entered Ref', receiptDetailValue(enteredRef)]] : []),
+    ...mariBankRows,
     ...gotymeRows,
     ['Amount Read', receiptAmountValue(ex.amount)],
     ['Receipt Time', receiptTimeValue(ex)],
@@ -5292,7 +5335,7 @@ function receiptDetailsHtml(b){
     ['Window', `${RECEIPT_PAYMENT_WINDOW_MINUTES} min`],
     ['OCR Engine', receiptOcrProviderLabel(ex.ocrProvider)],
     ...(ex.ocrAnalysisSource ? [['OCR Layout', receiptOcrAnalysisLabel(ex.ocrAnalysisSource)]] : []),
-    ['Expected Receiver Account', receiptReceiverValue(ex), true],
+    [isMaribank ? 'Expected GCash Receiver' : 'Expected Receiver Account', receiptReceiverValue(ex, method), true],
     ...(ex.ocrFallbackReason ? [['OCR Diagnostic', receiptOcrDiagnosticValue(ex.ocrFallbackReason), true]] : []),
     ...(ex.amountReliable !== undefined ? [['Amount Parse', receiptDetailValue(amountParse), true]] : []),
     ['Reason', receiptDetailValue(reason), true],
