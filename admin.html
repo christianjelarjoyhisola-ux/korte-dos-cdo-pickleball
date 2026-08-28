@@ -703,19 +703,43 @@ tr:hover td { background: var(--bg2); }
 .booking-mobile-card { display: none; }
 .booking-section-toolbar { margin-bottom: 12px; }
 .booking-type-tabs {
-  display:flex; gap:6px; margin-bottom:12px; padding:5px;
-  border:1px solid var(--border); border-radius:14px; background:var(--surface);
-  box-shadow:var(--shadow); overflow-x:auto; scrollbar-width:thin;
+  display:flex; gap:5px; margin-bottom:12px; padding:5px;
+  border:1px solid var(--border); border-radius:14px;
+  background:linear-gradient(180deg,var(--surface),var(--bg2));
+  box-shadow:var(--shadow); overflow-x:auto; overscroll-behavior-x:contain;
+  scrollbar-width:thin; scroll-snap-type:x proximity;
 }
 .booking-type-tab {
+  --booking-tab-rgb: var(--green-rgb); --booking-tab-color: var(--green);
+  position:relative; flex:0 0 auto; scroll-snap-align:start;
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
-  min-height:40px; padding:8px 14px; border:0; border-radius:10px;
+  min-height:40px; padding:8px 13px; border:1px solid transparent; border-radius:10px;
   background:transparent; color:var(--text2); font:800 .82rem 'DM Sans',sans-serif;
-  white-space:nowrap; cursor:pointer; transition:background .18s,color .18s,box-shadow .18s;
+  white-space:nowrap; cursor:pointer;
+  transition:background .18s,color .18s,border-color .18s,box-shadow .18s,transform .18s;
 }
-.booking-type-tab span { min-width:24px; padding:2px 7px; border-radius:999px; background:var(--bg2); color:var(--text3); font-size:.68rem; }
-.booking-type-tab.active { background:var(--green); color:#fff; box-shadow:0 6px 16px rgba(var(--green-rgb),.2); }
-.booking-type-tab.active span { background:rgba(255,255,255,.16); color:#fff; }
+.booking-type-tab::before {
+  content:''; width:6px; height:6px; flex:0 0 6px; border-radius:50%;
+  background:rgba(var(--booking-tab-rgb),.7); box-shadow:0 0 0 3px rgba(var(--booking-tab-rgb),.1);
+}
+.booking-type-tab[data-booking-type="pending"] { --booking-tab-rgb:235,178,71; --booking-tab-color:#edbd58; }
+.booking-type-tab[data-booking-type="confirmed"] { --booking-tab-rgb:87,167,226; --booking-tab-color:#78baf0; }
+.booking-type-tab[data-booking-type="completed"] { --booking-tab-rgb:49,184,145; --booking-tab-color:#55caa8; }
+.booking-type-tab[data-booking-type="closed"] { --booking-tab-rgb:229,83,76; --booking-tab-color:#ef746e; }
+.booking-type-tab[data-booking-type="host"] { --booking-tab-rgb:158,123,241; --booking-tab-color:#b198f4; }
+.booking-type-tab span {
+  min-width:24px; padding:2px 7px; border-radius:999px;
+  background:var(--bg2); color:var(--text3); font-size:.68rem; line-height:1.35;
+}
+.booking-type-tab:hover:not(.active) { color:var(--text); background:rgba(var(--booking-tab-rgb),.055); }
+.booking-type-tab.active {
+  background:rgba(var(--booking-tab-rgb),.13); color:var(--booking-tab-color);
+  border-color:rgba(var(--booking-tab-rgb),.38);
+  box-shadow:0 7px 18px rgba(var(--booking-tab-rgb),.11),inset 0 1px 0 rgba(255,255,255,.045);
+}
+.booking-type-tab.active::before { background:var(--booking-tab-color); box-shadow:0 0 0 4px rgba(var(--booking-tab-rgb),.15); }
+.booking-type-tab.active span { background:rgba(var(--booking-tab-rgb),.18); color:var(--booking-tab-color); }
+.booking-type-tab:focus-visible { outline:2px solid var(--booking-tab-color); outline-offset:2px; }
 .booking-toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .booking-toolbar-actions .view-toggle {
   display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border);
@@ -728,7 +752,7 @@ tr:hover td { background: var(--bg2); }
   padding: 12px; background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .booking-filter-panel .filters {
-  display: grid; grid-template-columns: minmax(220px, 1fr) 150px 150px 170px auto;
+  display: grid; grid-template-columns: minmax(220px, 1fr) 150px 170px auto;
   gap: 8px; align-items: center; width: 100%;
 }
 .booking-filter-panel .booking-search-input,
@@ -1044,7 +1068,7 @@ tr:hover td { background: var(--bg2); }
   }
   #sec-bookings .booking-toolbar-actions .booking-export-btn { padding-inline: 10px; }
   #sec-bookings .booking-type-tabs { margin-bottom:10px; border-radius:12px; }
-  #sec-bookings .booking-type-tab { min-height:38px; padding:7px 11px; font-size:.76rem; }
+  #sec-bookings .booking-type-tab { min-height:44px; padding:8px 11px; font-size:.76rem; }
   #tableView .tbl-wrap {
     border-radius: 12px; overflow: hidden; background: var(--surface);
   }
@@ -2816,10 +2840,13 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
           <button class="btn btn-p btn-sm" onclick="openNewBookingModal()">+ New</button>
         </div>
       </div>
-      <div class="booking-type-tabs" role="tablist" aria-label="Booking type">
-        <button type="button" class="booking-type-tab active" data-booking-type="all" onclick="setBookingType('all')">All Bookings <span id="bookingCountAll">0</span></button>
-        <button type="button" class="booking-type-tab" data-booking-type="court" onclick="setBookingType('court')">Court Bookings <span id="bookingCountCourt">0</span></button>
-        <button type="button" class="booking-type-tab" data-booking-type="host" onclick="setBookingType('host')">Open Play Host Bookings <span id="bookingCountHost">0</span></button>
+      <div class="booking-type-tabs" id="bookingTypeTabs" role="group" aria-label="Booking views">
+        <button type="button" class="booking-type-tab active" data-booking-type="all" aria-pressed="true" onclick="setBookingType('all')">All Bookings <span id="bookingCountAll" aria-hidden="true">0</span></button>
+        <button type="button" class="booking-type-tab" data-booking-type="pending" aria-pressed="false" onclick="setBookingType('pending')">Pending <span id="bookingCountPending" aria-hidden="true">0</span></button>
+        <button type="button" class="booking-type-tab" data-booking-type="confirmed" aria-pressed="false" onclick="setBookingType('confirmed')">Confirmed <span id="bookingCountConfirmed" aria-hidden="true">0</span></button>
+        <button type="button" class="booking-type-tab" data-booking-type="completed" aria-pressed="false" onclick="setBookingType('completed')">Completed <span id="bookingCountCompleted" aria-hidden="true">0</span></button>
+        <button type="button" class="booking-type-tab" data-booking-type="closed" aria-pressed="false" title="Cancelled, rejected, failed, or forfeited regular court bookings" onclick="setBookingType('closed')">Cancelled / Rejected <span id="bookingCountClosed" aria-hidden="true">0</span></button>
+        <button type="button" class="booking-type-tab" data-booking-type="host" aria-pressed="false" title="All Open Play Host Bookings" onclick="setBookingType('host')">Open Host <span id="bookingCountHost" aria-hidden="true">0</span></button>
       </div>
 
       <!-- CALENDAR VIEW -->
@@ -2849,18 +2876,6 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
                 <span>Date</span>
                 <input type="date" id="fDate" aria-label="Filter bookings by court date" onchange="bookingFiltersChanged()"/>
               </label>
-              <label class="booking-filter-field" for="fStatus">
-                <span>Status</span>
-                <select id="fStatus" aria-label="Filter bookings by status" onchange="bookingFiltersChanged()">
-                  <option value="">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="completed">Completed</option>
-                  <option value="verifying">Processing</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="forfeited">Forfeited</option>
-                </select>
-              </label>
               <label class="booking-filter-field" for="fPayment">
                 <span>Payment</span>
                 <select id="fPayment" aria-label="Filter bookings by payment status" onchange="bookingFiltersChanged()">
@@ -2874,7 +2889,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
               </label>
               <button type="button" class="btn btn-g btn-sm" id="bookingClearBtn" onclick="clearFilters()">Clear</button>
             </div>
-            <div id="bookingFilterMeta">Showing all bookings</div>
+            <div id="bookingFilterMeta" aria-live="polite">Showing all bookings</div>
           </div>
           <div class="tbl-scroll booking-table-scroll">
             <table>
@@ -6030,6 +6045,41 @@ let _bookingType = 'all';
 let _bookingPage = 1;
 let _bookingPageSize = 50;
 let _balanceProcessorStarted = false;
+const BOOKING_VIEW_VALUES = new Set(['all','pending','confirmed','completed','closed','host']);
+const BOOKING_VIEW_NOUNS = {
+  all: ['booking','bookings'],
+  pending: ['pending booking','pending bookings'],
+  confirmed: ['confirmed booking','confirmed bookings'],
+  completed: ['completed booking','completed bookings'],
+  closed: ['cancelled or rejected booking','cancelled or rejected bookings'],
+  host: ['open host booking','open host bookings'],
+};
+function bookingNavigationBucket(b) {
+  if (b?.hostBooking) return 'host';
+  const status = String(b?.status || '').toLowerCase();
+  const payment = String(b?.paymentStatus || '').toLowerCase();
+  if (
+    ['cancelled','forfeited'].includes(status) ||
+    ['rejected','failed','deposit_retained'].includes(payment)
+  ) return 'closed';
+  if (status === 'confirmed') return 'confirmed';
+  if (status === 'completed') return 'completed';
+  return 'pending';
+}
+function bookingMatchesNavigation(b, view = _bookingType) {
+  return view === 'all' || bookingNavigationBucket(b) === view;
+}
+function bookingViewNoun(view = _bookingType, count = 2) {
+  const labels = BOOKING_VIEW_NOUNS[view] || BOOKING_VIEW_NOUNS.all;
+  return count === 1 ? labels[0] : labels[1];
+}
+function updateBookingNavCount(id, count, label) {
+  const badge = $(id);
+  if (!badge) return;
+  badge.textContent = String(count);
+  const button = badge.closest('button');
+  if (button) button.setAttribute('aria-label', `${label}, ${count} ${count === 1 ? 'booking' : 'bookings'}`);
+}
 function bookingFilters() {
   return {
     q: (($('srch') || {}).value || '').trim().toLowerCase(),
@@ -6050,8 +6100,9 @@ function updateBookingFilterMeta(total, shown, filters = bookingFilters()) {
     clearBtn.style.opacity = active ? '1' : '.5';
   }
   if (!meta) return;
+  const viewNoun = bookingViewNoun(_bookingType, total);
   if (!active) {
-    meta.textContent = `Showing ${shown} of ${total} booking${total === 1 ? '' : 's'}`;
+    meta.textContent = `Showing ${shown} of ${total} ${viewNoun}`;
     return;
   }
   const parts = [];
@@ -6059,7 +6110,7 @@ function updateBookingFilterMeta(total, shown, filters = bookingFilters()) {
   if (filters.fd) parts.push(`date ${fmtD(filters.fd)}`);
   if (filters.fs) parts.push(`status ${filters.fs}`);
   if (filters.fp) parts.push(`payment ${payStatusText(filters.fp)}`);
-  meta.textContent = `Showing ${shown} of ${total} booking${total === 1 ? '' : 's'} filtered by ${parts.join(', ')}`;
+  meta.textContent = `Showing ${shown} of ${total} ${viewNoun} filtered by ${parts.join(', ')}`;
 }
 function resetBookingFilters({ render = true } = {}) {
   if ($('srch')) $('srch').value = '';
@@ -6075,12 +6126,16 @@ function bookingFiltersChanged() {
   renderBookings();
 }
 function setBookingType(type) {
-  _bookingType = ['all','court','host'].includes(type) ? type : 'all';
+  _bookingType = BOOKING_VIEW_VALUES.has(type) ? type : 'all';
   _bookingPage = 1;
+  const nav = $('bookingTypeTabs');
   document.querySelectorAll('.booking-type-tab').forEach(btn => {
     const active = btn.dataset.bookingType === _bookingType;
     btn.classList.toggle('active', active);
-    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if (active && nav && nav.scrollWidth > nav.clientWidth) {
+      requestAnimationFrame(() => btn.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+    }
   });
   renderBookings();
 }
@@ -6134,21 +6189,25 @@ async function renderBookings(){
   // just an in-progress or abandoned hold and adds no value to the admin list.
   bks=bks.filter(b=>b.email!=='reserve@hold.internal');
   const allGroups = groupBookings(bks);
-  const allCount = allGroups.length;
-  const hostCount = allGroups.filter(b => b.hostBooking).length;
-  const courtCount = allCount - hostCount;
-  if ($('bookingCountAll')) $('bookingCountAll').textContent = String(allCount);
-  if ($('bookingCountCourt')) $('bookingCountCourt').textContent = String(courtCount);
-  if ($('bookingCountHost')) $('bookingCountHost').textContent = String(hostCount);
-  if (_bookingType === 'host') bks = bks.filter(b => b.hostBooking);
-  else if (_bookingType === 'court') bks = bks.filter(b => !b.hostBooking);
-  const totalRawBookings = groupBookings(bks).length;
+  const viewCounts = { all: allGroups.length, pending: 0, confirmed: 0, completed: 0, closed: 0, host: 0 };
+  allGroups.forEach(group => { viewCounts[bookingNavigationBucket(group)]++; });
+  updateBookingNavCount('bookingCountAll', viewCounts.all, 'All bookings');
+  updateBookingNavCount('bookingCountPending', viewCounts.pending, 'Pending');
+  updateBookingNavCount('bookingCountConfirmed', viewCounts.confirmed, 'Confirmed');
+  updateBookingNavCount('bookingCountCompleted', viewCounts.completed, 'Completed');
+  updateBookingNavCount('bookingCountClosed', viewCounts.closed, 'Cancelled or rejected');
+  updateBookingNavCount('bookingCountHost', viewCounts.host, 'Open host');
+
+  let filteredBookings = allGroups.filter(group => bookingMatchesNavigation(group));
+  const totalRawBookings = filteredBookings.length;
   const { q, fd, fs, fp } = bookingFilters();
-  if(q) bks=bks.filter(b=>[b.ref,b.groupRef,b.fullName,b.email,b.courtName,b.gcashRef].some(v=>String(v||'').toLowerCase().includes(q)));
-  if(fd) bks=bks.filter(b=>b.date===fd);
-  if(fs) bks=bks.filter(b=>b.status===fs);
-  if(fp) bks=bks.filter(b=>b.paymentStatus===fp);
-  const filteredBookings = groupBookings(bks);
+  if(q) filteredBookings=filteredBookings.filter(b=>[
+    b.ref,b.displayRef,b.groupRef,b.fullName,b.email,b.courtName,b.gcashRef,b.hostName,b.hostEmail,
+    ...(b.refs || [])
+  ].some(v=>String(v||'').toLowerCase().includes(q)));
+  if(fd) filteredBookings=filteredBookings.filter(b=>(b.items || [b]).some(item=>item.date===fd));
+  if(fs) filteredBookings=filteredBookings.filter(b=>(b.items || [b]).some(item=>item.status===fs));
+  if(fp) filteredBookings=filteredBookings.filter(b=>(b.items || [b]).some(item=>item.paymentStatus===fp));
   const filteredCount = filteredBookings.length;
   updateBookingPagination(filteredCount);
   const pageStart = (_bookingPage - 1) * _bookingPageSize;
@@ -6157,7 +6216,7 @@ async function renderBookings(){
 
   // Inject maintenance/block rows when a date filter is active
   let mtRowsHtml = '';
-  if (fd && !q && _bookingType !== 'host') {
+  if (fd && !q && _bookingType === 'all') {
     if (!_nbMaintenanceCfg) {
       const s = await DB.getSettings();
       if (seq !== _bookingRenderSeq) return;
@@ -6234,7 +6293,10 @@ async function renderBookings(){
         ${canDelete?`<button class="btn btn-d btn-sm" onclick="delBooking('${jsArg(b.ref)}')">🗑️</button>`:''}
       </div></td>
     </tr>`).join('');
-  const noCopy = bookingFiltersActive({ q, fd, fs, fp }) ? 'No bookings match these filters.' : 'No bookings yet.';
+  const emptyNoun = bookingViewNoun(_bookingType, 2);
+  const noCopy = bookingFiltersActive({ q, fd, fs, fp })
+    ? `No ${emptyNoun} match these filters.`
+    : `No ${emptyNoun} yet.`;
   const noResults = !mtRowsHtml && !bkRowsHtml ? `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">${noCopy}</td></tr>` : '';
   $('bookBody').innerHTML = mtRowsHtml + bkRowsHtml + noResults;
 }
@@ -6579,6 +6641,7 @@ function switchBookingView(mode){
   $('viewBtnList').classList.toggle('active', !isCal);
   $('calendarView').style.display = isCal ? '' : 'none';
   $('tableView').style.display    = isCal ? 'none' : '';
+  if ($('bookingTypeTabs')) $('bookingTypeTabs').hidden = isCal;
   if(isCal) renderCalendar();
 }
 
