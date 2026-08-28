@@ -128,6 +128,169 @@ Reference No. ITO260824132830003
 Date 24 Aug 2026 at 21:28
 `;
 
+// Exact current GoTyme layout supplied on 28 Aug 2026. Reference No. and
+// Trace ID are independent receipt identifiers and intentionally do not share
+// a suffix. The booking price is Amount; Fee is charged by GoTyme; Total is
+// their sum.
+const august28CurrentReceipt = `
+Sent
+₱930.00
+Share
+InstaPay Instant
+To
+Korte Dos
+0••••••4516
+G-Xchange, Inc (GCash)
+From
+S. CATEQUISTA
+••••••••5612
+GoTyme Bank
+Amount ₱930.00
+Fee ₱9.00
+Total ₱939.00
+Trace ID 000003
+Reference No. ITO260827223202003
+Date 28 Aug 2026 at 6:32 AM
+`;
+
+Deno.test("parses the exact current Sent receipt with an independent trace", () => {
+  assert(isGoTymeToGcashReceipt(august28CurrentReceipt), "current receipt family");
+  assert(hasSuccessfulGoTymeTransfer(august28CurrentReceipt), "Sent completion");
+  assertEquals(
+    extractGoTymeStatus(august28CurrentReceipt),
+    "transferred",
+    "canonical completed status",
+  );
+  assertEquals(
+    extractGoTymeReference(august28CurrentReceipt),
+    "ITO260827223202003",
+    "independent full reference",
+  );
+  assertEquals(
+    extractGoTymeTraceId(august28CurrentReceipt),
+    "000003",
+    "independent trace with leading zeros",
+  );
+  assertEquals(
+    goTymeReferenceMatchesTrace("ITO260827223202003", "000003"),
+    false,
+    "current identifiers are not suffix-related",
+  );
+  assertEquals(extractGoTymeAmount(august28CurrentReceipt), 930, "booking amount");
+  assertEquals(extractGoTymeFee(august28CurrentReceipt), 9, "GoTyme fee");
+  assertEquals(extractGoTymeTotal(august28CurrentReceipt), 939, "receipt total");
+  assert(hasConsistentGoTymeAccounting(august28CurrentReceipt), "930 + 9 = 939");
+  assertEquals(
+    checkGoTymeRecipientName(august28CurrentReceipt, "Korte DOS"),
+    "match",
+    "destination-scoped recipient",
+  );
+  assertEquals(
+    extractGoTymeRecipientToken(august28CurrentReceipt),
+    "4516",
+    "numeric destination suffix",
+  );
+  assertEquals(
+    checkGoTymeDestinationAccountSuffix(august28CurrentReceipt, "4516"),
+    "match",
+    "configured numeric suffix",
+  );
+  const parsed = parseGoTymePhDateTime(august28CurrentReceipt);
+  assertEquals(parsed.date, "2026-08-28", "current PH date");
+  assertEquals(
+    parsed.shifted?.toISOString(),
+    "2026-08-28T06:32:00.000Z",
+    "current 12-hour timestamp",
+  );
+});
+
+Deno.test("numeric GoTyme destination suffix is scoped and unambiguous", () => {
+  assertEquals(
+    checkGoTymeDestinationAccountSuffix(august28CurrentReceipt, "9999"),
+    "wrong",
+    "wrong numeric destination",
+  );
+
+  const ambiguous = august28CurrentReceipt.replace(
+    "0••••••4516",
+    "0••••••4516\n0••••••9999",
+  );
+  assertEquals(
+    extractGoTymeRecipientToken(ambiguous),
+    null,
+    "ambiguous destination suffix",
+  );
+  assertEquals(
+    checkGoTymeDestinationAccountSuffix(ambiguous, "4516"),
+    "unreadable",
+    "ambiguous suffix remains pending",
+  );
+
+  const senderOnly = august28CurrentReceipt
+    .replace("0••••••4516\n", "")
+    .replace("••••••••5612", "••••••••4516");
+  assertEquals(
+    extractGoTymeRecipientToken(senderOnly),
+    null,
+    "sender suffix is not destination proof",
+  );
+  assertEquals(
+    checkGoTymeDestinationAccountSuffix(senderOnly, "4516"),
+    "unreadable",
+    "sender-only suffix remains pending",
+  );
+
+  const senderNameOnly = august28CurrentReceipt
+    .replace("To\nKorte Dos", "To\nOther Dos")
+    .replace("S. CATEQUISTA", "Korte Dos");
+  assertEquals(
+    checkGoTymeRecipientName(senderNameOnly, "Korte DOS"),
+    "mismatch",
+    "sender name is not destination proof",
+  );
+});
+
+Deno.test("current GoTyme accounting keeps booking Amount separate from Fee and Total", () => {
+  assertEquals(extractGoTymeAmount(august28CurrentReceipt), 930, "principal");
+  assertEquals(extractGoTymeFee(august28CurrentReceipt), 9, "fee");
+  assertEquals(extractGoTymeTotal(august28CurrentReceipt), 939, "total");
+  assert(hasConsistentGoTymeAccounting(august28CurrentReceipt), "balanced total");
+
+  for (
+    const [label, receipt] of [
+      ["wrong total", august28CurrentReceipt.replace("Total ₱939.00", "Total ₱930.00")],
+      ["wrong fee", august28CurrentReceipt.replace("Fee ₱9.00", "Fee ₱10.00")],
+      ["ambiguous amount", august28CurrentReceipt.replace("Amount ₱930.00", "Amount ₱930.00\nAmount ₱939.00")],
+    ] as const
+  ) {
+    assertEquals(
+      hasConsistentGoTymeAccounting(receipt),
+      false,
+      `${label} accounting`,
+    );
+  }
+});
+
+Deno.test("parses current GoTyme 12-hour boundaries without weakening 24-hour parsing", () => {
+  const midnight = august28CurrentReceipt.replace("6:32 AM", "12:02 AM");
+  const noon = august28CurrentReceipt.replace("6:32 AM", "12:02 PM");
+  assertEquals(
+    parseGoTymePhDateTime(midnight).shifted?.toISOString(),
+    "2026-08-28T00:02:00.000Z",
+    "12 AM",
+  );
+  assertEquals(
+    parseGoTymePhDateTime(noon).shifted?.toISOString(),
+    "2026-08-28T12:02:00.000Z",
+    "12 PM",
+  );
+  assertEquals(
+    parseGoTymePhDateTime(august24ReceiptWith24HourTime).shifted?.toISOString(),
+    "2026-08-24T21:28:00.000Z",
+    "24-hour regression",
+  );
+});
+
 Deno.test("parses the supplied GoTyme 24-hour receipt timestamp", () => {
   const parsed = parseGoTymePhDateTime(august24ReceiptWith24HourTime);
   assertEquals(parsed.date, "2026-08-24", "PH date");
@@ -200,13 +363,6 @@ Deno.test("does not infer InstaPay from weak or unsafe logo-missing evidence", (
         august19ReceiptWithMissedLogo.replace("Instant", "Not Instant"),
       ],
       [
-        "trace mismatch",
-        august19ReceiptWithMissedLogo.replace(
-          "Trace ID 625005",
-          "Trace ID 111111",
-        ),
-      ],
-      [
         "bad accounting",
         august19ReceiptWithMissedLogo.replace("Fee P0.00", "Fee P10.00"),
       ],
@@ -221,6 +377,23 @@ Deno.test("does not infer InstaPay from weak or unsafe logo-missing evidence", (
       `${label} completion`,
     );
   }
+
+  const independentTrace = august19ReceiptWithMissedLogo.replace(
+    "Trace ID 625005",
+    "Trace ID 111111",
+  );
+  assert(
+    isGoTymeToGcashReceipt(independentTrace),
+    "independent trace keeps the strict legacy receipt family",
+  );
+  assert(
+    hasGoTymeInstapayInstant(independentTrace),
+    "independent trace does not erase the verified rail",
+  );
+  assert(
+    hasSuccessfulGoTymeTransfer(independentTrace),
+    "independent trace does not erase completion evidence",
+  );
 });
 
 Deno.test("parses the supplied 16 Aug GoTyme receipt with the GoTyme parser only", () => {

@@ -90,7 +90,6 @@ import {
   extractGoTymeTotal,
   extractGoTymeTraceId,
   extractGoTymeTransferChannel,
-  goTymeReferenceMatchesTrace,
   hasConsistentGoTymeAccounting,
   hasGoTymeGcashDestination,
   hasGoTymeInstapayInstant,
@@ -129,6 +128,7 @@ const HARD_FLAGS = new Set([
   "DUPLICATE_INSTAPAY_REF",
   "DUPLICATE_BPI_TRANSACTION_REF",
   "DUPLICATE_MARIBANK_TRANSACTION",
+  "DUPLICATE_GOTYME_TRACE",
   "METHOD_MISMATCH",
   "REF_MISMATCH",
   "DATE_NOT_TODAY",
@@ -788,10 +788,12 @@ function expectedMerchantForProvider(
   }
   if (provider === "gotyme") {
     return {
-      // GoTyme parsing and approval use provider-specific configuration. This
-      // intentionally does not inherit another payment method's verifier.
-      number: settings.gotyme_destination_suffix || "",
-      name: settings.gotyme_recipient_name || "",
+      // GoTyme sends to the same GCash destination displayed in the booking
+      // flow. Current receipts mask that mobile number; legacy receipts may
+      // still expose the separate opaque QR suffix configured below.
+      number: settings.gcash_merchant_number || "",
+      name: settings.gotyme_recipient_name || settings.gcash_merchant_name ||
+        settings.payment_merchant_name || "Korte DOS",
     };
   }
   if (provider === "pnb") {
@@ -4023,8 +4025,8 @@ Deno.serve(async (req) => {
       } else if (provider === "gotyme") {
         // GoTyme is accepted only as the sending bank for an instant InstaPay
         // transfer into the configured GCash account. The receipt exposes a
-        // full ITO reference, a six-digit trace suffix, a masked GCash account
-        // token, and independently labeled amount/fee/total values.
+        // full ITO reference, an independent six-digit Trace ID, a masked
+        // GCash mobile/QR suffix, and independently labeled amount/fee/total.
         if (!extractedRef) flags.push("GOTYME_REFERENCE_UNREADABLE");
         else if (typedRef && extractedRef !== typedRef) {
           flags.push("REF_MISMATCH");
@@ -4032,15 +4034,6 @@ Deno.serve(async (req) => {
 
         if (!extractedGoTymeTraceId) {
           flags.push("GOTYME_TRACE_ID_UNREADABLE");
-        } else if (
-          extractedRef &&
-          !goTymeReferenceMatchesTrace(
-            extractedRef,
-            extractedGoTymeTraceId,
-          )
-        ) {
-          // A six-digit OCR error is uncertain and stays pending for review.
-          flags.push("GOTYME_TRACE_ID_MISMATCH");
         }
 
         if (pricingError) flags.push("AMOUNT_MISMATCH");
@@ -4115,9 +4108,14 @@ Deno.serve(async (req) => {
           flags.push("RECEIVER_NAME_MISMATCH");
         }
 
+        const expectedGoTymeSuffix = /^\d{4}$/.test(
+            extractedGoTymeRecipientToken || "",
+          )
+          ? digitsOnly(expectedNumber).slice(-4)
+          : expectedGoTymeDestinationSuffix;
         const accountCheck = checkGoTymeDestinationAccountSuffix(
           ocrText,
-          expectedGoTymeDestinationSuffix,
+          expectedGoTymeSuffix,
         );
         if (accountCheck === "wrong") {
           flags.push("GOTYME_ACCOUNT_MISMATCH");
@@ -4237,6 +4235,15 @@ Deno.serve(async (req) => {
         duplicateFlag: "DUPLICATE_MARIBANK_TRANSACTION",
       });
     }
+    if (provider === "gotyme" && extractedGoTymeTraceId) {
+      // The Trace ID and full ITO Reference No. are independent provider
+      // identifiers. Claim both; never infer one from the other.
+      dedupeKeys.push({
+        key: `gotyme_trace:${extractedGoTymeTraceId}`,
+        providerKey: "gotyme_trace",
+        duplicateFlag: "DUPLICATE_GOTYME_TRACE",
+      });
+    }
 
     const alreadyClaimedByThisBooking = new Set<string>();
     for (const item of dedupeKeys) {
@@ -4344,6 +4351,11 @@ Deno.serve(async (req) => {
       goTymeReferenceNo: provider === "gotyme" ? extractedRef : null,
       goTymeTraceId: extractedGoTymeTraceId,
       goTymeDestinationAccountSuffix: extractedGoTymeRecipientToken,
+      goTymeExpectedDestinationSuffix: provider === "gotyme"
+        ? (/^\d{4}$/.test(extractedGoTymeRecipientToken || "")
+          ? digitsOnly(expectedNumber).slice(-4) || null
+          : expectedGoTymeDestinationSuffix || null)
+        : null,
       goTymeRecipientName: extractedGoTymeRecipientName,
       goTymeSenderLast4: extractedGoTymeSenderLast4,
       goTymeTransferAmount: provider === "gotyme" ? extractedAmount : null,
@@ -4407,10 +4419,9 @@ Deno.serve(async (req) => {
         ? null
         : expectedNumber || null,
       expectedReceiverName: expectedName || null,
-      expectedReceiverAccountId:
-        provider === "maribank" || provider === "gotyme"
-          ? expectedGcashQrAccountId || null
-          : null,
+      expectedReceiverAccountId: provider === "maribank"
+        ? expectedGcashQrAccountId || null
+        : null,
     };
 
     // ── persist outcome on the booking ──────────────────────────────────────

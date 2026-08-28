@@ -271,11 +271,11 @@ export function paymentReviewFlagLabel(flag: unknown): string {
       "BPI transaction reference may have been used before",
     DUPLICATE_MARIBANK_TRANSACTION:
       "MariBank transaction may have been used before",
+    DUPLICATE_GOTYME_TRACE: "GoTyme Trace ID may have been used before",
     GOTYME_UNREADABLE: "GoTyme receipt details need checking",
     GOTYME_REFERENCE_UNREADABLE: "GoTyme Reference No. could not be read",
     GOTYME_TRACE_ID_UNREADABLE: "GoTyme Trace ID could not be read",
-    GOTYME_TRACE_ID_MISMATCH:
-      "GoTyme Trace ID does not match the Reference No.",
+    GOTYME_TRACE_ID_MISMATCH: "GoTyme Trace ID needs checking",
     GOTYME_STATUS_UNREADABLE: "GoTyme transfer status could not be read",
     GOTYME_TRANSFER_NOT_COMPLETED: "GoTyme transfer is not shown as completed",
     GOTYME_INSTAPAY_UNREADABLE:

@@ -5092,7 +5092,7 @@ function shortDateTime(v){
 }
 const RECEIPT_PAYMENT_WINDOW_MINUTES = 15;
 const RECEIPT_FLAG_LABELS = {
-  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', DUPLICATE_MARIBANK_TRANSACTION:'MariBank transaction already used', WRONG_GCASH_NUMBER:'GCash receiver number does not match', WRONG_GCASH_ACCOUNT:'GCash destination does not match',
+  DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', DUPLICATE_MARIBANK_TRANSACTION:'MariBank transaction already used', DUPLICATE_GOTYME_TRACE:'GoTyme Trace ID already used', WRONG_GCASH_NUMBER:'GCash receiver number does not match', WRONG_GCASH_ACCOUNT:'GCash destination does not match',
   AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:`Paid after ${RECEIPT_PAYMENT_WINDOW_MINUTES} min`,
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
@@ -5104,7 +5104,7 @@ const RECEIPT_FLAG_LABELS = {
   GOTYME_UNREADABLE:'GoTyme receipt unreadable',
   GOTYME_REFERENCE_UNREADABLE:'GoTyme Reference No. unreadable',
   GOTYME_TRACE_ID_UNREADABLE:'GoTyme Trace ID unreadable',
-  GOTYME_TRACE_ID_MISMATCH:'Trace ID does not match the Reference No.',
+  GOTYME_TRACE_ID_MISMATCH:'GoTyme Trace ID needs checking',
   GOTYME_STATUS_UNREADABLE:'GoTyme transfer status unreadable',
   GOTYME_TRANSFER_NOT_COMPLETED:'GoTyme transfer is not completed',
   GOTYME_INSTAPAY_UNREADABLE:'GoTyme InstaPay/Instant details unreadable',
@@ -5233,6 +5233,7 @@ function receiptMaskedLast4(value){
 function receiptReceiverValue(extracted, method = ''){
   if (!extracted) return '--';
   const isMaribank = String(method || extracted.provider || '').toLowerCase() === 'maribank';
+  const isGotyme = String(method || extracted.provider || '').toLowerCase() === 'gotyme';
   if (isMaribank) {
     const expectedMobile = receiptMaskedLast4(
       extracted.expectedReceiverMobileLast4 || extracted.expectedReceiverNumber,
@@ -5243,6 +5244,14 @@ function receiptReceiverValue(extracted, method = ''){
       extracted.expectedReceiverAccountId
         ? `QR account ${extracted.expectedReceiverAccountId}`
         : '',
+    ].filter(Boolean);
+    return parts.length ? esc(parts.join(' / ')) : '--';
+  }
+  if (isGotyme) {
+    const expectedSuffix = receiptMaskedLast4(extracted.goTymeExpectedDestinationSuffix);
+    const parts = [
+      extracted.expectedReceiverName,
+      expectedSuffix ? `GCash ${expectedSuffix}` : '',
     ].filter(Boolean);
     return parts.length ? esc(parts.join(' / ')) : '--';
   }
@@ -5295,6 +5304,7 @@ function receiptDetailsHtml(b){
     ['Transfer Fee', receiptAmountValue(ex.goTymeTransferFee)],
     ['Receipt Total', receiptAmountValue(ex.goTymeTotalAmount)],
     ['GCash Account Suffix', receiptDetailValue(ex.goTymeDestinationAccountSuffix)],
+    ['Expected GCash Suffix', receiptDetailValue(ex.goTymeExpectedDestinationSuffix)],
     ['Sender Account Suffix', receiptDetailValue(ex.goTymeSenderLast4)],
     ['Transfer Route', receiptDetailValue([
       ex.goTymeSourceInstitution,
@@ -5335,7 +5345,7 @@ function receiptDetailsHtml(b){
     ['Window', `${RECEIPT_PAYMENT_WINDOW_MINUTES} min`],
     ['OCR Engine', receiptOcrProviderLabel(ex.ocrProvider)],
     ...(ex.ocrAnalysisSource ? [['OCR Layout', receiptOcrAnalysisLabel(ex.ocrAnalysisSource)]] : []),
-    [isMaribank ? 'Expected GCash Receiver' : 'Expected Receiver Account', receiptReceiverValue(ex, method), true],
+    [isMaribank || isGotyme ? 'Expected GCash Receiver' : 'Expected Receiver Account', receiptReceiverValue(ex, method), true],
     ...(ex.ocrFallbackReason ? [['OCR Diagnostic', receiptOcrDiagnosticValue(ex.ocrFallbackReason), true]] : []),
     ...(ex.amountReliable !== undefined ? [['Amount Parse', receiptDetailValue(amountParse), true]] : []),
     ['Reason', receiptDetailValue(reason), true],

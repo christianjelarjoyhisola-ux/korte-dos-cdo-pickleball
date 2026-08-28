@@ -10,6 +10,10 @@ const mariBankReceiptParser = fs.readFileSync(
   'supabase/functions/_shared/maribank-receipt.ts',
   'utf8',
 );
+const receiptReviewPolicy = fs.readFileSync(
+  'supabase/functions/_shared/receipt-review-policy.ts',
+  'utf8',
+);
 const reviewEdge = fs.readFileSync('supabase/functions/review-payment-receipt/index.ts', 'utf8');
 const manualRestoreMigration = fs.readFileSync(
   'supabase/migrations/20260813043000_restore_cancelled_manual_payment.sql',
@@ -356,4 +360,63 @@ test('MariBank audit metadata retains only masked destination mobile evidence', 
     'the full customer or merchant mobile must not enter receipt audit JSON',
   );
   assert.doesNotMatch(extracted, /expectedReceiverMobile(?:Number)?:/);
+});
+
+test('GoTyme verifier prices the booking from Amount and treats Reference and Trace independently', () => {
+  const branchStart = receiptEdge.indexOf('} else if (provider === "gotyme") {');
+  const branchEnd = receiptEdge.indexOf('} else {', branchStart);
+  assert.ok(branchStart >= 0 && branchEnd > branchStart, 'GoTyme verifier branch should exist');
+  const branch = receiptEdge.slice(branchStart, branchEnd);
+
+  assert.match(
+    receiptEdge,
+    /const extractedAmount = provider === "maribank"[\s\S]*provider === "gotyme"[\s\S]*extractGoTymeAmount\(ocrText\)/,
+    'GoTyme booking price must use its labeled Amount parser',
+  );
+  assert.match(branch, /extractedAmount < expectedAmount/);
+  assert.match(branch, /!closeMoney\(extractedAmount, expectedAmount\)/);
+  assert.doesNotMatch(
+    branch,
+    /closeMoney\([^)]*extractedGoTymeTotalAmount[^)]*expectedAmount|closeMoney\([^)]*expectedAmount[^)]*extractedGoTymeTotalAmount/,
+    'GoTyme Total includes its fee and must not be compared with booking price',
+  );
+  assert.match(branch, /hasConsistentGoTymeAccounting\(ocrText\)/);
+  assert.match(branch, /extractGoTymeTraceId|extractedGoTymeTraceId/);
+  assert.doesNotMatch(
+    branch,
+    /(?:goTymeReferenceMatchesTrace|hasMatchingGoTymeReferenceTrace)\(/,
+    'current Reference No. and Trace ID are independent identifiers',
+  );
+});
+
+test('GoTyme Reference and Trace ID have separate race-safe replay keys', () => {
+  assert.match(
+    receiptEdge,
+    /provider === "gotyme"[\s\S]*key:\s*`gotyme_trace:\$\{extractedGoTymeTraceId\}`[\s\S]*providerKey:\s*"gotyme_trace"[\s\S]*duplicateFlag:\s*"DUPLICATE_GOTYME_TRACE"/,
+  );
+  assert.match(
+    receiptEdge,
+    /refForDedupe[\s\S]*key:\s*refForDedupe[\s\S]*providerKey:\s*provider[\s\S]*duplicateFlag:\s*"DUPLICATE_REF"/,
+    'the full GoTyme Reference keeps its existing provider-scoped replay key',
+  );
+
+  const claimStart = receiptEdge.indexOf('// Race-safe claim of payment ledger keys.');
+  const claimEnd = receiptEdge.indexOf('const confidence =', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart, 'race-safe claim block should exist');
+  const claim = receiptEdge.slice(claimStart, claimEnd);
+  assert.match(claim, /for \(const item of dedupeKeys\)/);
+  assert.match(claim, /from\("used_gcash_refs"\)[\s\S]*\.insert\(/);
+  assert.match(claim, /bookingGroupRefs\.has/);
+  assert.match(claim, /result = "rejected"/);
+});
+
+test('uncertain or wrong GoTyme evidence remains pending for owner review', () => {
+  assert.match(
+    receiptReviewPolicy,
+    /if \(verdict !== "auto_approved"\)[\s\S]*status: "pending"[\s\S]*paymentStatus: "for_verification"[\s\S]*needsOwnerReview: true/,
+  );
+  assert.doesNotMatch(
+    receiptReviewPolicy,
+    /verdict !== "auto_approved"[\s\S]*status: "cancelled"/,
+  );
 });

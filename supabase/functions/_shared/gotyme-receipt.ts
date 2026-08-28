@@ -165,6 +165,15 @@ function hasGoTymeInstantBadgeWithoutReadableLogo(text: string): boolean {
   });
 }
 
+function hasSuccessfulGoTymeStatusLine(text: string): boolean {
+  return nonEmptyLines(text).some((line) => {
+    const value = compact(line);
+    // Current GoTyme receipts use the exact success label "Sent" while older
+    // receipts use "Transferred". Do not fuzzy-match any other status text.
+    return value === "SENT" || value.startsWith("TRANSFERRED");
+  });
+}
+
 /**
  * Google Vision can omit the stylized InstaPay logo while still reading the
  * adjacent "Instant" badge. Only recover that one missing logo read when the
@@ -180,7 +189,7 @@ function hasStrongGoTymeInstantLayoutWithoutLogo(text: string): boolean {
   const lines = nonEmptyLines(value);
   if (
     !hasGoTymeInstantBadgeWithoutReadableLogo(value) ||
-    !lines.some((line) => compact(line) === "TRANSFERRED") ||
+    !hasSuccessfulGoTymeStatusLine(value) ||
     !lines.some(isToLabel) || !lines.some(isFromLabel) ||
     !hasReferenceLabel(value) || !hasTraceLabel(value) ||
     !lines.some((line) => compact(line).startsWith("DATE"))
@@ -189,9 +198,6 @@ function hasStrongGoTymeInstantLayoutWithoutLogo(text: string): boolean {
   const references = referenceCandidates(value);
   const traces = traceCandidates(value);
   if (references.size !== 1 || traces.size !== 1) return false;
-  if (!goTymeReferenceMatchesTrace([...references][0], [...traces][0])) {
-    return false;
-  }
 
   const amount = extractLabeledMoney(value, "amount");
   const fee = extractLabeledMoney(value, "fee");
@@ -228,7 +234,7 @@ export function isGoTymeToGcashReceipt(text: string): boolean {
     hasAmountEvidence(value),
     nonEmptyLines(value).some(isToLabel) &&
     nonEmptyLines(value).some(isFromLabel),
-    compact(value).includes("TRANSFERRED"),
+    hasSuccessfulGoTymeStatusLine(value),
   ];
   return anchors.filter(Boolean).length >= 2;
 }
@@ -303,7 +309,9 @@ export function extractGoTymeStatus(
   for (const line of nonEmptyLines(text)) {
     const value = compact(line);
     if (value.includes("NOTTRANSFERRED")) return null;
-    if (value.startsWith("TRANSFERRED")) statuses.add("transferred");
+    if (value === "SENT" || value.startsWith("TRANSFERRED")) {
+      statuses.add("transferred");
+    }
     if (value.startsWith("PENDING")) statuses.add("pending");
     if (value.startsWith("PROCESSING")) statuses.add("processing");
     if (value.startsWith("FAILED") || value.startsWith("DECLINED")) {
@@ -464,8 +472,9 @@ export function normalizeGoTymeRecipientToken(value: string): string {
 
 function isRecipientToken(value: string): boolean {
   const normalized = normalizeGoTymeRecipientToken(value);
-  return /^[A-Z0-9]{4}$/.test(normalized) &&
-    /[A-Z]/.test(normalized) && /\d/.test(normalized);
+  // Legacy QR receipts expose a mixed token (for example A1BS); current
+  // receipts expose the numeric suffix of the masked GCash mobile (4516).
+  return /^[A-Z0-9]{4}$/.test(normalized);
 }
 
 function maskedSuffixCandidates(
@@ -486,7 +495,7 @@ export function extractGoTymeRecipientToken(text: string): string | null {
   if (!isGoTymeToGcashReceipt(text)) return null;
   const candidates = maskedSuffixCandidates(
     toSection(text),
-    /^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{4}$/,
+    /^[A-Z0-9]{4}$/,
   );
   if (candidates.size !== 1) return null;
   const token = [...candidates][0];

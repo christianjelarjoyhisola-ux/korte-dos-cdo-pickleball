@@ -71,7 +71,11 @@ Deno.test("technical verification flags become owner-friendly reasons", () => {
   );
   assertEquals(
     paymentReviewFlagLabel("GOTYME_TRACE_ID_MISMATCH"),
-    "GoTyme Trace ID does not match the Reference No.",
+    "GoTyme Trace ID needs checking",
+  );
+  assertEquals(
+    paymentReviewFlagLabel("DUPLICATE_GOTYME_TRACE"),
+    "GoTyme Trace ID may have been used before",
   );
 });
 
