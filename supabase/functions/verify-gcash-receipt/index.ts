@@ -56,6 +56,7 @@ import {
 import { deliverPaymentReviewNotification } from "../_shared/payment-review-email.ts";
 import {
   buildMariBankTransactionKey,
+  checkMariBankDestinationRecipient,
   checkMariBankDestinationAccount,
   checkMariBankDestinationMobileNumber,
   extractMariBankDestinationAccount,
@@ -66,12 +67,17 @@ import {
   extractMariBankTransferAmount,
   extractMariBankTransferFee,
   hasMariBankDestinationAccountLabel,
-  hasMariBankDestinationRecipient,
+  hasMariBankGcashDestination,
   hasSuccessfulMariBankTransfer,
   isMariBankReceipt,
   isMariBankReference,
   parseMariBankDateTime,
 } from "../_shared/maribank-receipt.ts";
+import {
+  mariBankExpectedRecipientName,
+  mariBankRecipientReviewFlag,
+  mariBankResultForFlags,
+} from "../_shared/maribank-verification.ts";
 import {
   applyGoTymeAutoApprovalPolicy,
   checkGoTymeDestinationAccountSuffix,
@@ -782,8 +788,9 @@ function expectedMerchantForProvider(
     return {
       // MariBank is the sending bank; customers scan the configured GCash QR.
       number: settings.gcash_merchant_number || "",
-      name: settings.gcash_merchant_name || settings.payment_merchant_name ||
-        "Korte DOS",
+      // MariBank receipts print the venue-facing recipient name. Do not inherit
+      // a personal GCash account-holder name into this provider's verification.
+      name: mariBankExpectedRecipientName(settings),
     };
   }
   if (provider === "gotyme") {
@@ -3952,15 +3959,9 @@ Deno.serve(async (req) => {
         if (!hasMariBankIndicator(ocrText)) {
           flags.push("MARIBANK_UNREADABLE");
         }
-        if (!hasGcashGxiDestination(ocrText)) {
+        const hasMariBankGcashRoute = hasMariBankGcashDestination(ocrText);
+        if (!hasMariBankGcashRoute) {
           flags.push("GXI_DESTINATION_UNREADABLE");
-        }
-        const destinationRecipientMatches = hasMariBankDestinationRecipient(
-          ocrText,
-          expectedName,
-        );
-        if (!destinationRecipientMatches) {
-          flags.push("RECEIVER_NAME_UNREADABLE");
         }
         const accountCheck = checkMariBankDestinationAccount(
           ocrText,
@@ -3970,6 +3971,18 @@ Deno.serve(async (req) => {
           ocrText,
           expectedNumber,
         );
+        const destinationRecipientCheck = checkMariBankDestinationRecipient(
+          ocrText,
+          expectedName,
+        );
+        const receiverReviewFlag = mariBankRecipientReviewFlag({
+          recipientCheck: destinationRecipientCheck,
+          exactQrAccountMatches: accountCheck === "match",
+          hasCoherentGcashRoute: hasMariBankGcashRoute,
+        });
+        if (receiverReviewFlag) flags.push(receiverReviewFlag);
+        const destinationRecipientMatches =
+          destinationRecipientCheck === "match";
         mariBankTimestampVerified = Boolean(
           receiptDate &&
             receiptDateTime &&
@@ -4279,7 +4292,11 @@ Deno.serve(async (req) => {
     const hasHard = flags.some((f) => HARD_FLAGS.has(f));
     const hasSoftOrUnreadable = flags.length > 0;
     let result: "auto_approved" | "manual_review" | "rejected";
-    if (hasHard) result = "rejected";
+    // MariBank's provider policy deliberately has no automated rejection lane:
+    // even fraud/replay signals block approval but preserve the paid booking for
+    // an owner's decision. Every other provider retains the existing routing.
+    if (provider === "maribank") result = mariBankResultForFlags(flags);
+    else if (hasHard) result = "rejected";
     else if (hasSoftOrUnreadable) result = "manual_review";
     else result = "auto_approved";
 
@@ -4318,7 +4335,9 @@ Deno.serve(async (req) => {
           if (!flags.includes(item.duplicateFlag)) {
             flags.push(item.duplicateFlag);
           }
-          result = "rejected";
+          result = provider === "maribank"
+            ? mariBankResultForFlags(flags)
+            : "rejected";
           break;
         }
       }

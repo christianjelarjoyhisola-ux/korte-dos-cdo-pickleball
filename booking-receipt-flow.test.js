@@ -10,6 +10,10 @@ const mariBankReceiptParser = fs.readFileSync(
   'supabase/functions/_shared/maribank-receipt.ts',
   'utf8',
 );
+const mariBankVerificationPolicy = fs.readFileSync(
+  'supabase/functions/_shared/maribank-verification.ts',
+  'utf8',
+);
 const receiptReviewPolicy = fs.readFileSync(
   'supabase/functions/_shared/receipt-review-policy.ts',
   'utf8',
@@ -287,16 +291,54 @@ test('MariBank recipient proof uses an exact QR account or a guarded destination
     mariBankReceiptParser,
     /export function hasMariBankDestinationRecipient\(/,
   );
+  assert.match(
+    mariBankReceiptParser,
+    /export function checkMariBankDestinationRecipient\(/,
+  );
 
   const branchStart = receiptEdge.indexOf('} else if (provider === "maribank") {');
   const branchEnd = receiptEdge.indexOf('} else if (provider === "gotyme") {', branchStart);
   assert.ok(branchStart >= 0 && branchEnd > branchStart, 'MariBank verifier branch should exist');
   const branch = receiptEdge.slice(branchStart, branchEnd);
 
+  assert.match(
+    mariBankReceiptParser,
+    /export function checkMariBankDestinationRecipient\([\s\S]*const aliases = \[expectedRaw, "Korte Dos"\]/,
+    'MariBank must recognize the public Korte Dos recipient independently of the configured personal GCash name',
+  );
+  assert.match(
+    mariBankVerificationPolicy,
+    /export function mariBankExpectedRecipientName\([\s\S]*settings\.maribank_recipient_name[\s\S]*\|\| "Korte Dos"/,
+    'MariBank must default to Korte Dos through its provider-specific setting',
+  );
+  const expectedMerchantStart = receiptEdge.indexOf(
+    'function expectedMerchantForProvider(',
+  );
+  const expectedMerchantEnd = receiptEdge.indexOf(
+    'function expectedOpenPlayAmounts(',
+    expectedMerchantStart,
+  );
+  assert.ok(
+    expectedMerchantStart >= 0 && expectedMerchantEnd > expectedMerchantStart,
+    'provider-specific merchant configuration should exist',
+  );
+  const expectedMerchant = receiptEdge.slice(
+    expectedMerchantStart,
+    expectedMerchantEnd,
+  );
+  assert.match(
+    expectedMerchant,
+    /if \(provider === "maribank"\) \{[\s\S]*name: mariBankExpectedRecipientName\(settings\)/,
+  );
   assert.match(branch, /checkMariBankDestinationAccount\(\s*ocrText,/);
   assert.match(branch, /checkMariBankDestinationMobileNumber\(\s*ocrText,\s*expectedNumber/);
   assert.match(branch, /hasMariBankDestinationAccountLabel\(ocrText\)/);
-  assert.match(branch, /hasMariBankDestinationRecipient\(\s*ocrText,\s*expectedName/);
+  assert.match(branch, /checkMariBankDestinationRecipient\(\s*ocrText,\s*expectedName/);
+  assert.doesNotMatch(
+    branch,
+    /hasExpectedReceiverName\(/,
+    'MariBank must use its destination-scoped recipient parser rather than the generic whole-receipt name matcher',
+  );
   assert.match(
     branch,
     /accountCheck === "match"\s*\|\|\s*\([\s\S]*accountCheck === "unreadable"[\s\S]*!hasMariBankDestinationAccountLabel\(ocrText\)[\s\S]*mobileCheck === "match"[\s\S]*destinationRecipientMatches[\s\S]*mariBankTimestampVerified[\s\S]*\)/,
@@ -322,7 +364,47 @@ test('MariBank recipient proof uses an exact QR account or a guarded destination
   );
 });
 
-test('MariBank exact image replay is hard-blocked through the race-safe payment ledger', () => {
+test('MariBank OCR uncertainty stays pending and never rejects a paid booking', () => {
+  const hardStart = receiptEdge.indexOf('const HARD_FLAGS = new Set([');
+  const hardEnd = receiptEdge.indexOf(']);', hardStart);
+  assert.ok(hardStart >= 0 && hardEnd > hardStart, 'hard receipt flags should exist');
+  const hardFlags = receiptEdge.slice(hardStart, hardEnd);
+
+  assert.doesNotMatch(
+    hardFlags,
+    /MARIBANK_UNREADABLE|MARIBANK_TIMESTAMP_UNVERIFIED|RECEIVER_NAME_UNREADABLE|ACCOUNT_UNREADABLE|ACCOUNT_UNCONFIGURED|WRONG_GCASH_ACCOUNT|GXI_DESTINATION_UNREADABLE/,
+    'uncertain MariBank destination evidence must remain an owner-review signal',
+  );
+  assert.match(
+    receiptReviewPolicy,
+    /if \(verdict !== "auto_approved"\)[\s\S]*status: "pending"[\s\S]*paymentStatus: "for_verification"[\s\S]*needsOwnerReview: true/,
+  );
+  assert.doesNotMatch(
+    receiptReviewPolicy,
+    /verdict !== "auto_approved"[\s\S]*status: "cancelled"/,
+  );
+  assert.match(
+    mariBankVerificationPolicy,
+    /return flags\.length === 0 \? "auto_approved" : "manual_review"/,
+    'every non-clean MariBank verdict must remain in the owner-review lane',
+  );
+  assert.doesNotMatch(
+    mariBankVerificationPolicy,
+    /"rejected"/,
+    'MariBank automated policy must not expose a rejected lane',
+  );
+  assert.match(
+    receiptEdge,
+    /if \(provider === "maribank"\) result = mariBankResultForFlags\(flags\)/,
+  );
+  assert.match(
+    receiptEdge,
+    /const bookingOutcome = bookingOutcomeForReceipt\([\s\S]*payment_status: bookingOutcome\.paymentStatus[\s\S]*status: bookingOutcome\.status/,
+    'the verifier must persist the shared pending outcome instead of mapping MariBank flags directly to cancellation',
+  );
+});
+
+test('MariBank exact image replay is race-safe and remains pending for owner review', () => {
   assert.match(
     receiptEdge,
     /provider === "maribank"[\s\S]*key:\s*`maribank_receipt_image:\$\{imageHash\}`[\s\S]*providerKey:\s*"maribank_receipt_image"[\s\S]*duplicateFlag:\s*"DUPLICATE_MARIBANK_TRANSACTION"/,
@@ -336,7 +418,11 @@ test('MariBank exact image replay is hard-blocked through the race-safe payment 
   assert.match(claim, /if \(result === "auto_approved" && hasPersistedBooking\)/);
   assert.match(claim, /from\("used_gcash_refs"\)[\s\S]*\.insert\(/);
   assert.match(claim, /\.eq\("gcash_ref", item\.key\)/);
-  assert.match(claim, /result = "rejected"/);
+  assert.match(
+    claim,
+    /result = provider === "maribank"[\s\S]*\? mariBankResultForFlags\(flags\)[\s\S]*: "rejected"/,
+    'MariBank replay evidence must use its pending-only policy while other providers retain rejection protection',
+  );
 });
 
 test('MariBank audit metadata retains only masked destination mobile evidence', () => {
@@ -407,7 +493,11 @@ test('GoTyme Reference and Trace ID have separate race-safe replay keys', () => 
   assert.match(claim, /for \(const item of dedupeKeys\)/);
   assert.match(claim, /from\("used_gcash_refs"\)[\s\S]*\.insert\(/);
   assert.match(claim, /bookingGroupRefs\.has/);
-  assert.match(claim, /result = "rejected"/);
+  assert.match(
+    claim,
+    /result = provider === "maribank"[\s\S]*: "rejected"/,
+    'non-MariBank duplicate claims must retain the rejected audit verdict',
+  );
 });
 
 test('uncertain or wrong GoTyme evidence remains pending for owner review', () => {

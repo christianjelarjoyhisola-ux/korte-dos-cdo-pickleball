@@ -2,6 +2,7 @@ import {
   buildMariBankTransactionKey,
   checkMariBankDestinationAccount,
   checkMariBankDestinationMobileNumber,
+  checkMariBankDestinationRecipient,
   extractMariBankDestinationAccount,
   extractMariBankDestinationMobileNumber,
   extractMariBankReference,
@@ -11,6 +12,7 @@ import {
   extractMariBankTransferFee,
   hasMariBankDestinationAccountLabel,
   hasMariBankDestinationRecipient,
+  hasMariBankGcashDestination,
   hasSuccessfulMariBankTransfer,
   isMariBankReceipt,
   isMariBankReference,
@@ -186,6 +188,25 @@ Processing Time Realtime
 Transaction Date & Time 26 Aug 2026, 22:08
 Receipt generated from MariBank app
 `;
+
+// Exact Google Vision visual-row output from the production receipt that used
+// spaces around OCR punctuation in both the destination and account label.
+const spacedDestination310Layout = `M MariBank
+Transaction Receipt
+PHP 310.00
+From ELLA MARIE S.
+MariBank : ******* 8934
+To Korte Dos
+G - Xchange / GCash
+Acct No .: DWQM4TK496R3UA1BS
+Transfer Amount PHP 310.00
+Transfer Fee FREE
+Total Amount PHP 310.00
+Reference Number 708538
+Transfer Method instaPay
+Processing Time Realtime
+Transaction Date & Time 29 Aug 2026 , 11:10
+Receipt generated from MariBank app`;
 
 Deno.test("recognizes the current MariBank realtime InstaPay receipt", () => {
   if (!isMariBankReceipt(sample)) {
@@ -568,6 +589,74 @@ Deno.test("extracts every supplied field from the native 4,320 Mobile No. receip
   }
 });
 
+Deno.test("recognizes punctuation variants of the MariBank GCash destination", () => {
+  for (
+    const destination of [
+      "G-Xchange / GCash",
+      "G - Xchange / GCash",
+      "G- Xchange / GCash",
+      "G -Xchange / GCash",
+      "G Xchange / GCash",
+      "G\u2013Xchange / G Cash",
+      "G \u2014 Xchange/GCash",
+      "G\u2212Xchange / GCash",
+    ]
+  ) {
+    if (!hasMariBankGcashDestination(destination)) {
+      throw new Error(`Destination punctuation variant was not recognized: ${destination}`);
+    }
+  }
+  for (const invalid of ["GCash", "G-Xchange", "Other Bank / GCash"]) {
+    if (hasMariBankGcashDestination(invalid)) {
+      throw new Error(`Incomplete destination pair was accepted: ${invalid}`);
+    }
+  }
+});
+
+Deno.test("parses the exact production visual rows with spaced destination punctuation", () => {
+  if (!isMariBankReceipt(spacedDestination310Layout)) {
+    throw new Error("Production MariBank receipt was not recognized");
+  }
+  if (!hasSuccessfulMariBankTransfer(spacedDestination310Layout)) {
+    throw new Error("Production MariBank realtime transfer was not recognized");
+  }
+  if (
+    checkMariBankDestinationRecipient(
+      spacedDestination310Layout,
+      "Jan Kennith Magallano",
+    ) !== "match"
+  ) {
+    throw new Error("Korte Dos was not matched inside the production destination block");
+  }
+  if (
+    checkMariBankDestinationAccount(
+      spacedDestination310Layout,
+      "DWQM4TK496R3UA1BS",
+    ) !== "match"
+  ) {
+    throw new Error("Production destination account was not matched");
+  }
+  if (extractMariBankReference(spacedDestination310Layout, "708538") !== "708538") {
+    throw new Error("Production reference was not extracted");
+  }
+  if (extractMariBankTransferAmount(spacedDestination310Layout) !== 310) {
+    throw new Error("Production principal amount was not extracted");
+  }
+  if (extractMariBankTransferFee(spacedDestination310Layout) !== 0) {
+    throw new Error("Production FREE transfer fee was not extracted");
+  }
+  if (extractMariBankTotalAmount(spacedDestination310Layout) !== 310) {
+    throw new Error("Production total was not extracted");
+  }
+  const parsed = parseMariBankDateTime(spacedDestination310Layout);
+  if (
+    parsed.date !== "2026-08-29" ||
+    parsed.shifted?.toISOString() !== "2026-08-29T11:10:00.000Z"
+  ) {
+    throw new Error("Production transaction date/time was not extracted");
+  }
+});
+
 Deno.test("matches only one destination-scoped MariBank mobile number", () => {
   for (const expected of ["09453984516", "+63 945 398 4516", "9453984516"]) {
     if (
@@ -665,6 +754,65 @@ Deno.test("requires the configured recipient name inside the MariBank destinatio
     );
   if (hasMariBankDestinationRecipient(footerNameOnly, "Korte Dos")) {
     throw new Error("A footer name satisfied destination recipient proof");
+  }
+});
+
+Deno.test("classifies MariBank destination recipient match, conflict, and unreadable states", () => {
+  if (
+    checkMariBankDestinationRecipient(
+      spacedDestination310Layout,
+      "Jan Kennith Magallano",
+    ) !== "match"
+  ) {
+    throw new Error("Korte Dos alias was not classified as a recipient match");
+  }
+
+  const wrongRecipient = spacedDestination310Layout.replace(
+    "To Korte Dos",
+    "To OTHER VENUE",
+  );
+  if (
+    checkMariBankDestinationRecipient(
+      wrongRecipient,
+      "Jan Kennith Magallano",
+    ) !== "wrong"
+  ) {
+    throw new Error("An explicit different To recipient was not classified as wrong");
+  }
+
+  const unreadableRecipient = spacedDestination310Layout.replace(
+    "To Korte Dos",
+    "To",
+  );
+  if (
+    checkMariBankDestinationRecipient(
+      unreadableRecipient,
+      "Jan Kennith Magallano",
+    ) !== "unreadable"
+  ) {
+    throw new Error("A missing To recipient was not classified as unreadable");
+  }
+
+  const conflictingRecipients = `${spacedDestination310Layout}\nTo OTHER VENUE\nG-Xchange / GCash`;
+  if (
+    checkMariBankDestinationRecipient(
+      conflictingRecipients,
+      "Jan Kennith Magallano",
+    ) !== "wrong"
+  ) {
+    throw new Error("A conflicting second destination recipient was accepted");
+  }
+
+  const senderOnly = spacedDestination310Layout
+    .replace("From ELLA MARIE S.", "From Korte Dos")
+    .replace("To Korte Dos", "To OTHER VENUE");
+  if (
+    checkMariBankDestinationRecipient(
+      senderOnly,
+      "Jan Kennith Magallano",
+    ) !== "wrong"
+  ) {
+    throw new Error("A matching sender name hid a wrong destination recipient");
   }
 });
 

@@ -4,6 +4,8 @@ export type MariBankDestinationCheck =
   | "unreadable"
   | "unconfigured";
 
+export type MariBankRecipientCheck = "match" | "wrong" | "unreadable";
+
 const MONTHS: Record<string, number> = {
   jan: 0,
   feb: 1,
@@ -45,6 +47,17 @@ function nonEmptyLines(value: string): string[] {
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
+}
+
+// Google Vision can emit the same destination as `G-Xchange`, `G - Xchange`,
+// or with a Unicode dash, and can split `GCash` into two words. Treat those as
+// typography variants of the same institution without weakening the required
+// G-Xchange/GCash pairing.
+const MARIBANK_GCASH_DESTINATION_PATTERN =
+  /\bg\s*(?:[-\u2010-\u2015\u2212]\s*)?xchange\s*\/\s*g\s*cash\b/i;
+
+export function hasMariBankGcashDestination(text: string): boolean {
+  return MARIBANK_GCASH_DESTINATION_PATTERN.test(normalizeOcrText(text));
 }
 
 function sixDigitCandidates(value: string): Set<string> {
@@ -323,9 +336,10 @@ function hasStrongMariBankContext(text: string): boolean {
     /\btransfer\s+method\b/i,
     /\bprocessing\s+time\b/i,
     /\btransaction\s+date\s*(?:&|and)\s*time\b/i,
-    /\bg-?\s*xchange\s*\/\s*gcash\b/i,
   ];
-  return anchors.filter((anchor) => anchor.test(value)).length >= 4;
+  const anchorCount = anchors.filter((anchor) => anchor.test(value)).length +
+    (hasMariBankGcashDestination(value) ? 1 : 0);
+  return anchorCount >= 4;
 }
 
 function exactPairedFieldValue(
@@ -457,7 +471,7 @@ export function extractMariBankDestinationMobileNumber(
   const value = normalizeOcrText(text);
   if (
     !hasStrongMariBankContext(value) ||
-    !/\bg-?\s*xchange\s*\/\s*gcash\b/i.test(value)
+    !hasMariBankGcashDestination(value)
   ) return null;
 
   const lines = nonEmptyLines(value);
@@ -472,7 +486,7 @@ export function extractMariBankDestinationMobileNumber(
     Math.min(lines.length, labelIndex + 3),
   ).join("\n");
   if (
-    !/\bg-?\s*xchange\s*\/\s*gcash\b/i.test(destinationWindow) ||
+    !hasMariBankGcashDestination(destinationWindow) ||
     !/(?:^|\n)\s*to(?:\s|$)/i.test(destinationWindow)
   ) return null;
 
@@ -500,27 +514,76 @@ export function checkMariBankDestinationMobileNumber(
   return extracted === expected ? "match" : "wrong";
 }
 
+function mariBankRecipientCandidate(
+  lines: string[],
+  destinationIndex: number,
+): string | null {
+  for (
+    let index = destinationIndex;
+    index >= Math.max(0, destinationIndex - 4);
+    index--
+  ) {
+    const toMatch = lines[index].match(
+      /^\s*to\b[\s:|=#.\-\u2010-\u2015\u2212]*(.*)$/i,
+    );
+    if (!toMatch) continue;
+
+    const inline = String(toMatch[1] || "")
+      .replace(MARIBANK_GCASH_DESTINATION_PATTERN, "")
+      .trim();
+    const parts = inline
+      ? [inline]
+      : lines.slice(index + 1, destinationIndex);
+    const candidate = parts
+      .filter((part) =>
+        part &&
+        !hasMariBankGcashDestination(part) &&
+        !MARIBANK_ACCOUNT_LABEL.test(part) &&
+        !MARIBANK_MOBILE_LABEL.test(part)
+      )
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const normalized = candidate.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return normalized.length >= 3 && /[A-Z]/.test(normalized)
+      ? candidate
+      : null;
+  }
+  return null;
+}
+
+export function checkMariBankDestinationRecipient(
+  text: string,
+  expectedRaw: string,
+): MariBankRecipientCheck {
+  const aliases = [expectedRaw, "Korte Dos"]
+    .map((value) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, ""))
+    .filter((value) => value.length >= 3);
+  if (!aliases.length) return "unreadable";
+
+  const lines = nonEmptyLines(text);
+  let matched = false;
+  let contradicted = false;
+  lines.forEach((line, index) => {
+    if (!hasMariBankGcashDestination(line)) return;
+    const candidate = mariBankRecipientCandidate(lines, index);
+    if (!candidate) return;
+    const normalizedCandidate = candidate.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (aliases.some((alias) => normalizedCandidate === alias)) {
+      matched = true;
+    } else {
+      contradicted = true;
+    }
+  });
+  if (contradicted) return "wrong";
+  return matched ? "match" : "unreadable";
+}
+
 export function hasMariBankDestinationRecipient(
   text: string,
   expectedRaw: string,
 ): boolean {
-  const aliases = [expectedRaw, "Korte Dos"]
-    .map((value) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, ""))
-    .filter((value) => value.length >= 3);
-  if (!aliases.length) return false;
-
-  const lines = nonEmptyLines(text);
-  const matchingBlocks = new Set<string>();
-  lines.forEach((line, index) => {
-    if (!/\bg-?\s*xchange\s*\/\s*gcash\b/i.test(line)) return;
-    const block = lines.slice(Math.max(0, index - 3), index + 3).join("\n");
-    if (!/(?:^|\n)\s*to(?:\s|$)/i.test(block)) return;
-    const normalizedBlock = block.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (aliases.some((alias) => normalizedBlock.includes(alias))) {
-      matchingBlocks.add(normalizedBlock);
-    }
-  });
-  return matchingBlocks.size === 1;
+  return checkMariBankDestinationRecipient(text, expectedRaw) === "match";
 }
 
 function fragmentedMariBankAccountCandidate(lines: string[]): string | null {
@@ -574,7 +637,7 @@ export function extractMariBankDestinationAccount(
   // recognized MariBank-to-GCash receipt.
   if (
     !hasStrongMariBankContext(value) ||
-    !/\bg-?\s*xchange\s*\/\s*gcash\b/i.test(value)
+    !hasMariBankGcashDestination(value)
   ) return null;
   const allTokens = new Set<string>();
   for (const token of value.match(/\b[A-Z0-9]{12,24}\b/gi) || []) {

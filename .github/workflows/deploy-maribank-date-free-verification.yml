@@ -7,8 +7,16 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deploy-maribank-date-free-verification.yml"
+      - "booking-receipt-flow.test.js"
       - "supabase/migrations/20260727113000_maribank_date_free_verification.sql"
       - "supabase/functions/_shared/maribank-receipt.ts"
+      - "supabase/functions/_shared/maribank-receipt_test.ts"
+      - "supabase/functions/_shared/maribank-verification.ts"
+      - "supabase/functions/_shared/maribank-verification_test.ts"
+      - "supabase/functions/_shared/google-vision-layout.ts"
+      - "supabase/functions/_shared/google-vision-layout_test.ts"
+      - "supabase/functions/_shared/receipt-review-policy.ts"
+      - "supabase/functions/_shared/receipt-review-policy_test.ts"
       - "supabase/functions/verify-gcash-receipt/**"
   workflow_dispatch:
 
@@ -37,6 +45,23 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.109.1
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Test and type-check MariBank receipt verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test booking-receipt-flow.test.js
+          deno test --no-config \
+            supabase/functions/_shared/maribank-receipt_test.ts \
+            supabase/functions/_shared/maribank-verification_test.ts \
+            supabase/functions/_shared/google-vision-layout_test.ts \
+            supabase/functions/_shared/receipt-review-policy_test.ts
+          deno check --no-config \
+            supabase/functions/verify-gcash-receipt/index.ts
 
       - name: Rehearse and apply the database migration
         shell: bash
