@@ -791,7 +791,7 @@ tr:hover td { background: var(--bg2); }
 .booking-pagination label { display:flex; align-items:center; gap:6px; }
 .booking-pagination select { min-height:32px; padding:4px 8px; border:1px solid var(--border); border-radius:8px; background:var(--bg2); color:var(--text); }
 .booking-pagination button:disabled { opacity:.45; cursor:not-allowed; transform:none; }
-.booking-details-modal { width:min(760px,calc(100vw - 28px)); max-width:760px; overflow:hidden; }
+.modal.booking-details-modal { width:min(760px,calc(100vw - 28px)); max-width:760px; overflow:hidden; }
 .booking-details-head { background:linear-gradient(135deg,rgba(var(--green-rgb),.1),transparent); }
 .booking-details-head h2 { color:var(--green); }
 .booking-details-head p { margin:3px 0 0; color:var(--text3); font-size:.76rem; }
@@ -821,6 +821,94 @@ tr:hover td { background: var(--bg2); }
 .booking-notice-item { display:flex; justify-content:space-between; gap:12px; padding:9px 10px; border-radius:9px; background:var(--bg2); font-size:.75rem; }
 .booking-notice-item strong { color:var(--text); }
 .booking-notice-item span { color:var(--text3); text-align:right; }
+.booking-payment-history-summary .booking-detail-card { position:relative; overflow:hidden; }
+.booking-payment-history-summary .booking-detail-card::after {
+  content:""; position:absolute; inset:auto -18px -28px auto; width:68px; height:68px;
+  border-radius:50%; background:rgba(var(--green-rgb),.055); pointer-events:none;
+}
+.booking-payment-history {
+  margin-top:12px; padding:15px; border:1px solid rgba(var(--green-rgb),.22);
+  border-radius:14px; background:linear-gradient(145deg,rgba(var(--green-rgb),.07),var(--surface) 42%);
+  box-shadow:0 10px 28px rgba(5,25,20,.06);
+}
+.booking-payment-history-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:13px; }
+.booking-payment-history-head h3 { margin:0; color:var(--text); font-size:.82rem; font-weight:950; letter-spacing:.7px; text-transform:uppercase; }
+.booking-payment-history-head p { margin:4px 0 0; color:var(--text3); font-size:.72rem; line-height:1.45; }
+.booking-payment-history-total {
+  flex:0 0 auto; padding:6px 9px; border:1px solid rgba(var(--green-rgb),.22); border-radius:999px;
+  background:rgba(var(--green-rgb),.08); color:var(--green); font-size:.68rem; font-weight:900; white-space:nowrap;
+}
+.booking-payment-history-stats {
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:-2px 0 12px;
+}
+.booking-payment-history-stat {
+  min-width:0; padding:9px 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface);
+}
+.booking-payment-history-stat span { display:block; color:var(--text3); font-size:.58rem; font-weight:900; letter-spacing:.42px; text-transform:uppercase; }
+.booking-payment-history-stat strong { display:block; margin-top:4px; color:var(--text); font:900 .77rem 'DM Mono',monospace; overflow-wrap:anywhere; }
+.booking-payment-history-stat.verified strong { color:var(--green); }
+.booking-payment-history-stat.due strong { color:var(--yellow); }
+.booking-payment-timeline { position:relative; display:grid; gap:9px; }
+.booking-payment-timeline::before {
+  content:""; position:absolute; left:15px; top:24px; bottom:24px; width:2px;
+  background:linear-gradient(var(--green),rgba(var(--green-rgb),.16)); opacity:.45;
+}
+.booking-payment-event {
+  position:relative; display:grid; grid-template-columns:32px minmax(0,1fr) auto; gap:10px; align-items:start;
+  min-width:0; padding:12px; border:1px solid var(--border); border-radius:12px; background:var(--surface);
+}
+.booking-payment-event-dot {
+  position:relative; z-index:1; display:grid; place-items:center; width:32px; height:32px; border-radius:10px;
+  border:1px solid rgba(var(--green-rgb),.3); background:var(--green-bg); color:var(--green); font-size:.8rem; font-weight:950;
+}
+.booking-payment-event.balance .booking-payment-event-dot { border-color:rgba(var(--yellow-rgb),.35); background:var(--yellow-bg); color:var(--yellow); }
+.booking-payment-event.balance.confirmed .booking-payment-event-dot { border-color:rgba(var(--green-rgb),.3); background:var(--green-bg); color:var(--green); }
+.booking-payment-event-main { min-width:0; }
+.booking-payment-event-titleline { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.booking-payment-event-title { color:var(--text); font-size:.82rem; font-weight:950; }
+.booking-payment-status {
+  display:inline-flex; align-items:center; min-height:21px; padding:2px 7px; border:1px solid var(--border);
+  border-radius:999px; background:var(--bg2); color:var(--text3); font-size:.59rem; font-weight:950; letter-spacing:.25px; text-transform:uppercase;
+}
+.booking-payment-status.approved { border-color:rgba(var(--green-rgb),.28); background:var(--green-bg); color:var(--green); }
+.booking-payment-status.pending,.booking-payment-status.due { border-color:rgba(var(--yellow-rgb),.34); background:var(--yellow-bg); color:var(--yellow); }
+.booking-payment-status.rejected { border-color:rgba(200,61,38,.3); background:var(--red-bg); color:var(--red); }
+.booking-payment-status.expired { color:var(--text3); }
+.booking-payment-event-copy { margin-top:4px; color:var(--text3); font-size:.68rem; line-height:1.45; }
+.booking-payment-event-meta { display:flex; gap:6px 12px; flex-wrap:wrap; margin-top:8px; color:var(--text2); font-size:.68rem; }
+.booking-payment-event-meta span { min-width:0; overflow-wrap:anywhere; }
+.booking-payment-event-meta b { margin-right:4px; color:var(--text3); font-size:.58rem; letter-spacing:.35px; text-transform:uppercase; }
+.booking-payment-event-meta code { color:var(--text); font:750 .67rem 'DM Mono',monospace; }
+.booking-payment-event-side { display:grid; justify-items:end; gap:7px; min-width:105px; }
+.booking-payment-event-amount { color:var(--text); font:950 .94rem 'DM Mono',monospace; white-space:nowrap; }
+.booking-payment-proof-btn { min-height:31px; padding:5px 9px; justify-content:center; font-size:.66rem; }
+.booking-payment-proof-unavailable { color:var(--text3); font-size:.61rem; font-weight:750; }
+.booking-payment-history-note {
+  margin-top:10px; padding:9px 10px; border:1px solid var(--border); border-radius:9px;
+  background:var(--bg2); color:var(--text3); font-size:.68rem; line-height:1.5;
+}
+.booking-payment-other-attempts { margin-top:10px; border-top:1px solid var(--border); padding-top:9px; }
+.booking-payment-other-attempts > summary { color:var(--text2); font-size:.7rem; font-weight:900; cursor:pointer; }
+.booking-payment-attempt-list { display:grid; gap:7px; margin-top:8px; }
+.booking-payment-attempt {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center;
+  padding:9px 10px; border:1px solid var(--border); border-radius:9px; background:var(--bg2);
+}
+.booking-payment-attempt-main { min-width:0; color:var(--text2); font-size:.68rem; line-height:1.45; }
+.booking-payment-attempt-main strong { color:var(--text); }
+.booking-payment-attempt-main code { color:var(--text); font:700 .66rem 'DM Mono',monospace; overflow-wrap:anywhere; }
+.modal.host-booking-payment-proof-modal { width:min(680px,calc(100vw - 28px)); max-width:680px; overflow:hidden; }
+#hostBookingPaymentProofModal { z-index:760; }
+.host-booking-payment-proof-modal .m-hd { z-index:2; background:linear-gradient(135deg,rgba(var(--green-rgb),.1),var(--surface)); }
+.host-booking-payment-proof-body { padding:14px; background:var(--bg); }
+.host-booking-payment-proof-stage {
+  min-height:300px; display:grid; place-items:center; overflow:hidden; border:1px solid var(--border);
+  border-radius:13px; background:#07111d;
+}
+.host-booking-payment-proof-stage a { display:none; width:100%; }
+.host-booking-payment-proof-stage img { display:block; width:100%; max-height:min(64vh,620px); object-fit:contain; background:#fff; }
+.host-booking-payment-proof-status { padding:26px; color:#aebdca; font-size:.78rem; line-height:1.55; text-align:center; }
+#hostBookingPaymentProofOriginalLink { display:none; }
 @media (max-width:700px) {
   .booking-details-body { padding:12px; max-height:72vh; }
   .booking-detail-hero { display:grid; }
@@ -828,6 +916,19 @@ tr:hover td { background: var(--bg2); }
   .booking-detail-grid { grid-template-columns:1fr 1fr; }
   .booking-detail-row { grid-template-columns:1fr; gap:3px; }
   .booking-detail-row strong { text-align:left; }
+  .booking-payment-history { padding:12px; }
+  .booking-payment-history-head { display:grid; }
+  .booking-payment-history-total { justify-self:start; }
+  .booking-payment-history-stats { grid-template-columns:1fr; }
+  .booking-payment-event { grid-template-columns:30px minmax(0,1fr); padding:10px; }
+  .booking-payment-event-dot { width:30px; height:30px; }
+  .booking-payment-timeline::before { left:14px; }
+  .booking-payment-event-side { grid-column:2; width:100%; min-width:0; grid-template-columns:minmax(0,1fr) auto; align-items:center; justify-items:start; }
+  .booking-payment-event-side .booking-payment-proof-btn { justify-self:end; }
+  .modal.host-booking-payment-proof-modal { max-height:calc(100dvh - 24px); }
+  .host-booking-payment-proof-modal .m-hd,.host-booking-payment-proof-modal .m-foot { padding:12px 14px; }
+  .host-booking-payment-proof-body { padding:10px; }
+  .host-booking-payment-proof-stage { min-height:220px; }
 }
 .mb-book-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .mb-book-ref { font-size: .75rem; color: var(--green); font-family: 'DM Mono', monospace; overflow-wrap: anywhere; }
@@ -4351,6 +4452,31 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
   </div>
 </div>
 
+<!-- READ-ONLY HOST BOOKING PAYMENT PROOF -->
+<div class="overlay" id="hostBookingPaymentProofModal" aria-hidden="true" inert hidden>
+  <div class="modal host-booking-payment-proof-modal" role="dialog" aria-modal="true" aria-labelledby="hostBookingPaymentProofTitle" tabindex="-1" onkeydown="hostBookingPaymentProofKeydown(event)">
+    <div class="m-hd">
+      <div>
+        <h2 id="hostBookingPaymentProofTitle">PAYMENT PROOF</h2>
+        <p style="margin:3px 0 0;color:var(--text3);font-size:.72rem">Read-only receipt evidence</p>
+      </div>
+      <button class="m-x" type="button" aria-label="Close payment proof" onclick="closeHostBookingPaymentProof()">&#10005;</button>
+    </div>
+    <div class="host-booking-payment-proof-body">
+      <div class="host-booking-payment-proof-stage">
+        <div class="host-booking-payment-proof-status" id="hostBookingPaymentProofStatus" role="status">Loading payment proof...</div>
+        <a id="hostBookingPaymentProofLink" href="#" target="_blank" rel="noopener" aria-label="Open payment proof in a new tab">
+          <img id="hostBookingPaymentProofImage" alt="Submitted payment proof" />
+        </a>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-g" type="button" onclick="closeHostBookingPaymentProof()">Close</button>
+      <a class="btn btn-p" id="hostBookingPaymentProofOriginalLink" href="#" target="_blank" rel="noopener">Open original proof</a>
+    </div>
+  </div>
+</div>
+
 <!-- VERIFY PAYMENT MODAL -->
 <div class="overlay" id="verifyModal" aria-hidden="true" inert hidden>
   <div class="modal verify-payment-modal" role="dialog" aria-modal="true" aria-labelledby="verifyPaymentTitle" tabindex="-1" onkeydown="verifyPaymentModalKeydown(event)">
@@ -5587,6 +5713,428 @@ function bookingSlotLabel(b) {
 function balanceNotificationLabel(value) {
   return ({ reminder_3d:'3-day reminder', reminder_2d:'2-day reminder', reminder_1d:'Final reminder', forfeited:'Forfeiture notice', manual:'Manual notice' })[value] || value;
 }
+function hostPaymentHistoryNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) / 100 : null;
+}
+function normalizeHostBalanceHistoryRow(row = {}) {
+  return {
+    paymentId: String(row.paymentId || row.id || '').trim(),
+    bookingKey: String(row.bookingKey || row.booking_key || '').trim(),
+    bookingRef: String(row.bookingRef || row.booking_ref || '').trim(),
+    bookingGroupRef: String(row.bookingGroupRef || row.booking_group_ref || '').trim(),
+    bookingRefs: Array.isArray(row.bookingRefs || row.booking_refs) ? (row.bookingRefs || row.booking_refs).map(String) : [],
+    status: String(row.status || '').trim().toLowerCase(),
+    totalAmount: hostPaymentHistoryNumber(row.totalAmount ?? row.total_amount),
+    originalPaidAmount: hostPaymentHistoryNumber(row.originalPaidAmount ?? row.original_paid_amount),
+    expectedAmount: hostPaymentHistoryNumber(row.expectedAmount ?? row.expected_amount),
+    paymentProvider: String(row.paymentProvider || row.payment_provider || '').trim().toLowerCase(),
+    paymentReference: String(row.paymentReference || row.payment_reference || '').trim(),
+    receiptStatus: String(row.receiptStatus || row.receipt_result || '').trim().toLowerCase(),
+    receiptVerificationId: Number(row.receiptVerificationId ?? row.receipt_verification_id) || null,
+    receiptImageHash: String(row.receiptImageHash || row.receipt_image_hash || '').trim(),
+    submittedAt: row.submittedAt || row.submitted_at || null,
+    reviewedAt: row.reviewedAt || row.reviewed_at || null,
+    approvedAt: row.approvedAt || row.approved_at || null,
+    rejectedAt: row.rejectedAt || row.rejected_at || null,
+    createdAt: row.createdAt || row.created_at || null,
+    updatedAt: row.updatedAt || row.updated_at || null,
+    reviewReason: String(row.reviewReason || row.review_reason || '').trim(),
+    reviewedByRole: String(row.reviewedByRole || row.reviewed_by_role || '').trim().toLowerCase(),
+  };
+}
+function hostPaymentHistorySortTime(item) {
+  const value = item?.approvedAt || item?.reviewedAt || item?.submittedAt || item?.rejectedAt || item?.createdAt || item?.updatedAt;
+  const time = new Date(value || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+async function getHostBookingPaymentHistory(booking) {
+  const unavailable = { available:false, attempts:[], manualDecision:null, error:'unavailable' };
+  if (!booking?.hostBooking || typeof DB?.getHostBookingBalancePaymentHistory !== 'function') return unavailable;
+  const bookingKey = String(booking.groupRef || booking.displayRef || booking.ref || '').trim();
+  if (!bookingKey) return unavailable;
+  try {
+    const rows = await DB.getHostBookingBalancePaymentHistory(bookingKey);
+    const attempts = (Array.isArray(rows) ? rows : [])
+      .map(normalizeHostBalanceHistoryRow)
+      .filter(attempt => attempt.paymentId)
+      .sort((a, b) => hostPaymentHistorySortTime(b) - hostPaymentHistorySortTime(a));
+    return { available:true, attempts, manualDecision:null, error:'' };
+  } catch (error) {
+    console.warn('Host booking payment history unavailable:', error?.message || error);
+    return unavailable;
+  }
+}
+function approvedHostBalancePayment(history) {
+  return (history?.attempts || [])
+    .filter(attempt => attempt.status === 'approved')
+    .sort((a, b) => hostPaymentHistorySortTime(b) - hostPaymentHistorySortTime(a))[0] || null;
+}
+function hostBookingReceiptAmount(booking) {
+  const amount = hostPaymentHistoryNumber(booking?.receiptExtracted?.amount);
+  const total = hostPaymentHistoryNumber(booking?.total) || 0;
+  return amount !== null && amount > 0 && amount <= total + 0.01 ? amount : null;
+}
+function hostPaymentHistoryAmounts(booking, history) {
+  const total = hostPaymentHistoryNumber(booking?.total) || 0;
+  const approved = approvedHostBalancePayment(history);
+  const snapshot = approved || (history?.attempts || [])[0] || null;
+  const paymentState = String(booking?.paymentStatus || '').toLowerCase();
+  const receiptState = String(booking?.receiptStatus || 'none').toLowerCase();
+  const collectedState = ['downpayment_paid','deposit_retained','paid'].includes(paymentState);
+  let deposit = snapshot?.originalPaidAmount;
+  if ((deposit === null || deposit === undefined) && collectedState) deposit = hostBookingReceiptAmount(booking);
+  if ((deposit === null || deposit === undefined) && ['downpayment_paid','deposit_retained'].includes(paymentState)) {
+    deposit = hostPaymentHistoryNumber(booking?.downpayment);
+  }
+  if (deposit !== null && deposit !== undefined) deposit = Math.min(total, Math.max(0, deposit));
+
+  const approvedBalance = approved?.expectedAmount;
+  const approvedOriginal = approved?.originalPaidAmount;
+  const approvedSnapshotTotal = approved?.totalAmount;
+  const ledgerTotal = approved && approvedBalance !== null && approvedOriginal !== null
+    ? Math.max(0, approvedOriginal + approvedBalance)
+    : null;
+  const ledgerMatchesSnapshot = approved && ledgerTotal !== null && approvedSnapshotTotal !== null
+    ? Math.abs(ledgerTotal - approvedSnapshotTotal) <= .01
+    : false;
+  const ledgerMatchesBooking = approved && approvedSnapshotTotal !== null
+    ? Math.abs(approvedSnapshotTotal - total) <= .01
+    : false;
+  const reconciliationIssue = Boolean(approved && (!ledgerMatchesSnapshot || !ledgerMatchesBooking));
+  const fullAtBooking = !approved && paymentState === 'paid' && deposit !== null && Math.abs(deposit - total) <= .01;
+  const manuallySettled = !approved && history?.available && paymentState === 'paid'
+    && deposit !== null && deposit < total - .01;
+  const recordedWithoutEvidence = !approved && paymentState === 'paid' && !fullAtBooking;
+  const verified = approved
+    ? Math.min(total, ledgerTotal ?? (deposit || 0))
+    : fullAtBooking
+      ? total
+      : Math.min(total, deposit || 0);
+  const summaryPaid = recordedWithoutEvidence ? total : verified;
+  const forfeited = booking?.status === 'forfeited' || paymentState === 'deposit_retained';
+  const due = forfeited || paymentState === 'paid' ? 0 : Math.max(0,total-verified);
+  return {
+    total, deposit, approved, approvedBalance:approvedBalance ?? null,
+    approvedSnapshotTotal:approvedSnapshotTotal ?? null, ledgerTotal,
+    reconciliationIssue, fullAtBooking, manuallySettled, recordedWithoutEvidence,
+    verified, summaryPaid, due, forfeited, paymentState, receiptState,
+  };
+}
+function hostPaymentHistoryDate(value) {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not recorded';
+  return window.BookingBalance?.formatDeadline?.(date) || date.toLocaleString('en-PH');
+}
+function hostPaymentAmount(value) {
+  return value === null || value === undefined ? 'Not separately recorded' : fmt(value);
+}
+function hostPaymentProvider(value) {
+  return value ? paymentMethodLabel(value) : 'Not recorded';
+}
+function hostPaymentStatusLabel(status) {
+  return ({
+    created:'Started, not submitted', pending_review:'Awaiting review', approved:'Approved', rejected:'Rejected',
+    expired:'Expired', manual:'Manually recorded', due:'Balance due', not_required:'Not required',
+    recorded:'Paid status recorded', auto_approved:'Auto-verified', manual_review:'Manually verified',
+    for_verification:'Awaiting review', none:'Recorded', unpaid:'Not paid', review_required:'Review totals',
+    owner:'System Owner', court_owner:'Court Owner', staff:'Staff',
+  })[status] || String(status || 'Recorded').replace(/_/g, ' ');
+}
+function hostPaymentStatusTone(status) {
+  if (['approved','auto_approved','manual_review','manual','none','not_required'].includes(status)) return 'approved';
+  if (['pending_review','for_verification','created','due','review_required'].includes(status)) return status === 'due' ? 'due' : 'pending';
+  if (status === 'rejected') return 'rejected';
+  return 'expired';
+}
+function hostDepositHistoryState(booking, depositAmount) {
+  const receipt = String(booking?.receiptStatus || 'none').toLowerCase();
+  const payment = String(booking?.paymentStatus || 'unpaid').toLowerCase();
+  const resolved = ['paid','downpayment_paid','deposit_retained'].includes(payment);
+  if (receipt === 'auto_approved') return { code:'auto_approved', label:'Auto-verified' };
+  if (resolved && ['manual_review','rejected'].includes(receipt)) return { code:'manual_review', label:'Manually verified' };
+  if (payment === 'for_verification' || receipt === 'manual_review') return { code:'for_verification', label:'Awaiting review' };
+  if (payment === 'rejected') return { code:'rejected', label:'Rejected' };
+  if (payment === 'unpaid') return { code:'unpaid', label:'Not paid' };
+  if (resolved && depositAmount !== null && depositAmount !== undefined) return { code:'none', label:'Recorded' };
+  return { code:'recorded', label:resolved ? 'Paid status recorded' : payStatusText(payment) };
+}
+function hostPaymentEventMeta(items) {
+  return items.filter(item => item?.value).map(item => `<span><b>${esc(item.label)}</b>${item.code ? `<code>${esc(item.value)}</code>` : esc(item.value)}</span>`).join('');
+}
+function hostDepositProofButton(booking, label) {
+  const ref = booking?.primaryRef || booking?.ref;
+  const canView = Boolean(String(booking?.receiptImageUrl || '').trim()) && isDigitalPayment(booking?.paymentMethod) && Auth.can('payment_review', sess?.role);
+  return canView
+    ? `<button class="btn btn-g btn-sm booking-payment-proof-btn" type="button" onclick="openHostDepositReceipt('${jsArg(ref)}','${jsArg(label)}')">View deposit proof</button>`
+    : '<span class="booking-payment-proof-unavailable">Proof unavailable</span>';
+}
+function hostBalanceProofButton(payment, label, buttonLabel = 'View balance proof') {
+  const canView = ['owner','court_owner'].includes(String(sess?.role || '').toLowerCase())
+    && Boolean(payment?.paymentId && payment?.receiptVerificationId && payment?.receiptImageHash);
+  return canView
+    ? `<button class="btn btn-g btn-sm booking-payment-proof-btn" type="button" onclick="openHostBalanceReceipt('${jsArg(payment.paymentId)}','${jsArg(label)}')">${esc(buttonLabel)}</button>`
+    : '<span class="booking-payment-proof-unavailable">Proof unavailable</span>';
+}
+function hostPaymentAttemptHtml(attempt) {
+  const status = attempt.status || 'expired';
+  const label = `${hostPaymentProvider(attempt.paymentProvider)} balance attempt`;
+  const time = hostPaymentHistoryDate(attempt.submittedAt || attempt.rejectedAt || attempt.createdAt);
+  return `<div class="booking-payment-attempt" data-payment-status="${esc(status)}">
+    <div class="booking-payment-attempt-main">
+      <div><strong>${esc(hostPaymentAmount(attempt.expectedAmount))}</strong> · ${esc(hostPaymentProvider(attempt.paymentProvider))} · <span class="booking-payment-status ${hostPaymentStatusTone(status)}">${esc(hostPaymentStatusLabel(status))}</span></div>
+      <div>${attempt.paymentReference ? `<code>${esc(attempt.paymentReference)}</code> · ` : ''}${esc(time)}</div>
+    </div>
+    ${hostBalanceProofButton(attempt, label, 'View attempt proof')}
+  </div>`;
+}
+function renderHostPaymentHistory(booking, history) {
+  const amounts = hostPaymentHistoryAmounts(booking, history);
+  const depositState = hostDepositHistoryState(booking, amounts.deposit);
+  const depositTime = hostPaymentHistoryDate(
+    booking?.receiptVerifiedAt || (amounts.fullAtBooking ? booking?.paidAt : null) || booking?.createdAt
+  );
+  const depositMeta = hostPaymentEventMeta([
+    { label:'Provider', value:hostPaymentProvider(booking?.paymentMethod) },
+    { label:'Reference', value:booking?.gcashRef || 'Not recorded', code:Boolean(booking?.gcashRef) },
+    { label:'Recorded', value:depositTime },
+  ]);
+  const depositLabel = `${hostPaymentProvider(booking?.paymentMethod)} deposit receipt`;
+  const approved = amounts.approved;
+  const otherAttempts = (history?.attempts || []).filter(attempt => attempt !== approved && ['created','pending_review','rejected','expired'].includes(attempt.status));
+  const depositCopy = ['for_verification','unpaid','rejected'].includes(depositState.code)
+    ? 'No verified initial payment is counted yet.'
+    : amounts.deposit == null
+      ? 'The booking is paid, but the initial payment amount was not stored separately.'
+      : 'Initial payment recorded with the reservation.';
+
+  let balanceCode = 'due';
+  let balanceLabel = 'Balance due';
+  let balanceCopy = amounts.forfeited
+    ? 'The unpaid balance is no longer collectible because this reservation was forfeited.'
+    : 'No approved remaining-balance payment is recorded yet.';
+  let balanceAmount = amounts.due;
+  let balanceMeta = '';
+  let balanceProof = '<span class="booking-payment-proof-unavailable">No proof recorded</span>';
+  if (approved && amounts.reconciliationIssue) {
+    balanceCode = 'review_required';
+    balanceLabel = 'Review totals';
+    balanceCopy = 'The approved payment ledger does not match the current booking total. Review the record before relying on the split.';
+    balanceAmount = approved.expectedAmount;
+    balanceMeta = hostPaymentEventMeta([
+      { label:'Provider', value:hostPaymentProvider(approved.paymentProvider) },
+      { label:'Reference', value:approved.paymentReference || 'Not recorded', code:Boolean(approved.paymentReference) },
+      { label:'Ledger total', value:hostPaymentAmount(amounts.approvedSnapshotTotal) },
+      { label:'Booking total', value:hostPaymentAmount(amounts.total) },
+    ]);
+    balanceProof = hostBalanceProofButton(approved, `${hostPaymentProvider(approved.paymentProvider)} remaining balance receipt`);
+  } else if (approved) {
+    balanceCode = 'approved';
+    balanceLabel = approved.receiptStatus === 'auto_approved' ? 'Auto-verified' : 'Approved';
+    balanceCopy = 'Remaining balance confirmed. This booking is fully paid.';
+    balanceAmount = approved.expectedAmount;
+    balanceMeta = hostPaymentEventMeta([
+      { label:'Provider', value:hostPaymentProvider(approved.paymentProvider) },
+      { label:'Reference', value:approved.paymentReference || 'Not recorded', code:Boolean(approved.paymentReference) },
+      { label:'Settled', value:hostPaymentHistoryDate(approved.approvedAt) },
+    ]);
+    balanceProof = hostBalanceProofButton(approved, `${hostPaymentProvider(approved.paymentProvider)} remaining balance receipt`);
+  } else if (amounts.manuallySettled) {
+    balanceCode = 'manual';
+    balanceLabel = 'Manually recorded';
+    balanceCopy = 'Manually recorded — transaction details unavailable.';
+    balanceAmount = amounts.deposit == null ? null : Math.max(0, amounts.total - amounts.deposit);
+    balanceMeta = hostPaymentEventMeta([{ label:'Details', value:'Provider, reference, and timestamp unavailable' }]);
+  } else if (String(booking?.paymentStatus || '').toLowerCase() === 'paid') {
+    balanceCode = amounts.fullAtBooking ? 'not_required' : 'recorded';
+    balanceLabel = amounts.fullAtBooking ? 'Not required' : 'Paid status recorded';
+    balanceCopy = amounts.fullAtBooking
+      ? 'The full booking amount was recorded with the initial payment.'
+      : 'The booking is marked fully paid, but separate settlement details are unavailable.';
+    balanceAmount = amounts.fullAtBooking ? 0 : null;
+    balanceMeta = hostPaymentEventMeta([{ label:'Details', value:amounts.fullAtBooking ? 'Full payment at booking' : 'Legacy or unavailable history' }]);
+  } else if (amounts.forfeited) {
+    balanceCode = 'expired';
+    balanceLabel = 'Forfeited';
+    balanceAmount = Math.max(0, amounts.total - (amounts.deposit || 0));
+    balanceMeta = hostPaymentEventMeta([{ label:'Deadline', value:hostPaymentHistoryDate(booking?.balanceDueAt) }]);
+  } else {
+    balanceMeta = hostPaymentEventMeta([{ label:'Deadline', value:hostPaymentHistoryDate(booking?.balanceDueAt) }]);
+  }
+
+  const historyNote = amounts.reconciliationIssue
+    ? '<div class="booking-payment-history-note">Reconciliation required: the stored payment snapshot and current booking total differ. No total has been silently adjusted.</div>'
+    : !history?.available
+    ? '<div class="booking-payment-history-note">Balance transaction history is unavailable. The totals follow the recorded booking state; no provider or reference has been inferred.</div>'
+    : !approved && String(booking?.paymentStatus || '').toLowerCase() === 'paid' && !amounts.fullAtBooking
+      ? '<div class="booking-payment-history-note">No separate online balance receipt was found. This may be a legacy settlement; unavailable transaction details are intentionally left blank.</div>'
+      : '';
+  const attemptsHtml = otherAttempts.length ? `<details class="booking-payment-other-attempts">
+    <summary>Other attempts (${otherAttempts.length}) · not included in verified total</summary>
+    <div class="booking-payment-attempt-list">${otherAttempts.map(hostPaymentAttemptHtml).join('')}</div>
+  </details>` : '';
+
+  const summaryLabel = amounts.reconciliationIssue
+    ? `${hostPaymentAmount(amounts.approvedSnapshotTotal)} ledger total · review required`
+    : amounts.recordedWithoutEvidence
+      ? `${fmt(amounts.total)} recorded paid · evidence incomplete`
+      : `${fmt(amounts.verified)} verified of ${fmt(amounts.total)}`;
+
+  return `<section class="booking-payment-history" aria-label="Host booking payment history">
+    <div class="booking-payment-history-head">
+      <div><h3>Payment history</h3><p>Deposit and remaining-balance evidence are retained separately.</p></div>
+      <div class="booking-payment-history-total">${esc(summaryLabel)}</div>
+    </div>
+    <div class="booking-payment-timeline">
+      <article class="booking-payment-event deposit" data-payment-kind="deposit" data-payment-status="${esc(depositState.code)}">
+        <div class="booking-payment-event-dot" aria-hidden="true">1</div>
+        <div class="booking-payment-event-main">
+          <div class="booking-payment-event-titleline"><div class="booking-payment-event-title">Deposit</div><span class="booking-payment-status ${hostPaymentStatusTone(depositState.code)}">${esc(depositState.label)}</span></div>
+          <div class="booking-payment-event-copy">${esc(depositCopy)}</div>
+          <div class="booking-payment-event-meta">${depositMeta}</div>
+        </div>
+        <div class="booking-payment-event-side"><div class="booking-payment-event-amount">${esc(hostPaymentAmount(amounts.deposit))}</div>${hostDepositProofButton(booking, depositLabel)}</div>
+      </article>
+      <article class="booking-payment-event balance ${approved ? 'confirmed' : ''}" data-payment-kind="balance" data-payment-status="${esc(balanceCode)}">
+        <div class="booking-payment-event-dot" aria-hidden="true">2</div>
+        <div class="booking-payment-event-main">
+          <div class="booking-payment-event-titleline"><div class="booking-payment-event-title">Remaining balance</div><span class="booking-payment-status ${hostPaymentStatusTone(balanceCode)}">${esc(balanceLabel)}</span></div>
+          <div class="booking-payment-event-copy">${esc(balanceCopy)}</div>
+          ${balanceMeta ? `<div class="booking-payment-event-meta">${balanceMeta}</div>` : ''}
+        </div>
+        <div class="booking-payment-event-side"><div class="booking-payment-event-amount">${esc(hostPaymentAmount(balanceAmount))}</div>${balanceProof}</div>
+      </article>
+    </div>
+    ${historyNote}${attemptsHtml}
+  </section>`;
+}
+let _hostBookingPaymentProofLoadToken = 0;
+let _hostBookingPaymentProofLastFocus = null;
+function closeHostBookingPaymentProof({ restoreFocus = true } = {}) {
+  const modal = $('hostBookingPaymentProofModal');
+  if (!modal) return;
+  _hostBookingPaymentProofLoadToken += 1;
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden','true');
+  modal.inert = true;
+  modal.hidden = true;
+  const image = $('hostBookingPaymentProofImage');
+  const link = $('hostBookingPaymentProofLink');
+  const originalLink = $('hostBookingPaymentProofOriginalLink');
+  if (image) { image.onload = null; image.onerror = null; image.removeAttribute('src'); }
+  if (link) { link.style.display = 'none'; link.removeAttribute('href'); }
+  if (originalLink) { originalLink.style.display = 'none'; originalLink.removeAttribute('href'); }
+  const detailsModal = $('bookingDetailsModal');
+  if (detailsModal?.classList.contains('show')) {
+    detailsModal.inert = false;
+    detailsModal.setAttribute('aria-hidden','false');
+  }
+  if (!restoreFocus) return;
+  const previous = _hostBookingPaymentProofLastFocus;
+  requestAnimationFrame(() => {
+    if (previous && document.contains(previous) && typeof previous.focus === 'function') previous.focus();
+  });
+}
+function hostBookingPaymentProofKeydown(event) {
+  const modal = $('hostBookingPaymentProofModal');
+  if (!modal?.classList.contains('show')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeHostBookingPaymentProof();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...modal.querySelectorAll('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')]
+    .filter(element => element.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (!focusable.includes(document.activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+    return;
+  }
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}
+async function openHostBookingPaymentProof(label, getSignedUrl) {
+  const modal = $('hostBookingPaymentProofModal');
+  const status = $('hostBookingPaymentProofStatus');
+  const image = $('hostBookingPaymentProofImage');
+  const link = $('hostBookingPaymentProofLink');
+  const originalLink = $('hostBookingPaymentProofOriginalLink');
+  if (!modal || !status || !image || !link || !originalLink) return false;
+  const loadToken = ++_hostBookingPaymentProofLoadToken;
+  _hostBookingPaymentProofLastFocus = document.activeElement;
+  $('hostBookingPaymentProofTitle').textContent = label || 'Payment proof';
+  status.textContent = 'Loading payment proof...';
+  status.style.display = '';
+  link.style.display = 'none';
+  link.removeAttribute('href');
+  originalLink.style.display = 'none';
+  originalLink.removeAttribute('href');
+  image.onload = null;
+  image.onerror = null;
+  image.removeAttribute('src');
+  const detailsModal = $('bookingDetailsModal');
+  if (detailsModal?.classList.contains('show')) {
+    detailsModal.inert = true;
+    detailsModal.setAttribute('aria-hidden','true');
+  }
+  modal.hidden = false;
+  modal.inert = false;
+  modal.setAttribute('aria-hidden','false');
+  modal.classList.add('show');
+  requestAnimationFrame(() => modal.querySelector('.host-booking-payment-proof-modal')?.focus());
+  let signedUrl = '';
+  try {
+    const url = String(await getSignedUrl() || '').trim();
+    if (loadToken !== _hostBookingPaymentProofLoadToken) return false;
+    if (!url) throw new Error('No payment proof is available.');
+    signedUrl = url;
+    originalLink.href = url;
+    originalLink.style.display = 'inline-flex';
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Payment proof took too long to load.')), 12000);
+      image.onload = () => { clearTimeout(timer); resolve(); };
+      image.onerror = () => { clearTimeout(timer); reject(new Error('The payment proof image could not be displayed.')); };
+      image.src = url;
+    });
+    if (loadToken !== _hostBookingPaymentProofLoadToken) return false;
+    link.href = url;
+    link.style.display = 'block';
+    status.style.display = 'none';
+    return true;
+  } catch (error) {
+    if (loadToken !== _hostBookingPaymentProofLoadToken) return false;
+    image.removeAttribute('src');
+    link.style.display = 'none';
+    link.removeAttribute('href');
+    if (!signedUrl) {
+      originalLink.style.display = 'none';
+      originalLink.removeAttribute('href');
+    }
+    status.textContent = signedUrl
+      ? `${error?.message || 'The preview could not be displayed.'} Use Open original proof.`
+      : (error?.message || 'Payment proof could not be loaded.');
+    return false;
+  }
+}
+async function openHostDepositReceipt(bookingRef, label = 'Deposit proof') {
+  if (!Auth.can('payment_review', sess?.role)) {
+    toast('You do not have access to payment proofs.', 'err');
+    return false;
+  }
+  return openHostBookingPaymentProof(label, () => DB.getReceiptSignedUrl(bookingRef));
+}
+async function openHostBalanceReceipt(paymentId, label = 'Remaining balance proof') {
+  if (!['owner','court_owner'].includes(String(sess?.role || '').toLowerCase())) {
+    toast('Only an owner can view this balance proof.', 'err');
+    return false;
+  }
+  return openHostBookingPaymentProof(label, () => DB.getHostBookingBalanceReceiptSignedUrl(paymentId));
+}
 async function openBookingDetails(ref) {
   const modal = $('bookingDetailsModal');
   const body = $('bookingDetailsBody');
@@ -5597,12 +6145,28 @@ async function openBookingDetails(ref) {
     const b = await getBookingGroupByRef(ref);
     if (!b) throw new Error('Booking not found.');
     const bookingKey = b.groupRef || b.displayRef || b.ref;
-    const notifications = b.hostBooking && DB.getBookingBalanceNotifications ? await DB.getBookingBalanceNotifications(bookingKey) : [];
+    const [notifications, paymentHistory] = await Promise.all([
+      b.hostBooking && DB.getBookingBalanceNotifications
+        ? DB.getBookingBalanceNotifications(bookingKey).catch(() => [])
+        : Promise.resolve([]),
+      b.hostBooking
+        ? getHostBookingPaymentHistory(b)
+        : Promise.resolve({ available:false, attempts:[], manualDecision:null, error:'' }),
+    ]);
     const total = Number(b.total || 0);
-    const paid = window.BookingBalance?.paidAmount?.(b) || 0;
+    const paymentAmounts = b.hostBooking ? hostPaymentHistoryAmounts(b, paymentHistory) : null;
+    const paid = paymentAmounts ? paymentAmounts.summaryPaid : (window.BookingBalance?.paidAmount?.(b) || 0);
     const historicalBalance = Math.max(0, total - paid);
     const forfeited = b.status === 'forfeited' || b.paymentStatus === 'deposit_retained';
-    const currentDue = forfeited ? 0 : historicalBalance;
+    const currentDue = paymentAmounts ? paymentAmounts.due : (forfeited ? 0 : historicalBalance);
+    const reconciliationIssue = Boolean(paymentAmounts?.reconciliationIssue);
+    const paidSummaryLabel = forfeited
+      ? 'Payment retained'
+      : reconciliationIssue
+        ? 'Ledger evidence'
+        : paymentAmounts?.recordedWithoutEvidence
+          ? 'Recorded paid'
+          : 'Verified paid';
     const deadlineState = window.BookingBalance?.deadlineState?.(b) || {};
     const deadline = b.balanceDueAt ? new Date(b.balanceDueAt) : deadlineState.deadline;
     const deadlineLabel = deadline ? window.BookingBalance.formatDeadline(deadline) : '--';
@@ -5612,12 +6176,14 @@ async function openBookingDetails(ref) {
         <div><div class="booking-detail-ref">${esc(b.displayRef || b.ref)}</div><div class="booking-detail-name">${esc(b.fullName || 'Guest')}</div><div class="booking-detail-sub">${esc(b.email || '--')} · ${esc(b.contactNumber || '--')}</div></div>
         <div class="booking-detail-badges">${statusBdg(b.status)} ${payStatusBdg(b.paymentStatus)} <span class="bdg ${bookingSlotLabel(b)==='Released'?'bdg-x':'bdg-c'}">Slot ${bookingSlotLabel(b)}</span></div>
       </div>
-      <div class="booking-detail-grid">
+      <div class="booking-detail-grid ${b.hostBooking ? 'booking-payment-history-summary' : ''}">
         <div class="booking-detail-card money"><span>Total booking</span><strong>${fmt(total)}</strong></div>
-        <div class="booking-detail-card money"><span>${forfeited?'Payment retained':'Verified paid'}</span><strong>${fmt(paid)}</strong></div>
-        <div class="booking-detail-card ${forfeited?'danger':currentDue>0?'warn':''}"><span>${forfeited?'Unpaid at forfeiture':'Current amount due'}</span><strong>${fmt(forfeited?historicalBalance:currentDue)}</strong></div>
+        <div class="booking-detail-card money"><span>${esc(paidSummaryLabel)}</span><strong>${fmt(paid)}</strong></div>
+        ${reconciliationIssue
+          ? '<div class="booking-detail-card warn"><span>Reconciliation</span><strong>Needs review</strong></div>'
+          : `<div class="booking-detail-card ${forfeited?'danger':currentDue>0?'warn':''}"><span>${forfeited?'Unpaid at forfeiture':'Current amount due'}</span><strong>${fmt(forfeited?historicalBalance:currentDue)}</strong></div>`}
         ${forfeited ? `<div class="booking-detail-card"><span>Current collectible</span><strong>${fmt(0)}</strong></div><div class="booking-detail-card"><span>Refund issued</span><strong>${fmt(0)}</strong></div>` : ''}
-        ${b.hostBooking ? `<div class="booking-detail-card ${deadlineState.code==='final'||deadlineState.code==='overdue'?'danger':''}"><span>Balance deadline</span><strong>${esc(deadlineLabel)}</strong></div>` : ''}
+        ${b.hostBooking ? `<div class="booking-detail-card ${currentDue>0 && (deadlineState.code==='final'||deadlineState.code==='overdue')?'danger':''}"><span>${currentDue<=0&&!forfeited?'Balance status':'Balance deadline'}</span><strong>${currentDue<=0&&!forfeited?'Settled':esc(deadlineLabel)}</strong></div>` : ''}
       </div>
       <div class="booking-detail-section"><h3>Reservation</h3>
         <div class="booking-detail-row"><span>Host / source</span><strong>${esc(b.hostName || b.hostEmail || bookingSourceMeta(b))}</strong></div>
@@ -5627,19 +6193,19 @@ async function openBookingDetails(ref) {
         ${deadlineState.label && !forfeited ? `<div class="booking-detail-row"><span>Time remaining</span><strong>${esc(deadlineState.label)}</strong></div>` : ''}
         ${forfeited ? `<div class="booking-detail-row"><span>Forfeited on</span><strong>${b.forfeitedAt ? esc(window.BookingBalance.formatDeadline(b.forfeitedAt)) : '--'}</strong></div><div class="booking-detail-row"><span>Reason</span><strong>${esc(b.forfeitureReason || 'Remaining balance was not paid by the deadline.')}</strong></div>` : ''}
       </div>
-      <div class="booking-detail-section"><h3>Payment record</h3>
+      ${b.hostBooking ? renderHostPaymentHistory(b, paymentHistory) : `<div class="booking-detail-section"><h3>Payment record</h3>
         <div class="booking-detail-row"><span>Payment method</span><strong>${esc(paymentMethodLabel(b.paymentMethod))}</strong></div>
         <div class="booking-detail-row"><span>Payment reference</span><strong>${esc(b.gcashRef || '--')}</strong></div>
         <div class="booking-detail-row"><span>Payment state</span><strong>${esc(payStatusText(b.paymentStatus))}</strong></div>
         <div class="booking-detail-row"><span>Policy</span><strong>Final and non-refundable</strong></div>
-      </div>
+      </div>`}
       ${b.hostBooking ? `<div class="booking-detail-section"><h3>Email history</h3><div class="booking-notice-list">${notices}</div></div>` : ''}`;
     const actionRef = b.primaryRef || b.ref;
     const hasReceipt = Boolean(String(b.receiptImageUrl || '').trim()) && isDigitalPayment(b.paymentMethod);
     $('bookingDetailsActions').innerHTML = `
       <button class="btn btn-g" onclick="closeBookingDetails()">Close</button>
-      ${hasReceipt ? `<button class="btn btn-g" onclick="closeBookingDetails();openVerifyModal('${jsArg(actionRef)}')">View Payment</button>` : ''}
-      ${b.hostBooking && b.email && (forfeited || historicalBalance > 0) ? `<button class="btn btn-p" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Forfeiture Notice':'Send Balance Reminder'}</button>` : ''}`;
+      ${hasReceipt && !b.hostBooking ? `<button class="btn btn-g" onclick="closeBookingDetails();openVerifyModal('${jsArg(actionRef)}')">View Payment</button>` : ''}
+      ${b.hostBooking && b.email && (forfeited || currentDue > 0) ? `<button class="btn btn-p" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Forfeiture Notice':'Send Balance Reminder'}</button>` : ''}`;
     requestAnimationFrame(() => modal.querySelector('.booking-details-modal')?.focus());
   } catch (error) {
     body.innerHTML = `<div class="booking-details-loading">${esc(error?.message || 'Could not load booking details.')}</div>`;
@@ -14986,6 +15552,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     if(e.target!==ov) return;
     if(ov.id==='hostAccountModal') closeHostAccountDetails();
     else if(ov.id==='bookingDetailsModal') closeBookingDetails();
+    else if(ov.id==='hostBookingPaymentProofModal') closeHostBookingPaymentProof();
     else if(ov.id==='verifyModal') closeVerifyModal();
     else if(['rmPrepareModal','rmPayModal','rmReviewModal','rmDetailModal','rmCancelModal'].includes(ov.id)) closeRemittanceModal(ov.id);
     else ov.classList.remove('show');

@@ -574,6 +574,117 @@ function rowToBooking(r) {
   };
 }
 
+const HOST_BOOKING_BALANCE_PAYMENT_HISTORY_COLUMNS = [
+  'id',
+  'verification_ref',
+  'booking_key',
+  'booking_ref',
+  'booking_group_ref',
+  'booking_refs',
+  'host_user_id',
+  'status',
+  'total_amount',
+  'original_paid_amount',
+  'expected_amount',
+  'balance_due_at',
+  'expires_at',
+  'payment_provider',
+  'payment_reference',
+  'customer_name',
+  'customer_email',
+  'booking_date',
+  'court_label',
+  'schedule_label',
+  'receipt_verification_id',
+  'receipt_result',
+  'receipt_image_hash',
+  'receipt_flags',
+  'receipt_extracted',
+  'receipt_confidence',
+  'submitted_at',
+  'reviewed_at',
+  'reviewed_by_user_id',
+  'reviewed_by_role',
+  'review_reason',
+  'approved_at',
+  'rejected_at',
+  'created_at',
+  'updated_at',
+].join(',');
+
+function hostBookingBalanceIdentifier(value, label, maxLength) {
+  const raw = String(value ?? '');
+  if (/[\u0000-\u001f\u007f]/.test(raw)) throw new Error(`${label} contains invalid characters.`);
+  const clean = raw.trim();
+  if (!clean || clean.length > maxLength) throw new Error(`${label} is invalid.`);
+  return clean;
+}
+
+function hostBookingBalanceMoney(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100) / 100) : 0;
+}
+
+function rowToHostBookingBalancePayment(r = {}) {
+  const status = String(r.status || '').trim().toLowerCase();
+  const totalAmount = hostBookingBalanceMoney(r.total_amount ?? r.totalAmount);
+  const originalPaidAmount = hostBookingBalanceMoney(
+    r.original_paid_amount ?? r.originalPaidAmount,
+  );
+  const expectedAmount = hostBookingBalanceMoney(r.expected_amount ?? r.expectedAmount);
+  const id = String(r.id ?? r.paymentId ?? '').trim();
+  const receiptConfidenceValue = r.receipt_confidence ?? r.receiptConfidence;
+  const receiptConfidence = receiptConfidenceValue == null
+    ? null
+    : Number(receiptConfidenceValue);
+  return {
+    id,
+    paymentId: id,
+    verificationRef: r.verification_ref ?? r.verificationRef ?? null,
+    bookingKey: r.booking_key ?? r.bookingKey ?? null,
+    bookingRef: r.booking_ref ?? r.bookingRef ?? null,
+    bookingGroupRef: r.booking_group_ref ?? r.bookingGroupRef ?? null,
+    bookingRefs: Array.isArray(r.booking_refs ?? r.bookingRefs)
+      ? [...(r.booking_refs ?? r.bookingRefs)]
+      : [],
+    hostUserId: r.host_user_id ?? r.hostUserId ?? null,
+    status,
+    totalAmount,
+    originalPaidAmount,
+    expectedAmount,
+    balanceAmount: expectedAmount,
+    paidAmount: status === 'approved' ? totalAmount : originalPaidAmount,
+    remainingAmount: status === 'approved' ? 0 : expectedAmount,
+    balanceDueAt: r.balance_due_at ?? r.balanceDueAt ?? null,
+    expiresAt: r.expires_at ?? r.expiresAt ?? null,
+    paymentProvider: r.payment_provider ?? r.paymentProvider ?? null,
+    paymentReference: r.payment_reference ?? r.paymentReference ?? null,
+    customerName: r.customer_name ?? r.customerName ?? null,
+    customerEmail: r.customer_email ?? r.customerEmail ?? null,
+    bookingDate: r.booking_date ?? r.bookingDate ?? null,
+    courtLabel: r.court_label ?? r.courtLabel ?? null,
+    scheduleLabel: r.schedule_label ?? r.scheduleLabel ?? null,
+    receiptVerificationId:
+      r.receipt_verification_id ?? r.receiptVerificationId ?? null,
+    receiptStatus: r.receipt_result ?? r.receiptStatus ?? null,
+    receiptImageHash: r.receipt_image_hash ?? r.receiptImageHash ?? null,
+    receiptFlags: Array.isArray(r.receipt_flags ?? r.receiptFlags)
+      ? [...(r.receipt_flags ?? r.receiptFlags)]
+      : [],
+    receiptExtracted: r.receipt_extracted ?? r.receiptExtracted ?? null,
+    receiptConfidence: Number.isFinite(receiptConfidence) ? receiptConfidence : null,
+    submittedAt: r.submitted_at ?? r.submittedAt ?? null,
+    reviewedAt: r.reviewed_at ?? r.reviewedAt ?? null,
+    reviewedByUserId: r.reviewed_by_user_id ?? r.reviewedByUserId ?? null,
+    reviewedByRole: r.reviewed_by_role ?? r.reviewedByRole ?? null,
+    reviewReason: r.review_reason ?? r.reviewReason ?? null,
+    approvedAt: r.approved_at ?? r.approvedAt ?? null,
+    rejectedAt: r.rejected_at ?? r.rejectedAt ?? null,
+    createdAt: r.created_at ?? r.createdAt ?? null,
+    updatedAt: r.updated_at ?? r.updatedAt ?? null,
+  };
+}
+
 function archivePayloadToBooking(payload) {
   if (!payload || typeof payload !== 'object') return null;
   return Object.prototype.hasOwnProperty.call(payload, 'full_name') || Object.prototype.hasOwnProperty.call(payload, 'court_id')
@@ -2630,6 +2741,43 @@ window.DB = {
     return (data || []).map(rowToBooking);
   },
 
+  async getHostBookingBalancePaymentHistory(bookingKey) {
+    const key = hostBookingBalanceIdentifier(bookingKey, 'Booking reference', 160);
+    const { data, error } = await _sb
+      .from('host_booking_balance_payments')
+      .select(HOST_BOOKING_BALANCE_PAYMENT_HISTORY_COLUMNS)
+      .eq('booking_key', key)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) {
+      console.error('getHostBookingBalancePaymentHistory:', error);
+      throw new Error(_extractFnError(error, 'Could not load balance payment history'));
+    }
+    return (data || []).map(rowToHostBookingBalancePayment);
+  },
+
+  async getHostBookingBalanceReceiptSignedUrl(paymentId) {
+    const id = hostBookingBalanceIdentifier(paymentId, 'Balance payment id', 80);
+    const result = await _invokeEdgeFunction('integration-status', {
+      api: 'host_booking_balance_payment',
+      action: 'receipt_url',
+      paymentId: id,
+    });
+    if (result?.ok === false) {
+      throw new Error(result.error || 'Could not load balance payment receipt.');
+    }
+    const rawUrl = String(result?.url || result?.data?.url || '').trim();
+    if (!rawUrl) throw new Error(result?.error || 'No balance payment receipt is available.');
+    let url;
+    try {
+      url = new URL(rawUrl);
+    } catch (_) {
+      throw new Error('The balance payment receipt link is invalid.');
+    }
+    if (url.protocol !== 'https:') throw new Error('The balance payment receipt link is not secure.');
+    return url.href;
+  },
+
   async saveAccount(account) {
     const { error } = await _sb.from('accounts').upsert(accountToRow(account));
     if (error) { console.error('saveAccount:', error); throw error; }
@@ -3569,6 +3717,7 @@ window.DB = {
     return {
       courts: defaultCourts(),
       bookings: defaultHostDemoBookings(),
+      hostBookingBalancePayments: [],
       openPlayRegistrations: [],
       openPlayHostApplications: [],
       openPlayHostSessions: [],
@@ -3622,6 +3771,9 @@ window.DB = {
       settings: { ...defaultSettings(), ...(parsed.settings || {}) },
       courts: Array.isArray(parsed.courts) && parsed.courts.length ? parsed.courts : defaultCourts(),
       bookings,
+      hostBookingBalancePayments: Array.isArray(parsed.hostBookingBalancePayments)
+        ? parsed.hostBookingBalancePayments
+        : [],
       openPlayRegistrations: Array.isArray(parsed.openPlayRegistrations) ? parsed.openPlayRegistrations : [],
       openPlayHostApplications: Array.isArray(parsed.openPlayHostApplications) ? parsed.openPlayHostApplications : [],
       openPlayHostSessions: Array.isArray(parsed.openPlayHostSessions) ? parsed.openPlayHostSessions : [],
@@ -6024,6 +6176,38 @@ window.DB = {
         .filter(booking => booking.hostBooking && booking.email !== 'reserve@hold.internal')
         .filter(booking => String(booking.hostUserId || booking.createdByUserId || '') === id)
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    },
+    async getHostBookingBalancePaymentHistory(bookingKey) {
+      const key = hostBookingBalanceIdentifier(bookingKey, 'Booking reference', 160);
+      return (readDb().hostBookingBalancePayments || [])
+        .filter(row => {
+          const refs = Array.isArray(row.bookingRefs ?? row.booking_refs)
+            ? row.bookingRefs ?? row.booking_refs
+            : [];
+          return [
+            row.bookingKey ?? row.booking_key,
+            row.bookingGroupRef ?? row.booking_group_ref,
+            row.bookingRef ?? row.booking_ref,
+            ...refs,
+          ].some(value => String(value || '') === key);
+        })
+        .map(rowToHostBookingBalancePayment)
+        .sort((a, b) =>
+          String(a.createdAt || '').localeCompare(String(b.createdAt || '')) ||
+          String(a.id || '').localeCompare(String(b.id || ''))
+        );
+    },
+    async getHostBookingBalanceReceiptSignedUrl(paymentId) {
+      const id = hostBookingBalanceIdentifier(paymentId, 'Balance payment id', 80);
+      const payment = (readDb().hostBookingBalancePayments || []).find(row =>
+        String(row.id ?? row.paymentId ?? '') === id
+      );
+      const url = String(
+        payment?.receiptImageUrl ?? payment?.receipt_image_url ??
+        payment?.receiptUrl ?? payment?.receipt_url ?? '',
+      ).trim();
+      if (!url) throw new Error('No balance payment receipt is stored in local data mode.');
+      return url;
     },
     async saveAccount(account) {
       const db = readDb();
