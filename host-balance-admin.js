@@ -350,14 +350,21 @@
     if (active) active.textContent = decision === 'approve' ? 'Approving…' : 'Rejecting…';
     syncActions(true);
     try {
-      await apiCall('review', {
+      const result = await apiCall('review', {
         paymentId: paymentId(payment),
         decision,
         reason,
       });
+      const confirmationEmail = result?.confirmationEmail || result?.data?.confirmationEmail;
       notify(
         decision === 'approve'
-          ? 'Balance payment approved. The booking is fully paid.'
+          ? confirmationEmail?.sent
+            ? `Balance approved and confirmation emailed to ${confirmationEmail.recipient}.`
+            : confirmationEmail?.deduplicated
+              ? 'Balance approved. The host confirmation was already sent.'
+              : confirmationEmail?.error
+                ? 'Balance approved, but the host confirmation email could not be sent.'
+                : 'Balance payment approved. The booking is fully paid.'
           : 'Balance receipt rejected.',
         decision === 'approve' ? 'ok' : 'inf',
       );

@@ -22,6 +22,10 @@ const paymentReviewEmail = fs.readFileSync(
   './supabase/functions/_shared/payment-review-email.ts',
   'utf8',
 );
+const balanceConfirmationEmail = fs.readFileSync(
+  './supabase/functions/_shared/host-balance-confirmation-email.ts',
+  'utf8',
+);
 const admin = fs.readFileSync('./admin.html', 'utf8');
 const balanceAdmin = fs.readFileSync('./host-balance-admin.js', 'utf8');
 
@@ -66,6 +70,18 @@ test('pending host balances create owner-review notifications with supported sch
   assert.match(balanceHandler, /dispatchTelegramBalanceReview/);
   assert.match(balanceHandler, /event: "balance_payment_review_needed"/);
   assert.match(balanceHandler, /type: "host_booking_balance"/);
+});
+
+test('approved host balances send a deduplicated fully-paid confirmation to the host', () => {
+  assert.match(balanceHandler, /deliverHostBalanceConfirmation\(\{/);
+  assert.match(balanceHandler, /decision === "approve"/);
+  assert.match(balanceHandler, /action === "send_confirmation"/);
+  assert.match(balanceConfirmationEmail, /Balance Payment Confirmed/);
+  assert.match(balanceConfirmationEmail, /FULLY PAID · NO BALANCE DUE/);
+  assert.match(balanceConfirmationEmail, /host-balance-confirmation:v1:/);
+  assert.match(balanceConfirmationEmail, /createPaymentReviewDeliveryIdempotencyKey/);
+  assert.match(balanceConfirmationEmail, /confirmation_email_last_event: event/);
+  assert.match(balanceAdmin, /confirmationEmail\?\.sent/);
 });
 
 test('balance review alert deep links open the dedicated receipt reviewer', () => {

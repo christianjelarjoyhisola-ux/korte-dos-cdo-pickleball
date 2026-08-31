@@ -510,7 +510,7 @@ export async function createPaymentReviewDeliveryIdempotencyKey(
   return `payment-review-delivery:v1:${hex}`;
 }
 
-async function sendResendEmail(
+export async function sendResendEmail(
   options: {
     resendApiKey: string;
     recipient: string;

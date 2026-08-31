@@ -2,6 +2,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { deliverPaymentReviewNotification } from "../_shared/payment-review-email.ts";
+import { deliverHostBalanceConfirmation } from "../_shared/host-balance-confirmation-email.ts";
 
 type AccountRole = "host" | "owner" | "court_owner" | "system";
 type Actor = {
@@ -619,11 +620,54 @@ export async function handleHostBookingBalancePayment(
         },
       );
       if (error) throw error;
+      const payment = normalizeRpcPayment(data);
+      let confirmationEmail: Record<string, unknown> | null = null;
+      if (decision === "approve") {
+        try {
+          confirmationEmail = await deliverHostBalanceConfirmation({
+            db,
+            resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+            fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+            paymentId,
+          });
+        } catch (confirmationError) {
+          console.error("host balance confirmation email failed", {
+            paymentId,
+            reason: errorMessage(confirmationError),
+          });
+          confirmationEmail = {
+            ok: false,
+            error: errorMessage(confirmationError),
+          };
+        }
+      }
       return json({
         ok: true,
         action,
         decision,
-        payment: normalizeRpcPayment(data),
+        payment,
+        confirmationEmail,
+      });
+    }
+
+    if (action === "send_confirmation") {
+      const denied = requireReviewer(actor);
+      if (denied) return denied;
+      const paymentId = cleanUuid(
+        body.paymentId ?? body.payment_id,
+        "Payment id",
+      );
+      const confirmationEmail = await deliverHostBalanceConfirmation({
+        db,
+        resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+        fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+        paymentId,
+      });
+      return json({
+        ok: true,
+        action,
+        paymentId,
+        confirmationEmail,
       });
     }
 
