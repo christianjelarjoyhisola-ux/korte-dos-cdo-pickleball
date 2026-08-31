@@ -6400,9 +6400,14 @@ function startAdminRealtime(){
       }catch(_){}
     },300);
   };
+  const rerenderHostBalances=()=>{
+    Promise.resolve(window.HostBalanceAdmin?.render?.(true))
+      .catch(()=>{})
+      .finally(rerender);
+  };
   _supabase.channel('admin-rt')
     .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'host_booking_balance_payments'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'host_booking_balance_payments'},rerenderHostBalances)
     .on('postgres_changes',{event:'*',schema:'public',table:'deleted_booking_archive'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'courts'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'settings'},rerender)
@@ -6702,7 +6707,9 @@ function bookingNavigationBucket(b) {
   return 'pending';
 }
 function bookingMatchesNavigation(b, view = _bookingType) {
-  return view === 'all' || bookingNavigationBucket(b) === view;
+  if (view === 'all') return true;
+  if (view === 'pending' && pendingHostBalanceReview(b)) return true;
+  return bookingNavigationBucket(b) === view;
 }
 function bookingViewNoun(view = _bookingType, count = 2) {
   const labels = BOOKING_VIEW_NOUNS[view] || BOOKING_VIEW_NOUNS.all;
@@ -6834,7 +6841,11 @@ async function renderBookings(){
     }
   }
   const viewCounts = { all: allGroups.length, pending: 0, confirmed: 0, completed: 0, closed: 0, host: 0 };
-  allGroups.forEach(group => { viewCounts[bookingNavigationBucket(group)]++; });
+  allGroups.forEach(group => {
+    const bucket = bookingNavigationBucket(group);
+    viewCounts[bucket]++;
+    if (bucket !== 'pending' && bookingMatchesNavigation(group, 'pending')) viewCounts.pending++;
+  });
   updateBookingNavCount('bookingCountAll', viewCounts.all, 'All bookings');
   updateBookingNavCount('bookingCountPending', viewCounts.pending, 'Pending');
   updateBookingNavCount('bookingCountConfirmed', viewCounts.confirmed, 'Confirmed');

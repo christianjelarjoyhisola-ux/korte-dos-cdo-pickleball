@@ -64,7 +64,7 @@ test('navigation counts grouped reservations once and assigns every top-level bu
   groupedReservations.forEach(group => { counts[bookingNavigationBucket(group)] += 1; });
 
   assert.deepEqual(counts, { all: 5, pending: 1, confirmed: 1, completed: 1, closed: 1, host: 1 });
-  assert.match(adminSource, /const allGroups = groupBookings\(bks\);[\s\S]*?allGroups\.forEach\(group => \{ viewCounts\[bookingNavigationBucket\(group\)\]\+\+; \}\);/);
+  assert.match(adminSource, /const allGroups = groupBookings\(bks\);[\s\S]*?const bucket = bookingNavigationBucket\(group\);[\s\S]*?viewCounts\[bucket\]\+\+;[\s\S]*?bookingMatchesNavigation\(group, 'pending'\)/);
   assert.match(adminSource, /let filteredBookings = allGroups\.filter\(group => bookingMatchesNavigation\(group\)\);/);
 });
 
@@ -172,9 +172,11 @@ test('pending balance receipts replace the misleading Balance Due controls with 
   vm.createContext(context);
   vm.runInContext([
     extractFunction('pendingHostBalanceReview'),
+    extractFunction('bookingNavigationBucket'),
+    extractFunction('bookingMatchesNavigation'),
     extractLastFunction('bookingPayStateSelect'),
     extractLastFunction('bookingActionsHtml'),
-    'this.helpers = { bookingPayStateSelect, bookingActionsHtml };',
+    'this.helpers = { bookingMatchesNavigation, bookingPayStateSelect, bookingActionsHtml };',
   ].join('\n'), context);
 
   const pending = {
@@ -195,6 +197,8 @@ test('pending balance receipts replace the misleading Balance Due controls with 
   assert.match(pendingActions, /HBAL-164B4109DE70447F92CCEC26EEE82D99/);
   assert.doesNotMatch(pendingActions, /Balance Reminder/);
   assert.doesNotMatch(pendingActions, /Record Fully Paid/);
+  assert.equal(context.helpers.bookingMatchesNavigation(pending, 'pending'), true);
+  assert.equal(context.helpers.bookingMatchesNavigation(pending, 'host'), true);
 
   const due = { ...pending, pendingBalancePayment: null, email: 'player@example.com' };
   assert.match(context.helpers.bookingPayStateSelect(due), /Balance Due/);
@@ -222,4 +226,5 @@ test('booking rows join grouped bookings to pending balance records and refresh 
   assert.equal(groups[0].pendingBalancePayment, payment);
   assert.match(adminSource, /HostBalanceAdmin\?\.render\?\.\(false\)/);
   assert.match(adminSource, /table:'host_booking_balance_payments'/);
+  assert.match(adminSource, /rerenderHostBalances/);
 });
