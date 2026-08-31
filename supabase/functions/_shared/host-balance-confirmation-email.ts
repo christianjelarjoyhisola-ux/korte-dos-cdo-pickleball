@@ -147,6 +147,8 @@ export async function deliverHostBalanceConfirmation(options: {
   paymentId: string;
   fromAddress?: string;
   fetcher?: typeof fetch;
+  recipientOverride?: string;
+  recordDelivery?: boolean;
 }): Promise<HostBalanceConfirmationResult> {
   const paymentId = String(options.paymentId || "").trim().toLowerCase();
   const { data: payment, error: paymentError } = await options.db
@@ -159,7 +161,9 @@ export async function deliverHostBalanceConfirmation(options: {
   if (String(payment.status || "").toLowerCase() !== "approved") {
     return { ok: false, skipped: true, reason: "Balance payment is not approved" };
   }
-  const recipient = normalizePaymentReviewEmail(payment.customer_email);
+  const recipient = normalizePaymentReviewEmail(
+    options.recipientOverride || payment.customer_email,
+  );
   if (!recipient) return { ok: false, skipped: true, reason: "Host email is unavailable" };
   const refs = Array.isArray(payment.booking_refs)
     ? payment.booking_refs.map((value: unknown) => String(value || "").trim()).filter(Boolean)
@@ -178,7 +182,8 @@ export async function deliverHostBalanceConfirmation(options: {
   }
 
   const event = hostBalanceConfirmationEvent(paymentId);
-  if (bookings.every((row) =>
+  const recordDelivery = options.recordDelivery !== false && !options.recipientOverride;
+  if (recordDelivery && bookings.every((row) =>
     row.confirmation_email_last_event === event && row.confirmation_email_sent_at
   )) {
     return { ok: true, skipped: true, deduplicated: true, recipient };
@@ -186,7 +191,7 @@ export async function deliverHostBalanceConfirmation(options: {
 
   const email = buildHostBalanceConfirmationEmail(payment, bookings);
   const idempotencyKey = await createPaymentReviewDeliveryIdempotencyKey(
-    `host-balance-confirmation:v1:${paymentId}`,
+    `${recordDelivery ? "host-balance-confirmation" : "host-balance-confirmation-copy"}:v1:${paymentId}`,
     recipient,
   );
   const sent = await sendResendEmail({
@@ -196,16 +201,18 @@ export async function deliverHostBalanceConfirmation(options: {
     fromAddress: options.fromAddress,
     fetcher: options.fetcher,
   }, email);
-  const sentAt = new Date().toISOString();
-  const { error: updateError } = await options.db
-    .from("bookings")
-    .update({
-      confirmation_email_id: sent.providerMessageId || null,
-      confirmation_email_sent_at: sentAt,
-      confirmation_email_last_event: event,
-    })
-    .in("ref", refs);
-  if (updateError) throw updateError;
+  if (recordDelivery) {
+    const sentAt = new Date().toISOString();
+    const { error: updateError } = await options.db
+      .from("bookings")
+      .update({
+        confirmation_email_id: sent.providerMessageId || null,
+        confirmation_email_sent_at: sentAt,
+        confirmation_email_last_event: event,
+      })
+      .in("ref", refs);
+    if (updateError) throw updateError;
+  }
 
   return {
     ok: true,

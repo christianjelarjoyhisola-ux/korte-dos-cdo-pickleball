@@ -103,3 +103,44 @@ Deno.test("delivery records a stable balance-paid event and deduplicates the nex
   assertEquals(second.deduplicated, true);
   assertEquals(sendCount, 1);
 });
+
+Deno.test("a service copy uses the requested recipient without replacing host delivery tracking", async () => {
+  const rows = [{ ...booking }];
+  let sentRecipient = "";
+  const db = {
+    from(table: string) {
+      if (table === "host_booking_balance_payments") {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          maybeSingle: async () => ({ data: { ...payment }, error: null }),
+        };
+      }
+      if (table === "bookings") {
+        return {
+          select() { return this; },
+          in: async () => ({ data: rows.map((row) => ({ ...row })), error: null }),
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    },
+  };
+  const result = await deliverHostBalanceConfirmation({
+    db,
+    resendApiKey: "re_test_1234567890",
+    paymentId: payment.id,
+    recipientOverride: "owner@example.com",
+    recordDelivery: false,
+    fetcher: async (_input, init) => {
+      const request = JSON.parse(String(init?.body || "{}"));
+      sentRecipient = request.to?.[0] || "";
+      return new Response(JSON.stringify({ id: "copy-123" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  assertEquals(result.sent, true);
+  assertEquals(sentRecipient, "owner@example.com");
+  assertEquals(rows[0].confirmation_email_last_event, null);
+});

@@ -29,6 +29,7 @@ type RequestBody = {
   receipt_verification_id?: unknown;
   decision?: unknown;
   reason?: unknown;
+  recipient?: unknown;
   limit?: unknown;
 };
 
@@ -662,6 +663,34 @@ export async function handleHostBookingBalancePayment(
         resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
         fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
         paymentId,
+      });
+      return json({
+        ok: true,
+        action,
+        paymentId,
+        confirmationEmail,
+      });
+    }
+
+    if (action === "send_confirmation_copy") {
+      if (actor.role !== "system") {
+        return json({
+          ok: false,
+          error: "Only the protected service can send a confirmation copy.",
+        }, 403);
+      }
+      const paymentId = cleanUuid(
+        body.paymentId ?? body.payment_id,
+        "Payment id",
+      );
+      const recipient = cleanText(body.recipient, 254, "Recipient");
+      const confirmationEmail = await deliverHostBalanceConfirmation({
+        db,
+        resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+        fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+        paymentId,
+        recipientOverride: recipient,
+        recordDelivery: false,
       });
       return json({
         ok: true,

@@ -76,11 +76,14 @@ test('approved host balances send a deduplicated fully-paid confirmation to the 
   assert.match(balanceHandler, /deliverHostBalanceConfirmation\(\{/);
   assert.match(balanceHandler, /decision === "approve"/);
   assert.match(balanceHandler, /action === "send_confirmation"/);
+  assert.match(balanceHandler, /action === "send_confirmation_copy"/);
+  assert.match(balanceHandler, /actor\.role !== "system"/);
   assert.match(balanceConfirmationEmail, /Balance Payment Confirmed/);
   assert.match(balanceConfirmationEmail, /FULLY PAID · NO BALANCE DUE/);
-  assert.match(balanceConfirmationEmail, /host-balance-confirmation:v1:/);
+  assert.match(balanceConfirmationEmail, /recordDelivery \? "host-balance-confirmation"/);
   assert.match(balanceConfirmationEmail, /createPaymentReviewDeliveryIdempotencyKey/);
   assert.match(balanceConfirmationEmail, /confirmation_email_last_event: event/);
+  assert.match(balanceConfirmationEmail, /host-balance-confirmation-copy/);
   assert.match(balanceAdmin, /confirmationEmail\?\.sent/);
 });
 
