@@ -442,6 +442,26 @@
     return state.loading;
   }
 
+  async function openByReference(reference) {
+    if (!canDecide()) {
+      notify('Only a Court Owner or System Owner can review balance payments.', 'err');
+      return false;
+    }
+    const target = String(reference || '').trim().toLowerCase();
+    if (!target) return false;
+    await render(true);
+    const payment = state.payments.find(item => [
+      paymentId(item),
+      item?.verificationRef,
+      item?.bookingKey,
+      item?.bookingGroupRef,
+      item?.bookingRef,
+    ].some(value => String(value || '').trim().toLowerCase() === target));
+    if (!payment) return false;
+    await openModal(payment);
+    return true;
+  }
+
   function install() {
     addStyles();
     ensurePanel();
@@ -460,6 +480,7 @@
     install,
     render,
     open: openModal,
+    openByReference,
     close: closeModal,
   });
 

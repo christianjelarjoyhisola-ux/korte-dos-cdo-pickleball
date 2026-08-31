@@ -118,6 +118,19 @@ Deno.test("payment review link targets the exact protected dashboard record", ()
   );
 });
 
+Deno.test("remaining-balance alerts use the balance review context and deep link", () => {
+  const email = buildPaymentReviewEmail({
+    ...BASE_NOTIFICATION,
+    bookingRef: "HBAL-164B4109DE70447F92CCEC26EEE82D99",
+    contextType: "host_booking_balance",
+  });
+  assertStringIncludes(email.text, "Type: Remaining booking balance");
+  assertStringIncludes(
+    email.text,
+    "review=HBAL-164B4109DE70447F92CCEC26EEE82D99",
+  );
+});
+
 Deno.test("configuration test email has no fake booking or review action", async () => {
   const testEmail = buildPaymentReviewTestEmail();
   assertEquals(

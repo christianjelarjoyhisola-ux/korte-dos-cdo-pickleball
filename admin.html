@@ -5903,7 +5903,18 @@ function renderHostPaymentHistory(booking, history) {
   ]);
   const depositLabel = `${hostPaymentProvider(booking?.paymentMethod)} deposit receipt`;
   const approved = amounts.approved;
-  const otherAttempts = (history?.attempts || []).filter(attempt => attempt !== approved && ['created','pending_review','rejected','expired'].includes(attempt.status));
+  const pending = !approved
+    ? [...(history?.attempts || [])].reverse().find(attempt =>
+        attempt?.status === 'pending_review' &&
+        attempt?.receiptVerificationId &&
+        attempt?.receiptImageHash
+      ) || null
+    : null;
+  const otherAttempts = (history?.attempts || []).filter(attempt =>
+    attempt !== approved &&
+    attempt !== pending &&
+    ['created','pending_review','rejected','expired'].includes(attempt.status)
+  );
   const depositCopy = ['for_verification','unpaid','rejected'].includes(depositState.code)
     ? 'No verified initial payment is counted yet.'
     : amounts.deposit == null
@@ -5918,7 +5929,18 @@ function renderHostPaymentHistory(booking, history) {
   let balanceAmount = amounts.due;
   let balanceMeta = '';
   let balanceProof = '<span class="booking-payment-proof-unavailable">No proof recorded</span>';
-  if (approved && amounts.reconciliationIssue) {
+  if (pending) {
+    balanceCode = 'pending_review';
+    balanceLabel = 'Awaiting review';
+    balanceCopy = 'The remaining-balance receipt was submitted and is waiting for an owner decision.';
+    balanceAmount = pending.expectedAmount;
+    balanceMeta = hostPaymentEventMeta([
+      { label:'Provider', value:hostPaymentProvider(pending.paymentProvider) },
+      { label:'Reference', value:pending.paymentReference || 'Not recorded', code:Boolean(pending.paymentReference) },
+      { label:'Submitted', value:hostPaymentHistoryDate(pending.submittedAt || pending.createdAt) },
+    ]);
+    balanceProof = hostBalanceProofButton(pending, `${hostPaymentProvider(pending.paymentProvider)} remaining balance receipt`, 'View submitted proof');
+  } else if (approved && amounts.reconciliationIssue) {
     balanceCode = 'review_required';
     balanceLabel = 'Review totals';
     balanceCopy = 'The approved payment ledger does not match the current booking total. Review the record before relying on the split.';
@@ -6298,6 +6320,11 @@ async function openInitialAdminRoute(firstAllowed) {
   );
   if (hostSessionMatch) {
     await openHostSessionVerifyModal(hostSessionMatch[1]);
+    return;
+  }
+  if (/^HBAL-[A-F0-9]{32}$/i.test(reviewRef)) {
+    const opened = await window.HostBalanceAdmin?.openByReference?.(reviewRef);
+    if (!opened) toast('The balance payment review could not be opened.', 'err');
     return;
   }
   if (!/^[A-Za-z0-9_-]{3,128}$/.test(reviewRef)) {
@@ -15867,7 +15894,7 @@ async function checkAgreementGate(session) {
 <script src="supabase-config.js?v=20260826-court-pick-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
-<script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
+<script src="host-balance-admin.js?v=20260831-balance-review-v3"></script>
 <script src="open-play-parity-ui.js?v=20260724-parity-v1"></script>
 <script src="qrcode.min.js?v=1.5.4"></script>
 <script src="play-manager.js?v=20260729-result-header-organized-v1"></script>

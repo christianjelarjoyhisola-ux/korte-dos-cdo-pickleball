@@ -278,7 +278,7 @@ test('serves critical balance scripts through the current cache-busted release',
   assert.match(adminHtml, /host-balance-payment\.js\?v=20260820-host-balance-eod-v3/);
   assert.match(indexHtml, /booking-balance\.js\?v=20260820-host-balance-eod-v3/);
   assert.match(adminHtml, /booking-balance\.js\?v=20260820-host-balance-eod-v3/);
-  assert.match(adminHtml, /host-balance-admin\.js\?v=20260731-host-balance-payment-v2/);
+  assert.match(adminHtml, /host-balance-admin\.js\?v=20260831-balance-review-v3/);
   assert.match(headers, /\/host-balance-payment\.js\s+Cache-Control: no-cache, max-age=0, must-revalidate/);
   assert.match(headers, /\/host-balance-admin\.js\s+Cache-Control: no-cache, max-age=0, must-revalidate/);
   assert.match(worker, /"\/host-balance-payment\.js"/);

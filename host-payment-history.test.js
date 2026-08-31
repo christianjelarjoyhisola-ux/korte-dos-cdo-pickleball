@@ -272,6 +272,31 @@ test('only the approved balance contributes to verified total while other attemp
   assert.ok(html.indexOf('E563D5B2F189') < otherAttemptsAt);
 });
 
+test('a submitted balance awaiting review is the primary balance event with its proof visible', () => {
+  const helpers = loadPaymentHistoryHelpers({});
+  const history = exampleHistory();
+  history.attempts = history.attempts.filter(attempt => attempt.status !== 'approved');
+  history.attempts[0] = {
+    ...history.attempts[0],
+    receiptVerificationId: 78,
+    receiptImageHash: 'b'.repeat(64),
+  };
+  const html = helpers.renderHostPaymentHistory(exampleBooking({
+    paymentStatus: 'downpayment_paid',
+    downpayment: 510,
+  }), history);
+
+  const balance = html.match(/data-payment-kind="balance"[\s\S]*?(?=<details|$)/)?.[0] || '';
+  assert.match(balance, /data-payment-status="pending_review"/);
+  assert.match(balance, /Awaiting review/);
+  assert.match(balance, /View submitted proof/);
+  assert.match(balance, /openHostBalanceReceipt\('balance-pending'/);
+  assert.match(balance, /PENDING-REF-2/);
+  assert.match(html, /₱510\.00 verified of ₱1,860\.00/);
+  assert.doesNotMatch(html, /Other attempts \(2\)/);
+  assert.match(html, /Other attempts \(1\)/);
+});
+
 test('deposit and approved balance expose distinct proof actions', () => {
   const helpers = loadPaymentHistoryHelpers({});
   const html = helpers.renderHostPaymentHistory(exampleBooking(), exampleHistory());

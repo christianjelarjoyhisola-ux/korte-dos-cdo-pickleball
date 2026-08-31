@@ -10,6 +10,20 @@ const verifier = fs.readFileSync(
   './supabase/functions/verify-gcash-receipt/index.ts',
   'utf8',
 );
+const balanceHandler = fs.readFileSync(
+  './supabase/functions/host-booking-balance-payment/index.ts',
+  'utf8',
+);
+const notificationMigration = fs.readFileSync(
+  './supabase/migrations/20260831113000_host_balance_payment_review_notifications.sql',
+  'utf8',
+);
+const paymentReviewEmail = fs.readFileSync(
+  './supabase/functions/_shared/payment-review-email.ts',
+  'utf8',
+);
+const admin = fs.readFileSync('./admin.html', 'utf8');
+const balanceAdmin = fs.readFileSync('./host-balance-admin.js', 'utf8');
 
 test('routes reviewable host balance verification failures to owner review', () => {
   assert.match(migration, /verificationContext'\s*,\s*''\)\s*=\s*\n?\s*'host_booking_balance'/);
@@ -39,4 +53,21 @@ test('requires an exact OCR amount before a host balance can auto-approve', () =
     /hostBalancePayment && extractedAmount != null &&\s*!closeMoney\(extractedAmount, expectedAmount\)/,
   );
   assert.match(verifier, /flags\.push\("AMOUNT_MISMATCH"\)/);
+});
+
+test('pending host balances create owner-review notifications with supported schema context', () => {
+  assert.match(notificationMigration, /'host_booking_balance'/);
+  assert.match(notificationMigration, /where payment\.status = 'pending_review'/);
+  assert.match(notificationMigration, /on conflict \(dedupe_key\) do nothing/);
+  assert.match(paymentReviewEmail, /\| "host_booking_balance"/);
+  assert.match(balanceHandler, /deliverPaymentReviewNotification\(\{/);
+  assert.match(balanceHandler, /contextType: "host_booking_balance"/);
+  assert.match(balanceHandler, /payment\.status === "pending_review"/);
+});
+
+test('balance review alert deep links open the dedicated receipt reviewer', () => {
+  assert.match(admin, /\^HBAL-\[A-F0-9\]\{32\}\$/);
+  assert.match(admin, /HostBalanceAdmin\?\.openByReference/);
+  assert.match(balanceAdmin, /async function openByReference\(reference\)/);
+  assert.match(balanceAdmin, /await openModal\(payment\)/);
 });

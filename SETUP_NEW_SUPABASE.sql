@@ -287,7 +287,12 @@ create table if not exists public.payment_review_notifications (
   next_attempt_at timestamptz,
   sent_at timestamptz,
   constraint payment_review_notifications_context_check
-    check (context_type in ('court_booking', 'open_play', 'host_session')),
+    check (context_type in (
+      'court_booking',
+      'open_play',
+      'host_session',
+      'host_booking_balance'
+    )),
   constraint payment_review_notifications_status_check
     check (status in ('pending', 'sending', 'sent', 'failed')),
   constraint payment_review_notifications_attempt_count_check

@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any no-import-prefix no-control-regex
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { deliverPaymentReviewNotification } from "../_shared/payment-review-email.ts";
 
 type AccountRole = "host" | "owner" | "court_owner" | "system";
 type Actor = {
@@ -455,6 +456,57 @@ export async function handleHostBookingBalancePayment(
           error: "The payment attempt expired; create a new attempt.",
           payment,
         }, 409);
+      }
+      if (
+        payment.status === "pending_review" &&
+        payment.receiptVerificationId &&
+        /^[a-f0-9]{64}$/i.test(String(payment.receiptImageHash || ""))
+      ) {
+        const extracted = payment.receiptExtracted &&
+            typeof payment.receiptExtracted === "object"
+          ? payment.receiptExtracted as Record<string, unknown>
+          : {};
+        const extractedAmount = Number(extracted.amount);
+        const delivery = deliverPaymentReviewNotification({
+          db,
+          resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
+          fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
+          adminUrl: Deno.env.get("PAYMENT_REVIEW_ADMIN_URL") ||
+            "https://kortedoscdo.club/admin.html",
+          notification: {
+            bookingRef: String(payment.verificationRef || ""),
+            bookingGroupRef: String(payment.bookingGroupRef || "") ||
+              undefined,
+            contextType: "host_booking_balance",
+            receiptVerificationId: Number(payment.receiptVerificationId),
+            fullName: String(payment.customerName || "") || undefined,
+            provider: String(payment.paymentProvider || "") || undefined,
+            paymentReference: String(payment.paymentReference || "") ||
+              undefined,
+            imageHash: String(payment.receiptImageHash).toLowerCase(),
+            flags: Array.isArray(payment.receiptFlags)
+              ? payment.receiptFlags as string[]
+              : [],
+            expectedAmount: Number(payment.balanceAmount || 0),
+            extractedAmount: Number.isFinite(extractedAmount)
+              ? extractedAmount
+              : undefined,
+            courtLabel: String(payment.courtLabel || "") || undefined,
+            scheduleLabel: String(payment.scheduleLabel || "") || undefined,
+          },
+        }).then((result) => {
+          if (!result.ok && !result.skipped) {
+            console.error("host balance payment-review notification failed", {
+              paymentId,
+              reason: result.reason,
+            });
+          }
+        });
+        const edgeRuntime = (globalThis as typeof globalThis & {
+          EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void };
+        }).EdgeRuntime;
+        if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(delivery);
+        else await delivery;
       }
       return json({
         ok: true,

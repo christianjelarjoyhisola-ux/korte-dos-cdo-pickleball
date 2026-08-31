@@ -11,7 +11,8 @@ const SENDING_LEASE_MS = 10 * 60 * 1000;
 export type PaymentReviewContext =
   | "court_booking"
   | "open_play"
-  | "host_session";
+  | "host_session"
+  | "host_booking_balance";
 
 export type PaymentReviewNotification = {
   bookingRef: string;
@@ -137,7 +138,12 @@ function safeNotification(
 
   const contextType = cleanText(notification?.contextType, 32);
   if (
-    !["court_booking", "open_play", "host_session"].includes(contextType)
+    ![
+      "court_booking",
+      "open_play",
+      "host_session",
+      "host_booking_balance",
+    ].includes(contextType)
   ) {
     throw new Error("contextType is invalid");
   }
@@ -247,6 +253,7 @@ export function buildPaymentReviewUrl(
 function contextLabel(context: PaymentReviewContext): string {
   if (context === "open_play") return "Open Play registration";
   if (context === "host_session") return "Host session registration";
+  if (context === "host_booking_balance") return "Remaining booking balance";
   return "Court booking";
 }
 
