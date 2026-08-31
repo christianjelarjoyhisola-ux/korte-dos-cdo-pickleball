@@ -1,6 +1,7 @@
 export type TelegramAlertEvent =
   | "new_booking"
-  | "payment_review_needed";
+  | "payment_review_needed"
+  | "balance_payment_review_needed";
 
 export type AuthoritativeTelegramAlert = {
   eventKey: string;
@@ -64,8 +65,11 @@ export function normalizeTelegramAlertEvent(
 ): TelegramAlertEvent | null {
   if (!isRecord(body)) return null;
   const type = lower(body.type);
-  if (type && type !== "booking" && type !== "booking_update") return null;
   const event = lower(body.event);
+  if (event === "balance_payment_review_needed") {
+    return !type || type === "host_booking_balance" ? event : null;
+  }
+  if (type && type !== "booking" && type !== "booking_update") return null;
   if (event === "new_booking" || event === "payment_review_needed") {
     return event;
   }
@@ -306,5 +310,84 @@ export async function buildAuthoritativeTelegramAlert(
     message: messageForAlert(rows, event, bookingRef, adminUrl),
     payloadDigest,
     bookingRef,
+  };
+}
+
+function maskedPaymentReference(value: unknown): string {
+  const cleaned = text(value).replace(/\s+/g, "");
+  if (!cleaned) return "";
+  return `••••${cleaned.slice(-4)}`;
+}
+
+export async function buildAuthoritativeTelegramBalanceAlert(
+  source: unknown,
+  adminUrl: string,
+): Promise<AuthoritativeTelegramAlert | null> {
+  if (!isRecord(source)) return null;
+  const verificationRef = text(source.verification_ref);
+  const paymentId = text(source.id);
+  const imageHash = lower(source.receipt_image_hash);
+  const receiptVerificationId = Number(source.receipt_verification_id);
+  const expectedAmount = amount(source.expected_amount);
+  if (
+    lower(source.status) !== "pending_review" ||
+    !/^HBAL-[A-F0-9]{32}$/i.test(verificationRef) ||
+    !/^[0-9a-f-]{36}$/i.test(paymentId) ||
+    !/^[a-f0-9]{64}$/.test(imageHash) ||
+    !Number.isSafeInteger(receiptVerificationId) ||
+    receiptVerificationId <= 0 ||
+    expectedAmount <= 0
+  ) return null;
+
+  const flags = [...new Set(stringArray(source.receipt_flags))].slice(0, 8);
+  const paymentReference = maskedPaymentReference(source.payment_reference);
+  const reviewUrl = safeAdminReviewUrl(adminUrl, verificationRef);
+  const message = [
+    "<b>BALANCE PAYMENT NEEDS REVIEW</b>",
+    "------------------",
+    `<b>${escapeTelegramHtml(text(source.customer_name) || "Host customer")}</b>`,
+    `Booking: <code>${escapeTelegramHtml(text(source.booking_group_ref) || text(source.booking_key) || text(source.booking_ref))}</code>`,
+    text(source.schedule_label)
+      ? `Schedule: ${escapeTelegramHtml(source.schedule_label)}`
+      : "",
+    text(source.court_label)
+      ? `Court: ${escapeTelegramHtml(source.court_label)}`
+      : "",
+    "",
+    `Payment: <b>${escapeTelegramHtml(paymentMethodLabel(source.payment_provider))}</b>`,
+    paymentReference
+      ? `Payment ref: <code>${escapeTelegramHtml(paymentReference)}</code>`
+      : "",
+    `Booking total: ${php(amount(source.total_amount))}`,
+    `Deposit verified: ${php(amount(source.original_paid_amount))}`,
+    `Balance submitted: <b>${php(expectedAmount)}</b>`,
+    flags.length
+      ? `Review flags: <code>${escapeTelegramHtml(flags.join(", "))}</code>`
+      : "",
+    "",
+    `Review ref: <code>${escapeTelegramHtml(verificationRef)}</code>`,
+    "------------------",
+    `<a href="${escapeTelegramHtml(reviewUrl)}">Open the balance receipt to review.</a>`,
+  ].filter((line, index, all) => {
+    if (line !== "") return true;
+    return index > 0 && all[index - 1] !== "";
+  }).join("\n");
+  const canonical = JSON.stringify({
+    id: paymentId,
+    verificationRef,
+    status: lower(source.status),
+    bookingKey: text(source.booking_key),
+    expectedAmount,
+    provider: lower(source.payment_provider),
+    reference: text(source.payment_reference),
+    receiptVerificationId,
+    imageHash,
+    flags: [...flags].sort(),
+  });
+  return {
+    eventKey: `telegram:balance-payment-review:v1:${paymentId}:${imageHash}`,
+    message,
+    payloadDigest: await sha256Hex(canonical),
+    bookingRef: verificationRef,
   };
 }

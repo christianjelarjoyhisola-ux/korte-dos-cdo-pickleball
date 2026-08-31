@@ -7,7 +7,9 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildAuthoritativeTelegramAlert,
+  buildAuthoritativeTelegramBalanceAlert,
   escapeTelegramHtml,
+  LIVE_TELEGRAM_ADMIN_URL,
   normalizeTelegramAlertEvent,
 } from "./logic.ts";
 
@@ -42,7 +44,21 @@ function booking(overrides: Record<string, unknown> = {}) {
   };
 }
 
-Deno.test("event normalization permits only the two pending verification events", () => {
+Deno.test("event normalization permits only supported pending verification events", () => {
+  assertEquals(
+    normalizeTelegramAlertEvent({
+      type: "host_booking_balance",
+      event: "balance_payment_review_needed",
+    }),
+    "balance_payment_review_needed",
+  );
+  assertEquals(
+    normalizeTelegramAlertEvent({
+      type: "booking_update",
+      event: "balance_payment_review_needed",
+    }),
+    null,
+  );
   assertEquals(
     normalizeTelegramAlertEvent({ event: "new_booking" }),
     "new_booking",
@@ -74,6 +90,68 @@ Deno.test("event normalization permits only the two pending verification events"
       type: "booking_update",
       event: "payment_verified",
     }),
+    null,
+  );
+});
+
+Deno.test("pending balance receipt produces one masked direct-review alert", async () => {
+  const alert = await buildAuthoritativeTelegramBalanceAlert({
+    id: "bc3293a2-afdb-4c4c-a7f8-3ce3137d4417",
+    verification_ref: "HBAL-164B4109DE70447F92CCEC26EEE82D99",
+    booking_key: "PB-MS989GK0-YMMS-G",
+    booking_group_ref: "PB-MS989GK0-YMMS-G",
+    status: "pending_review",
+    total_amount: 3240,
+    original_paid_amount: 877.5,
+    expected_amount: 2362.5,
+    payment_provider: "maya",
+    payment_reference: "0D9447C76157",
+    customer_name: "Ana <Palacio>",
+    court_label: "Court 1, Court 2, Court 3",
+    schedule_label: "Sep 4, 2026, 4:00 PM - 7:00 PM",
+    receipt_verification_id: 462,
+    receipt_image_hash: RECEIPT_HASH,
+    receipt_flags: ["AMOUNT_UNREADABLE"],
+  }, "https://kortedoscdo.club/admin.html");
+  assert(alert);
+  assertEquals(
+    alert.eventKey,
+    `telegram:balance-payment-review:v1:bc3293a2-afdb-4c4c-a7f8-3ce3137d4417:${RECEIPT_HASH}`,
+  );
+  assertEquals(alert.bookingRef, "HBAL-164B4109DE70447F92CCEC26EEE82D99");
+  assertStringIncludes(alert.message, "BALANCE PAYMENT NEEDS REVIEW");
+  assertStringIncludes(alert.message, "Balance submitted: <b>₱2,362.50</b>");
+  assertStringIncludes(alert.message, "Payment ref: <code>••••6157</code>");
+  assertEquals(alert.message.includes("0D9447C76157"), false);
+  assertStringIncludes(alert.message, "Ana &lt;Palacio&gt;");
+  assertStringIncludes(
+    alert.message,
+    "section=payreview&amp;review=HBAL-164B4109DE70447F92CCEC26EEE82D99",
+  );
+});
+
+Deno.test("balance Telegram alert requires a pending stored receipt", async () => {
+  const valid = {
+    id: "bc3293a2-afdb-4c4c-a7f8-3ce3137d4417",
+    verification_ref: "HBAL-164B4109DE70447F92CCEC26EEE82D99",
+    booking_key: "PB-MS989GK0-YMMS-G",
+    status: "pending_review",
+    expected_amount: 2362.5,
+    receipt_verification_id: 462,
+    receipt_image_hash: RECEIPT_HASH,
+  };
+  assertEquals(
+    await buildAuthoritativeTelegramBalanceAlert(
+      { ...valid, status: "approved" },
+      LIVE_TELEGRAM_ADMIN_URL,
+    ),
+    null,
+  );
+  assertEquals(
+    await buildAuthoritativeTelegramBalanceAlert(
+      { ...valid, receipt_image_hash: "" },
+      LIVE_TELEGRAM_ADMIN_URL,
+    ),
     null,
   );
 });

@@ -63,6 +63,9 @@ test('pending host balances create owner-review notifications with supported sch
   assert.match(balanceHandler, /deliverPaymentReviewNotification\(\{/);
   assert.match(balanceHandler, /contextType: "host_booking_balance"/);
   assert.match(balanceHandler, /payment\.status === "pending_review"/);
+  assert.match(balanceHandler, /dispatchTelegramBalanceReview/);
+  assert.match(balanceHandler, /event: "balance_payment_review_needed"/);
+  assert.match(balanceHandler, /type: "host_booking_balance"/);
 });
 
 test('balance review alert deep links open the dedicated receipt reviewer', () => {

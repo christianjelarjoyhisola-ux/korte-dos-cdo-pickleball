@@ -9,6 +9,7 @@ import {
 } from "../_shared/telegram-owner-link.ts";
 import {
   buildAuthoritativeTelegramAlert,
+  buildAuthoritativeTelegramBalanceAlert,
   LIVE_TELEGRAM_ADMIN_URL,
   normalizeTelegramAlertEvent,
 } from "./logic.ts";
@@ -44,6 +45,27 @@ const BOOKING_SELECT = [
   "receipt_image_url",
   "receipt_image_hash",
   "created_at",
+].join(",");
+
+const BALANCE_PAYMENT_SELECT = [
+  "id",
+  "verification_ref",
+  "booking_key",
+  "booking_ref",
+  "booking_group_ref",
+  "status",
+  "total_amount",
+  "original_paid_amount",
+  "expected_amount",
+  "payment_provider",
+  "payment_reference",
+  "customer_name",
+  "court_label",
+  "schedule_label",
+  "receipt_verification_id",
+  "receipt_image_hash",
+  "receipt_flags",
+  "submitted_at",
 ].join(",");
 
 type DbError = {
@@ -313,27 +335,53 @@ Deno.serve(async (req) => {
     },
   }) as unknown as ServiceDb;
 
-  let rows: Record<string, unknown>[];
-  try {
-    rows = await loadBookingGroup(db, reference);
-  } catch (error) {
-    const dbError = error as DbError;
-    console.error(
-      "Telegram authoritative booking lookup failed:",
-      dbError.code || "",
-      dbError.message || errorMessage(error),
+  let alert;
+  if (event === "balance_payment_review_needed") {
+    try {
+      const { data, error } = await db
+        .from("host_booking_balance_payments")
+        .select(BALANCE_PAYMENT_SELECT)
+        .eq("verification_ref", reference)
+        .maybeSingle();
+      if (error) throw error;
+      alert = await buildAuthoritativeTelegramBalanceAlert(
+        data,
+        LIVE_TELEGRAM_ADMIN_URL,
+      );
+    } catch (error) {
+      const dbError = error as DbError;
+      console.error(
+        "Telegram authoritative balance lookup failed:",
+        dbError.code || "",
+        dbError.message || errorMessage(error),
+      );
+      return json({
+        ok: false,
+        error: "The balance payment could not be checked for Telegram notification.",
+      }, 500);
+    }
+  } else {
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await loadBookingGroup(db, reference);
+    } catch (error) {
+      const dbError = error as DbError;
+      console.error(
+        "Telegram authoritative booking lookup failed:",
+        dbError.code || "",
+        dbError.message || errorMessage(error),
+      );
+      return json({
+        ok: false,
+        error: "The booking could not be checked for Telegram notification.",
+      }, 500);
+    }
+    alert = await buildAuthoritativeTelegramAlert(
+      rows,
+      event,
+      LIVE_TELEGRAM_ADMIN_URL,
     );
-    return json({
-      ok: false,
-      error: "The booking could not be checked for Telegram notification.",
-    }, 500);
   }
-
-  const alert = await buildAuthoritativeTelegramAlert(
-    rows,
-    event,
-    LIVE_TELEGRAM_ADMIN_URL,
-  );
   if (!alert) {
     return json({
       ok: true,

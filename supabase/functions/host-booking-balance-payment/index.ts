@@ -295,6 +295,53 @@ async function signedReceipt(
   return { url: signed.signedUrl, expiresIn };
 }
 
+async function dispatchTelegramBalanceReview(
+  verificationRef: string,
+): Promise<void> {
+  const supabaseUrl = String(Deno.env.get("SUPABASE_URL") || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const serviceRoleKey = String(
+    Deno.env.get("SERVICE_ROLE_KEY") ||
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+      "",
+  ).trim();
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey ||
+    !/^HBAL-[A-F0-9]{32}$/i.test(verificationRef)
+  ) return;
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/send-telegram-notification`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          type: "host_booking_balance",
+          event: "balance_payment_review_needed",
+          bookingRef: verificationRef,
+        }),
+      },
+    );
+    if (!response.ok) {
+      console.error(
+        "Telegram balance-review dispatcher failed:",
+        response.status,
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Telegram balance-review dispatcher unavailable:",
+      errorMessage(error),
+    );
+  }
+}
+
 export async function handleHostBookingBalancePayment(
   req: Request,
 ): Promise<Response> {
@@ -467,7 +514,7 @@ export async function handleHostBookingBalancePayment(
           ? payment.receiptExtracted as Record<string, unknown>
           : {};
         const extractedAmount = Number(extracted.amount);
-        const delivery = deliverPaymentReviewNotification({
+        const emailDelivery = deliverPaymentReviewNotification({
           db,
           resendApiKey: Deno.env.get("RESEND_API_KEY") || "",
           fromAddress: Deno.env.get("EMAIL_FROM") || undefined,
@@ -502,6 +549,10 @@ export async function handleHostBookingBalancePayment(
             });
           }
         });
+        const delivery = Promise.allSettled([
+          emailDelivery,
+          dispatchTelegramBalanceReview(String(payment.verificationRef || "")),
+        ]);
         const edgeRuntime = (globalThis as typeof globalThis & {
           EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void };
         }).EdgeRuntime;
