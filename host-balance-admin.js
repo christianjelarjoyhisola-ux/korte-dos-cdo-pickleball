@@ -218,7 +218,7 @@
       image.removeAttribute('src');
       image.style.display = 'none';
       proofStatus.style.display = '';
-      proofStatus.textContent = 'Receipt image could not be loaded. Approval remains disabled.';
+      proofStatus.textContent = 'Receipt image could not be loaded. Approval remains disabled, but you can reject it with a reason.';
       syncActions();
     });
     proof.append(proofStatus, image);
@@ -230,7 +230,7 @@
     reason.className = 'hba-reason';
     reason.placeholder = 'Reason required when rejecting (at least 3 characters)';
     reason.setAttribute('aria-label', 'Review reason');
-    reason.addEventListener('input', syncActions);
+    reason.addEventListener('input', () => syncActions());
 
     const actions = make('div', 'hba-modal-actions');
     const reject = make('button', 'btn btn-r', 'Reject Receipt');
@@ -268,7 +268,7 @@
     const reason = String(byId('hostBalanceReviewReason')?.value || '').trim();
     const permitted = canDecide();
     if (approve) approve.disabled = Boolean(busy) || !permitted || !state.receiptLoaded;
-    if (reject) reject.disabled = Boolean(busy) || !permitted || !state.receiptLoaded || reason.length < 3;
+    if (reject) reject.disabled = Boolean(busy) || !permitted || reason.length < 3;
   }
 
   async function openModal(payment, trigger) {
@@ -328,7 +328,11 @@
 
   async function decide(decision) {
     const payment = state.current;
-    if (!payment || !canDecide() || !state.receiptLoaded) return;
+    if (!payment || !canDecide()) return;
+    if (decision === 'approve' && !state.receiptLoaded) {
+      notify('Load and inspect the receipt before approving the payment.', 'err');
+      return;
+    }
     const reason = String(byId('hostBalanceReviewReason')?.value || '').trim();
     if (decision === 'reject' && reason.length < 3) {
       notify('Enter a short reason before rejecting the receipt.', 'err');

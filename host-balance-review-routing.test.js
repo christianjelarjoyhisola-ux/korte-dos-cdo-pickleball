@@ -89,6 +89,22 @@ test('loaded balance receipt proof is made visible before approval', () => {
   assert.match(balanceAdmin, /!state\.receiptLoaded/);
 });
 
+test('a reviewer can reject suspicious evidence after entering a reason', () => {
+  assert.match(balanceAdmin, /reason\.addEventListener\('input', \(\) => syncActions\(\)\)/);
+  assert.match(
+    balanceAdmin,
+    /if \(reject\) reject\.disabled = Boolean\(busy\) \|\| !permitted \|\| reason\.length < 3;/,
+  );
+  assert.doesNotMatch(
+    balanceAdmin,
+    /if \(reject\) reject\.disabled =[^;]*!state\.receiptLoaded/,
+  );
+  assert.match(
+    balanceAdmin,
+    /if \(decision === 'approve' && !state\.receiptLoaded\)/,
+  );
+});
+
 test('balance review summary stays a compact three-column grid on mobile', () => {
   assert.match(balanceAdmin, /\.hba-summary\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(balanceAdmin, /@media\(max-width:560px\)[\s\S]*?\.hba-summary\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\);gap:6px\}/);
