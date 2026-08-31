@@ -5578,6 +5578,42 @@ function quickPaymentApprovalButton(b) {
   const label = state.manualProviderConfirmation ? 'Restore & Confirm' : 'Confirm Payment';
   return `<button class="btn btn-p btn-sm" type="button" onclick="quickConfirmPayment('${jsArg(actionRef)}',this)">${label}</button>`;
 }
+function pendingHostBalanceReview(b) {
+  const payment = b?.pendingBalancePayment;
+  return payment && String(payment.status || '').toLowerCase() === 'pending_review' ? payment : null;
+}
+function attachPendingHostBalanceReviews(groups, payments) {
+  const byKey = new Map();
+  (payments || []).forEach(payment => {
+    const keys = [
+      payment?.bookingKey,
+      payment?.bookingGroupRef,
+      payment?.bookingRef,
+      ...(Array.isArray(payment?.bookingRefs) ? payment.bookingRefs : []),
+    ];
+    keys.forEach(value => {
+      const key = String(value || '').trim().toLowerCase();
+      if (key) byKey.set(key, payment);
+    });
+  });
+  (groups || []).forEach(group => {
+    const keys = [
+      group?.groupRef,
+      group?.displayRef,
+      group?.primaryRef,
+      group?.ref,
+      ...(Array.isArray(group?.refs) ? group.refs : []),
+    ];
+    group.pendingBalancePayment = keys
+      .map(value => byKey.get(String(value || '').trim().toLowerCase()))
+      .find(Boolean) || null;
+  });
+  return groups;
+}
+async function openHostBalanceReview(reference) {
+  const opened = await window.HostBalanceAdmin?.openByReference?.(reference);
+  if (!opened) toast('The balance payment review could not be opened.', 'err');
+}
 function canRescheduleBooking(b) {
   const items = Array.isArray(b?.allItems) && b.allItems.length
     ? b.allItems
@@ -5590,12 +5626,15 @@ function bookingActionsHtml(b, canDelete){
   const actionRef = b.primaryRef || b.ref;
   const forfeited = b.status === 'forfeited' || b.paymentStatus === 'deposit_retained';
   const hasBalance = b.hostBooking && b.paymentStatus === 'downpayment_paid';
-  const canRecordManualPayment = hasBalance && ['owner','court_owner'].includes(String(sess?.role || ''));
+  const pendingBalance = pendingHostBalanceReview(b);
+  const pendingReviewRef = pendingBalance?.verificationRef || pendingBalance?.paymentId || pendingBalance?.id || '';
+  const canRecordManualPayment = hasBalance && !pendingBalance && ['owner','court_owner'].includes(String(sess?.role || ''));
   const canCorrectForfeiture = forfeited && b.hostBooking && ['owner','court_owner'].includes(String(sess?.role || ''));
   return `${quickPaymentApprovalButton(b)}
     ${bookingDetailsButton(b)}
     ${canRescheduleBooking(b)?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')" title="${grouped ? 'Move every court in this reservation together' : 'Move this booking'}">Reschedule</button>`:''}
-    ${b.email && (forfeited || hasBalance)?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Notice':'Balance Reminder'}</button>`:''}
+    ${pendingBalance?`<button class="btn btn-p btn-sm" type="button" onclick="openHostBalanceReview('${jsArg(pendingReviewRef)}')">Review Balance Receipt</button>`:''}
+    ${b.email && (forfeited || (hasBalance && !pendingBalance))?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Notice':'Balance Reminder'}</button>`:''}
     ${b.status==='confirmed' && b.email && !hasBalance?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendConfirmationEmail('${jsArg(actionRef)}')">Resend Email</button>`:''}
     ${canRecordManualPayment?`<button class="btn btn-p btn-sm" onclick="updatePaymentStatus('${jsArg(actionRef)}','paid')">Record Fully Paid</button>`:''}
     ${canCorrectForfeiture?`<button class="btn btn-p btn-sm" onclick="restoreForfeitedHostBooking('${jsArg(actionRef)}')">Restore Fully Paid</button>`:''}
@@ -5613,6 +5652,7 @@ function bookingActionsHtml(b, canDelete){
 function bookingPayStateSelect(b){
   const actionRef = b.primaryRef || b.ref;
   if (b.status === 'forfeited' || b.paymentStatus === 'deposit_retained') return payStatusBdg('deposit_retained');
+  if (pendingHostBalanceReview(b)) return '<span class="bdg bdg-p">Balance Payment Pending Review</span>';
   return `<select class="fi" style="padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${jsArg(actionRef)}',this.value)">
     ${b.paymentStatus==='mixed'?'<option value="mixed" selected disabled>Mixed</option>':''}
     <option value="unpaid" ${(!b.paymentStatus||b.paymentStatus==='unpaid')?'selected':''}>Unpaid</option>
@@ -5630,15 +5670,16 @@ function bookingAmountSummaryHtml(b) {
   const forfeited = b.status === 'forfeited' || b.paymentStatus === 'deposit_retained';
   const deadline = b.hostBooking ? (b.balanceDueAt ? new Date(b.balanceDueAt) : window.BookingBalance?.balanceDeadline?.(b)) : null;
   const state = window.BookingBalance?.deadlineState?.(b) || {};
+  const pendingBalance = pendingHostBalanceReview(b);
   const detail = forfeited
     ? `<div class="amount-down" style="color:var(--red)">${fmt(paid)} retained · ${fmt(balance)} unpaid</div>`
     : b.paymentStatus === 'paid'
       ? '<div class="amount-down">Fully paid</div>'
       : b.hostBooking && b.paymentStatus === 'downpayment_paid'
-        ? `<div class="amount-down">${fmt(paid)} paid · ${fmt(balance)} balance</div>`
+        ? `<div class="amount-down">${fmt(paid)} paid · ${fmt(balance)} ${pendingBalance ? 'submitted' : 'balance'}</div>`
         : `<div class="amount-down">${fmt(Number(b.downpayment || 0))} payment requested</div>`;
   return `<div class="amount-stack"><div class="amount-main">${fmt(total)}</div>${detail}
-    ${deadline && balance > 0 ? `<div class="amount-deadline ${esc(state.code || '')}">${forfeited?'Forfeited':'Due'} ${esc(window.BookingBalance.formatDeadline(deadline))}${state.label && !forfeited ? ` · ${esc(state.label)}` : ''}</div>` : ''}
+    ${pendingBalance ? `<div class="amount-deadline pending">Balance receipt submitted · Awaiting owner review</div>` : deadline && balance > 0 ? `<div class="amount-deadline ${esc(state.code || '')}">${forfeited?'Forfeited':'Due'} ${esc(window.BookingBalance.formatDeadline(deadline))}${state.label && !forfeited ? ` · ${esc(state.label)}` : ''}</div>` : ''}
     ${b.hostBooking ? `<div style="font-size:.7rem;color:var(--muted);font-weight:700">Host: ${esc(b.hostName || b.hostEmail || 'Open Play Host')}</div>` : ''}
     ${b.gcashRef ? `<div class="amount-ref">Ref: <code>${esc(b.gcashRef)}</code></div>` : ''}${duplicatePaymentRefBadge(b)}</div>`;
 }
@@ -6361,6 +6402,7 @@ function startAdminRealtime(){
   };
   _supabase.channel('admin-rt')
     .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'host_booking_balance_payments'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'deleted_booking_archive'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'courts'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'settings'},rerender)
@@ -6782,6 +6824,15 @@ async function renderBookings(){
   // just an in-progress or abandoned hold and adds no value to the admin list.
   bks=bks.filter(b=>b.email!=='reserve@hold.internal');
   const allGroups = groupBookings(bks);
+  if (['owner','court_owner'].includes(String(sess?.role || '').toLowerCase())) {
+    try {
+      const pendingBalances = await window.HostBalanceAdmin?.render?.(false) || [];
+      if (seq !== _bookingRenderSeq) return;
+      attachPendingHostBalanceReviews(allGroups, pendingBalances);
+    } catch (error) {
+      console.warn('Pending host balance reviews unavailable:', error?.message || error);
+    }
+  }
   const viewCounts = { all: allGroups.length, pending: 0, confirmed: 0, completed: 0, closed: 0, host: 0 };
   allGroups.forEach(group => { viewCounts[bookingNavigationBucket(group)]++; });
   updateBookingNavCount('bookingCountAll', viewCounts.all, 'All bookings');
@@ -15894,7 +15945,7 @@ async function checkAgreementGate(session) {
 <script src="supabase-config.js?v=20260826-court-pick-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
-<script src="host-balance-admin.js?v=20260831-balance-review-v3"></script>
+<script src="host-balance-admin.js?v=20260831-balance-review-v4"></script>
 <script src="open-play-parity-ui.js?v=20260724-parity-v1"></script>
 <script src="qrcode.min.js?v=1.5.4"></script>
 <script src="play-manager.js?v=20260729-result-header-organized-v1"></script>

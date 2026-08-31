@@ -18,6 +18,19 @@ function extractFunction(name) {
   throw new Error(`Could not extract ${name}`);
 }
 
+function extractLastFunction(name) {
+  const start = adminSource.lastIndexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `${name} must exist`);
+  const bodyStart = adminSource.indexOf('{', start);
+  let depth = 0;
+  for (let index = bodyStart; index < adminSource.length; index += 1) {
+    if (adminSource[index] === '{') depth += 1;
+    if (adminSource[index] === '}') depth -= 1;
+    if (depth === 0) return adminSource.slice(start, index + 1);
+  }
+  throw new Error(`Could not extract ${name}`);
+}
+
 function loadNavigationHelpers() {
   const context = {};
   vm.createContext(context);
@@ -145,4 +158,68 @@ test('booking view control is accessible, single-line on mobile, and replaces th
   assert.doesNotMatch(adminSource, /\bid="fStatus"/);
   assert.doesNotMatch(adminSource, /\bfor="fStatus"/);
   assert.doesNotMatch(adminSource, /aria-label="Filter bookings by status"/);
+});
+
+test('pending balance receipts replace the misleading Balance Due controls with review actions', () => {
+  const context = {
+    sess: { role: 'owner' },
+    quickPaymentApprovalButton: () => '',
+    bookingDetailsButton: () => '<button>Details</button>',
+    canRescheduleBooking: () => false,
+    jsArg: value => String(value || ''),
+    payStatusBdg: value => `<span>${value}</span>`,
+  };
+  vm.createContext(context);
+  vm.runInContext([
+    extractFunction('pendingHostBalanceReview'),
+    extractLastFunction('bookingPayStateSelect'),
+    extractLastFunction('bookingActionsHtml'),
+    'this.helpers = { bookingPayStateSelect, bookingActionsHtml };',
+  ].join('\n'), context);
+
+  const pending = {
+    hostBooking: true,
+    status: 'confirmed',
+    paymentStatus: 'downpayment_paid',
+    primaryRef: 'PB-MS989GK0-YMMS-G',
+    pendingBalancePayment: {
+      status: 'pending_review',
+      verificationRef: 'HBAL-164B4109DE70447F92CCEC26EEE82D99',
+    },
+  };
+  const pendingState = context.helpers.bookingPayStateSelect(pending);
+  const pendingActions = context.helpers.bookingActionsHtml(pending, true);
+  assert.match(pendingState, /Balance Payment Pending Review/);
+  assert.doesNotMatch(pendingState, /<select/);
+  assert.match(pendingActions, /Review Balance Receipt/);
+  assert.match(pendingActions, /HBAL-164B4109DE70447F92CCEC26EEE82D99/);
+  assert.doesNotMatch(pendingActions, /Balance Reminder/);
+  assert.doesNotMatch(pendingActions, /Record Fully Paid/);
+
+  const due = { ...pending, pendingBalancePayment: null, email: 'player@example.com' };
+  assert.match(context.helpers.bookingPayStateSelect(due), /Balance Due/);
+  assert.match(context.helpers.bookingActionsHtml(due, true), /Balance Reminder/);
+  assert.match(context.helpers.bookingActionsHtml(due, true), /Record Fully Paid/);
+});
+
+test('booking rows join grouped bookings to pending balance records and refresh them live', () => {
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext([
+    extractFunction('attachPendingHostBalanceReviews'),
+    'this.attachPendingHostBalanceReviews = attachPendingHostBalanceReviews;',
+  ].join('\n'), context);
+  const groups = [{
+    groupRef: 'PB-MS989GK0-YMMS-G',
+    refs: ['PB-MS989GK0-YMMS-1', 'PB-MS989GK0-YMMS-2'],
+  }];
+  const payment = {
+    status: 'pending_review',
+    bookingKey: 'PB-MS989GK0-YMMS-G',
+    verificationRef: 'HBAL-164B4109DE70447F92CCEC26EEE82D99',
+  };
+  context.attachPendingHostBalanceReviews(groups, [payment]);
+  assert.equal(groups[0].pendingBalancePayment, payment);
+  assert.match(adminSource, /HostBalanceAdmin\?\.render\?\.\(false\)/);
+  assert.match(adminSource, /table:'host_booking_balance_payments'/);
 });

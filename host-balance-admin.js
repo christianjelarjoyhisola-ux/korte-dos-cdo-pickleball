@@ -359,6 +359,9 @@
       if (state.originalRenderPaymentReview) {
         await state.originalRenderPaymentReview();
       }
+      if (typeof global.renderBookings === 'function') {
+        await global.renderBookings();
+      }
     } catch (error) {
       notify(error?.message || 'Could not save the balance payment decision.', 'err');
     } finally {

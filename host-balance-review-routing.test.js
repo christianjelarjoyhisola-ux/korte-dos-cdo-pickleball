@@ -71,3 +71,11 @@ test('balance review alert deep links open the dedicated receipt reviewer', () =
   assert.match(balanceAdmin, /async function openByReference\(reference\)/);
   assert.match(balanceAdmin, /await openModal\(payment\)/);
 });
+
+test('booking rows expose pending balance reviews without treating them as paid', () => {
+  assert.match(admin, /Balance Payment Pending Review/);
+  assert.match(admin, /Review Balance Receipt/);
+  assert.match(admin, /Balance receipt submitted · Awaiting owner review/);
+  assert.match(admin, /const canRecordManualPayment = hasBalance && !pendingBalance/);
+  assert.match(balanceAdmin, /typeof global\.renderBookings === 'function'/);
+});
