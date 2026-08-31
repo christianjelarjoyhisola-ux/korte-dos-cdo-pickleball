@@ -206,7 +206,7 @@
     image.referrerPolicy = 'no-referrer';
     image.addEventListener('load', () => {
       state.receiptLoaded = true;
-      image.style.display = '';
+      image.style.display = 'block';
       proofStatus.style.display = 'none';
       syncActions();
     });

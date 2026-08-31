@@ -79,3 +79,9 @@ test('booking rows expose pending balance reviews without treating them as paid'
   assert.match(admin, /const canRecordManualPayment = hasBalance && !pendingBalance/);
   assert.match(balanceAdmin, /typeof global\.renderBookings === 'function'/);
 });
+
+test('loaded balance receipt proof is made visible before approval', () => {
+  assert.match(balanceAdmin, /image\.addEventListener\('load',[\s\S]*?image\.style\.display = 'block';[\s\S]*?state\.receiptLoaded = true|image\.addEventListener\('load',[\s\S]*?state\.receiptLoaded = true;[\s\S]*?image\.style\.display = 'block';/);
+  assert.match(balanceAdmin, /image\.addEventListener\('error',[\s\S]*?image\.style\.display = 'none';/);
+  assert.match(balanceAdmin, /!state\.receiptLoaded/);
+});
