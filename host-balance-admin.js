@@ -110,7 +110,7 @@
       .hba-modal-head h3{margin:0;font-size:1rem}
       .hba-close{width:38px;height:38px;border:1px solid var(--border);border-radius:10px;background:var(--input);color:var(--text);font-size:1.2rem;cursor:pointer}
       .hba-modal-body{padding:18px}
-      .hba-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
+      .hba-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
       .hba-summary>div{padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--input);font-size:.78rem;overflow-wrap:anywhere}
       .hba-summary b{display:block;margin-bottom:3px;color:var(--muted);font-size:.64rem;text-transform:uppercase;letter-spacing:.06em}
       .hba-proof{min-height:220px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:12px;background:#07111d;overflow:hidden}
@@ -123,7 +123,10 @@
       @media(max-width:560px){
         .hba-head,.hba-card-top,.hba-bottom{align-items:stretch}
         .hba-head,.hba-card-top,.hba-bottom{flex-direction:column}
-        .hba-meta,.hba-summary{grid-template-columns:1fr}
+        .hba-meta{grid-template-columns:1fr}
+        .hba-summary{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+        .hba-summary>div{padding:8px 7px;font-size:.7rem}
+        .hba-summary b{font-size:.58rem}
         .hba-modal-actions{grid-template-columns:1fr}
         .hba-overlay{align-items:flex-end;padding:0}
         .hba-modal{width:100%;max-height:94vh;border-radius:18px 18px 0 0}

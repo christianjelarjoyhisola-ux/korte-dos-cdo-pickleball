@@ -85,3 +85,9 @@ test('loaded balance receipt proof is made visible before approval', () => {
   assert.match(balanceAdmin, /image\.addEventListener\('error',[\s\S]*?image\.style\.display = 'none';/);
   assert.match(balanceAdmin, /!state\.receiptLoaded/);
 });
+
+test('balance review summary stays a compact three-column grid on mobile', () => {
+  assert.match(balanceAdmin, /\.hba-summary\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(balanceAdmin, /@media\(max-width:560px\)[\s\S]*?\.hba-summary\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\);gap:6px\}/);
+  assert.doesNotMatch(balanceAdmin, /\.hba-meta,\.hba-summary\{grid-template-columns:1fr\}/);
+});
