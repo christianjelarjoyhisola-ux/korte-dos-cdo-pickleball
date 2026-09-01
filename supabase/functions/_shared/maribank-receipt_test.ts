@@ -208,6 +208,29 @@ Processing Time Realtime
 Transaction Date & Time 29 Aug 2026 , 11:10
 Receipt generated from MariBank app`;
 
+// Exact Google Vision visual-row reconstruction saved for production receipt
+// 566295. Vision read the stylized InstaPay logo's P as F; every independent
+// amount, destination, reference, completion, and timestamp field remained
+// readable and matched the booking.
+const september1MariBank2790Layout = `M MariBank
+Transaction Receipt
+PHP 2,790.00
+From PAULINE MARIE H.
+MariBank : ******* 8833
+To Korte Dos
+G - Xchange / GCash
+Acct No .: DWQM4TK496R3UA1BS
+Transfer Amount PHP 2,790.00
+Transfer Fee FREE
+Total Amount PHP 2,790.00
+Reference Number 566295
+Transfer Method instaFay
+Processing Time Realtime
+Transaction Date & Time 01 Sep 2026 , 23:10
+Notes
+Pauline Hilotin Court 13 Sept 5
+Receipt generated from MariBank app`;
+
 Deno.test("recognizes the current MariBank realtime InstaPay receipt", () => {
   if (!isMariBankReceipt(sample)) {
     throw new Error("MariBank receipt not recognized");
@@ -654,6 +677,54 @@ Deno.test("parses the exact production visual rows with spaced destination punct
     parsed.shifted?.toISOString() !== "2026-08-29T11:10:00.000Z"
   ) {
     throw new Error("Production transaction date/time was not extracted");
+  }
+});
+
+Deno.test("auto-verifies the supplied 2,790 MariBank receipt when Vision reads instaFay", () => {
+  if (!isMariBankReceipt(september1MariBank2790Layout)) {
+    throw new Error("The supplied 2,790 MariBank receipt was not recognized");
+  }
+  if (!hasSuccessfulMariBankTransfer(september1MariBank2790Layout)) {
+    throw new Error("The exact instaFay/Realtime completion evidence was not recognized");
+  }
+  if (
+    extractMariBankReference(september1MariBank2790Layout, "566295") !==
+      "566295"
+  ) {
+    throw new Error("The supplied MariBank reference was not extracted");
+  }
+  if (extractMariBankTransferAmount(september1MariBank2790Layout) !== 2790) {
+    throw new Error("The supplied MariBank transfer amount was not extracted");
+  }
+  if (extractMariBankTransferFee(september1MariBank2790Layout) !== 0) {
+    throw new Error("The supplied MariBank FREE fee was not extracted");
+  }
+  if (extractMariBankTotalAmount(september1MariBank2790Layout) !== 2790) {
+    throw new Error("The supplied MariBank total was not extracted");
+  }
+  if (
+    checkMariBankDestinationAccount(
+      september1MariBank2790Layout,
+      "DWQM4TK496R3UA1BS",
+    ) !== "match"
+  ) {
+    throw new Error("The supplied MariBank GCash account was not matched");
+  }
+  const parsed = parseMariBankDateTime(september1MariBank2790Layout);
+  if (
+    parsed.date !== "2026-09-01" ||
+    parsed.shifted?.toISOString() !== "2026-09-01T23:10:00.000Z"
+  ) {
+    throw new Error("The supplied MariBank date/time was not extracted");
+  }
+});
+
+Deno.test("does not fuzzy-match other MariBank transfer rail OCR text", () => {
+  for (const method of ["instaBay", "instantPay", "PESONet", "PDDTS"]) {
+    const receipt = september1MariBank2790Layout.replace("instaFay", method);
+    if (hasSuccessfulMariBankTransfer(receipt)) {
+      throw new Error(`Unexpected MariBank transfer method was accepted: ${method}`);
+    }
   }
 });
 

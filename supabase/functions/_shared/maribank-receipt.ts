@@ -374,6 +374,14 @@ function exactPairedFieldValue(
 
 type MariBankMethodCheck = "instapay" | "unreadable" | "missing" | "wrong";
 
+function isMariBankInstapayOcrToken(value: string): boolean {
+  const compact = String(value || "").toUpperCase().replace(/[^A-Z]/g, "");
+  // Google Vision consistently reads the stylized InstaPay logo's P as F on
+  // the supplied native receipt. Keep this correction exact and field-scoped;
+  // no other rail spelling is repaired or guessed.
+  return compact === "INSTAPAY" || compact === "INSTAFAY";
+}
+
 function mariBankTransferMethodCheck(text: string): MariBankMethodCheck {
   const lines = nonEmptyLines(text);
   const label = /\btransfer\s+method\b/i;
@@ -387,18 +395,18 @@ function mariBankTransferMethodCheck(text: string): MariBankMethodCheck {
   const lineIndex = labelIndexes[0];
   const sameLine = clean(lines[lineIndex].replace(label, ""));
   if (sameLine) {
-    return /^insta\s*pay$/i.test(sameLine) ? "instapay" : "wrong";
+    return isMariBankInstapayOcrToken(sameLine) ? "instapay" : "wrong";
   }
 
   const adjacentMethodValues = [lineIndex - 1, lineIndex + 1]
     .filter((index) => index >= 0 && index < lines.length)
     .map((index) => clean(lines[index]))
     .filter((candidate) =>
-      /^(?:insta\s*pay|peso\s*net|pesonet|pddts|scheduled)$/i.test(candidate)
+      /^(?:insta\s*[pf]ay|peso\s*net|pesonet|pddts|scheduled)$/i.test(candidate)
     );
   if (adjacentMethodValues.length > 1) return "wrong";
   if (adjacentMethodValues.length === 1) {
-    return /^insta\s*pay$/i.test(adjacentMethodValues[0])
+    return isMariBankInstapayOcrToken(adjacentMethodValues[0])
       ? "instapay"
       : "wrong";
   }
