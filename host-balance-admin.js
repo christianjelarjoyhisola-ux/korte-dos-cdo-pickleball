@@ -8,7 +8,9 @@
     current: null,
     receiptLoaded: false,
     lastFocus: null,
-    originalRenderPaymentReview: null,
+    modalVersion: 0,
+    busy: false,
+    previousOverflow: '',
   };
 
   const byId = id => document.getElementById(id);
@@ -204,20 +206,6 @@
     image.id = 'hostBalanceProofImage';
     image.alt = 'Uploaded balance payment receipt';
     image.referrerPolicy = 'no-referrer';
-    image.addEventListener('load', () => {
-      state.receiptLoaded = true;
-      image.style.display = '';
-      proofStatus.style.display = 'none';
-      syncActions();
-    });
-    image.addEventListener('error', () => {
-      state.receiptLoaded = false;
-      image.removeAttribute('src');
-      image.style.display = 'none';
-      proofStatus.style.display = '';
-      proofStatus.textContent = 'Receipt image could not be loaded. Approval remains disabled.';
-      syncActions();
-    });
     proof.append(proofStatus, image);
 
     const flags = make('div', 'hba-flags');
@@ -259,20 +247,25 @@
     container.appendChild(cell);
   }
 
-  function syncActions(busy) {
+  function syncActions() {
     const approve = byId('hostBalanceApproveBtn');
     const reject = byId('hostBalanceRejectBtn');
     const reason = String(byId('hostBalanceReviewReason')?.value || '').trim();
-    const permitted = canDecide();
-    if (approve) approve.disabled = Boolean(busy) || !permitted || !state.receiptLoaded;
-    if (reject) reject.disabled = Boolean(busy) || !permitted || !state.receiptLoaded || reason.length < 3;
+    const permitted = canDecide() && Boolean(state.current);
+    if (approve) approve.disabled = state.busy || !permitted || !state.receiptLoaded;
+    if (reject) reject.disabled = state.busy || !permitted || !state.receiptLoaded || reason.length < 3;
   }
 
   async function openModal(payment, trigger) {
+    if (!canDecide()) throw new Error('Only a Court Owner or System Owner can review host balance payments.');
+    if (state.busy) return false;
+    if (!paymentId(payment)) throw new Error('Balance payment could not be found.');
+    const version = ++state.modalVersion;
     state.current = payment;
     state.receiptLoaded = false;
     state.lastFocus = trigger || document.activeElement;
     const overlay = ensureModal();
+    if (overlay.hidden) state.previousOverflow = document.body.style.overflow;
     const summary = byId('hostBalanceReviewSummary');
     summary.replaceChildren();
     appendSummary(summary, 'Customer', payment.customerName);
@@ -287,10 +280,34 @@
       ? `Verification flags: ${flags.join(', ')}`
       : 'Verification flags: none';
     byId('hostBalanceReviewReason').value = '';
-    const image = byId('hostBalanceProofImage');
-    image.removeAttribute('src');
+    // Each opening gets a fresh image so a previous receipt's delayed load
+    // cannot enable approval for the newly selected payment.
+    const previousImage = byId('hostBalanceProofImage');
+    previousImage.removeAttribute('src');
+    const image = document.createElement('img');
+    image.id = 'hostBalanceProofImage';
+    image.alt = 'Uploaded balance payment receipt';
+    image.referrerPolicy = 'no-referrer';
     image.style.display = 'none';
+    previousImage.replaceWith(image);
     const proofStatus = byId('hostBalanceProofStatus');
+    const isCurrent = () => version === state.modalVersion && state.current === payment && !overlay.hidden;
+    image.addEventListener('load', () => {
+      if (!isCurrent() || !image.getAttribute('src')) return;
+      state.receiptLoaded = true;
+      image.style.display = 'block';
+      proofStatus.style.display = 'none';
+      syncActions();
+    });
+    image.addEventListener('error', () => {
+      if (!isCurrent()) return;
+      state.receiptLoaded = false;
+      image.removeAttribute('src');
+      image.style.display = 'none';
+      proofStatus.style.display = '';
+      proofStatus.textContent = 'Receipt image could not be loaded. Approval remains disabled.';
+      syncActions();
+    });
     proofStatus.style.display = '';
     proofStatus.textContent = 'Loading receipt proof…';
     overlay.hidden = false;
@@ -300,32 +317,38 @@
 
     try {
       const result = await apiCall('receipt_url', { paymentId: paymentId(payment) });
+      if (!isCurrent()) return false;
       const rawUrl = result?.url || result?.data?.url;
       const url = new URL(String(rawUrl || ''));
       if (url.protocol !== 'https:') throw new Error('Receipt link is not secure.');
       image.src = url.href;
     } catch (error) {
+      if (!isCurrent()) return false;
       proofStatus.textContent = error?.message || 'Receipt proof is unavailable.';
       syncActions();
     }
+    return true;
   }
 
   function closeModal() {
     const overlay = byId('hostBalanceReviewModal');
-    if (!overlay || overlay.hidden) return;
+    if (state.busy || !overlay || overlay.hidden) return;
+    state.modalVersion += 1;
     overlay.hidden = true;
-    document.body.style.overflow = '';
+    document.body.style.overflow = state.previousOverflow;
     const image = byId('hostBalanceProofImage');
     image?.removeAttribute('src');
     state.current = null;
     state.receiptLoaded = false;
     state.lastFocus?.focus?.();
     state.lastFocus = null;
+    syncActions();
   }
 
   async function decide(decision) {
     const payment = state.current;
-    if (!payment || !canDecide() || !state.receiptLoaded) return;
+    if (state.busy || !payment || !canDecide() || !state.receiptLoaded) return;
+    if (!['approve', 'reject'].includes(decision)) return;
     const reason = String(byId('hostBalanceReviewReason')?.value || '').trim();
     if (decision === 'reject' && reason.length < 3) {
       notify('Enter a short reason before rejecting the receipt.', 'err');
@@ -340,29 +363,45 @@
     const reject = byId('hostBalanceRejectBtn');
     const active = decision === 'approve' ? approve : reject;
     const idleText = active?.textContent || '';
+    let saved = false;
     if (active) active.textContent = decision === 'approve' ? 'Approving…' : 'Rejecting…';
-    syncActions(true);
+    state.busy = true;
+    syncActions();
     try {
       await apiCall('review', {
         paymentId: paymentId(payment),
         decision,
         reason,
       });
+      saved = true;
       notify(
         decision === 'approve'
           ? 'Balance payment approved. The booking is fully paid.'
           : 'Balance receipt rejected.',
         decision === 'approve' ? 'ok' : 'inf',
       );
+      state.busy = false;
+      if (active?.isConnected) active.textContent = idleText;
       closeModal();
-      await render(true);
-      if (state.originalRenderPaymentReview) {
-        await state.originalRenderPaymentReview();
+      // Drain a read started before the decision, then refresh the balance
+      // cache before refreshing booking totals and the owner's review queue.
+      if (state.loading) await state.loading.catch(() => {});
+      state.loadedAt = 0;
+      const refreshes = await Promise.allSettled([
+        render(true),
+        Promise.resolve().then(() => global.renderBookings?.()),
+        Promise.resolve().then(() => global.renderPaymentReview?.()),
+      ]);
+      if (refreshes.some(result => result.status === 'rejected')) {
+        notify('Payment decision saved. Refresh Bookings to see the latest totals.', 'inf');
       }
     } catch (error) {
       notify(error?.message || 'Could not save the balance payment decision.', 'err');
     } finally {
-      if (active?.isConnected) active.textContent = idleText;
+      if (!saved) {
+        state.busy = false;
+        if (active?.isConnected) active.textContent = idleText;
+      }
       syncActions();
     }
   }
@@ -396,69 +435,87 @@
       bottom.appendChild(make('div', 'hba-status', 'Balance payment under review'));
       const review = make('button', 'btn btn-p btn-sm', 'Review Receipt');
       review.type = 'button';
-      review.addEventListener('click', event => openModal(payment, event.currentTarget));
+      review.addEventListener('click', event => {
+        openById(paymentId(payment), event.currentTarget).catch(error => {
+          notify(error?.message || 'Could not open the balance receipt.', 'err');
+        });
+      });
       bottom.appendChild(review);
       card.append(top, meta, bottom);
       list.appendChild(card);
     });
   }
 
-  function render(force) {
-    ensurePanel();
+  function loadPending(force = false) {
     if (!canDecide()) {
-      const list = byId('hostBalanceAdminList');
-      if (list) {
-        list.replaceChildren(make('div', 'hba-empty', 'Only a Court Owner or System Owner can review host balance payments.'));
-      }
-      return Promise.resolve([]);
-    }
-    if (!force && state.loadedAt && Date.now() - state.loadedAt < 15000) {
-      renderCards();
-      return Promise.resolve(state.payments);
+      state.payments = [];
+      state.loadedAt = 0;
+      return Promise.reject(new Error('Only a Court Owner or System Owner can review host balance payments.'));
     }
     if (state.loading) return state.loading;
+    if (!force && state.loadedAt && Date.now() - state.loadedAt < 15000) {
+      return Promise.resolve(state.payments);
+    }
 
+    state.loading = Promise.resolve().then(async () => {
+      try {
+        const result = await apiCall('list_pending', { limit: 100 });
+        const rows = result?.payments || result?.data?.payments;
+        if (!Array.isArray(rows)) throw new Error('Could not load host balance payments. Please refresh and try again.');
+        if (!canDecide()) throw new Error('Only a Court Owner or System Owner can review host balance payments.');
+        state.payments = rows;
+        state.loadedAt = Date.now();
+        return state.payments;
+      } catch (error) {
+        state.loadedAt = 0;
+        throw error;
+      } finally {
+        state.loading = null;
+      }
+    });
+    return state.loading;
+  }
+
+  async function render(force = false) {
+    ensurePanel();
     const list = byId('hostBalanceAdminList');
     if (list && !state.loadedAt) {
       list.replaceChildren(make('div', 'hba-empty', 'Loading balance payments…'));
     }
-    state.loading = (async () => {
-      try {
-        const result = await apiCall('list_pending', { limit: 100 });
-        const rows = result?.payments || result?.data?.payments || [];
-        state.payments = Array.isArray(rows) ? rows : [];
-        state.loadedAt = Date.now();
-        renderCards();
-        return state.payments;
-      } catch (error) {
-        if (list) {
-          list.replaceChildren(make('div', 'hba-empty', error?.message || 'Could not load host balance payments.'));
-        }
-        return [];
-      } finally {
-        state.loading = null;
-      }
-    })();
-    return state.loading;
+    try {
+      const payments = await loadPending(force);
+      renderCards();
+      return payments;
+    } catch (error) {
+      if (list) list.replaceChildren(make('div', 'hba-empty', error?.message || 'Could not load host balance payments.'));
+      return [];
+    }
+  }
+
+  async function openById(id, trigger) {
+    const target = String(id || '').trim();
+    if (!target) throw new Error('Balance payment could not be found.');
+    let payments = await loadPending();
+    let payment = payments.find(row => paymentId(row) === target);
+    if (!payment) {
+      payments = await loadPending(true);
+      payment = payments.find(row => paymentId(row) === target);
+    }
+    if (!payment) throw new Error('This balance payment is no longer awaiting review. Refresh Bookings to see its latest status.');
+    return openModal(payment, trigger);
   }
 
   function install() {
     addStyles();
     ensurePanel();
     ensureModal();
-    if (typeof global.renderPaymentReview === 'function' && !state.originalRenderPaymentReview) {
-      state.originalRenderPaymentReview = global.renderPaymentReview;
-      global.renderPaymentReview = async function wrappedPaymentReview() {
-        const result = await state.originalRenderPaymentReview.apply(this, arguments);
-        render(false).catch(() => {});
-        return result;
-      };
-    }
   }
 
   global.HostBalanceAdmin = Object.freeze({
     install,
     render,
+    loadPending,
+    openById,
     open: openModal,
     close: closeModal,
   });

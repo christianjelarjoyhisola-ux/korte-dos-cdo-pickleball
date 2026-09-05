@@ -69,6 +69,18 @@ Types: **Added**, **Changed**, **Fixed**, **Removed**, **Security**, **DB**
 
 ---
 
+## [2026-09-06] - Pending Host Balance Review
+
+### Fixed
+- Host reservations with submitted balance receipts now appear in Pending as well as Open Host, with grouped reservations counted once per view.
+- Booking cards and details provide a direct Confirm & Verify Balance action; submitted proof appears in the main remaining-balance record while verified totals retain only approved payments.
+- Payment Review explicitly loads host balance receipts, displays the receipt before enabling approval, and refreshes booking counts and totals after a decision.
+- Failed queue reads display a retry message instead of an empty Pending list. Balance review retains the existing owner authorization and atomic settlement checks.
+
+**Validation:** booking/payment regression tests, including pending balance navigation, separate deposit evidence, grouped payments, receipt loading, and duplicate submission protection.
+
+---
+
 ## [2026-08-17] - Independent GoTyme Auto-Approval
 
 ### Added

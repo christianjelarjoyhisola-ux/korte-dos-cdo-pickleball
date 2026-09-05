@@ -23,15 +23,20 @@ function loadNavigationHelpers() {
   vm.createContext(context);
   vm.runInContext([
     "let _bookingType = 'all';",
+    "const BOOKING_VIEW_VALUES = new Set(['all','pending','confirmed','completed','closed','host']);",
+    extractFunction('bookingPendingBalancePayments'),
+    extractFunction('attachPendingHostBalancePayments'),
+    extractFunction('bookingHasPendingReview'),
     extractFunction('bookingNavigationBucket'),
     extractFunction('bookingMatchesNavigation'),
-    'this.helpers = { bookingNavigationBucket, bookingMatchesNavigation };',
+    extractFunction('bookingNavigationCounts'),
+    'this.helpers = { bookingPendingBalancePayments, attachPendingHostBalancePayments, bookingHasPendingReview, bookingNavigationBucket, bookingMatchesNavigation, bookingNavigationCounts };',
   ].join('\n'), context);
   return context.helpers;
 }
 
-test('navigation counts grouped reservations once and assigns every top-level bucket', () => {
-  const { bookingNavigationBucket } = loadNavigationHelpers();
+test('navigation counts grouped reservations once in each applicable view', () => {
+  const { bookingNavigationCounts } = loadNavigationHelpers();
   const groupedReservations = [
     {
       displayRef: 'PB-MULTI',
@@ -47,15 +52,14 @@ test('navigation counts grouped reservations once and assigns every top-level bu
     { displayRef: 'PB-CLOSED', status: 'cancelled', paymentStatus: 'unpaid', hostBooking: false },
     { displayRef: 'PB-HOST', status: 'confirmed', paymentStatus: 'paid', hostBooking: true },
   ];
-  const counts = { all: groupedReservations.length, pending: 0, confirmed: 0, completed: 0, closed: 0, host: 0 };
-  groupedReservations.forEach(group => { counts[bookingNavigationBucket(group)] += 1; });
+  const counts = bookingNavigationCounts(groupedReservations);
 
-  assert.deepEqual(counts, { all: 5, pending: 1, confirmed: 1, completed: 1, closed: 1, host: 1 });
-  assert.match(adminSource, /const allGroups = groupBookings\(bks\);[\s\S]*?allGroups\.forEach\(group => \{ viewCounts\[bookingNavigationBucket\(group\)\]\+\+; \}\);/);
+  assert.deepEqual({ ...counts }, { all: 5, pending: 1, confirmed: 1, completed: 1, closed: 1, host: 1 });
+  assert.match(adminSource, /bookingNavigationCounts\(allGroups\)/);
   assert.match(adminSource, /let filteredBookings = allGroups\.filter\(group => bookingMatchesNavigation\(group\)\);/);
 });
 
-test('host bookings stay isolated while rejected, failed, and forfeited states take closed precedence', () => {
+test('host bookings keep their host view while regular rejected, failed, and forfeited states take closed precedence', () => {
   const { bookingNavigationBucket, bookingMatchesNavigation } = loadNavigationHelpers();
 
   for (const booking of [
@@ -77,6 +81,126 @@ test('host bookings stay isolated while rejected, failed, and forfeited states t
   assert.equal(bookingNavigationBucket({ status: 'completed', paymentStatus: 'paid' }), 'completed');
   assert.equal(bookingNavigationBucket({ status: 'verifying', paymentStatus: 'for_verification' }), 'pending');
   assert.equal(bookingMatchesNavigation({ hostBooking: true }, 'all'), true);
+});
+
+test('confirmed host reservations awaiting balance review appear in Pending and Open Host without changing payment totals', () => {
+  const { attachPendingHostBalancePayments, bookingNavigationBucket, bookingMatchesNavigation, bookingNavigationCounts } = loadNavigationHelpers();
+  const booking = {
+    ref: 'HOST-A',
+    primaryRef: 'HOST-A',
+    groupRef: 'HOST-GROUP',
+    displayRef: 'HOST-DISPLAY',
+    refs: ['HOST-A', 'HOST-B'],
+    items: [{ ref: 'HOST-A' }, { ref: 'HOST-B' }],
+    isGroup: true,
+    hostBooking: true,
+    status: 'confirmed',
+    paymentStatus: 'downpayment_paid',
+    total: 3240,
+    downpayment: 877.5,
+  };
+  const payment = { paymentId: 'BALANCE-1', bookingKey: 'HOST-GROUP', status: 'pending_review', expectedAmount: 2362.5 };
+  const snapshot = JSON.stringify(booking);
+  const groups = attachPendingHostBalancePayments([booking], [payment, { ...payment, paymentId: 'BALANCE-2' }]);
+
+  assert.equal(groups.length, 1, 'a multi-slot reservation remains one displayed group');
+  assert.equal(groups[0].pendingBalancePayments.length, 2);
+  assert.equal(bookingNavigationBucket(groups[0]), 'host');
+  assert.equal(bookingMatchesNavigation(groups[0], 'pending'), true);
+  assert.equal(bookingMatchesNavigation(groups[0], 'host'), true);
+  assert.equal(bookingMatchesNavigation(groups[0], 'confirmed'), false);
+  assert.deepEqual({ ...bookingNavigationCounts(groups) }, { all: 1, pending: 1, confirmed: 0, completed: 0, closed: 0, host: 1 });
+  for (const key of ['status', 'paymentStatus', 'total', 'downpayment']) {
+    assert.equal(groups[0][key], booking[key], `${key} must remain unchanged until approval`);
+  }
+  assert.equal(JSON.stringify(booking), snapshot, 'joining the review queue must not mutate the reservation');
+});
+
+test('balance queue joins canonical keys and member references and excludes settled or unrelated attempts', () => {
+  const { attachPendingHostBalancePayments, bookingPendingBalancePayments, bookingMatchesNavigation } = loadNavigationHelpers();
+  const booking = {
+    ref: 'HOST-A', primaryRef: 'HOST-A', groupRef: 'HOST-GROUP', displayRef: 'HOST-DISPLAY',
+    refs: ['HOST-A', 'HOST-B'], items: [{ ref: 'HOST-C' }],
+    hostBooking: true, status: 'confirmed', paymentStatus: 'downpayment_paid', total: 3240, downpayment: 877.5,
+  };
+  for (const identity of [
+    { bookingKey: 'HOST-GROUP' },
+    { bookingGroupRef: 'HOST-GROUP' },
+    { bookingRef: 'HOST-A' },
+    { bookingKey: 'HOST-DISPLAY' },
+    { bookingRefs: ['HOST-B'] },
+    { bookingRefs: ['HOST-C'] },
+  ]) {
+    const payment = { paymentId: 'PENDING', status: 'pending_review', ...identity };
+    const [joined] = attachPendingHostBalancePayments([booking], [payment]);
+    assert.equal(bookingPendingBalancePayments(joined).length, 1, JSON.stringify(identity));
+    assert.equal(bookingMatchesNavigation(joined, 'pending'), true);
+  }
+  const [withoutPending] = attachPendingHostBalancePayments([booking], [
+    { paymentId: 'APPROVED', status: 'approved', bookingKey: 'HOST-GROUP' },
+    { paymentId: 'REJECTED', status: 'rejected', bookingKey: 'HOST-GROUP' },
+    { paymentId: 'EXPIRED', status: 'expired', bookingKey: 'HOST-GROUP' },
+    { paymentId: 'UNRELATED', status: 'pending_review', bookingKey: 'ANOTHER-GROUP' },
+  ]);
+  assert.equal(bookingPendingBalancePayments(withoutPending).length, 0);
+  assert.equal(bookingMatchesNavigation(withoutPending, 'pending'), false);
+});
+
+test('initial host deposits awaiting review also appear in Pending but approved balances leave that queue', () => {
+  const { bookingMatchesNavigation, bookingPendingBalancePayments } = loadNavigationHelpers();
+  for (const state of [
+    { status: 'pending', paymentStatus: 'unpaid' },
+    { status: 'verifying', paymentStatus: 'for_verification' },
+    { status: 'confirmed', paymentStatus: 'for_verification' },
+  ]) {
+    const booking = { hostBooking: true, ...state };
+    assert.equal(bookingMatchesNavigation(booking, 'pending'), true);
+    assert.equal(bookingMatchesNavigation(booking, 'host'), true);
+  }
+  const settled = {
+    hostBooking: true, status: 'confirmed', paymentStatus: 'paid',
+    pendingBalancePayments: [{ paymentId: 'PAID', status: 'approved' }],
+  };
+  assert.equal(bookingPendingBalancePayments(settled).length, 0);
+  assert.equal(bookingMatchesNavigation(settled, 'pending'), false);
+  assert.equal(bookingMatchesNavigation(settled, 'host'), true);
+});
+
+test('a failed balance queue read shows a retry state instead of claiming Pending is empty', async () => {
+  const nodes = { bookBody: {}, bookingCountPending: { textContent: '0' }, bookingFilterMeta: {} };
+  const queueReads = [];
+  const context = {
+    Auth: { can: () => true },
+    sess: { role: 'owner' },
+    DB: { getBookings: async () => [] },
+    window: {
+      HostBalanceAdmin: {
+        async loadPending(force) {
+          queueReads.push(force);
+          throw new Error('balance queue unavailable');
+        },
+      },
+    },
+    console: { error() {} },
+    $: id => nodes[id],
+    updateBookingFilterMeta() {},
+    bookingFilters: () => ({}),
+  };
+  vm.createContext(context);
+  vm.runInContext([
+    'let _bookingRenderSeq = 0;',
+    `async ${extractFunction('renderBookings')}`,
+    'this.renderBookings = renderBookings;',
+  ].join('\n'), context);
+
+  await context.renderBookings();
+
+  assert.deepEqual(queueReads, [true], 'the booking list must request current pending balances');
+  assert.equal(nodes.bookingCountPending.textContent, '?');
+  assert.match(nodes.bookingFilterMeta.textContent, /could not be loaded/i);
+  assert.match(nodes.bookBody.innerHTML, /Could not load bookings or pending balance payments/);
+  assert.match(nodes.bookBody.innerHTML, /Retry/);
+  assert.doesNotMatch(nodes.bookBody.innerHTML, /No pending bookings/);
 });
 
 test('changing a booking view resets pagination and synchronizes pressed state', () => {

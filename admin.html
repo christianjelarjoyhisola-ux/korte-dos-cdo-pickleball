@@ -5588,11 +5588,13 @@ function canRescheduleBooking(b) {
 function bookingActionsHtml(b, canDelete){
   const grouped = Array.isArray(b.items) && b.items.length > 1;
   const actionRef = b.primaryRef || b.ref;
+  const pendingBalance = bookingPendingBalancePayments(b)[0];
   const forfeited = b.status === 'forfeited' || b.paymentStatus === 'deposit_retained';
   const hasBalance = b.hostBooking && b.paymentStatus === 'downpayment_paid';
-  const canRecordManualPayment = hasBalance && ['owner','court_owner'].includes(String(sess?.role || ''));
+  const canRecordManualPayment = hasBalance && !pendingBalance && ['owner','court_owner'].includes(String(sess?.role || ''));
   const canCorrectForfeiture = forfeited && b.hostBooking && ['owner','court_owner'].includes(String(sess?.role || ''));
   return `${quickPaymentApprovalButton(b)}
+    ${pendingBalance ? hostBalanceReviewButton(pendingBalance) : ''}
     ${bookingDetailsButton(b)}
     ${canRescheduleBooking(b)?`<button class="btn btn-sm" style="background:rgba(74,154,220,.12);color:#5a9ad4;border:1px solid rgba(74,154,220,.3)" onclick="openRescheduleModal('${jsArg(actionRef)}')" title="${grouped ? 'Move every court in this reservation together' : 'Move this booking'}">Reschedule</button>`:''}
     ${b.email && (forfeited || hasBalance)?`<button class="btn btn-sm" style="background:rgba(var(--green-rgb),.12);color:var(--green);border:1px solid rgba(var(--green-rgb),.3)" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Notice':'Balance Reminder'}</button>`:''}
@@ -5679,6 +5681,7 @@ function mobileBookingCard(b, canDelete){
       </div>
       ${duplicatePaymentRefBadge(b)}
     </div>
+    ${bookingPendingBalancePayments(b).length ? `<div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><span class="bdg bdg-p">Balance awaiting review</span> ${hostBalanceReviewButton(bookingPendingBalancePayments(b)[0])}</div>` : ''}
     <details class="mb-book-pay">
       <summary>Actions</summary>
       <div class="mb-book-detail-grid">
@@ -5878,6 +5881,11 @@ function hostBalanceProofButton(payment, label, buttonLabel = 'View balance proo
     ? `<button class="btn btn-g btn-sm booking-payment-proof-btn" type="button" onclick="openHostBalanceReceipt('${jsArg(payment.paymentId)}','${jsArg(label)}')">${esc(buttonLabel)}</button>`
     : '<span class="booking-payment-proof-unavailable">Proof unavailable</span>';
 }
+function hostBalanceReviewButton(payment, buttonLabel = 'Confirm & Verify Balance') {
+  const canReview = ['owner','court_owner'].includes(String(sess?.role || '').toLowerCase());
+  if (!canReview || payment?.status !== 'pending_review' || !payment?.paymentId) return '';
+  return `<button class="btn btn-p btn-sm" type="button" onclick="openHostBalanceReview('${jsArg(payment.paymentId)}',this)">${esc(buttonLabel)}</button>`;
+}
 function hostPaymentAttemptHtml(attempt) {
   const status = attempt.status || 'expired';
   const label = `${hostPaymentProvider(attempt.paymentProvider)} balance attempt`;
@@ -5903,7 +5911,10 @@ function renderHostPaymentHistory(booking, history) {
   ]);
   const depositLabel = `${hostPaymentProvider(booking?.paymentMethod)} deposit receipt`;
   const approved = amounts.approved;
-  const otherAttempts = (history?.attempts || []).filter(attempt => attempt !== approved && ['created','pending_review','rejected','expired'].includes(attempt.status));
+  const pending = !approved && !amounts.forfeited && String(booking?.paymentStatus || '').toLowerCase() !== 'paid'
+    ? (history?.attempts || []).find(attempt => attempt.status === 'pending_review')
+    : null;
+  const otherAttempts = (history?.attempts || []).filter(attempt => attempt !== approved && attempt !== pending && ['created','pending_review','rejected','expired'].includes(attempt.status));
   const depositCopy = ['for_verification','unpaid','rejected'].includes(depositState.code)
     ? 'No verified initial payment is counted yet.'
     : amounts.deposit == null
@@ -5941,6 +5952,17 @@ function renderHostPaymentHistory(booking, history) {
       { label:'Settled', value:hostPaymentHistoryDate(approved.approvedAt) },
     ]);
     balanceProof = hostBalanceProofButton(approved, `${hostPaymentProvider(approved.paymentProvider)} remaining balance receipt`);
+  } else if (pending) {
+    balanceCode = 'pending_review';
+    balanceLabel = 'Awaiting review';
+    balanceCopy = 'Balance payment submitted. Review the receipt and confirm the payment received to mark this booking fully paid.';
+    balanceAmount = pending.expectedAmount;
+    balanceMeta = hostPaymentEventMeta([
+      { label:'Provider', value:hostPaymentProvider(pending.paymentProvider) },
+      { label:'Reference', value:pending.paymentReference || 'Not recorded', code:Boolean(pending.paymentReference) },
+      { label:'Submitted', value:hostPaymentHistoryDate(pending.submittedAt || pending.createdAt) },
+    ]);
+    balanceProof = hostBalanceReviewButton(pending) + hostBalanceProofButton(pending, `${hostPaymentProvider(pending.paymentProvider)} remaining balance receipt`);
   } else if (amounts.manuallySettled) {
     balanceCode = 'manual';
     balanceLabel = 'Manually recorded';
@@ -6135,6 +6157,19 @@ async function openHostBalanceReceipt(paymentId, label = 'Remaining balance proo
   }
   return openHostBookingPaymentProof(label, () => DB.getHostBookingBalanceReceiptSignedUrl(paymentId));
 }
+async function openHostBalanceReview(paymentId, trigger) {
+  if (!['owner','court_owner'].includes(String(sess?.role || '').toLowerCase())) {
+    toast('Only an owner can review balance payments.', 'err');
+    return;
+  }
+  try {
+    if (!window.HostBalanceAdmin?.openById) throw new Error('Balance review is unavailable. Please refresh this page.');
+    closeBookingDetails();
+    await window.HostBalanceAdmin.openById(paymentId, trigger);
+  } catch (error) {
+    toast(error?.message || 'Could not open the balance payment.', 'err');
+  }
+}
 async function openBookingDetails(ref) {
   const modal = $('bookingDetailsModal');
   const body = $('bookingDetailsBody');
@@ -6202,8 +6237,10 @@ async function openBookingDetails(ref) {
       ${b.hostBooking ? `<div class="booking-detail-section"><h3>Email history</h3><div class="booking-notice-list">${notices}</div></div>` : ''}`;
     const actionRef = b.primaryRef || b.ref;
     const hasReceipt = Boolean(String(b.receiptImageUrl || '').trim()) && isDigitalPayment(b.paymentMethod);
+    const pendingBalance = paymentHistory.attempts.find(attempt => attempt.status === 'pending_review');
     $('bookingDetailsActions').innerHTML = `
       <button class="btn btn-g" onclick="closeBookingDetails()">Close</button>
+      ${pendingBalance ? hostBalanceReviewButton(pendingBalance) : ''}
       ${hasReceipt && !b.hostBooking ? `<button class="btn btn-g" onclick="closeBookingDetails();openVerifyModal('${jsArg(actionRef)}')">View Payment</button>` : ''}
       ${b.hostBooking && b.email && (forfeited || currentDue > 0) ? `<button class="btn btn-p" onclick="resendHostBalanceNotice('${jsArg(actionRef)}')">${forfeited?'Resend Forfeiture Notice':'Send Balance Reminder'}</button>` : ''}`;
     requestAnimationFrame(() => modal.querySelector('.booking-details-modal')?.focus());
@@ -6334,6 +6371,7 @@ function startAdminRealtime(){
   };
   _supabase.channel('admin-rt')
     .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'host_booking_balance_payments'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'deleted_booking_archive'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'courts'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'settings'},rerender)
@@ -6632,9 +6670,64 @@ function bookingNavigationBucket(b) {
   if (status === 'completed') return 'completed';
   return 'pending';
 }
+function bookingPendingBalancePayments(b) {
+  return (b?.pendingBalancePayments || []).filter(payment => payment.status === 'pending_review');
+}
+function attachPendingHostBalancePayments(groups, payments) {
+  const pendingByRef = new Map();
+  for (const payment of payments || []) {
+    if (payment.status !== 'pending_review') continue;
+    const refs = [payment.bookingKey, payment.bookingGroupRef, payment.bookingRef, ...(payment.bookingRefs || [])];
+    for (const ref of refs.filter(Boolean)) {
+      if (!pendingByRef.has(ref)) pendingByRef.set(ref, []);
+      pendingByRef.get(ref).push(payment);
+    }
+  }
+  return groups.map(group => {
+    const refs = [group.ref, group.primaryRef, group.groupRef, group.displayRef, ...(group.refs || []), ...(group.items || []).map(item => item.ref)];
+    const matches = new Map();
+    if (group.hostBooking) {
+      for (const ref of refs.filter(Boolean)) {
+        for (const payment of pendingByRef.get(ref) || []) {
+          matches.set(payment.paymentId || payment.id, payment);
+        }
+      }
+    }
+    return { ...group, pendingBalancePayments: [...matches.values()] };
+  });
+}
+function bookingHasPendingReview(b) {
+  if (bookingPendingBalancePayments(b).length) return true;
+  const rows = Array.isArray(b?.items) && b.items.length ? b.items : [b];
+  return rows.some(row => !['cancelled','forfeited','completed'].includes(String(row?.status || '').toLowerCase())
+    && !['rejected','failed','deposit_retained'].includes(String(row?.paymentStatus || '').toLowerCase())
+    && (['pending','verifying'].includes(String(row?.status || '').toLowerCase())
+      || String(row?.paymentStatus || '').toLowerCase() === 'for_verification'));
+}
 function bookingMatchesNavigation(b, view = _bookingType) {
+  if (view === 'pending' && bookingHasPendingReview(b)) return true;
   return view === 'all' || bookingNavigationBucket(b) === view;
 }
+function bookingNavigationCounts(groups) {
+  const counts = { all: groups.length, pending: 0, confirmed: 0, completed: 0, closed: 0, host: 0 };
+  for (const group of groups) {
+    for (const view of ['pending','confirmed','completed','closed','host']) {
+      if (bookingMatchesNavigation(group, view)) counts[view]++;
+    }
+  }
+  return counts;
+}
+let _balanceReviewFocusRefreshAt = 0;
+function refreshPendingPaymentsOnReturn() {
+  if (document.hidden || !['bookings','payreview'].includes(_curSection)) return;
+  if (document.querySelector('.overlay.show, #hostBalanceReviewModal:not([hidden])')) return;
+  if (Date.now() - _balanceReviewFocusRefreshAt < 2000) return;
+  _balanceReviewFocusRefreshAt = Date.now();
+  const refresh = _curSection === 'bookings' ? renderBookings : renderPaymentReview;
+  refresh().catch(error => console.warn('Pending payment refresh failed:', error));
+}
+window.addEventListener('focus', refreshPendingPaymentsOnReturn);
+document.addEventListener('visibilitychange', refreshPendingPaymentsOnReturn);
 function bookingViewNoun(view = _bookingType, count = 2) {
   const labels = BOOKING_VIEW_NOUNS[view] || BOOKING_VIEW_NOUNS.all;
   return count === 1 ? labels[0] : labels[1];
@@ -6729,12 +6822,21 @@ async function renderBookings(){
   const body = $('bookBody');
   if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">Loading bookings...</td></tr>';
   let bks;
+  let pendingBalances = [];
   try {
-    bks=await DB.getBookings();
+    [bks, pendingBalances] = await Promise.all([
+      DB.getBookings(),
+      !window.PB_USE_LOCAL_DATA && ['owner','court_owner'].includes(String(sess?.role || '').toLowerCase())
+        ? window.HostBalanceAdmin.loadPending(true)
+        : Promise.resolve([]),
+    ]);
   } catch (e) {
+    if (seq !== _bookingRenderSeq) return;
     console.error('renderBookings getBookings failed:', e);
     updateBookingFilterMeta(0, 0, bookingFilters());
-    if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">Could not load bookings. Please refresh and try again.</td></tr>';
+    if ($('bookingCountPending')) $('bookingCountPending').textContent = '?';
+    if ($('bookingFilterMeta')) $('bookingFilterMeta').textContent = 'Bookings and pending payments could not be loaded.';
+    if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:28px">Could not load bookings or pending balance payments. <button class="btn btn-g btn-sm" onclick="renderBookings()">Retry</button></td></tr>';
     return;
   }
   if (seq !== _bookingRenderSeq) return;
@@ -6754,9 +6856,8 @@ async function renderBookings(){
   // carries the real customer email, so any row still on reserve@hold.internal is
   // just an in-progress or abandoned hold and adds no value to the admin list.
   bks=bks.filter(b=>b.email!=='reserve@hold.internal');
-  const allGroups = groupBookings(bks);
-  const viewCounts = { all: allGroups.length, pending: 0, confirmed: 0, completed: 0, closed: 0, host: 0 };
-  allGroups.forEach(group => { viewCounts[bookingNavigationBucket(group)]++; });
+  const allGroups = attachPendingHostBalancePayments(groupBookings(bks), pendingBalances);
+  const viewCounts = bookingNavigationCounts(allGroups);
   updateBookingNavCount('bookingCountAll', viewCounts.all, 'All bookings');
   updateBookingNavCount('bookingCountPending', viewCounts.pending, 'Pending');
   updateBookingNavCount('bookingCountConfirmed', viewCounts.confirmed, 'Confirmed');
@@ -6769,11 +6870,11 @@ async function renderBookings(){
   const { q, fd, fs, fp } = bookingFilters();
   if(q) filteredBookings=filteredBookings.filter(b=>[
     b.ref,b.displayRef,b.groupRef,b.fullName,b.email,b.courtName,b.gcashRef,b.hostName,b.hostEmail,
-    ...(b.refs || [])
+    ...(b.refs || []), ...bookingPendingBalancePayments(b).map(payment => payment.paymentReference)
   ].some(v=>String(v||'').toLowerCase().includes(q)));
   if(fd) filteredBookings=filteredBookings.filter(b=>(b.items || [b]).some(item=>item.date===fd));
   if(fs) filteredBookings=filteredBookings.filter(b=>(b.items || [b]).some(item=>item.status===fs));
-  if(fp) filteredBookings=filteredBookings.filter(b=>(b.items || [b]).some(item=>item.paymentStatus===fp));
+  if(fp) filteredBookings=filteredBookings.filter(b=>(fp === 'for_verification' && bookingPendingBalancePayments(b).length) || (b.items || [b]).some(item=>item.paymentStatus===fp));
   const filteredCount = filteredBookings.length;
   updateBookingPagination(filteredCount);
   const pageStart = (_bookingPage - 1) * _bookingPageSize;
@@ -6834,6 +6935,7 @@ async function renderBookings(){
       </div></td>
       <td data-label="Payment"><span style="font-size:.76rem;background:var(--input);border-radius:4px;padding:2px 7px">${esc(paymentMethodLabel(b.paymentMethod))}</span></td>
       <td data-label="Pay State"><div class="pay-state-stack">${bookingPayStateSelect(b)}
+        ${bookingPendingBalancePayments(b).length ? '<span class="bdg bdg-p">Balance awaiting review</span>' : ''}
         <select class="fi" style="display:none;padding:4px 7px;font-size:.76rem;width:auto" onchange="updatePaymentStatus('${jsArg(b.ref)}',this.value)">
           <option value="unpaid" ${(!b.paymentStatus||b.paymentStatus==='unpaid')?'selected':''}>Unpaid</option>
           <option value="downpayment_paid" ${b.paymentStatus==='downpayment_paid'?'selected':''}>Downpayment Paid</option>
@@ -7082,6 +7184,8 @@ function paymentReviewRow(item) {
 }
 
 async function renderPaymentReview() {
+  // Explicit integration also runs through SECTION_LOADERS and realtime refreshes.
+  window.HostBalanceAdmin?.render(true).catch(error => console.warn('Balance review unavailable:', error));
   const [bookings, regs, hostRegs, hostSessions] = await Promise.all([
     DB.getBookings(),
     DB.getOpenPlayRegistrations(),
@@ -15867,7 +15971,7 @@ async function checkAgreementGate(session) {
 <script src="supabase-config.js?v=20260826-court-pick-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
-<script src="host-balance-admin.js?v=20260731-host-balance-payment-v2"></script>
+<script src="host-balance-admin.js?v=20260906-host-balance-pending-v1"></script>
 <script src="open-play-parity-ui.js?v=20260724-parity-v1"></script>
 <script src="qrcode.min.js?v=1.5.4"></script>
 <script src="play-manager.js?v=20260729-result-header-organized-v1"></script>

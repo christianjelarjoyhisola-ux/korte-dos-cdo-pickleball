@@ -90,7 +90,7 @@ function php(value) {
   })}`;
 }
 
-function loadPaymentHistoryHelpers(DB) {
+function loadPaymentHistoryHelpers(DB, { role = 'owner' } = {}) {
   const names = paymentHelperNames();
   for (const required of ['getHostBookingPaymentHistory', 'renderHostPaymentHistory']) {
     assert.ok(names.includes(required), `${required} must remain a named helper`);
@@ -105,7 +105,7 @@ function loadPaymentHistoryHelpers(DB) {
     receiptOcrProviderLabel: value => String(value || '—'),
     isDigitalPayment: value => ['gcash', 'maya', 'bpi', 'bdopay', 'maribank', 'gotyme', 'pnb'].includes(String(value || '').toLowerCase()),
     Auth: { can: () => true },
-    sess: { role: 'owner' },
+    sess: { role },
     window: {
       BookingBalance: {
         paidAmount(booking) {
@@ -281,6 +281,101 @@ test('deposit and approved balance expose distinct proof actions', () => {
   assert.match(html, /openHostBalanceReceipt\('balance-approved'/);
   assert.match(html, /GCash deposit receipt/);
   assert.match(html, /Maya remaining balance receipt/);
+});
+
+test('a submitted balance appears in Remaining balance with an owner review action before settlement', () => {
+  const helpers = loadPaymentHistoryHelpers({});
+  const booking = exampleBooking({
+    status: 'confirmed',
+    paymentStatus: 'downpayment_paid',
+    total: 3240,
+    downpayment: 877.5,
+    receiptStatus: 'manual_review',
+    balanceDueAt: '2026-09-06T15:59:00Z',
+  });
+  const pending = {
+    ...exampleHistory().attempts[1],
+    totalAmount: 3240,
+    originalPaidAmount: 877.5,
+    expectedAmount: 2362.5,
+    receiptVerificationId: 99,
+    receiptImageHash: 'b'.repeat(64),
+  };
+  const rejected = { ...pending, id: 'old-rejected', paymentId: 'old-rejected', status: 'rejected', paymentReference: 'REJECTED-REF-1' };
+  const expired = { ...pending, id: 'old-expired', paymentId: 'old-expired', status: 'expired', paymentReference: 'EXPIRED-REF-1' };
+  const history = { available: true, manualDecision: null, attempts: [rejected, expired, pending] };
+  const snapshot = JSON.stringify({ booking, history });
+  const html = helpers.renderHostPaymentHistory(booking, history);
+  const balance = html.match(/data-payment-kind="balance"[\s\S]*?(?=<details|$)/)?.[0] || '';
+
+  assert.match(balance, /data-payment-status="pending_review"/);
+  assert.match(balance, /Awaiting review/);
+  assert.match(balance, /PENDING-REF-2/);
+  assert.match(balance, /2,362\.50/);
+  assert.match(balance, /View balance proof/);
+  assert.match(balance, /Confirm &amp; Verify Balance|Confirm & Verify Balance/);
+  assert.match(balance, /openHostBalanceReview\('balance-pending',this\)/);
+  assert.doesNotMatch(balance, /No proof recorded|No approved remaining-balance payment is recorded yet/);
+  assert.match(html, /877\.50 verified of [^<]*3,240\.00/);
+  assert.doesNotMatch(html, /3,240\.00 verified|This booking is fully paid/);
+
+  const otherAttemptsAt = html.indexOf('booking-payment-other-attempts');
+  assert.ok(otherAttemptsAt > -1, 'rejected and expired attempts remain auditable');
+  assert.ok(html.indexOf('PENDING-REF-2') < otherAttemptsAt);
+  assert.ok(html.indexOf('REJECTED-REF-1') > otherAttemptsAt);
+  assert.ok(html.indexOf('EXPIRED-REF-1') > otherAttemptsAt);
+  assert.equal(JSON.stringify({ booking, history }), snapshot, 'rendering must preserve the reservation and ledger');
+});
+
+test('only owners can confirm a balance shown as awaiting review', () => {
+  const booking = exampleBooking({ status: 'confirmed', paymentStatus: 'downpayment_paid', downpayment: 510 });
+  const history = { available: true, manualDecision: null, attempts: [exampleHistory().attempts[1]] };
+  for (const role of ['owner', 'court_owner']) {
+    const html = loadPaymentHistoryHelpers({}, { role }).renderHostPaymentHistory(booking, history);
+    assert.match(html, /Confirm &amp; Verify Balance|Confirm & Verify Balance/, `${role} must be able to open review`);
+  }
+  const staffHtml = loadPaymentHistoryHelpers({}, { role: 'staff' }).renderHostPaymentHistory(booking, history);
+  assert.match(staffHtml, /Awaiting review/);
+  assert.doesNotMatch(staffHtml, /Confirm &amp; Verify Balance|Confirm & Verify Balance/);
+});
+
+test('rejected and expired balance attempts never expose an approval action', () => {
+  const helpers = loadPaymentHistoryHelpers({});
+  const booking = exampleBooking({ status: 'confirmed', paymentStatus: 'downpayment_paid', downpayment: 510 });
+  for (const status of ['rejected', 'expired']) {
+    const history = {
+      available: true,
+      manualDecision: null,
+      attempts: [{ ...exampleHistory().attempts[1], status }],
+    };
+    const html = helpers.renderHostPaymentHistory(booking, history);
+    assert.match(html, /Balance due/);
+    assert.doesNotMatch(html, /Confirm &amp; Verify Balance|Confirm & Verify Balance/);
+  }
+});
+
+test('balance review action opens the submitted ledger payment and prevents overlapping booking dialogs', async () => {
+  const actions = [];
+  const trigger = {};
+  const context = {
+    sess: { role: 'owner' },
+    window: { HostBalanceAdmin: { async openById(id, button) { actions.push(['review', id, button]); } } },
+    closeBookingDetails() { actions.push(['close-details']); },
+    toast(message, kind) { actions.push(['toast', message, kind]); },
+  };
+  vm.createContext(context);
+  vm.runInContext(`${extractFunction(adminSource, 'openHostBalanceReview')}\nthis.openReview = openHostBalanceReview;`, context);
+
+  await context.openReview('balance-pending', trigger);
+  assert.deepEqual(actions, [['close-details'], ['review', 'balance-pending', trigger]]);
+
+  actions.length = 0;
+  context.sess.role = 'staff';
+  await context.openReview('balance-pending', trigger);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0][0], 'toast');
+  assert.match(actions[0][1], /Only an owner can review/);
+  assert.equal(actions[0][2], 'err');
 });
 
 test('manual and unavailable settlements are recorded without being called verified', () => {
