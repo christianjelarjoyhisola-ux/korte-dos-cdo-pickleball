@@ -5234,6 +5234,10 @@ function shortDateTime(v){
 const RECEIPT_PAYMENT_WINDOW_MINUTES = 15;
 const RECEIPT_FLAG_LABELS = {
   DUPLICATE_REF:'Ref already used', DUPLICATE_INVOICE:'Invoice already used', DUPLICATE_INSTAPAY_REF:'InstaPay ref already used', DUPLICATE_BPI_TRANSACTION_REF:'BPI transaction ref already used', DUPLICATE_MARIBANK_TRANSACTION:'MariBank transaction already used', DUPLICATE_GOTYME_TRACE:'GoTyme Trace ID already used', WRONG_GCASH_NUMBER:'GCash receiver number does not match', WRONG_GCASH_ACCOUNT:'GCash destination does not match',
+    HOST_BALANCE_RECEIPT_TIME_UNREADABLE: 'Balance receipt date or time unreadable',
+    HOST_BALANCE_RECEIPT_TOO_OLD: 'Balance receipt uploaded after 24 hours',
+    HOST_BALANCE_RECEIPT_IN_FUTURE: 'Balance receipt time is in the future',
+    HOST_BALANCE_REQUEST_TIME_INVALID: 'Balance upload time needs review',
   AMOUNT_MISMATCH:'Amount too low', DATE_NOT_TODAY:'Wrong payment date', TIME_EXPIRED:`Paid after ${RECEIPT_PAYMENT_WINDOW_MINUTES} min`,
   TIME_STALE:'Stale time', TIME_FUTURE:'Receipt before booking', RECEIVER_NAME_MISMATCH:'Receiver name mismatch',
   METHOD_MISMATCH:'Wrong payment method selected', GCASH_RECEIPT_UNREADABLE:'GCash receipt unreadable',
@@ -15971,7 +15975,7 @@ async function checkAgreementGate(session) {
 <script src="supabase-config.js?v=20260826-court-pick-v1"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
-<script src="host-balance-admin.js?v=20260906-host-balance-pending-v1"></script>
+<script src="host-balance-admin.js?v=20260906-host-balance-time-v2"></script>
 <script src="open-play-parity-ui.js?v=20260724-parity-v1"></script>
 <script src="qrcode.min.js?v=1.5.4"></script>
 <script src="play-manager.js?v=20260729-result-header-organized-v1"></script>

@@ -275,9 +275,16 @@
     appendSummary(summary, 'Schedule', payment.scheduleLabel || payment.bookingDate);
     appendSummary(summary, 'Submitted', when(payment.submittedAt || payment.createdAt));
 
+    const flagLabels = {
+      HOST_BALANCE_RECEIPT_TIME_UNREADABLE: 'Balance receipt date or time unreadable',
+      HOST_BALANCE_RECEIPT_TOO_OLD: 'Balance receipt uploaded after 24 hours',
+      HOST_BALANCE_RECEIPT_IN_FUTURE: 'Balance receipt time is in the future',
+      HOST_BALANCE_REQUEST_TIME_INVALID: 'Balance upload time needs review',
+      TIME_FUTURE: 'Receipt predates the previous payment timer; owner review needed',
+    };
     const flags = Array.isArray(payment.receiptFlags) ? payment.receiptFlags : [];
     byId('hostBalanceReviewFlags').textContent = flags.length
-      ? `Verification flags: ${flags.join(', ')}`
+      ? `Verification flags: ${flags.map(flag => flagLabels[flag] || String(flag).replace(/_/g, ' ')).join(', ')}`
       : 'Verification flags: none';
     byId('hostBalanceReviewReason').value = '';
     // Each opening gets a fresh image so a previous receipt's delayed load

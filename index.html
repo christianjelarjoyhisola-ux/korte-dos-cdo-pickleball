@@ -5885,6 +5885,10 @@ function receiptReasonFromFlags(flags) {
     REF_MISMATCH: 'Reference mismatch',
     DATE_MISMATCH: 'Date mismatch',
     DATE_UNREADABLE: 'Receipt date unreadable',
+    HOST_BALANCE_RECEIPT_TIME_UNREADABLE: 'Balance receipt date or time unreadable',
+    HOST_BALANCE_RECEIPT_TOO_OLD: 'Balance receipt uploaded after 24 hours',
+    HOST_BALANCE_RECEIPT_IN_FUTURE: 'Balance receipt time is in the future',
+    HOST_BALANCE_REQUEST_TIME_INVALID: 'Balance upload time needs review',
     DATE_NOT_TODAY: 'Wrong payment date',
     TIME_UNREADABLE: 'Receipt time unreadable',
     TIME_STALE: 'Receipt time needs checking',
@@ -9884,7 +9888,7 @@ function hostBalancePaymentReferencePlaceholder(method) {
 }
 
 function hostBalancePaymentMethodNote(method) {
-  return ({
+  const note = ({
     gcash: 'Use GCash to GCash and upload the complete successful receipt.',
     bdopay: 'Use BDO Pay to the configured GCash recipient and enter the full BN or BN-NB reference.',
     maya: 'Use Maya to the configured GCash recipient and enter the Maya Reference ID.',
@@ -9893,6 +9897,9 @@ function hostBalancePaymentMethodNote(method) {
     gotyme: 'Use GoTyme to the configured GCash recipient and enter the full ITO Reference No.',
     pnb: 'Use the configured PNB payment details and upload the complete successful receipt.',
   })[method] || 'Use a new transaction and upload its complete successful receipt.';
+  return note + (['gcash', 'bdopay', 'maya', 'bpi', 'gotyme'].includes(method)
+    ? ' Upload within 24 hours of payment and before the balance deadline. Keep the receipt date and time visible for automatic verification. Receipts that need review will go to the court owner.'
+    : '');
 }
 
 function hostBalancePaymentReferenceValid(method, reference) {

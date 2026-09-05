@@ -37,6 +37,7 @@ import {
   isBdoPayReceipt,
   isBdoPayReference,
 } from "../_shared/bdo-pay-receipt.ts";
+import { evaluateHostBalanceReceiptTime } from "../_shared/host-balance-receipt-time.ts";
 import { extractReceiptAmount } from "../_shared/receipt-amount.ts";
 import { reconstructGoogleVisionRows } from "../_shared/google-vision-layout.ts";
 import {
@@ -450,6 +451,7 @@ const MONTHS: Record<string, number> = {
 // shifted time so it routes to manual review instead of assuming midnight.
 function parseReceiptDateTime(
   text: string,
+  strict = false,
 ): { date: string | null; shifted: Date | null } {
   const normalized = String(text || "")
     .replace(/[|]/g, " ")
@@ -467,6 +469,15 @@ function parseReceiptDateTime(
     String(day).padStart(2, "0")
   }`;
 
+  if (strict) {
+    const calendarCheck = new Date(Date.UTC(year, mon, day));
+    if (
+      calendarCheck.getUTCFullYear() !== year ||
+      calendarCheck.getUTCMonth() !== mon ||
+      calendarCheck.getUTCDate() !== day
+    ) return { date: null, shifted: null };
+  }
+
   const afterDate = normalized.slice(
     (dateOnly.index || 0) + dateOnly[0].length,
     (dateOnly.index || 0) + dateOnly[0].length + 80,
@@ -481,6 +492,10 @@ function parseReceiptDateTime(
   if (time) {
     let hour = parseInt(time[1], 10);
     const min = parseInt(time[2], 10);
+    const seconds = time[0].match(/[:;.]\s*\d{2}\s*[:;.]\s*(\d{2})/);
+    if (strict && (hour < 1 || hour > 12 || min > 59 || Number(seconds?.[1] || 0) > 59)) {
+      return { date: dateStr, shifted: null };
+    }
     const ap = time[3].toLowerCase().replace(/[^apm]/g, "");
     if (ap.startsWith("p") && hour !== 12) hour += 12;
     if (ap.startsWith("a") && hour === 12) hour = 0;
@@ -494,10 +509,11 @@ function parseReceiptDateTime(
 function parseReceiptDateTimeForProvider(
   text: string,
   provider: PaymentProvider,
+  strict = false,
 ): { date: string | null; shifted: Date | null } {
   if (provider === "maribank") return parseMariBankDateTime(text);
   if (provider === "gotyme") return parseGoTymePhDateTime(text);
-  return parseReceiptDateTime(text);
+  return parseReceiptDateTime(text, strict);
 }
 
 function digitsOnly(s: string): string {
@@ -2734,6 +2750,8 @@ async function recoverInlineReceiptAfterFailure(
 }
 
 Deno.serve(async (req) => {
+  // Trusted upload time, before body processing/OCR; never supplied by the client.
+  const requestReceivedAt = new Date();
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -3720,7 +3738,7 @@ Deno.serve(async (req) => {
       ? (amountExtraction.reliable ? amountExtraction.amount : null)
       : extractAmount(ocrText);
     const { date: receiptDate, shifted: receiptDateTime } =
-      parseReceiptDateTimeForProvider(ocrText, provider);
+      parseReceiptDateTimeForProvider(ocrText, provider, Boolean(hostBalancePayment));
     const bookingStartedAt = toPhWallClockDate(
       booking.created_at || booking.createdAt,
     );
@@ -3730,6 +3748,17 @@ Deno.serve(async (req) => {
     const receiptAgeMinutes = bookingStartedAt && receiptDateTime
       ? (receiptDateTime.getTime() - bookingStartedAt.getTime()) / 60000
       : null;
+    // A remaining balance is paid before the host opens/submits this upload.
+    // Its receipt age belongs to the upload time, not the new attempt's hold.
+    // MariBank's destination-specific policy and other payment flows stay separate.
+    const hostBalanceTimeCheck = hostBalancePayment &&
+        ["gcash", "bdopay", "maya", "bpi", "gotyme"].includes(provider)
+      ? evaluateHostBalanceReceiptTime({
+        receiptWallClock: receiptDateTime,
+        requestReceivedAt,
+      })
+      : null;
+    if (hostBalanceTimeCheck) flags.push(...hostBalanceTimeCheck.flags);
     let mariBankDestinationEvidence: "qr_account" | "mobile_number" | null =
       null;
     let mariBankTimestampVerified = false;
@@ -3761,7 +3790,8 @@ Deno.serve(async (req) => {
       if (provider === "gcash") {
         // GCash-to-GCash focused path. The receipt layout is consistent but OCR
         // can miss the small right-aligned timestamp, so unreadable date/time is
-        // not a failure for GCash. Parsed dates/times are still enforced.
+        // not a failure for new-booking GCash. Balance uploads require readable
+        // time evidence under the separate upload-age policy.
         if (!extractedRef && !flags.includes("REF_FORMAT_INVALID")) {
           flags.push("REF_FORMAT_INVALID");
         } else if (typedRef && extractedRef && extractedRef !== typedRef) {
@@ -3774,16 +3804,18 @@ Deno.serve(async (req) => {
           flags.push("AMOUNT_MISMATCH");
         }
 
-        if (
-          receiptDate && bookingStartedDate &&
-          receiptDate !== bookingStartedDate
-        ) flags.push("DATE_NOT_TODAY");
-        if (receiptDateTime && bookingStartedAt) {
+        if (!hostBalanceTimeCheck) {
           if (
-            (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
-          ) flags.push("TIME_FUTURE");
-          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
-            flags.push("TIME_EXPIRED");
+            receiptDate && bookingStartedDate &&
+            receiptDate !== bookingStartedDate
+          ) flags.push("DATE_NOT_TODAY");
+          if (receiptDateTime && bookingStartedAt) {
+            if (
+              (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+            ) flags.push("TIME_FUTURE");
+            else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+              flags.push("TIME_EXPIRED");
+            }
           }
         }
 
@@ -3814,17 +3846,19 @@ Deno.serve(async (req) => {
           flags.push("AMOUNT_MISMATCH");
         }
 
-        if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
-          flags.push("DATE_NOT_TODAY");
-        }
-        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
-        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if (
-          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
-        ) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
-          flags.push("TIME_EXPIRED");
+        if (!hostBalanceTimeCheck) {
+          if (!receiptDate) flags.push("DATE_UNREADABLE");
+          else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+            flags.push("DATE_NOT_TODAY");
+          }
+          if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+          else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+          else if (
+            (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+          ) flags.push("TIME_FUTURE");
+          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+            flags.push("TIME_EXPIRED");
+          }
         }
 
         if (!hasBdoPayIndicator(ocrText)) flags.push("BDO_PAY_UNREADABLE");
@@ -3849,17 +3883,19 @@ Deno.serve(async (req) => {
           flags.push("AMOUNT_REVIEW");
         }
 
-        if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
-          flags.push("DATE_NOT_TODAY");
-        }
-        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
-        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if (
-          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
-        ) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
-          flags.push("TIME_EXPIRED");
+        if (!hostBalanceTimeCheck) {
+          if (!receiptDate) flags.push("DATE_UNREADABLE");
+          else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+            flags.push("DATE_NOT_TODAY");
+          }
+          if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+          else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+          else if (
+            (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+          ) flags.push("TIME_FUTURE");
+          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+            flags.push("TIME_EXPIRED");
+          }
         }
 
         if (!hasMayaIndicator(ocrText)) flags.push("MAYA_UNREADABLE");
@@ -3893,17 +3929,19 @@ Deno.serve(async (req) => {
           flags.push("AMOUNT_REVIEW");
         }
 
-        if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
-          flags.push("DATE_NOT_TODAY");
-        }
-        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
-        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if (
-          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
-        ) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
-          flags.push("TIME_EXPIRED");
+        if (!hostBalanceTimeCheck) {
+          if (!receiptDate) flags.push("DATE_UNREADABLE");
+          else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+            flags.push("DATE_NOT_TODAY");
+          }
+          if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+          else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+          else if (
+            (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+          ) flags.push("TIME_FUTURE");
+          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+            flags.push("TIME_EXPIRED");
+          }
         }
 
         if (!hasBpiIndicator(ocrText)) flags.push("BPI_UNREADABLE");
@@ -4066,17 +4104,19 @@ Deno.serve(async (req) => {
           flags.push("GOTYME_TOTAL_UNREADABLE");
         }
 
-        if (!receiptDate) flags.push("DATE_UNREADABLE");
-        else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
-          flags.push("DATE_NOT_TODAY");
-        }
-        if (!receiptDateTime) flags.push("TIME_UNREADABLE");
-        else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
-        else if (
-          (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
-        ) flags.push("TIME_FUTURE");
-        else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
-          flags.push("TIME_EXPIRED");
+        if (!hostBalanceTimeCheck) {
+          if (!receiptDate) flags.push("DATE_UNREADABLE");
+          else if (bookingStartedDate && receiptDate !== bookingStartedDate) {
+            flags.push("DATE_NOT_TODAY");
+          }
+          if (!receiptDateTime) flags.push("TIME_UNREADABLE");
+          else if (!bookingStartedAt) flags.push("TIME_UNREADABLE");
+          else if (
+            (receiptAgeMinutes as number) < -PAYMENT_EARLY_TOLERANCE_MINUTES
+          ) flags.push("TIME_FUTURE");
+          else if ((receiptAgeMinutes as number) > PAYMENT_WINDOW_MINUTES) {
+            flags.push("TIME_EXPIRED");
+          }
         }
 
         if (
@@ -4416,6 +4456,7 @@ Deno.serve(async (req) => {
       bookingStartedAtPh12: formatPhDateTime12(bookingStartedAt),
       bookingStartedDate,
       receiptAgeMinutes,
+      hostBalanceReceiptTime: hostBalanceTimeCheck?.audit || null,
       allowedPaymentWindowMinutes: PAYMENT_WINDOW_MINUTES,
       allowedPaymentEarlyToleranceMinutes: PAYMENT_EARLY_TOLERANCE_MINUTES,
       expectedAmount,
