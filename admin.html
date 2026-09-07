@@ -438,6 +438,7 @@ h1, h2, h3, h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
   height: 3px; background: var(--green);
 }
 .sc-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 7px; }
+.sc-note { margin-top: 7px; font-size: .72rem; color: var(--text3); line-height: 1.5; }
 .sc-val { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: var(--green); line-height: 1; letter-spacing: 1px; }
 .sc-ic { position: absolute; top: 16px; right: 16px; font-size: 1.4rem; opacity: .35; }
 .dash-mobile-actions { display: none; }
@@ -2839,7 +2840,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
     <!-- DASHBOARD -->
     <div id="sec-dash" class="adm-sec on">
       <div class="stat-cards">
-        <div class="sc"><div class="sc-lbl">Total Bookings</div><div class="sc-val" id="dTotal">0</div><div class="sc-ic">📋</div></div>
+        <div class="sc"><div class="sc-lbl">Total System Bookings</div><div class="sc-val" id="dTotal">0</div><div class="sc-note">All statuses · Imported history excluded</div><div class="sc-ic">📋</div></div>
         <div class="sc"><div class="sc-lbl">Today's Bookings</div><div class="sc-val" id="dToday">0</div><div class="sc-ic">📅</div></div>
         <div class="sc"><div class="sc-lbl">Total Revenue</div><div class="sc-val" id="dRev">₱0</div><div class="sc-ic">💰</div></div>
         <div class="sc"><div class="sc-lbl">Most Booked</div><div class="sc-val" style="font-size:1rem;margin-top:4px" id="dMost">—</div><div class="sc-ic">🏆</div></div>
@@ -2969,6 +2970,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
 
       <!-- LIST VIEW -->
       <div id="tableView">
+        <p style="margin:0 0 12px;color:var(--text3);font-size:.78rem;line-height:1.5">Bookings created through this system. Imported history is excluded.</p>
         <div class="tbl-wrap">
           <div class="tbl-hd booking-filter-shell booking-filter-panel">
             <div class="filters">
@@ -6410,8 +6412,9 @@ async function renderDash(){
 
   const bks=await DB.getBookings();
   const today=new Date().toISOString().split('T')[0];
-  // Exclude placeholder slot-holds ("Reserving…") — they are temporary locks, not real bookings.
+  // Count the same system-created reservations as the All Bookings list, across all statuses.
   const realBks=bks.filter(isDashboardReportBooking);
+  const allTxns=groupBookings(realBks);
   const active=realBks.filter(isDashboardActiveBooking);
   const activeTxns=groupBookings(active);
   const forfeitedTxns=groupBookings(realBks.filter(b=>b.status==='forfeited' && b.paymentStatus==='deposit_retained'));
@@ -6420,7 +6423,7 @@ async function renderDash(){
   const todayBks=activeTxns.filter(b=>b.date===today);
   const cc={};active.forEach(b=>{cc[b.courtName]=(cc[b.courtName]||0)+1;});
   const most=Object.entries(cc).sort((a,b)=>b[1]-a[1])[0];
-  $('dTotal').textContent=activeTxns.length;
+  $('dTotal').textContent=allTxns.length;
   $('dToday').textContent=todayBks.length;
   $('dRev').textContent=fmt(rev);
   $('dMost').textContent=most?most[0]:'—';
@@ -6855,11 +6858,8 @@ async function renderBookings(){
       if (changed > 0 && _curSection === 'bookings' && seq === _bookingRenderSeq) renderBookings();
     })
     .catch(e => console.warn('autoCompleteBookings skipped:', e));
-  // Hide placeholder slot-holds ("Reserving…"): these are temporary locks created
-  // when a customer clicks Book Now but hasn't submitted yet. A completed booking
-  // carries the real customer email, so any row still on reserve@hold.internal is
-  // just an in-progress or abandoned hold and adds no value to the admin list.
-  bks=bks.filter(b=>b.email!=='reserve@hold.internal');
+  // Match dashboard scope before grouping: system bookings only, without imports or temporary holds.
+  bks=bks.filter(isDashboardReportBooking);
   const allGroups = attachPendingHostBalancePayments(groupBookings(bks), pendingBalances);
   const viewCounts = bookingNavigationCounts(allGroups);
   updateBookingNavCount('bookingCountAll', viewCounts.all, 'All bookings');
@@ -7367,9 +7367,9 @@ async function renderCalendar(){
   const monthKey=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
   if (calSelectedDate && !calSelectedDate.startsWith(monthKey)) calSelectedDate='';
 
-  // Build booking map: date → status counts
+  // Calendar booking counts include system bookings; the day board keeps all occupied slots.
   const bkMap={};
-  bks.filter(isScheduleActiveBooking).forEach(b=>{
+  bks.filter(isDashboardActiveBooking).forEach(b=>{
     if(!bkMap[b.date]) bkMap[b.date]={pending:0,confirmed:0,completed:0,cancelled:0,total:0};
     bkMap[b.date][b.status]=(bkMap[b.date][b.status]||0)+1;
     bkMap[b.date].total++;
@@ -7508,6 +7508,7 @@ function calSlotState(dateStr, hour, court, bookingMap) {
   const key = `${String(court.id)}|${hour}`;
   const booking = bookingMap.get(key);
   if (booking) {
+    if (isManualImportBooking(booking)) return { type: 'blocked', label: 'Unavailable', title: 'Reserved slot', meta: 'Not bookable' };
     const status = String(booking.status || 'confirmed').toLowerCase();
     return {
       type: status === 'completed' ? 'completed' : status === 'pending' ? 'pending' : status === 'verifying' ? 'verifying' : 'booked',
@@ -9370,7 +9371,7 @@ async function exportCSV(){
   if(q) bks=bks.filter(b=>[b.ref,b.fullName,b.email,b.courtName,b.gcashRef].some(v=>String(v||'').toLowerCase().includes(q)));
   if(fd) bks=bks.filter(b=>b.date===fd);
   if(fs) bks=bks.filter(b=>b.status===fs);
-  bks = groupBookings(bks.filter(b=>b.email!=='reserve@hold.internal'));
+  bks = groupBookings(bks.filter(isDashboardReportBooking));
   const h=['Transaction Ref','Name','Email','Contact','Court(s)','Schedule','Hrs','Total','Paid Using','Money Received To','Payment Status','Booking Status','Created','Child Refs'];
   const rows=bks.map(b=>[b.displayRef||b.ref,b.fullName,b.email,b.contactNumber,b.courtName,b.scheduleLabel||`${fmtD(b.date)} ${b.startTime}-${b.endTime}`,b.duration,b.total,paymentMethodLabel(b.paymentMethod),receivedAccountLabel(b),b.paymentStatus||'unpaid',b.status,b.createdAt,(b.refs||[b.ref]).join(' ')]);
   const csv=[h,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
