@@ -2840,7 +2840,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
     <!-- DASHBOARD -->
     <div id="sec-dash" class="adm-sec on">
       <div class="stat-cards">
-        <div class="sc"><div class="sc-lbl">Total System Bookings</div><div class="sc-val" id="dTotal">0</div><div class="sc-note">All statuses · Imported history excluded</div><div class="sc-ic">📋</div></div>
+        <div class="sc"><div class="sc-lbl">Total System Bookings</div><div class="sc-val" id="dTotal">0</div><div class="sc-note">Confirmed + completed · Imports excluded</div><div class="sc-ic">📋</div></div>
         <div class="sc"><div class="sc-lbl">Today's Bookings</div><div class="sc-val" id="dToday">0</div><div class="sc-ic">📅</div></div>
         <div class="sc"><div class="sc-lbl">Total Revenue</div><div class="sc-val" id="dRev">₱0</div><div class="sc-ic">💰</div></div>
         <div class="sc"><div class="sc-lbl">Most Booked</div><div class="sc-val" style="font-size:1rem;margin-top:4px" id="dMost">—</div><div class="sc-ic">🏆</div></div>
@@ -6412,9 +6412,9 @@ async function renderDash(){
 
   const bks=await DB.getBookings();
   const today=new Date().toISOString().split('T')[0];
-  // Count the same system-created reservations as the All Bookings list, across all statuses.
+  // Count confirmed and completed system reservations, grouping eligible court rows once.
   const realBks=bks.filter(isDashboardReportBooking);
-  const allTxns=groupBookings(realBks);
+  const totalTxns=groupBookings(realBks.filter(b=>b.status==='confirmed'||b.status==='completed'));
   const active=realBks.filter(isDashboardActiveBooking);
   const activeTxns=groupBookings(active);
   const forfeitedTxns=groupBookings(realBks.filter(b=>b.status==='forfeited' && b.paymentStatus==='deposit_retained'));
@@ -6423,7 +6423,7 @@ async function renderDash(){
   const todayBks=activeTxns.filter(b=>b.date===today);
   const cc={};active.forEach(b=>{cc[b.courtName]=(cc[b.courtName]||0)+1;});
   const most=Object.entries(cc).sort((a,b)=>b[1]-a[1])[0];
-  $('dTotal').textContent=allTxns.length;
+  $('dTotal').textContent=totalTxns.length;
   $('dToday').textContent=todayBks.length;
   $('dRev').textContent=fmt(rev);
   $('dMost').textContent=most?most[0]:'—';

@@ -124,7 +124,7 @@ function loadAdmin(bookings, pendingPayments = []) {
   return { context, nodes, captured };
 }
 
-test('dashboard total and every booking tab use the same system-only grouped population', async () => {
+test('dashboard counts confirmed and completed system groups while booking tabs retain all system statuses', async () => {
   const rows = mixedBookings();
   const original = JSON.stringify(rows);
   const { context, nodes, captured } = loadAdmin(rows, [
@@ -134,9 +134,8 @@ test('dashboard total and every booking tab use the same system-only grouped pop
   await context.renderDash();
   await context.renderBookings();
 
-  assert.equal(Number(nodes.get('dTotal').textContent), 6);
+  assert.equal(Number(nodes.get('dTotal').textContent), 3, 'confirmed customer group, completed staff booking, and confirmed host booking');
   assert.equal(nodes.get('bookingCountAll').textContent, '6');
-  assert.equal(Number(nodes.get('dTotal').textContent), Number(nodes.get('bookingCountAll').textContent));
   const expectedCounts = { Pending: 2, Confirmed: 1, Completed: 1, Closed: 2, Host: 1 };
   for (const [name, count] of Object.entries(expectedCounts)) {
     assert.equal(nodes.get(`bookingCount${name}`).textContent, String(count), name);
@@ -166,17 +165,45 @@ test('dashboard total and every booking tab use the same system-only grouped pop
   assert.equal(JSON.stringify(rows), original, 'display filtering must not change stored bookings');
 });
 
-test('all system statuses stay counted beyond 1,000 records while the table remains paginated', async () => {
+test('dashboard counts eligible statuses beyond 1,000 records while All retains the full paginated history', async () => {
   const rows = Array.from({ length: 1105 }, (_, index) => booking(`PB-${index}`, {
     status: index % 2 ? 'cancelled' : 'completed',
   }));
   const { context, nodes } = loadAdmin(rows);
   await context.renderDash();
   await context.renderBookings();
-  assert.equal(Number(nodes.get('dTotal').textContent), 1105);
+  assert.equal(Number(nodes.get('dTotal').textContent), 553);
   assert.equal(nodes.get('bookingCountAll').textContent, '1105');
   assert.equal((nodes.get('bookBody').innerHTML.match(/class="booking-row"/g) || []).length, 50);
   assert.match(nodes.get('bookingPageMeta').textContent, /1-50 of 1105/);
+});
+
+test('dashboard total strictly excludes incomplete, closed, unknown, imported, and placeholder bookings', async () => {
+  const ineligible = ['pending', 'verifying', 'cancelled', 'forfeited', 'unknown'].map(status =>
+    booking(`PB-EXCLUDED-${status}`, { status })
+  );
+  const excludedHistory = ['confirmed', 'completed'].flatMap(status => [
+    booking(`MANUAL-${status}`, { status }),
+    booking(`LEGACY-${status}`, { status, paymentMethod: 'manual' }),
+    booking(`HOLD-${status}`, { status, email: 'reserve@hold.internal' }),
+  ]);
+  const eligible = [
+    booking('PB-ELIGIBLE-A', { groupRef: 'PB-ELIGIBLE-G' }),
+    booking('PB-ELIGIBLE-B', { groupRef: 'PB-ELIGIBLE-G', courtId: 'court-2', courtName: 'Court 2' }),
+    booking('PB-ELIGIBLE-COMPLETED', { status: 'completed', paymentMethod: 'cash', createdVia: 'admin' }),
+  ];
+  const { context, nodes } = loadAdmin([...eligible, ...ineligible, ...excludedHistory]);
+  await context.renderDash();
+  await context.renderBookings();
+  assert.equal(Number(nodes.get('dTotal').textContent), 2, 'one confirmed multi-court group plus one completed system booking');
+  assert.equal(nodes.get('bookingCountAll').textContent, '7', 'all five other system statuses remain available in the list');
+  const table = nodes.get('bookBody').innerHTML;
+  for (const row of ineligible) assert.ok(table.includes(row.ref), `${row.status} remains in the history`);
+  assert.doesNotMatch(table, /MANUAL-|LEGACY-|HOLD-/);
+
+  const excludedOnly = loadAdmin([...ineligible, ...excludedHistory]);
+  await excludedOnly.context.renderDash();
+  assert.equal(Number(excludedOnly.nodes.get('dTotal').textContent), 0, 'none of the excluded statuses or sources can contribute to the total');
 });
 
 test('booking CSV exports system bookings across all statuses without imports or holds', async () => {
