@@ -1277,20 +1277,40 @@ window.DB = {
       });
     }
     return _pbCached('bookings', opts, PB_FAST_CACHE_MS.bookings, async () => {
-      let query = _sb.from('bookings').select('*').order('created_at', { ascending: false });
-      if (opts.date) query = query.eq('date', opts.date);
-      if (opts.courtId) query = query.eq('court_id', String(opts.courtId));
-      if (opts.hostUserId) query = query.eq('host_user_id', String(opts.hostUserId));
-      if (opts.activeOnly) query = query.neq('status', 'cancelled').neq('status', 'forfeited');
-      const { data, error } = await query;
-      if (error) {
-        console.error('getBookings:', error);
-        // Host history is an authenticated, identity-scoped view. Surface an
-        // RLS/schema failure instead of presenting it as an empty history.
-        if (opts.hostUserId) throw error;
-        return [];
-      }
-      return data.map(rowToBooking);
+      // Supabase caps each response, including cancelled bookings and temporary
+      // holds. Load every page before the dashboard filters or groups the rows.
+      const pageSize = 1000;
+      const rows = [];
+      const refs = new Set();
+      let offset = 0;
+      let totalRows = null;
+      do {
+        let query = _sb.from('bookings')
+          .select('*', offset === 0 ? { count: 'exact' } : {})
+          .order('created_at', { ascending: false })
+          .order('ref', { ascending: false });
+        if (opts.date) query = query.eq('date', opts.date);
+        if (opts.courtId) query = query.eq('court_id', String(opts.courtId));
+        if (opts.hostUserId) query = query.eq('host_user_id', String(opts.hostUserId));
+        if (opts.activeOnly) query = query.neq('status', 'cancelled').neq('status', 'forfeited');
+        const { data, error, count } = await query.range(offset, offset + pageSize - 1);
+        if (error) {
+          console.error('getBookings:', error);
+          // Never return a partial history when a later page fails. Host history
+          // must also keep surfacing authenticated RLS/schema failures.
+          if (opts.hostUserId) throw error;
+          return [];
+        }
+        if (offset === 0 && Number.isFinite(count)) totalRows = count;
+        if (!data?.length) break;
+        for (const row of data) {
+          // A new booking between requests can shift an earlier row into this page.
+          if (!refs.has(row.ref)) { refs.add(row.ref); rows.push(row); }
+        }
+        // The server may enforce a smaller cap than the requested page size.
+        offset += data.length;
+      } while (totalRows === null || rows.length < totalRows);
+      return rows.map(rowToBooking);
     });
   },
 
