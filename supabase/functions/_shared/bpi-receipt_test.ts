@@ -23,6 +23,22 @@ Fee
 PHP 0.00
 `;
 
+const currentQrSample = `
+Transfer successful!
+Thursday, Sep 17 2026; 04:19:55 PM (GMT +8)
+Confirmation No. 1626016391287
+Transaction Ref. No. 250735
+Sent via BPI
+Transfer to
+GCash/G-Xchange
+Korte Dos (QR Code)
+xxxxxxxxxxxxx1BS
+Transfer amount
+PHP 720.00
+Fee
+PHP 0.00
+`;
+
 Deno.test("recognizes the current BPI transfer-success layout", () => {
   if (!isBpiReceipt(sample)) throw new Error("BPI receipt was not recognized");
   if (!hasSuccessfulBpiTransfer(sample)) {
@@ -81,5 +97,33 @@ Deno.test("does not require InstaPay, QRPh, or an unmasked receiver name", () =>
   }
   if (!hasSuccessfulBpiTransfer(sample)) {
     throw new Error("Valid BPI receipt should remain eligible");
+  }
+});
+
+Deno.test("recognizes the Sep 2026 BPI QR receipt layout", () => {
+  if (!isBpiReceipt(currentQrSample)) {
+    throw new Error("Current BPI QR receipt was not recognized");
+  }
+  if (!hasSuccessfulBpiTransfer(currentQrSample)) {
+    throw new Error("Current BPI QR success evidence was not recognized");
+  }
+  if (!hasGcashGxiDestination(currentQrSample)) {
+    throw new Error("Current GCash/G-Xchange destination was not recognized");
+  }
+  if (
+    extractBpiConfirmationNo(currentQrSample, "1626016391287") !==
+      "1626016391287"
+  ) {
+    throw new Error("Current BPI confirmation number was not extracted");
+  }
+  if (extractBpiTransactionRefNo(currentQrSample) !== "250735") {
+    throw new Error("Current BPI transaction reference was not extracted");
+  }
+  if (
+    checkBpiReceiverNumber(currentQrSample, "0917 000 0000", {
+      expectedQrRecipientName: "Korte DOS",
+    }) !== "match"
+  ) {
+    throw new Error("Current BPI QR recipient block was not accepted");
   }
 });

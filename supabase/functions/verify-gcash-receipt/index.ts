@@ -3515,6 +3515,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    let checkpointUpdateError: string | null = null;
     if (hasPersistedBooking) {
       const { data: safeRows, error: safeStateErr } = await bookingUpdateQuery(
         db,
@@ -3529,32 +3530,30 @@ Deno.serve(async (req) => {
         },
       ).in("status", ["verifying", "pending"]).select("ref");
       if (safeStateErr || !safeRows?.length) {
-        console.error(
-          "receipt safe-state update failed:",
-          safeStateErr
-            ? errMsg(safeStateErr)
-            : "no active booking rows updated",
-        );
-        // The outer recovery path can still attach the financial evidence
-        // without changing scheduling state when a legacy overlapping hold
-        // blocks the pending transition.
-        throw safeStateErr || new Error(
-          "Receipt was stored but the booking could not enter pending review",
-        );
+        checkpointUpdateError = safeStateErr
+          ? errMsg(safeStateErr)
+          : "no active booking rows updated";
+        console.error("receipt safe-state update failed:", checkpointUpdateError);
+        // Storage already contains the immutable evidence. A scheduling-state
+        // conflict must not prevent OCR from reading that evidence. Continue
+        // through extraction/audit and retry the guarded transition below;
+        // if it is still blocked, persist the OCR metadata without changing
+        // the booking's scheduling state and route it to owner review.
+      } else {
+        booking = {
+          ...booking,
+          status: "pending",
+          payment_status: "for_verification",
+          receipt_image_url: objectPath,
+          receipt_image_hash: imageHash,
+          receipt_status: "manual_review",
+        };
+        console.log("receipt checkpoint: attached", {
+          bookingRef,
+          rows: safeRows.length,
+          objectPath,
+        });
       }
-      booking = {
-        ...booking,
-        status: "pending",
-        payment_status: "for_verification",
-        receipt_image_url: objectPath,
-        receipt_image_hash: imageHash,
-        receipt_status: "manual_review",
-      };
-      console.log("receipt checkpoint: attached", {
-        bookingRef,
-        rows: safeRows.length,
-        objectPath,
-      });
     }
 
     const settings: Record<string, string> = preparedInline
@@ -4704,6 +4703,28 @@ Deno.serve(async (req) => {
         if (!concurrentlyFinalized) {
           finalUpdateError = `No non-terminal row matched ref=${bookingRef}`;
           console.error(finalUpdateError);
+        }
+      }
+
+      if (finalUpdateError) {
+        // Preserve successful OCR even when a legacy overlap or another
+        // scheduling guard refuses the status transition. This update changes
+        // receipt evidence only; it cannot claim a slot or confirm payment.
+        const { data: metadataRows, error: metadataErr } =
+          await bookingUpdateQuery(db, booking, metadataUpdate)
+            .in("status", ["verifying", "pending"])
+            .select("ref");
+        if (metadataErr || !metadataRows?.length) {
+          console.error(
+            "booking OCR metadata fallback failed:",
+            errMsg(metadataErr || "no active booking rows updated"),
+          );
+        } else {
+          console.log("booking OCR metadata preserved after status conflict", {
+            bookingRef,
+            rows: metadataRows.length,
+            checkpointUpdateError,
+          });
         }
       }
     }

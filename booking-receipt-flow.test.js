@@ -157,7 +157,17 @@ test('legacy overlapping holds preserve evidence even when pending transition is
   );
   assert.match(
     receiptEdge,
-    /receipt safe-state update failed:[\s\S]*throw safeStateErr \|\| new Error/,
+    /receipt safe-state update failed:[\s\S]*must not prevent OCR from reading that evidence/,
+  );
+  assert.doesNotMatch(
+    receiptEdge,
+    /receipt safe-state update failed:[\s\S]{0,800}throw safeStateErr/,
+    'a safe-state conflict must not abort OCR after the receipt is stored',
+  );
+  assert.match(
+    receiptEdge,
+    /if \(finalUpdateError\)[\s\S]*bookingUpdateQuery\(db, booking, metadataUpdate\)[\s\S]*booking OCR metadata preserved after status conflict/,
+    'successful OCR metadata must survive a blocked status transition',
   );
 });
 
