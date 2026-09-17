@@ -153,6 +153,151 @@ Reference No. ITO260827223202003
 Date 28 Aug 2026 at 6:32 AM
 `;
 
+// Exact Google Vision visual-row reconstruction stored for the 17 Sep 2026
+// production receipt. Vision read the stylized InstaPay logo as "instaFay"
+// and joined the adjacent UI noun to produce "Instant transfer".
+const september17InstantTransferReceipt = `
+Transferred
+P720.00
+Share
+instaFay Instant transfer
+To Korte D **
+************* * A1BS
+G - Xchange , Inc ( GCash )
+From MARGIE L✶✶ L ******
+******** * 5949
+GoTyme Bank
+Amount $ 720.00
+Fee P9.00
+Total P729.00
+Trace ID 210017
+Reference No. ITO260917074210017
+Date 17 Sep 2026 at 03:42 PM
+Get help
+`;
+
+Deno.test("parses the exact Sep 17 GoTyme Instant transfer OCR reconstruction", () => {
+  assert(
+    isGoTymeToGcashReceipt(september17InstantTransferReceipt),
+    "Sep 17 receipt family",
+  );
+  assert(
+    hasGoTymeInstapayInstant(september17InstantTransferReceipt),
+    "Sep 17 InstaPay rail",
+  );
+  assert(
+    hasSuccessfulGoTymeTransfer(september17InstantTransferReceipt),
+    "Sep 17 completed transfer",
+  );
+  assertEquals(
+    extractGoTymeStatus(september17InstantTransferReceipt),
+    "transferred",
+    "Sep 17 status",
+  );
+  assertEquals(
+    extractGoTymeReference(
+      september17InstantTransferReceipt,
+      "ITO260917074210017",
+    ),
+    "ITO260917074210017",
+    "Sep 17 reference",
+  );
+  assertEquals(
+    extractGoTymeTraceId(september17InstantTransferReceipt),
+    "210017",
+    "Sep 17 trace ID",
+  );
+  assertEquals(
+    extractGoTymeAmount(september17InstantTransferReceipt),
+    720,
+    "Sep 17 transfer amount",
+  );
+  assertEquals(
+    extractGoTymeFee(september17InstantTransferReceipt),
+    9,
+    "Sep 17 fee",
+  );
+  assertEquals(
+    extractGoTymeTotal(september17InstantTransferReceipt),
+    729,
+    "Sep 17 total",
+  );
+  assert(
+    hasConsistentGoTymeAccounting(september17InstantTransferReceipt),
+    "Sep 17 balanced accounting",
+  );
+  assertEquals(
+    extractGoTymeDestination(september17InstantTransferReceipt),
+    "gcash",
+    "Sep 17 GCash destination",
+  );
+  assertEquals(
+    extractGoTymeSourceInstitution(september17InstantTransferReceipt),
+    "GoTyme Bank",
+    "Sep 17 source institution",
+  );
+  assertEquals(
+    extractGoTymeDestinationInstitution(september17InstantTransferReceipt),
+    "G-Xchange, Inc (GCash)",
+    "Sep 17 destination institution",
+  );
+  assertEquals(
+    extractGoTymeRecipientToken(september17InstantTransferReceipt),
+    "A1BS",
+    "Sep 17 destination suffix",
+  );
+  assertEquals(
+    checkGoTymeDestinationAccountSuffix(
+      september17InstantTransferReceipt,
+      "A1BS",
+    ),
+    "match",
+    "Sep 17 configured suffix",
+  );
+  assertEquals(
+    checkGoTymeRecipientName(
+      september17InstantTransferReceipt,
+      "Korte DOS",
+    ),
+    "match",
+    "Sep 17 recipient name",
+  );
+  assertEquals(
+    extractGoTymeSenderLast4(september17InstantTransferReceipt),
+    "5949",
+    "Sep 17 sender suffix",
+  );
+  const parsed = parseGoTymePhDateTime(september17InstantTransferReceipt);
+  assertEquals(parsed.date, "2026-09-17", "Sep 17 PH date");
+  assertEquals(
+    parsed.shifted?.toISOString(),
+    "2026-09-17T15:42:00.000Z",
+    "Sep 17 PH wall-clock time",
+  );
+});
+
+Deno.test("does not trust the Sep 17 rail alias without strong receipt evidence", () => {
+  const conflictingRail = september17InstantTransferReceipt.replace(
+    "instaFay Instant transfer",
+    "instaFay Instant transfer\nPESONet",
+  );
+  assertEquals(
+    isGoTymeToGcashReceipt(conflictingRail),
+    false,
+    "conflicting rail",
+  );
+
+  const brokenAccounting = september17InstantTransferReceipt.replace(
+    "Total P729.00",
+    "Total P700.00",
+  );
+  assertEquals(
+    isGoTymeToGcashReceipt(brokenAccounting),
+    false,
+    "unbalanced receipt",
+  );
+});
+
 Deno.test("parses the exact current Sent receipt with an independent trace", () => {
   assert(isGoTymeToGcashReceipt(august28CurrentReceipt), "current receipt family");
   assert(hasSuccessfulGoTymeTransfer(august28CurrentReceipt), "Sent completion");

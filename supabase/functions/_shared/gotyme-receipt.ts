@@ -160,8 +160,13 @@ function hasGoTymeInstantBadgeWithoutReadableLogo(text: string): boolean {
   return nonEmptyLines(text).some((line) => {
     const value = compact(line);
     // Google Vision read the stylized InstaPay logo's P as F in the supplied
-    // visual row. Keep this recovery exact instead of fuzzy-matching a rail.
-    return value === "INSTANT" || value === "INSTAFAYINSTANT";
+    // visual rows. It can also append the adjacent UI noun ("transfer") to
+    // the badge. Keep these recoveries exact instead of fuzzy-matching a rail;
+    // the surrounding strong-layout check still requires the GoTyme brand,
+    // GCash destination, completed status, identifiers, date, and balanced
+    // Amount + Fee = Total accounting.
+    return value === "INSTANT" || value === "INSTAFAYINSTANT" ||
+      value === "INSTAFAYINSTANTTRANSFER";
   });
 }
 
