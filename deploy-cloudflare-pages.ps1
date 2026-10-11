@@ -40,6 +40,8 @@ $publicFiles = @(
   "app-icon-512.png",
   "app-icon-maskable-512.png",
   "admin.html",
+  "admin-notifications.js",
+  "admin-notifications.css",
   "admin.js",
   "ads.txt",
   "auth.js",

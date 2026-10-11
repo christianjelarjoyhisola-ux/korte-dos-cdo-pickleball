@@ -40,3 +40,28 @@ self.addEventListener('fetch', event => {
     })());
   }
 });
+
+// Never render arbitrary payload text or links on the lock screen.
+self.addEventListener('push', event => {
+  let test = false;
+  try { test = event.data?.json()?.type === 'test'; } catch (_) {}
+  event.waitUntil(self.registration.showNotification('Korte DOS', {
+    body: test ? 'Phone notifications are working on this device.' : 'A payment needs review. Sign in to view the details.',
+    icon: '/app-icon-192.png', badge: '/app-icon-192.png',
+    tag: test ? 'korte-dos-test' : 'korte-dos-payment-review',
+    data: { test },
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.test ? '/admin?section=notifications' : '/admin?section=payreview', self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windows) {
+      if (new URL(client.url).origin === self.location.origin && /^\/admin(?:\.html)?$/.test(new URL(client.url).pathname)) {
+        await client.navigate(url); await client.focus(); return;
+      }
+    }
+    await self.clients.openWindow(url);
+  })());
+});

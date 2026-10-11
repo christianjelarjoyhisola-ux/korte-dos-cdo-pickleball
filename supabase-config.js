@@ -2889,6 +2889,10 @@ window.DB = {
     return data || [];
   },
 
+  async manageDeviceNotifications(action, data = {}) {
+    return _invokeEdgeFunction('manage-device-notifications', { ...data, action });
+  },
+
   async getPaymentReviewNotificationSettings() {
     return _invokeEdgeFunction('manage-payment-review-notification', { action: 'get' });
   },
@@ -6251,6 +6255,9 @@ window.DB = {
       const db = readDb();
       db.settings[key] = value;
       writeDb(db);
+    },
+    async manageDeviceNotifications() {
+      return { ok: false, error: 'Device notifications require the live system.' };
     },
     async getPaymentReviewNotificationSettings() {
       const email = String(readDb().settings.payment_review_notification_email || '').trim().toLowerCase();

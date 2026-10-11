@@ -13,6 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Korte Admin">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script defer src="/pwa.js?v=20261011"></script>
+<script src="admin-notifications.js?v=20261011"></script>
+<link rel="stylesheet" href="admin-notifications.css?v=20261011">
 <script src="chart.min.js"></script>
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
 <script src="owner-intelligence.js?v=20260826-sellable-demand-v1"></script>
@@ -2822,6 +2824,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
       <div class="nav-item" data-s="hosts" data-perm="host_open_play" onclick="goto('hosts')"><span>&#128101;</span> Host Center</div>
       <div class="nav-item" data-s="gamemgr" data-perm="open_play" onclick="goto('gamemgr')"><span>&#127955;</span> Play Manager</div>
       <div class="nav-item" data-s="maintenance" data-perm="maintenance" onclick="goto('maintenance')"><span>&#128295;</span> Maintenance</div>
+      <div class="nav-item" data-s="notifications" data-perm="payments" onclick="goto('notifications')"><span>&#128276;</span> Notifications</div>
       <div class="nav-item" data-s="payments" data-perm="payments" onclick="goto('payments')"><span>&#128179;</span> Payments</div>
       <div class="nav-item" data-s="vouchers" data-perm="vouchers" onclick="goto('vouchers')"><span>&#127991;</span> Vouchers</div>
     </div>
@@ -3976,29 +3979,23 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
       </div>
     </div>
 
-    <!-- PAYMENTS -->
-    <div id="sec-payments" class="adm-sec">
-      <div class="toolbar"><h2>💳 PAYMENT SETTINGS</h2></div>
 
-      <div class="panel" style="max-width:980px;margin-bottom:20px;border:1.5px solid rgba(var(--green-rgb),.3);">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-          <h4 style="margin:0;color:var(--green)">Connection Readiness</h4>
-          <button class="btn btn-g btn-sm" onclick="renderIntegrationStatus()">Refresh</button>
-        </div>
-        <div id="integrationStatusBody" class="integration-grid">
-          <div class="integration-card warn">
-            <div class="integration-meta">Checking services...</div>
-          </div>
-        </div>
+    <div id="sec-notifications" class="adm-sec">
+      <div class="notification-intro">
+        <h2>Notifications</h2><p>Stay informed, on your terms.</p>
+        <div class="notification-meta"><span id="notificationUpdated">Checking notification settings…</span><button class="btn btn-g btn-sm" onclick="renderNotifications()">Refresh</button></div>
+        <h3 style="font-size:1rem"><span aria-hidden="true">🔔</span> Payment review needed</h3>
+        <p>Get notified when a submitted payment needs manual review. Reminders repeat hourly while payments await verification.</p>
       </div>
-
+      <div class="notification-grid">
       <!-- PAYMENT REVIEW EMAIL — Owner and court owner -->
-      <div class="panel" style="max-width:680px;margin-bottom:20px;border:1.5px solid rgba(74,154,220,.32);background:rgba(74,154,220,.035)">
-        <h4 style="margin-bottom:8px">Payment Review Email Alerts</h4>
+      <div class="notification-card">
+        <div class="notification-heading"><h3>✉ Email alerts</h3><span id="notificationEmailBadge" class="notification-badge">Loading…</span></div>
         <p style="color:var(--muted);font-size:.84rem;line-height:1.55;margin:0 0 14px">
-          When a receipt cannot be auto-verified and enters Manual Review, send one alert to this address. The email contains a secure sign-in link; it never approves or rejects a payment.
+          Receive payment-review alerts and hourly reminders while payments await verification. Open receipts securely after signing in.
         </p>
-        <div class="fg" style="margin:0">
+        <div class="notification-recipient"><small>Notification recipient</small><strong id="notificationEmailRecipient">Loading…</strong><small>Only the saved address receives email alerts.</small></div>
+<details><summary>Change email address</summary><div class="fg" style="margin:0">
           <label class="fl" for="paymentReviewEmailInput">Notification Email</label>
           <input
             type="email"
@@ -4016,7 +4013,8 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
             Enter one email address. Leave it blank and save to turn email alerts off. Booking details are included, so use an account controlled by Korte DOS.
           </div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px">
+        </details><div class="notification-actions">
+<button class="btn btn-g btn-sm" id="notificationEmailOff" type="button" onclick="turnOffNotificationEmail()" disabled>Turn off email alerts</button>
           <button class="btn btn-p btn-sm" id="paymentReviewEmailSaveBtn" type="button" onclick="savePaymentReviewNotificationEmail()">Save Email</button>
           <button class="btn btn-g btn-sm" id="paymentReviewEmailTestBtn" type="button" onclick="sendPaymentReviewNotificationTest()" disabled>Send Test Email</button>
         </div>
@@ -4024,6 +4022,36 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
           Loading notification settings...
         </div>
       </div>
+
+
+        <div class="notification-card">
+          <div class="notification-heading"><h3><span aria-hidden="true">📱</span> Phone notifications</h3><span id="phoneNotificationBadge" class="notification-badge">Off this device</span></div>
+          <p>A quick alert on this device, even when the app is closed.</p>
+          <div class="notification-recipient"><small>This device only</small><span>Choose Enable notifications, then Allow when your device asks.</span></div>
+          <div class="notification-actions"><button id="phoneNotificationEnable" class="btn btn-p btn-sm" type="button" onclick="togglePhoneNotifications()" disabled>Enable notifications</button><button id="phoneNotificationTest" class="btn btn-g btn-sm" type="button" onclick="testPhoneNotifications()" disabled>Test phone</button></div>
+          <div id="phoneNotificationStatus" class="notification-status" role="status" aria-live="polite">Checking this device…</div>
+        </div>
+      </div>
+      <p class="notification-note">Phone alerts hide player and payment details. Receipts open securely after you sign in. Each device must be enabled separately.</p>
+    </div>
+
+    <!-- PAYMENTS -->
+    <div id="sec-payments" class="adm-sec">
+      <div class="toolbar"><h2>💳 PAYMENT SETTINGS</h2></div>
+
+      <div class="panel" style="max-width:980px;margin-bottom:20px;border:1.5px solid rgba(var(--green-rgb),.3);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+          <h4 style="margin:0;color:var(--green)">Connection Readiness</h4>
+          <button class="btn btn-g btn-sm" onclick="renderIntegrationStatus()">Refresh</button>
+        </div>
+        <div id="integrationStatusBody" class="integration-grid">
+          <div class="integration-card warn">
+            <div class="integration-meta">Checking services...</div>
+          </div>
+        </div>
+      </div>
+
+<div class="panel" style="max-width:980px;margin-bottom:20px"><p>Manage payment review alerts from the Notifications page.</p><button class="btn btn-g btn-sm" onclick="goto('notifications')">Open Notifications</button></div>
 
       <!-- BOOKING FEE — System Owner only -->
       <div class="panel" data-perm="owner_only" style="max-width:680px;margin-bottom:20px;border:2px solid var(--green);">
@@ -6281,9 +6309,9 @@ let sess;
 /* ==============================================
    NAVIGATION
    ============================================== */
-const titles={dash:'Dashboard',insights:'Insights',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments',vouchers:'Vouchers'};
-const SECTION_PERM={dash:'dashboard',insights:'reports',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments',vouchers:'vouchers'};
-const SECTION_LOADERS={dash:renderDash,insights:()=>renderOwnerInsights({force:true}),bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings,vouchers:renderVouchers};
+const titles={dash:'Dashboard',insights:'Insights',bookings:'Bookings',deleted:'Deleted Bookings',payreview:'Payment Review',reports:'Reports',courts:'Courts',accounts:'Accounts',remittances:'Remittances',blocked:'Open Play',hosts:'Host Center',gamemgr:'Play Manager',maintenance:'Maintenance',payments:'Payments',notifications:'Notifications',vouchers:'Vouchers'};
+const SECTION_PERM={dash:'dashboard',insights:'reports',bookings:'bookings',deleted:'owner_only',payreview:'payment_review',reports:'reports',courts:'courts',accounts:'host_accounts_view',remittances:'remittances',blocked:'open_play',hosts:'host_open_play',gamemgr:'open_play',maintenance:'maintenance',payments:'payments',notifications:'payments',vouchers:'vouchers'};
+const SECTION_LOADERS={dash:renderDash,insights:()=>renderOwnerInsights({force:true}),bookings:renderBookings,deleted:renderDeletedBookings,payreview:renderPaymentReview,reports:renderReport,courts:renderCourts,accounts:renderAccounts,remittances:renderRemittances,blocked:renderBlocked,hosts:renderHostCenter,gamemgr:()=>window.PlayManager?.render(),maintenance:renderMaintenance,payments:renderPaymentSettings,notifications:renderNotifications,vouchers:renderVouchers};
 let _curSection=null;
 function adminRoleCanAccess(permission, role) {
   const normalizedRole = String(role || '').trim().toLowerCase();
@@ -11576,6 +11604,13 @@ function syncPaymentReviewEmailState() {
   const status = $('paymentReviewEmailStatus');
   if (!input || !saveBtn || !testBtn || !status) return;
 
+  const badge = $('notificationEmailBadge');
+  if (badge) {
+    badge.textContent = _paymentReviewEmailLoaded ? (_savedPaymentReviewNotificationEmail ? 'On' : 'Off') : 'Unavailable';
+    badge.classList.toggle('active', _paymentReviewEmailLoaded && Boolean(_savedPaymentReviewNotificationEmail));
+    $('notificationEmailRecipient').textContent = _paymentReviewEmailLoaded ? (_savedPaymentReviewNotificationEmail || 'No email saved') : 'Unable to load';
+    $('notificationEmailOff').disabled = _paymentReviewEmailBusy || !_paymentReviewEmailLoaded || !_savedPaymentReviewNotificationEmail;
+  }
   const check = paymentReviewEmailValidation(input.value);
   const dirty = check.email !== _savedPaymentReviewNotificationEmail;
   input.setAttribute('aria-invalid', check.valid ? 'false' : 'true');
@@ -11633,6 +11668,11 @@ async function renderPaymentReviewNotificationSettings() {
     _paymentReviewEmailBusy = false;
     input.disabled = false;
     if (_paymentReviewEmailLoaded) syncPaymentReviewEmailState();
+    else {
+      $('notificationEmailBadge').textContent = 'Unavailable';
+      $('notificationEmailRecipient').textContent = 'Unable to load';
+      $('notificationEmailOff').disabled = true;
+    }
   }
 }
 
@@ -11707,7 +11747,7 @@ async function sendPaymentReviewNotificationTest() {
   try {
     const result = await DB.sendPaymentReviewNotificationTest();
     if (!result?.ok || result.sent !== true) throw new Error(result?.error || 'Test email could not be sent.');
-    feedback = `Test sent to ${_savedPaymentReviewNotificationEmail}.`;
+    feedback = `Test accepted by the email provider for ${_savedPaymentReviewNotificationEmail}.`;
     toast(`Test email sent to ${_savedPaymentReviewNotificationEmail}.`);
   } catch (error) {
     feedback = error?.message || 'Test email could not be sent.';
@@ -11727,7 +11767,7 @@ async function sendPaymentReviewNotificationTest() {
 async function renderPaymentSettings() {
   if (!Auth.can('payments', sess.role)) { toast('You do not have access to this section.', 'err'); return; }
   const settings = await DB.getSettings();
-  await renderPaymentReviewNotificationSettings();
+
   await window.TelegramAdmin?.render();
   const cashOn = settings.payment_method_cash !== '0';
   const gcashOn = settings.payment_method_gcash !== '0';
@@ -16066,7 +16106,7 @@ async function checkAgreementGate(session) {
 
 <script src="supabase.min.js"></script>
 <script src="open-play-rating.js?v=20260729-korte-dos-two-games-v1"></script>
-<script src="supabase-config.js?v=20260826-court-pick-v1"></script>
+<script src="supabase-config.js?v=20261011-notifications"></script>
 <script src="telegram-admin.js?v=20260731-owner-link-v1"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-admin.js?v=20260906-host-balance-time-v2"></script>

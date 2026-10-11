@@ -1,0 +1,56 @@
+name: Deploy Admin Notifications
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/manage-device-notifications/**'
+      - 'supabase/migrations/20261011090000_admin_device_notifications.sql'
+      - '.github/workflows/deploy-admin-notifications.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Test notification authorization and delivery
+        run: deno test --no-lock --node-modules-dir=auto --allow-env supabase/functions/manage-device-notifications/notifications_test.ts
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+      - name: Rehearse and apply notification schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?Required secret missing}"
+          for phase in rehearse apply; do
+            PHASE="$phase" node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          let sql = fs.readFileSync('supabase/migrations/20261011090000_admin_device_notifications.sql','utf8');
+          if (process.env.PHASE === 'rehearse') sql = sql.replace(/commit;\s*$/, 'rollback;');
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/notification-query.json', JSON.stringify({query: sql}));
+          JS
+            status=$(curl --silent --show-error --connect-timeout 15 --max-time 120 \
+              --output "$RUNNER_TEMP/notification-response.json" --write-out '%{http_code}' \
+              --request POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+              --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" --header 'Content-Type: application/json' \
+              --data-binary "@$RUNNER_TEMP/notification-query.json")
+            if [[ ! "$status" =~ ^2 ]]; then
+              echo "::error::Notification schema $phase failed: HTTP $status"
+              jq -c '{code,message,error}' "$RUNNER_TEMP/notification-response.json" || true
+              exit 1
+            fi
+          done
+      - name: Deploy notification service
+        run: supabase functions deploy manage-device-notifications --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
