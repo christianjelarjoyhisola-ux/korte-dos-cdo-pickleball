@@ -208,7 +208,7 @@ test('player Court Pick is truthful, revalidated, one-click, and isolated from b
 
 test('production migration workflow is checksum-locked, exact-once, and verifies grants and evidence', () => {
   const checksum = crypto.createHash('sha256')
-    .update(fs.readFileSync(path.join(ROOT, MIGRATION_RELATIVE)))
+    .update(fs.readFileSync(path.join(ROOT, MIGRATION_RELATIVE), 'utf8').replace(/\r\n/g, '\n'))
     .digest('hex');
   assert.match(workflow, new RegExp(`MIGRATION_SHA256:\\s*${checksum}`));
   assert.match(workflow, /Read-only production preflight/i);

@@ -335,7 +335,7 @@ test('owner Facebook Post Kit creates a truthful portrait graphic and fail-soft 
 
 test('production workflow pins the migration checksum and never retries the mutation POST', () => {
   assert.ok(fs.existsSync(WORKFLOW_PATH), 'the one-shot production migration workflow must exist');
-  const migration = fs.readFileSync(MIGRATION_PATH);
+  const migration = fs.readFileSync(MIGRATION_PATH, 'utf8').replace(/\r\n/g, '\n');
   const checksum = crypto.createHash('sha256').update(migration).digest('hex');
   const workflow = fs.readFileSync(WORKFLOW_PATH, 'utf8');
 

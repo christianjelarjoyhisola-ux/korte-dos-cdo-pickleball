@@ -22,7 +22,7 @@ function local(overrides = {}) {
 }
 
 function visibleLocalGrowth(db, filters = {}) {
-  const source = fs.readFileSync(path.join(__dirname, 'supabase-config.js'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, 'supabase-config.js'), 'utf8').replace(/\r\n/g, '\n');
   const start = source.indexOf('  function localDemandPricingTiers(value)');
   const end = source.indexOf('\n\n  window.DB = {', start);
   assert.ok(start >= 0 && end > start, 'visible local Demand Growth function must be extractable');
@@ -567,7 +567,7 @@ test('an ended Smart Offer can restart without a false live state or losing its 
   assert.match(config,/created: true, restarted: !!prior, idempotent: false/);
   assert.match(config,/max_redemptions: remainingRedemptions/);
 
-  const migrationSha = crypto.createHash('sha256').update(migration).digest('hex');
+  const migrationSha = crypto.createHash('sha256').update(migration.replace(/\r\n/g, '\n')).digest('hex');
   const applyStep = workflow.slice(
     workflow.indexOf('- name: Apply Smart Offer restart migration exactly once'),
     workflow.indexOf('- name: Verify production database state'),
@@ -649,7 +649,7 @@ test('digest schema hotfix is narrow, idempotent, and deployed without mutation 
     workflow.indexOf('- name: Apply Demand Growth digest hotfix exactly once'),
     workflow.indexOf('- name: Verify production database state'),
   );
-  const migrationSha = crypto.createHash('sha256').update(migration).digest('hex');
+  const migrationSha = crypto.createHash('sha256').update(migration.replace(/\r\n/g, '\n')).digest('hex');
 
   assert.match(migration,/to_regprocedure\('extensions\.digest\(text,text\)'\)/i);
   assert.match(migration,/replace\([\s\S]*'public\.digest\('[\s\S]*'extensions\.digest\('/i);
@@ -683,7 +683,7 @@ test('sellable-capacity migration is additive, pinned, and production-verifiable
     'workflows',
     'apply-demand-growth-schedule-capacity.yml',
   ), 'utf8');
-  const migrationSha = crypto.createHash('sha256').update(migration).digest('hex');
+  const migrationSha = crypto.createHash('sha256').update(migration.replace(/\r\n/g, '\n')).digest('hex');
   const applyStep = workflow.slice(
     workflow.indexOf('- name: Apply Demand sellable-capacity migration exactly once'),
     workflow.indexOf('- name: Verify production database state'),

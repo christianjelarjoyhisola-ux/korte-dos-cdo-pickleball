@@ -173,11 +173,15 @@ async function _pbCached(scope, params, ttlMs, loader) {
   const promise = Promise.resolve()
     .then(loader)
     .then(value => {
-      _pbFastCache.set(key, { at: Date.now(), value });
+      // A live update or a newer request may invalidate this read in flight.
+      // Never let its late response replace the new snapshot.
+      if (_pbFastCache.get(key)?.promise === promise) {
+        _pbFastCache.set(key, { at: Date.now(), value });
+      }
       return value;
     })
     .catch(err => {
-      _pbFastCache.delete(key);
+      if (_pbFastCache.get(key)?.promise === promise) _pbFastCache.delete(key);
       throw err;
     });
   _pbFastCache.set(key, { at: now, promise });
@@ -1242,7 +1246,7 @@ window.DB = {
   async getCourts() {
     return _pbCached('courts', {}, PB_FAST_CACHE_MS.courts, async () => {
       const { data, error } = await _sb.from('courts').select('*').order('id');
-      if (error) { console.error('getCourts:', error); return []; }
+      if (error) { console.error('getCourts:', error); throw error; }
       return data.map(rowToCourt);
     });
   },
@@ -1272,7 +1276,7 @@ window.DB = {
           p_date: opts.date,
           p_court_id: opts.courtId ? String(opts.courtId) : null,
         });
-        if (error) { console.error('public_booking_slots:', error); return []; }
+        if (error) { console.error('public_booking_slots:', error); throw error; }
         return (data || []).map(publicSlotToBooking);
       });
     }
@@ -1298,7 +1302,7 @@ window.DB = {
           console.error('getBookings:', error);
           // Never return a partial history when a later page fails. Host history
           // must also keep surfacing authenticated RLS/schema failures.
-          if (opts.hostUserId) throw error;
+          if (opts.hostUserId || opts.activeOnly) throw error;
           return [];
         }
         if (offset === 0 && Number.isFinite(count)) totalRows = count;
@@ -2717,7 +2721,7 @@ window.DB = {
   async getBlockedDates() {
     return _pbCached('blockedDates', {}, PB_FAST_CACHE_MS.blockedDates, async () => {
       const { data, error } = await _sb.from('blocked_dates').select('date').order('date');
-      if (error) { console.error('getBlockedDates:', error); return []; }
+      if (error) { console.error('getBlockedDates:', error); throw error; }
       return data.map(r => r.date);
     });
   },
@@ -2816,7 +2820,7 @@ window.DB = {
         ? _sb.from('settings').select('*')
         : _sb.rpc('public_settings');
       const { data, error } = await request;
-      if (error) { console.error(canReadPrivate ? 'getSettings:' : 'public_settings:', error); return {}; }
+      if (error) { console.error(canReadPrivate ? 'getSettings:' : 'public_settings:', error); throw error; }
       const out = {};
       data.forEach(r => out[r.key] = r.value);
       return out;

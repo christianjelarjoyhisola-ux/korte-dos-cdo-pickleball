@@ -77,7 +77,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function loadDemandController(dbOverrides = {}) {
+function loadDemandController(dbOverrides = {}, now = '2026-08-28T00:00:00Z') {
   const elements = {
     bDemandOfferStatus: {
       classList: classListStub(),
@@ -87,6 +87,8 @@ function loadDemandController(dbOverrides = {}) {
     bookingVoucherEntry: { style: {} },
   };
   const context = {
+    // Freeze the VM clock so offer-expiry fixtures remain deterministic.
+    Date: class extends Date { static now() { return new Date(now).getTime(); } },
     window: {},
     document: { getElementById: id => elements[id] || null },
     DB: {
@@ -460,4 +462,14 @@ test('production verification accepts the migration\'s multiline Manila timezone
     workflow,
     /position\(\s*'pg_catalog\.timezone\(''Asia\/Manila''' in preview_definition/i,
   );
+});
+
+
+test('expired preview offers stay hidden at the expiry boundary', async () => {
+  const { controller } = loadDemandController({
+    async getPublicDemandCampaignSlotOffers() { return [offer()]; },
+  }, '2026-09-23T00:00:00Z');
+  await controller.loadOffersForDate('2026-09-01');
+  assert.equal(controller.offerForSlot('c2', '2026-09-01', 8), null);
+  assert.equal(controller.previewPrice('c2', '2026-09-01', 8, 300).hasOffer, false);
 });

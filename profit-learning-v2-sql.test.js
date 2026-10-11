@@ -137,7 +137,7 @@ test('owner mutation RPCs are authenticated-only', () => {
 });
 
 test('production release is checksum locked, single-attempt, and verified', () => {
-  const checksum = crypto.createHash('sha256').update(fs.readFileSync(migrationPath)).digest('hex');
+  const checksum = crypto.createHash('sha256').update(fs.readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')).digest('hex');
   assert.match(workflow, new RegExp(`MIGRATION_SHA256:\\s*${checksum}`, 'i'));
   assert.match(workflow, /Read-only production preflight/i);
   assert.match(workflow, /schema exists without canonical history; refusing a partial rerun/i);

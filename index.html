@@ -6696,6 +6696,7 @@ async function selectFindTimeResult(courtId, date, start, duration) {
    CARD SLOT MULTI-SELECT
    ============================================= */
 async function toggleCardSlot(courtId, date, h) {
+  if (!courtAvailabilityReady(courtId, date)) { toast('Please wait for availability or retry loading times.', 'inf'); return; }
   if (date < todayStr()) { toast('Cannot book a past date.', 'err'); return; }
   await ensureCourt(courtId);
   if (isOpenPlayHour(date, h, courtId)) {
@@ -6798,6 +6799,7 @@ let _reservedRef = null;
 let _reservedRefs = [];
 let _reservationStartedAt = null;
 let _countdownInterval = null;
+let _countdownTick = null;
 let _bookingSubmissionInFlight = false;
 let _bookingHoldCreationPromise = null;
 const RESERVATION_MINUTES = 15;
@@ -6947,6 +6949,11 @@ function initGuestResumePersistence() {
     ['input', 'change'].forEach(evt => el.addEventListener(evt, () => saveGuestBookingResume()));
   });
   window.addEventListener('beforeunload', () => saveGuestBookingResume());
+  // Timers are throttled while a payment app or a background tab is open.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) _countdownTick?.();
+  });
+  window.addEventListener('pageshow', () => _countdownTick?.());
 }
 
 async function maybeResumeGuestBooking() {
@@ -7091,7 +7098,7 @@ async function lateNightExtensionCandidate(selections = []) {
   const selectedDate = selections[0]?.date;
   if (!selectedDate || selections.some(sel => sel.date !== selectedDate)) return null;
   const nextDate = addDaysYmd(selectedDate, 1);
-  const blockedDates = await DB.getBlockedDates().catch(() => []);
+  const blockedDates = await DB.getBlockedDates();
   const availability = await Promise.all(selections.map(sel => isLateNightExtensionAvailable(sel, nextDate, blockedDates)));
   if (!availability.every(Boolean)) return null;
   return {
@@ -7239,6 +7246,8 @@ async function proceedToBook(courtId = null) {
   _bookingHoldCreationPromise = creationPromise;
   try {
     return await creationPromise;
+  } catch (error) {
+    toast('Could not check or reserve your slots. Please retry. ' + extractErrMsg(error), 'err');
   } finally {
     if (_bookingHoldCreationPromise === creationPromise) {
       _bookingHoldCreationPromise = null;
@@ -7255,6 +7264,10 @@ async function proceedToBookOnce(courtId = null) {
     return;
   }
 
+  if (selections.some(sel => !courtAvailabilityReady(sel.courtId, sel.date))) {
+    toast('Please refresh availability before booking.', 'err');
+    return;
+  }
   const selectedDate = selections[0].date;
   if (!selectedDate || selections.some(sel => sel.date !== selectedDate)) {
     clearCardSelection();
@@ -7502,14 +7515,18 @@ function startSlotCountdown(initialSeconds = null, introduce = false) {
   banner.style.display = 'flex';
   banner.classList.remove('urgent');
   const hasResumeSeconds = initialSeconds !== null && initialSeconds !== undefined && Number.isFinite(Number(initialSeconds));
-  let secsLeft = hasResumeSeconds
-    ? Math.max(0, Math.floor(Number(initialSeconds)))
-    : RESERVATION_MINUTES * 60;
+  // Anchor to the original hold, never to the time the modal was rendered or
+  // a retry started. The database independently enforces hold expiry.
+  const startedMs = new Date(_reservationStartedAt || '').getTime();
+  const deadline = Number.isFinite(startedMs)
+    ? startedMs + RESERVATION_MINUTES * 60 * 1000
+    : Date.now() + (hasResumeSeconds ? Math.max(0, Number(initialSeconds)) : RESERVATION_MINUTES * 60) * 1000;
   function fmt(s) {
     const m = Math.floor(s / 60), sec = s % 60;
     return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   }
   function tick() {
+    const secsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
     updatePaymentWindowText();
     const t = fmt(secsLeft);
     if (timeEl) timeEl.textContent = t;
@@ -7517,6 +7534,9 @@ function startSlotCountdown(initialSeconds = null, introduce = false) {
     if (introTimeEl) introTimeEl.textContent = t;
     if (secsLeft <= 60) banner.classList.add('urgent');
     if (secsLeft <= 0) {
+      // A request may already have persisted receipt evidence. Let its result
+      // decide the next state; never cancel it from a browser timer.
+      if (_bookingSubmissionInFlight) return;
       stopSlotCountdown();
       banner.style.display = 'none';
       // Time expired — cancel reservation and close modal.
@@ -7524,14 +7544,15 @@ function startSlotCountdown(initialSeconds = null, introduce = false) {
       closeBookModal({ force: true });
       return;
     }
-    secsLeft--;
   }
-  tick();
+  _countdownTick = tick;
   _countdownInterval = setInterval(tick, 1000);
-  if (introduce) showReservationTimerIntro();
+  tick();
+  if (introduce && _countdownTick) showReservationTimerIntro();
 }
 
 function stopSlotCountdown() {
+  _countdownTick = null;
   if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
   clearReservationTimerIntro();
   const banner = $('slotCountdown');
@@ -7691,9 +7712,26 @@ function updateWiz3Summary() {
 /* =============================================
    CARD DATE PICKER — refresh slots per court
    ============================================= */
+let _courtsRenderRequest = 0;
+let _cardAvailabilityRequest = 0;
+
+function availabilityErrorMarkup(retry) {
+  return '<div class="cc-slots-empty" role="alert">Unable to check availability. Please retry before choosing a slot. <button type="button" class="btn btn-p btn-sm" onclick="' + retry + '">Retry</button></div>';
+}
+
+function courtAvailabilityReady(courtId, date) {
+  const grid = $('cSlots_' + courtId);
+  return grid?.dataset.availability === 'ready' && grid.dataset.date === date;
+}
+
 async function onCardDate(courtId, date, options = {}) {
   const grid = $('cSlots_' + courtId);
   if (!grid) return;
+  const request = String(++_cardAvailabilityRequest);
+  grid.dataset.request = request;
+  grid.dataset.availability = 'loading';
+  grid.dataset.date = date;
+  try {
   clearCardSelection({ preserveBookingItems: !!options.preserveBookingItems });
 
   grid.innerHTML = `<div class="cc-slots-empty"><div class="pb-loader mini"><div class="pb-ball" aria-hidden="true"></div><div class="pb-loader-txt">Loading times</div></div></div>`;
@@ -7705,7 +7743,7 @@ async function onCardDate(courtId, date, options = {}) {
     loadOperatingHours(),
     window.BookingDemandCampaign?.loadOffersForDate(date) || Promise.resolve([]),
   ]);
-  if (!grid.isConnected || $('cSlots_' + courtId) !== grid || selectedCourtBrowseDate() !== date) return;
+  if (!grid.isConnected || $('cSlots_' + courtId) !== grid || grid.dataset.request !== request || selectedCourtBrowseDate() !== date) return;
 
   const c = courts.find(x => x.id === courtId);
   if (!c || c.blocked) {
@@ -7737,7 +7775,7 @@ async function onCardDate(courtId, date, options = {}) {
   let openPlayCardHtml = '';
   if (!isPastDate_ && openPlaySession) {
     const opRegCount = await DB.getOpenPlayCountForDate(date, courtId);
-    if (!grid.isConnected || $('cSlots_' + courtId) !== grid || selectedCourtBrowseDate() !== date) return;
+    if (!grid.isConnected || $('cSlots_' + courtId) !== grid || grid.dataset.request !== request || selectedCourtBrowseDate() !== date) return;
     const opSpotsLeft = Math.max(0, (openPlayMaxPlayers || 40) - opRegCount);
     openPlayCardHtml = openPlaySessionHtml({
       courtId,
@@ -7784,6 +7822,18 @@ async function onCardDate(courtId, date, options = {}) {
       selected: false,
     });
   }).join('');
+  grid.dataset.availability = 'ready';
+  } catch (error) {
+    if (!grid.isConnected || $('cSlots_' + courtId) !== grid || grid.dataset.request !== request || selectedCourtBrowseDate() !== date) return;
+    grid.dataset.availability = 'error';
+    clearCardSelection({ preserveBookingItems: true });
+    grid.innerHTML = availabilityErrorMarkup('renderCourts()');
+    for (const id of ['cAvail_', 'cMobAvail_']) {
+      const badge = $(id + courtId);
+      if (badge) { badge.textContent = 'Availability unavailable'; badge.className = id === 'cAvail_' ? 'cc-photo-avail' : 'cc-mobile-status'; }
+    }
+    console.warn('Court availability unavailable:', error);
+  }
 }
 
 /* proceedToBook loads court data if needed */
@@ -7798,18 +7848,22 @@ async function ensureCourt(courtId) {
    COURTS
    ============================================= */
 async function renderCourts() {
+  const request = ++_courtsRenderRequest;
+  document.querySelectorAll('#courtsGrid .cc-slots-grid').forEach(grid => { grid.dataset.availability = 'loading'; });
+  try {
   const today = todayStr();
   const selectedDate = selectedCourtBrowseDate();
   const isSelectedToday = selectedDate === today;
   const isSelectedPast = selectedDate < today;
-  const [courts, bookings, , openPlayCountsByCourt] = await Promise.all([
+  const [courts, bookings, , openPlayCountsByCourt, , blockedDates] = await Promise.all([
     DB.getCourts(),
     DB.getBookings({ date: selectedDate, activeOnly: true }),
     loadOperatingHours(),
     DB.getOpenPlayCountsForDate ? DB.getOpenPlayCountsForDate(selectedDate) : Promise.resolve({}),
     window.BookingDemandCampaign?.loadOffersForDate(selectedDate) || Promise.resolve([]),
+    DB.getBlockedDates(),
   ]);
-  if (selectedCourtBrowseDate() !== selectedDate) return;
+  if (request !== _courtsRenderRequest || selectedCourtBrowseDate() !== selectedDate) return;
   const curHour = isSelectedToday ? nowHour() : (isSelectedPast ? 999 : -1);
   const courtsGrid = $('courtsGrid');
   if (!courtsGrid) return;
@@ -7825,7 +7879,7 @@ async function renderCourts() {
   });
 
   courtsGrid.innerHTML = courts.map((c, courtIndex) => {
-    const blk = c.blocked;
+    const blk = c.blocked || blockedDates.includes(selectedDate);
     const allSlots = Array.from({length: closeHour - openHour}, (_, i) => i + openHour);
 
     // Build slot → booking name map
@@ -7934,7 +7988,7 @@ async function renderCourts() {
           <input type="hidden" id="cDate_${esc(c.id)}" value="${esc(selectedDate)}" />
         </div>
 
-        <div class="cc-slots-grid" id="cSlots_${c.id}">${slotsHtml}</div>
+        <div class="cc-slots-grid" id="cSlots_${c.id}" data-availability="ready" data-date="${esc(selectedDate)}">${slotsHtml}</div>
 
         <div class="cc-book-bar" id="cBar_${c.id}" data-rate="${c.rate}" style="${isSelectedCard ? 'display:flex' : 'display:none'}">
           <span class="cc-book-sum" id="cBarSum_${c.id}">${selectedSummary}</span>
@@ -7971,7 +8025,7 @@ async function renderCourts() {
     const today_ = selectedDate;
     const cur_   = curHour;
     const singleCourtTabs = courts.map(c => {
-      const blk = c.blocked;
+      const blk = c.blocked || blockedDates.includes(selectedDate);
       const allSl_ = Array.from({length: closeHour - openHour}, (_, i) => i + openHour);
       const booked_ = new Set(
         bookings.filter(b => b.courtId === c.id && b.date === today_ && window.BookingBalance?.holdsSlot?.(b))
@@ -7992,6 +8046,15 @@ async function renderCourts() {
       switchCourtTab(activeCourtId);
     }
   }
+  } catch (error) {
+    if (request !== _courtsRenderRequest) return;
+    clearCardSelection({ preserveBookingItems: true });
+    const grid = $('courtsGrid');
+    if (grid) grid.innerHTML = availabilityErrorMarkup('renderCourts()');
+    if ($('courtTabs')) $('courtTabs').innerHTML = '';
+    console.warn('Court availability unavailable:', error);
+  }
+
 }
 
 function switchCourtTab(courtId) {
@@ -8026,19 +8089,6 @@ async function selectCourt(id) {
    DATE
    ============================================= */
 async function onDate() {
-  const v = $('bDate').value;
-  const blocked = await DB.getBlockedDates();
-  if (blocked.includes(v)) {
-    toast('This date is blocked for maintenance.', 'err');
-    $('bDate').value = '';
-    const sg = $('slotsGrid');
-    if (sg) sg.innerHTML = '';
-    const m = $('slotMsg');
-    if (!m) return;
-    m.style.display = '';
-    m.textContent = 'That date is unavailable — please choose another.';
-    return;
-  }
   selSlots = [];
   await renderSlots();
   updatePrice();
@@ -8056,7 +8106,12 @@ async function getBookedSlots(cid, date) {
   return s;
 }
 
+let _slotsRenderRequest = 0;
+let _slotsAvailabilityReady = false;
 async function renderSlots() {
+  const request = ++_slotsRenderRequest;
+  try {
+  _slotsAvailabilityReady = false;
   const g = $('slotsGrid'), m = $('slotMsg');
   if (!g || !m) return;
   const date = $('bDate').value;
@@ -8095,11 +8150,18 @@ async function renderSlots() {
   if (court.rateSchedule && court.rateSchedule.length) {
     pricingTiers = court.rateSchedule;
   }
-  const [freshBookedSlots] = await Promise.all([
+  const [freshBookedSlots, , blockedDates] = await Promise.all([
     getBookedSlots(court.id, date),
     smartRateLoad,
+    DB.getBlockedDates(),
   ]);
-  if ($('bDate')?.value !== date || !court || String(court.id) !== requestedCourtId) return;
+  if (request !== _slotsRenderRequest || $('bDate')?.value !== date || !court || String(court.id) !== requestedCourtId) return;
+  if (blockedDates.includes(date)) {
+    selSlots = [];
+    g.innerHTML = '<div class="cc-slots-empty">This date is unavailable. Please choose another date.</div>';
+    updatePrice();
+    return;
+  }
   cachedBookedSlots = freshBookedSlots;
   const booked = cachedBookedSlots;
   const todayFlag = isToday(date);
@@ -8117,7 +8179,7 @@ async function renderSlots() {
   const openPlaySession = getOpenPlaySessionForDate(date, court?.id);
   if (openPlaySession) {
     const opRegCount = await DB.getOpenPlayCountForDate(date, court?.id);
-    if ($('bDate')?.value !== date || !court || String(court.id) !== requestedCourtId) return;
+    if (request !== _slotsRenderRequest || $('bDate')?.value !== date || !court || String(court.id) !== requestedCourtId) return;
     const opSpotsLeft = Math.max(0, (openPlayMaxPlayers || 40) - opRegCount);
     openPlayBlock = openPlaySessionHtml({
       courtId: court.id,
@@ -8188,9 +8250,21 @@ async function renderSlots() {
     </div>`;
 
   g.innerHTML = liveNote + legend + `<div class="slots-grid">${openPlayBlock}${slotHtml}</div>`;
+  if (request === _slotsRenderRequest) _slotsAvailabilityReady = true;
+  } catch (error) {
+    if (request !== _slotsRenderRequest) return;
+    selSlots = [];
+    cachedBookedSlots = new Set();
+    if ($('slotsGrid')) $('slotsGrid').innerHTML = availabilityErrorMarkup('renderSlots()');
+    if ($('slotMsg')) $('slotMsg').style.display = 'none';
+    updatePrice();
+    console.warn('Slot availability unavailable:', error);
+  }
+
 }
 
 function toggleSlot(h) {
+  if (!_slotsAvailabilityReady) { toast('Please retry loading availability first.', 'err'); return; }
   if (!court) { toast('Select a court first.', 'inf'); return; }
   const date = $('bDate').value;
   if (!date) { toast('Select a date first.', 'inf'); return; }
@@ -8919,6 +8993,11 @@ async function submitBooking(e) {
   const submitBtn = $('wizNextBtn');
   if (submitBtn?.disabled || _bookingSubmissionInFlight) return;
 
+  if (reservedRefs().length && reservationSecondsLeft() <= 0) {
+    toast('Your reservation time has expired. Please check availability again.', 'err');
+    _countdownTick?.();
+    return;
+  }
   const now = Date.now();
   const cooldown = 30000;
   if (now - _lastSubmitAt < cooldown) {
@@ -9046,8 +9125,6 @@ async function submitBooking(e) {
     demandCampaignDiscountAmount: itemBookings.reduce((sum, item) => sum + Number(item.demandCampaignDiscountAmount || 0), 0),
   };
 
-  stopSlotCountdown();
-
   let bookingSaved = false;
   _bookingSubmissionInFlight = true;
   try {
@@ -9132,6 +9209,7 @@ async function submitBooking(e) {
         showExpiredRecoveredReceipt(booking.ref);
         return;
       }
+      stopSlotCountdown();
       const ocrStatus = booking._receiptResult?.status;
       if (ocrStatus === 'auto_approved') {
         booking.status = 'confirmed';
@@ -9155,14 +9233,20 @@ async function submitBooking(e) {
     // no receipt checkpoint, so reaching this point is sufficient for them.
     DB.notifyBookingSubmitted(booking).catch(() => {});
 
+    stopSlotCountdown();
     showInvoice(booking);
     resetForm();
     toast('Booking submitted successfully!');
   } catch(err) {
+    if (!bookingSaved) {
+      _lastSubmitAt = 0;
+      saveGuestBookingResume();
+    }
     if (bookingSaved) toast(`Booking saved, but post-processing failed: ${extractErrMsg(err)}`, 'err');
     else toast(`Failed to save booking: ${extractErrMsg(err)}`, 'err');
   } finally {
     _bookingSubmissionInFlight = false;
+    _countdownTick?.();
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Confirm Booking';
@@ -10462,7 +10546,6 @@ let _rtDebounce = null;
 async function refreshLiveViews() {
   const openDate = selectedCourtBrowseDate();
 
-  await loadOperatingHours();
   sharedCourtDate = openDate;
   await renderCourts();
   refreshFeaturedPromotions({ force:true });
@@ -10607,7 +10690,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!(await refreshHostBookingSession())) return;
   await DB.seedDefaultData();
   applyHostChrome();
-  await loadOperatingHours();
   await expireStaleVerifyingBookings();
   await renderCourts();
   initGuestResumePersistence();
@@ -11458,7 +11540,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260826-court-pick-v1"></script>
+<script src="supabase-config.js?v=20260928-booking-reliability-v1"></script>
 
 <!-- PUBLIC LIMITED COURT DEAL -->
 <!-- This premium surface also renders the regular-price Korte DOS Court Pick. -->

@@ -43,7 +43,7 @@ test('the guarded production patch matches the checksum-locked V2 function sourc
 });
 
 test('Open Play demand production migration is checksum locked and verified', () => {
-  const checksum = crypto.createHash('sha256').update(fs.readFileSync(migrationPath)).digest('hex');
+  const checksum = crypto.createHash('sha256').update(fs.readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')).digest('hex');
   assert.match(workflow, new RegExp(`MIGRATION_SHA256:\\s*${checksum}`, 'i'));
   assert.match(workflow, /Read-only production preflight/i);
   assert.match(workflow, /Apply checksum-locked migration exactly once/i);

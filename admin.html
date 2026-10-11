@@ -4660,27 +4660,15 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
       <!-- New date -->
       <div class="fg">
         <label class="fl">New Date</label>
-        <input type="date" class="fi" id="rsNewDate" />
+        <input type="date" class="fi" id="rsNewDate" onchange="loadRescheduleSlots()" />
       </div>
 
-      <!-- Start time + Duration -->
-      <div class="frow" style="gap:10px;">
-        <div class="fg" style="margin:0;flex:1">
-          <label class="fl">Start Time</label>
-          <select class="fi" id="rsStartTime" onchange="updateRsEndTime()"></select>
-        </div>
-        <div class="fg" style="margin:0;flex:1">
-          <label class="fl">Duration</label>
-          <select class="fi" id="rsDuration" disabled title="Duration is preserved so the paid price does not change">
-            <option value="1">1 hour</option>
-            <option value="2" selected>2 hours</option>
-            <option value="3">3 hours</option>
-            <option value="4">4 hours</option>
-          </select>
-        </div>
-      </div>
-      <div style="font-size:.78rem;color:var(--muted);margin-top:6px;margin-bottom:14px;">
-        New end time: <strong id="rsEndTimeDisplay" style="color:#5a9ad4;">—</strong>
+      <div class="fg">
+        <label class="fl" id="rsSlotLabel">New time slot</label>
+        <p id="rsDurationHint" style="font-size:.8rem;color:var(--muted)"></p>
+        <select id="rsDuration" disabled hidden title="Original booking duration"></select>
+        <div id="rsSlots" role="group" aria-labelledby="rsSlotLabel" aria-live="polite" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
+        <p id="rsEndTimeDisplay" style="font-size:.8rem;color:#5a9ad4"></p>
       </div>
 
       <!-- Note to customer -->
@@ -4691,7 +4679,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
     </div>
     <div class="m-foot">
       <button class="btn btn-g" onclick="closeModal('rescheduleModal')">Cancel</button>
-      <button class="btn btn-p" onclick="saveReschedule()">📅 Reschedule & Notify</button>
+      <button class="btn btn-p" id="rsSaveBtn" disabled onclick="saveReschedule()">📅 Reschedule & Notify</button>
     </div>
   </div>
 </div>
@@ -9215,28 +9203,111 @@ function fmtHour(h) {
   return `${hh}:00 ${suffix}`;
 }
 
-function populateRsTimePicker(selectedHour) {
-  const sel = $('rsStartTime');
-  sel.innerHTML = '';
-  for (let h = 6; h <= 21; h++) {
-    const opt = document.createElement('option');
-    opt.value = h;
-    opt.textContent = fmtHour(h);
-    if (h === selectedHour) opt.selected = true;
-    sel.appendChild(opt);
+// A slot is a complete range of the existing paid duration. End hour 24
+// means midnight after the selected date; slot keys remain [22, 23].
+function rescheduleSlotOptions({ date, duration, openHour, closeHour, unavailableHours, today, currentHour }) {
+  if (!date || date < today || !Number.isInteger(duration) || duration < 1 ||
+      !Number.isInteger(openHour) || !Number.isInteger(closeHour) ||
+      openHour < 0 || closeHour > 24 || openHour >= closeHour) return [];
+  const options = [];
+  for (let start = openHour; start + duration <= closeHour; start++) {
+    const slots = Array.from({ length: duration }, (_, i) => start + i);
+    const unavailable = (date === today && start <= currentHour) || slots.some(h => unavailableHours.has(h));
+    const end = start + duration;
+    options.push({ start, slots, unavailable,
+      label: fmtHour(start) + ' – ' + (end === 24 ? '12 midnight (next day)' : fmtHour(end)) });
   }
-  updateRsEndTime();
+  return options;
 }
 
-function updateRsEndTime() {
-  const start = parseInt($('rsStartTime').value);
-  const dur = parseInt($('rsDuration').value);
-  $('rsEndTimeDisplay').textContent = fmtHour(start + dur);
+function rescheduleManilaClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const p = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return { date: p.year + '-' + p.month + '-' + p.day, hour: Number(p.hour) };
 }
 
 let _rescheduleContext = null;
+let _rescheduleLoad = 0;
+let _rescheduleSaving = false;
+
+function selectRescheduleSlot(start) {
+  const context = _rescheduleContext;
+  const option = context?.options?.find(item => item.start === start && !item.unavailable);
+  if (!option || context.date !== $('rsNewDate').value || _rescheduleSaving) return;
+  context.selectedStart = start;
+  renderRescheduleSlotChoices();
+}
+
+function renderRescheduleSlotChoices() {
+  const context = _rescheduleContext;
+  $('rsSlots').innerHTML = context.options.length ? context.options.map(option => {
+    const selected = option.start === context.selectedStart;
+    return '<button type="button" class="btn ' + (selected ? 'btn-p' : 'btn-g') + '" style="white-space:normal;min-height:48px" aria-pressed="' + selected + '" ' +
+      (option.unavailable ? 'disabled' : 'onclick="selectRescheduleSlot(' + option.start + ')"') + '>' + esc(option.label) +
+      (option.unavailable ? '<br><small>Unavailable</small>' : '') + '</button>';
+  }).join('') : '<p>No time slots fit this booking on this date.</p>';
+  const selected = context.options.find(option => option.start === context.selectedStart && !option.unavailable);
+  $('rsEndTimeDisplay').textContent = selected ? 'Selected: ' + selected.label : 'Choose an available time slot.';
+  $('rsSaveBtn').disabled = !selected || _rescheduleSaving;
+}
+
+async function loadRescheduleSlots(preferredStart = null) {
+  const context = _rescheduleContext;
+  if (!context) return false;
+  const request = ++_rescheduleLoad;
+  const date = $('rsNewDate').value;
+  context.selectedStart = null;
+  context.options = [];
+  $('rsSaveBtn').disabled = true;
+  $('rsEndTimeDisplay').textContent = '';
+  $('rsSlots').textContent = 'Checking available time slots…';
+  try {
+    if (DB.clearCache) DB.clearCache();
+    const [settings, bookings, blockedDates, courts] = await Promise.all([
+      DB.getSettings(), DB.getBookings({ date, activeOnly: true }), DB.getBlockedDates(), DB.getCourts(),
+    ]);
+    if (request !== _rescheduleLoad || context !== _rescheduleContext || date !== $('rsNewDate').value) return false;
+    const clock = rescheduleManilaClock();
+    const unavailableHours = new Set();
+    const courtIds = new Set(context.items.map(item => String(item.courtId)));
+    const missingOrClosed = [...courtIds].some(id => !courts.some(c => String(c.id) === id && !c.blocked));
+    const parseConfig = value => typeof value === 'string' ? JSON.parse(value) : value;
+    const maintenance = parseConfig(settings.maintenance_config || 'null');
+    const openPlay = parseConfig(settings.open_play_config || 'null');
+    const rules = maintenance ? (Array.isArray(maintenance.rules) ? maintenance.rules : [maintenance]) : [];
+    const dow = new Date(date + 'T12:00:00').getDay();
+    for (let hour = 0; hour < 24; hour++) {
+      if (missingOrClosed || blockedDates.includes(date) || [...courtIds].some(id => {
+        const opCourt = !openPlay?.courtIds?.length || openPlay.courtIds.map(String).includes(id);
+        const opDay = openPlay?.days?.includes(dow) || openPlay?.specificDates?.includes(date);
+        const from = Number(openPlay?.start), to = Number(openPlay?.end);
+        const opHour = Number.isFinite(from) && Number.isFinite(to) && from !== to && (from < to ? hour >= from && hour < to : hour >= from || hour < to);
+        return (openPlay?.enabled && opCourt && opDay && opHour) || rules.some(rule => _nbCheckRule(rule, date, hour, id));
+      })) unavailableHours.add(hour);
+    }
+    for (const booking of bookings) {
+      if (context.refs.includes(booking.ref) || booking.date !== date || !courtIds.has(String(booking.courtId)) || ['cancelled', 'forfeited'].includes(booking.status)) continue;
+      if (booking.status === 'verifying' && booking.createdAt && Date.parse(booking.createdAt) <= Date.now() - 15 * 60000) continue;
+      (booking.slots || []).forEach(hour => unavailableHours.add(Number(hour)));
+    }
+    context.date = date;
+    context.options = rescheduleSlotOptions({ date, duration: context.duration,
+      openHour: Number(settings.open_hour ?? 6), closeHour: Number(settings.close_hour ?? 22),
+      unavailableHours, today: clock.date, currentHour: clock.hour });
+    if (context.options.some(option => option.start === preferredStart && !option.unavailable)) context.selectedStart = preferredStart;
+    renderRescheduleSlotChoices();
+    return true;
+  } catch (error) {
+    if (request !== _rescheduleLoad || context !== _rescheduleContext) return false;
+    $('rsSlots').innerHTML = '<p role="alert">Unable to check time slots. <button type="button" class="btn btn-g" onclick="loadRescheduleSlots()">Retry</button></p>';
+    return false;
+  }
+}
 
 async function openRescheduleModal(ref) {
+  if (_rescheduleSaving) return;
   const group = await getBookingGroupByRef(ref);
   const activeItems = group?.allItems || group?.items || [];
   const b = group?.items?.[0] || await DB.getBookingByRef(ref);
@@ -9262,7 +9333,11 @@ async function openRescheduleModal(ref) {
   const isGroup = refs.length > 1;
   _rescheduleContext = {
     ref: b.ref,
-    refs,
+    refs: refs.length ? refs : [b.ref],
+    items: activeItems.length ? activeItems : [b],
+    duration: Number(b.duration || b.slots?.length || 0),
+    options: [],
+    selectedStart: null,
     isGroup,
     courtName: isGroup ? bookingGroupCourtLabel(activeItems) : b.courtName,
   };
@@ -9274,17 +9349,14 @@ async function openRescheduleModal(ref) {
   $('rsOldTime').textContent = group?.timeLabel || `${b.startTime} – ${b.endTime}`;
   $('rsName').textContent = group?.fullName || b.fullName;
 
-  // Default to tomorrow
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  $('rsNewDate').value = tomorrow.toISOString().split('T')[0];
-  $('rsNewDate').min = new Date().toISOString().split('T')[0];
-
-  // Match original start hour and duration
-  const startH = b.slots?.length ? Math.min(...b.slots) : 8;
-  const dur = Math.min(Math.max(b.duration || 2, 1), 4);
-  $('rsDuration').value = dur;
-  populateRsTimePicker(startH);
+  const clock = rescheduleManilaClock();
+  const tomorrow = new Date(clock.date + 'T12:00:00Z');
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  $('rsNewDate').value = tomorrow.toISOString().slice(0, 10);
+  $('rsNewDate').min = clock.date;
+  const dur = _rescheduleContext.duration;
+  $('rsDuration').innerHTML = '<option value="' + dur + '">' + dur + ' hours</option>';
+  $('rsDurationHint').textContent = 'Choose one ' + dur + '-hour time slot. The original duration and price stay unchanged.';
 
   $('rsNote').value = 'Due to expected heavy rain, we have rescheduled your booking for your safety and convenience. We apologize for the inconvenience!';
 
@@ -9293,9 +9365,11 @@ async function openRescheduleModal(ref) {
   $('rescheduleModal').dataset.oldStart = b.startTime;
   $('rescheduleModal').dataset.oldEnd = b.endTime;
   $('rescheduleModal').classList.add('show');
+  await loadRescheduleSlots();
 }
 
 async function saveReschedule() {
+  if (_rescheduleSaving) return;
   const context = _rescheduleContext ? { ..._rescheduleContext, refs: [..._rescheduleContext.refs] } : null;
   const ref = context?.ref || $('rescheduleModal').dataset.ref;
   if (!ref) return;
@@ -9304,19 +9378,26 @@ async function saveReschedule() {
   const oldStartTime = $('rescheduleModal').dataset.oldStart;
   const oldEndTime = $('rescheduleModal').dataset.oldEnd;
   const newDate = $('rsNewDate').value;
-  const startH = parseInt($('rsStartTime').value);
-  const dur = parseInt($('rsDuration').value);
+  const startH = context?.selectedStart;
+  const dur = context?.duration;
   const endH = startH + dur;
   const note = $('rsNote').value.trim();
 
   if (!newDate) { toast('Please select a new date.', 'err'); return; }
-  if (isNaN(startH) || isNaN(dur)) { toast('Please select a start time and duration.', 'err'); return; }
+  if (!Number.isInteger(startH) || !Number.isInteger(dur) || context.date !== newDate) { toast('Please select an available time slot.', 'err'); return; }
 
   const slots = Array.from({ length: dur }, (_, i) => startH + i);
   const newStartTime = fmtHour(startH);
   const newEndTime = fmtHour(endH);
 
+  _rescheduleSaving = true;
+  $('rsSaveBtn').disabled = true;
   try {
+    const loaded = await loadRescheduleSlots(startH);
+    if (!loaded || _rescheduleContext?.selectedStart !== startH || $('rsNewDate').value !== newDate) {
+      toast('That time slot is no longer available. Please choose another.', 'err');
+      return;
+    }
     const scheduleUpdates = {
       date: newDate,
       startTime: newStartTime,
@@ -9362,6 +9443,10 @@ async function saveReschedule() {
     }).catch(() => {});
   } catch(e) {
     toast(e?.message || 'Failed to reschedule booking.', 'err');
+    await loadRescheduleSlots();
+  } finally {
+    _rescheduleSaving = false;
+    if (_rescheduleContext?.options?.length) renderRescheduleSlotChoices();
   }
 }
 
