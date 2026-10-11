@@ -51,3 +51,18 @@
 
 /open-play-rotation.js
   Cache-Control: no-store, max-age=0
+
+/*.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/service-worker.js
+  Content-Type: application/javascript
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  Service-Worker-Allowed: /
+
+/pwa.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=86400
