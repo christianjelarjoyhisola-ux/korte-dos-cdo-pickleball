@@ -4699,6 +4699,12 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
         <input type="date" class="fi" id="rsNewDate" onchange="loadRescheduleSlots()" />
       </div>
 
+      <div class="fg" id="rsCourtField">
+        <label class="fl" for="rsNewCourt">New Court</label>
+        <select class="fi" id="rsNewCourt" onchange="loadRescheduleSlots()"></select>
+        <p id="rsCourtHint" style="font-size:.8rem;color:var(--muted);margin:.4rem 0 0"></p>
+      </div>
+
       <div class="fg">
         <label class="fl" id="rsSlotLabel">New time slot</label>
         <p id="rsDurationHint" style="font-size:.8rem;color:var(--muted)"></p>
@@ -9307,7 +9313,16 @@ async function loadRescheduleSlots(preferredStart = null) {
     if (request !== _rescheduleLoad || context !== _rescheduleContext || date !== $('rsNewDate').value) return false;
     const clock = rescheduleManilaClock();
     const unavailableHours = new Set();
-    const courtIds = new Set(context.items.map(item => String(item.courtId)));
+    const selectedCourtId = context.isGroup
+      ? ''
+      : String($('rsNewCourt')?.value || context.courtId || '');
+    const courtIds = new Set(context.isGroup
+      ? context.items.map(item => String(item.courtId))
+      : [selectedCourtId]);
+    context.selectedCourtId = selectedCourtId;
+    context.selectedCourtName = context.isGroup
+      ? context.courtName
+      : (courts.find(court => String(court.id) === selectedCourtId)?.name || context.courtName);
     const missingOrClosed = [...courtIds].some(id => !courts.some(c => String(c.id) === id && !c.blocked));
     const parseConfig = value => typeof value === 'string' ? JSON.parse(value) : value;
     const maintenance = parseConfig(settings.maintenance_config || 'null');
@@ -9375,6 +9390,9 @@ async function openRescheduleModal(ref) {
     options: [],
     selectedStart: null,
     isGroup,
+    courtId: String(b.courtId || ''),
+    selectedCourtId: String(b.courtId || ''),
+    selectedCourtName: b.courtName,
     courtName: isGroup ? bookingGroupCourtLabel(activeItems) : b.courtName,
   };
 
@@ -9390,6 +9408,16 @@ async function openRescheduleModal(ref) {
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   $('rsNewDate').value = tomorrow.toISOString().slice(0, 10);
   $('rsNewDate').min = clock.date;
+  const courts = await DB.getCourts();
+  const availableCourts = courts.filter(court => !court.blocked || String(court.id) === String(b.courtId));
+  $('rsNewCourt').innerHTML = availableCourts.map(court =>
+    '<option value="' + esc(String(court.id)) + '" ' +
+      (String(court.id) === String(b.courtId) ? 'selected' : '') + '>' + esc(court.name) + '</option>'
+  ).join('');
+  $('rsNewCourt').disabled = isGroup;
+  $('rsCourtHint').textContent = isGroup
+    ? 'Multi-court reservations keep their original courts and move together.'
+    : 'Choose any open court, then select one of its available time slots.';
   const dur = _rescheduleContext.duration;
   $('rsDuration').innerHTML = '<option value="' + dur + '">' + dur + ' hours</option>';
   $('rsDurationHint').textContent = 'Choose one ' + dur + '-hour time slot. The original duration and price stay unchanged.';
@@ -9441,11 +9469,11 @@ async function saveReschedule() {
       duration: dur,
       slots,
     };
-    if (context?.isGroup) {
-      await DB.rescheduleBookingGroup(context.refs, scheduleUpdates);
-    } else {
-      await DB.updateBooking(ref, scheduleUpdates);
+    if (!context?.isGroup) {
+      scheduleUpdates.courtId = _rescheduleContext.selectedCourtId;
+      scheduleUpdates.courtName = _rescheduleContext.selectedCourtName;
     }
+    await DB.rescheduleBookingGroup(context.refs, scheduleUpdates);
 
     closeModal('rescheduleModal');
     toast(context?.isGroup ? 'All courts in the reservation were rescheduled!' : 'Booking rescheduled!');
@@ -9458,7 +9486,7 @@ async function saveReschedule() {
         bookingRef: bk.ref,
         email: bk.email,
         fullName: bk.fullName,
-        courtName: context?.courtName || bk.courtName,
+        courtName: _rescheduleContext?.selectedCourtName || context?.courtName || bk.courtName,
         oldDate,
         oldStartTime,
         oldEndTime,

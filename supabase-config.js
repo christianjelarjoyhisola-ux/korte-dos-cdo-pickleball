@@ -1908,6 +1908,7 @@ window.DB = {
       p_new_date: updates.date,
       p_start_hour: Number((updates.slots || [])[0]),
       p_duration: Number(updates.duration),
+      p_new_court_id: updates.courtId ? String(updates.courtId) : null,
     });
     if (error) { console.error('rescheduleBookingGroup:', error); throw error; }
     _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
@@ -5318,11 +5319,22 @@ window.DB = {
       const scheduleUpdates = Object.fromEntries(allowed
         .filter(key => updates[key] !== undefined)
         .map(key => [key, updates[key]]));
+      const changingCourt = bookingRefs.length === 1 && updates.courtId;
+      if (updates.courtId && bookingRefs.length !== 1) {
+        throw new Error('Choose a different court only for a single-court booking.');
+      }
+      if (changingCourt) {
+        const court = (db.courts || []).find(row => String(row.id) === String(updates.courtId) && !row.blocked);
+        if (!court) throw new Error('The selected court is unavailable.');
+        scheduleUpdates.courtId = String(court.id);
+        scheduleUpdates.courtName = court.name;
+      }
       for (const booking of found) {
+        const candidate = { ...booking, ...scheduleUpdates };
         const conflicts = db.bookings.filter(other => !bookingRefs.includes(String(other.ref))
-          && String(other.courtId) === String(booking.courtId)
+          && String(other.courtId) === String(candidate.courtId)
           && String(other.date) === String(scheduleUpdates.date));
-        if (hasSlotConflict(conflicts, { ...booking, ...scheduleUpdates })) {
+        if (hasSlotConflict(conflicts, candidate)) {
           throw new Error('One or more time slots are already booked for this court and date.');
         }
       }

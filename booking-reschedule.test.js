@@ -4,7 +4,7 @@ const fs = require('node:fs');
 
 const admin = fs.readFileSync('admin.html', 'utf8');
 const db = fs.readFileSync('supabase-config.js', 'utf8');
-const sql = fs.readFileSync('supabase/migrations/20260826190000_atomic_group_reschedule.sql', 'utf8');
+const sql = fs.readFileSync('supabase/migrations/20261013120000_reschedule_court_and_slot.sql', 'utf8');
 
 test('pending manual-review and confirmed grouped reservations expose Reschedule', () => {
   assert.match(admin, /function canRescheduleBooking[\s\S]*?'pending', 'confirmed'/);
@@ -20,13 +20,13 @@ test('temporary, historical, released, and mixed reservations remain ineligible'
 });
 
 test('grouped move uses the atomic database operation and preserves duration pricing', () => {
-  assert.match(admin, /context\?\.isGroup[\s\S]*?DB\.rescheduleBookingGroup\(context\.refs, scheduleUpdates\)/);
+  assert.match(admin, /DB\.rescheduleBookingGroup\(context\.refs, scheduleUpdates\)/);
   assert.match(admin, /id="rsDuration" disabled/);
   assert.match(admin, /different schedules[\s\S]*?cannot be flattened|different schedules[\s\S]*?preserve each paid duration/);
   assert.match(db, /rpc\('reschedule_booking_group'/);
 });
 
-test('RPC locks and validates the complete group before one schedule-only update', () => {
+test('RPC locks and validates the complete group before one protected schedule update', () => {
   assert.match(sql, /for update;/i);
   assert.match(sql, /group_count <> cardinality\(clean_refs\)/i);
   assert.match(sql, /not in \('pending', 'confirmed'\)/i);
@@ -43,7 +43,20 @@ test('local mode validates the full set and conflicts before writing', () => {
 
 test('notification context is captured and identifies every moved court', () => {
   assert.match(admin, /const context = _rescheduleContext \? \{ \.\.\._rescheduleContext, refs: \[\.\.\._rescheduleContext\.refs\] \}/);
-  assert.match(admin, /courtName: context\?\.courtName \|\| bk\.courtName/);
+  assert.match(admin, /courtName: _rescheduleContext\?\.selectedCourtName \|\| context\?\.courtName \|\| bk\.courtName/);
+});
+
+test('single-court reschedule exposes a court selector and sends it to the atomic RPC', () => {
+  assert.match(admin, /id="rsNewCourt"[\s\S]*?onchange="loadRescheduleSlots\(\)"/);
+  assert.match(admin, /if \(!context\?\.isGroup\)[\s\S]*?scheduleUpdates\.courtId/);
+  assert.match(db, /p_new_court_id: updates\.courtId \? String\(updates\.courtId\) : null/);
+  assert.match(sql, /target_court_id[\s\S]*?cardinality\(clean_refs\) <> 1/);
+  assert.match(sql, /court_id = case when target_court_id is not null then target_court_id/);
+});
+
+test('server rejects occupied slots on the newly selected court', () => {
+  assert.match(sql, /occupied\.court_id = case[\s\S]*?target_court_id[\s\S]*?occupied\.slots && new_slots/i);
+  assert.match(sql, /time slots are already booked for the selected court/i);
 });
 const vm = require('node:vm');
 function rescheduleFunction(name) {
