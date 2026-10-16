@@ -22,7 +22,7 @@ function bookingRows(count) {
   }));
 }
 
-function loadDB(rows, { cap = 1000, pathname = '/admin', authenticated = true, beforePage } = {}) {
+function loadDB(rows, { cap = 1000, pathname = '/admin', authenticated = true, beforePage, rejectSummaryOnce = false } = {}) {
   const requests = [];
   const rpcRequests = [];
   const errors = [];
@@ -35,23 +35,31 @@ function loadDB(rows, { cap = 1000, pathname = '/admin', authenticated = true, b
       const request = { filters: [], orders: [], range: null, count: undefined };
       const query = {
         select(columns, options = {}) {
-          assert.equal(columns, '*');
+          request.columns = columns;
           request.count = options.count;
           return query;
         },
         order(column, options) { request.orders.push({ column, ...options }); return query; },
         eq(column, value) { request.filters.push({ column, value, operator: 'eq' }); return query; },
         neq(column, value) { request.filters.push({ column, value, operator: 'neq' }); return query; },
+        gte(column, value) { request.filters.push({ column, value, operator: 'gte' }); return query; },
+        lte(column, value) { request.filters.push({ column, value, operator: 'lte' }); return query; },
         range(from, to) { request.range = [from, to]; return query; },
         then(resolve, reject) {
           return Promise.resolve().then(() => {
             requests.push(request);
+            if (rejectSummaryOnce && requests.length === 1 && request.columns !== '*') {
+              return { data: null, count: null, error: { code: '42703', message: 'column bookings.new_field does not exist' } };
+            }
             const error = beforePage?.(requests.length, rows);
             if (error) return { data: null, count: null, error };
-            const matching = rows.filter(row => request.filters.every(filter =>
-              filter.operator === 'eq'
-                ? row[filter.column] === filter.value
-                : row[filter.column] !== filter.value));
+            const matching = rows.filter(row => request.filters.every(filter => {
+              if (filter.operator === 'eq') return row[filter.column] === filter.value;
+              if (filter.operator === 'neq') return row[filter.column] !== filter.value;
+              if (filter.operator === 'gte') return row[filter.column] >= filter.value;
+              if (filter.operator === 'lte') return row[filter.column] <= filter.value;
+              return true;
+            }));
             matching.sort((a, b) => {
               for (const { column, ascending } of request.orders) {
                 const comparison = String(a[column]).localeCompare(String(b[column]));
@@ -80,7 +88,7 @@ function loadDB(rows, { cap = 1000, pathname = '/admin', authenticated = true, b
     },
   };
   const context = {
-    console: { error: (...args) => errors.push(args) },
+    console: { error: (...args) => errors.push(args), warn() {} },
     location: { hostname: 'kortedoscdo.club', pathname, search: '' },
     localStorage: { getItem: () => null, removeItem() {} },
     supabase: { createClient: () => client },
@@ -111,6 +119,9 @@ test('private bookings include complete history beyond the response cap, includi
   assert.equal(group.reduce((total, booking) => total + booking.total, 0), 600);
   assert.equal(requests.length, 2);
   for (const request of requests) {
+    assert.ok(request.columns.includes('receipt_image_url'));
+    assert.ok(request.columns.includes('receipt_flags'));
+    assert.ok(!request.columns.includes('receipt_extracted'), 'history reads must omit bulky OCR JSON');
     assert.deepEqual(request.orders, [
       { column: 'created_at', ascending: false },
       { column: 'ref', ascending: false },
@@ -159,6 +170,30 @@ test('all private filters apply before counting and to every page', async () => 
     for (const request of requests) assert.deepEqual(request.filters, requests[0].filters);
     assert.equal(errors.length, 0);
   }
+});
+
+test('private date ranges are applied by the server before pagination', async () => {
+  const rows = bookingRows(40);
+  rows.forEach((row, index) => { row.date = `2026-09-${String(index + 1).padStart(2, '0')}`; });
+  const { DB, requests } = loadDB(rows, { cap: 4 });
+  const bookings = await DB.getBookings({ dateFrom: '2026-09-10', dateTo: '2026-09-19' });
+
+  assert.equal(bookings.length, 10);
+  assert.ok(bookings.every(booking => booking.date >= '2026-09-10' && booking.date <= '2026-09-19'));
+  for (const request of requests) {
+    assert.ok(request.filters.some(filter => filter.operator === 'gte' && filter.value === '2026-09-10'));
+    assert.ok(request.filters.some(filter => filter.operator === 'lte' && filter.value === '2026-09-19'));
+  }
+});
+
+test('a schema-version mismatch falls back to a full compatibility read instead of hiding bookings', async () => {
+  const { DB, requests, errors } = loadDB(bookingRows(3), { rejectSummaryOnce: true });
+  const bookings = await DB.getBookings();
+
+  assert.equal(bookings.length, 3);
+  assert.notEqual(requests[0].columns, '*');
+  assert.equal(requests[1].columns, '*');
+  assert.equal(errors.length, 0);
 });
 
 test('new bookings between pages do not duplicate older reservations', async () => {

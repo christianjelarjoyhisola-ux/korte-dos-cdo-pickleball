@@ -137,6 +137,7 @@ const PB_FAST_CACHE_MS = {
   settings: 30000,
   blockedDates: 30000,
   bookings: 3500,
+  bookingHistory: 30000,
   openPlay: 3500,
   demandSlotOffers: 3500,
   demandFeaturedOffers: 3500,
@@ -145,6 +146,8 @@ const PB_FAST_CACHE_MS = {
 const PB_PUBLIC_OFFER_TIMEOUT_MS = 1500;
 const PB_FEATURED_COURT_SESSION_KEY = 'pb_featured_court_session_v1';
 const _pbFastCache = new Map();
+const PB_RECEIPT_URL_CACHE_MS = 4 * 60 * 1000;
+const _pbReceiptUrlCache = new Map();
 
 function _pbClone(value) {
   if (value == null) return value;
@@ -473,6 +476,72 @@ function _telegramBookingPayload(b, extras = {}) {
 // SQL uses snake_case; JS objects use camelCase
 // =============================================
 const PB_DIGITAL_PAYMENT_METHODS = ['gcash', 'bdopay', 'maya', 'bpi', 'maribank', 'gotyme', 'pnb'];
+
+// Ordinary booking screens never need the potentially large OCR extraction
+// JSON. Keep the familiar booking object shape (rowToBooking supplies null for
+// receiptExtracted), then fetch one complete row only when an admin opens a
+// receipt. This substantially reduces repeated history transfers without
+// changing booking, payment, grouping, or reporting behavior.
+const PB_BOOKING_SUMMARY_COLUMNS = [
+  'ref',
+  'booking_group_ref',
+  'full_name',
+  'contact_number',
+  'email',
+  'court_id',
+  'court_name',
+  'date',
+  'slots',
+  'start_time',
+  'end_time',
+  'duration',
+  'rate',
+  'total',
+  'voucher_id',
+  'voucher_code_snapshot',
+  'voucher_discount_amount',
+  'voucher_gross_total',
+  'demand_campaign_id',
+  'demand_campaign_discount_percent_snapshot',
+  'demand_campaign_discount_amount',
+  'demand_campaign_gross_total',
+  'analytics_eligible',
+  'booking_fee_amount_snapshot',
+  'payment_method',
+  'received_account',
+  'payment_flow',
+  'payment_status',
+  'payment_provider',
+  'payment_session_id',
+  'payment_checkout_url',
+  'paid_at',
+  'gcash_ref',
+  'downpayment',
+  'balance_due_at',
+  'forfeited_at',
+  'forfeiture_reason',
+  'host_booking',
+  'host_user_id',
+  'host_name',
+  'host_email',
+  'created_via',
+  'created_by_user_id',
+  'created_by_role',
+  'created_by_name',
+  'created_by_email',
+  'receipt_status',
+  'receipt_flags',
+  'receipt_confidence',
+  'receipt_image_url',
+  'receipt_verified_at',
+  'billed_at',
+  'weekly_fee_id',
+  'confirmation_email_id',
+  'confirmation_email_sent_at',
+  'confirmation_email_last_event',
+  'status',
+  'created_at',
+].join(',');
 
 function normalizePaymentKey(value, fallback = '') {
   return String(value || fallback || '').toLowerCase().trim();
@@ -975,6 +1044,13 @@ function isMissingOptionalBookingColumnError(error) {
   return /host_booking|host_user_id|host_name|host_email|created_via|created_by_user_id|created_by_role|created_by_name|created_by_email/i.test(error?.message || '');
 }
 
+function isMissingBookingSummaryColumnError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return ['42703', 'PGRST204'].includes(code)
+    || /column .* does not exist|could not find .* column|schema cache/i.test(message);
+}
+
 function rowToCourt(r) {
   return {
     id:           r.id,
@@ -1280,7 +1356,8 @@ window.DB = {
         return (data || []).map(publicSlotToBooking);
       });
     }
-    return _pbCached('bookings', opts, PB_FAST_CACHE_MS.bookings, async () => {
+    const cacheMs = opts.activeOnly ? PB_FAST_CACHE_MS.bookings : PB_FAST_CACHE_MS.bookingHistory;
+    return _pbCached('bookings', opts, cacheMs, async () => {
       // Supabase caps each response, including cancelled bookings and temporary
       // holds. Load every page before the dashboard filters or groups the rows.
       const pageSize = 1000;
@@ -1289,15 +1366,28 @@ window.DB = {
       let offset = 0;
       let totalRows = null;
       do {
-        let query = _sb.from('bookings')
-          .select('*', offset === 0 ? { count: 'exact' } : {})
-          .order('created_at', { ascending: false })
-          .order('ref', { ascending: false });
-        if (opts.date) query = query.eq('date', opts.date);
-        if (opts.courtId) query = query.eq('court_id', String(opts.courtId));
-        if (opts.hostUserId) query = query.eq('host_user_id', String(opts.hostUserId));
-        if (opts.activeOnly) query = query.neq('status', 'cancelled').neq('status', 'forfeited');
-        const { data, error, count } = await query.range(offset, offset + pageSize - 1);
+        const loadPage = columns => {
+          let query = _sb.from('bookings')
+            .select(columns, offset === 0 ? { count: 'exact' } : {})
+            .order('created_at', { ascending: false })
+            .order('ref', { ascending: false });
+          if (opts.date) query = query.eq('date', opts.date);
+          if (opts.dateFrom) query = query.gte('date', opts.dateFrom);
+          if (opts.dateTo) query = query.lte('date', opts.dateTo);
+          if (opts.courtId) query = query.eq('court_id', String(opts.courtId));
+          if (opts.hostUserId) query = query.eq('host_user_id', String(opts.hostUserId));
+          if (opts.activeOnly) query = query.neq('status', 'cancelled').neq('status', 'forfeited');
+          return query.range(offset, offset + pageSize - 1);
+        };
+        let response = await loadPage(PB_BOOKING_SUMMARY_COLUMNS);
+        if (response.error && isMissingBookingSummaryColumnError(response.error)) {
+          // Availability and admin operations must remain usable if a deployment
+          // briefly reaches the frontend before an additive database migration.
+          // The fallback costs more egress, but it is safer than an empty grid.
+          console.warn('getBookings: optimized columns unavailable; using compatibility read');
+          response = await loadPage('*');
+        }
+        const { data, error, count } = response;
         if (error) {
           console.error('getBookings:', error);
           // Never return a partial history when a later page fails. Host history
@@ -1316,6 +1406,10 @@ window.DB = {
       } while (totalRows === null || rows.length < totalRows);
       return rows.map(rowToBooking);
     });
+  },
+
+  invalidateBookingsCache() {
+    _pbClearFastCache(['bookings']);
   },
 
   async getPublicDemandCampaignSlotOffers(date) {
@@ -3208,11 +3302,15 @@ window.DB = {
 
   // Request a short-lived signed URL to view a stored receipt (admin only).
   async getReceiptSignedUrl(bookingRef) {
+    const cacheKey = String(bookingRef || '').trim();
+    const cached = _pbReceiptUrlCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < PB_RECEIPT_URL_CACHE_MS) return cached.url;
     const { data, error } = await _sb.functions.invoke('verify-gcash-receipt', {
-      body: { action: 'sign', bookingRef },
+      body: { action: 'sign', bookingRef: cacheKey },
     });
     if (error) throw new Error(_extractFnError(error, 'Could not load receipt'));
     if (!data?.url) throw new Error(data?.error || 'No receipt available');
+    _pbReceiptUrlCache.set(cacheKey, { at: Date.now(), url: data.url });
     return data.url;
   },
 

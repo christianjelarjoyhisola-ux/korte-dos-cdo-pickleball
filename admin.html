@@ -5135,7 +5135,13 @@ async function getBookingGroupByRef(ref) {
   const first = await DB.getBookingByRef(ref);
   if (!first) return null;
   const all = await DB.getBookings();
-  return groupBookings(all.filter(b => bookingGroupKey(b) === bookingGroupKey(first)))[0] || { ...first, items: [first], refs: [first.ref], primaryRef: first.ref };
+  // History reads intentionally omit bulky OCR extraction JSON. Replace the
+  // selected row with its complete detail record so receipt review keeps all
+  // diagnostics while ordinary booking screens stay lightweight.
+  const groupRows = all
+    .filter(b => bookingGroupKey(b) === bookingGroupKey(first))
+    .map(b => String(b.ref) === String(first.ref) ? first : b);
+  return groupBookings(groupRows)[0] || { ...first, items: [first], refs: [first.ref], primaryRef: first.ref };
 }
 async function updateBookingGroupByRef(ref, updates) {
   const group = await getBookingGroupByRef(ref);
@@ -6405,8 +6411,12 @@ function startAdminRealtime(){
       }catch(_){}
     },300);
   };
+  const rerenderBookings=()=>{
+    DB.invalidateBookingsCache?.();
+    rerender();
+  };
   _supabase.channel('admin-rt')
-    .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},rerender)
+    .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},rerenderBookings)
     .on('postgres_changes',{event:'*',schema:'public',table:'host_booking_balance_payments'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'deleted_booking_archive'},rerender)
     .on('postgres_changes',{event:'*',schema:'public',table:'courts'},rerender)
@@ -7375,8 +7385,10 @@ function _calGetMtRulesForDate(ds) {
 }
 
 async function renderCalendar(){
+  const monthStart=`${calYear}-${String(calMonth+1).padStart(2,'0')}-01`;
+  const monthEnd=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(new Date(calYear,calMonth+1,0).getDate()).padStart(2,'0')}`;
   const [bks, courts, settings] = await Promise.all([
-    DB.getBookings(),
+    DB.getBookings({ dateFrom: monthStart, dateTo: monthEnd }),
     DB.getCourts(),
     DB.getSettings()
   ]);
@@ -8570,7 +8582,7 @@ async function nbRenderSlots() {
   msg.style.display = 'none';
 
   // Fetch booked slots for this court + date
-  const allBks = await DB.getBookings();
+  const allBks = await DB.getBookings({ date, activeOnly: true });
   _nbBookedSlots = new Set();
   allBks.filter(b => String(b.courtId) === String(court.id) && b.date === date && bookingHoldsAdminSlot(b))
     .forEach(b => (b.slots || []).forEach(s => _nbBookedSlots.add(s)));
@@ -9024,7 +9036,7 @@ async function nbRenderSlots() {
   }
 
   msg.style.display = 'none';
-  const allBookings = await DB.getBookings();
+  const allBookings = await DB.getBookings({ date, activeOnly: true });
   _nbBookedSlotMap = new Map(courts.map(c => [String(c.id), new Set()]));
   allBookings
     .filter(b => b.date === date && bookingHoldsAdminSlot(b) && _nbBookedSlotMap.has(String(b.courtId)))
@@ -11175,8 +11187,8 @@ function reportCourtRevenueBreakdown(transactions) {
 }
 
 async function renderReport(){
-  const allBks=await DB.getBookings();
   const{from,to}=_rpDateRange();
+  const allBks=await DB.getBookings({ dateFrom: from, dateTo: to });
   syncReportPeriodUi({ from, to });
   // Reports start from online system usage only. Manual spreadsheet imports
   // remain schedule/history records but do not appear in analytics.
