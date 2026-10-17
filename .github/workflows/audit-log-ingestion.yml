@@ -1,0 +1,40 @@
+name: Audit Log Ingestion
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'Completed time window in hours (1–24)'
+        default: '24'
+        required: true
+        type: string
+      end_utc:
+        description: 'Optional UTC end, e.g. 2026-10-18T00:00:00Z; blank ends ten minutes ago'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  audit:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read aggregate database settings and log counts
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+          AUDIT_HOURS: ${{ inputs.hours }}
+          AUDIT_END_UTC: ${{ inputs.end_utc }}
+        run: node tools/audit-log-ingestion.mjs
