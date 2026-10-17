@@ -113,7 +113,7 @@ function loadAdmin(bookings, pendingPayments = []) {
   ];
   vm.runInContext([
     "let _bookingType = 'all', _bookingRenderSeq = 0, _bookingPage = 1, _bookingPageSize = 50;",
-    "let _balanceProcessorStarted = true, _curSection = 'bookings';",
+    "let _curSection = 'bookings';",
     'let calMonth = 8, calYear = 2026, calSelectedDate = "2026-09-07";',
     'let _nbOpenHour, _nbCloseHour, _nbOpenPlayCfg, _nbMaintenanceCfg, _nbPricingTiers;',
     "const BOOKING_VIEW_NOUNS = { all: ['booking', 'bookings'] };",
@@ -123,6 +123,32 @@ function loadAdmin(bookings, pendingPayments = []) {
   ].join('\n'), context);
   return { context, nodes, captured };
 }
+
+test('opening and refreshing bookings never invokes the scheduled deadline worker', async () => {
+  const { context, nodes } = loadAdmin([booking('PB-HOST', { hostBooking: true })]);
+  let workerCalls = 0;
+  context.DB.processHostBalanceDeadlines = async () => { workerCalls++; return { processed: 0 }; };
+  await context.renderBookings();
+  await context.renderBookings();
+  assert.equal(workerCalls, 0, 'scheduled processing is database-cron work, not a page-load side effect');
+  assert.match(nodes.get('bookBody').innerHTML, /PB-HOST/, 'host booking information still renders');
+});
+
+test('date-filtered maintenance rows use refreshed settings instead of stale in-memory rules', async () => {
+  const { context, nodes } = loadAdmin([]);
+  context.$('fDate').value = '2026-09-07';
+  const config = label => ({ maintenance_config: JSON.stringify({ rules: [{
+    enabled: true, label, mode: 'specific', dates: ['2026-09-07'], start: 10, end: 12,
+  }] }) });
+  let settings = config('closed');
+  context.DB.getSettings = async () => settings;
+  await context.renderBookings();
+  assert.match(nodes.get('bookBody').innerHTML, /Closed/);
+  settings = config('private');
+  await context.renderBookings();
+  assert.match(nodes.get('bookBody').innerHTML, /Private Event/);
+  assert.doesNotMatch(nodes.get('bookBody').innerHTML, /Closed/);
+});
 
 test('dashboard counts confirmed and completed system groups while booking tabs retain all system statuses', async () => {
   const rows = mixedBookings();

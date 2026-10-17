@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Korte Admin">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script defer src="/pwa.js?v=20261011"></script>
+<script src="realtime-refresh.js?v=20261017"></script>
 <script src="admin-notifications.js?v=20261011"></script>
 <link rel="stylesheet" href="admin-notifications.css?v=20261011">
 <script src="chart.min.js"></script>
@@ -6389,54 +6390,59 @@ async function openInitialAdminRoute(firstAllowed) {
 /* ==============================================
    REALTIME — keep the admin dashboard live (no manual refresh)
    ============================================== */
-let _admRtDebounce=null;
+let _adminRealtimeRefresh = null;
+function requestAdminRealtimeRefresh(resync = false) {
+  if (!_adminRealtimeRefresh) return;
+  const live = window.RealtimeRefresh;
+  const scopes = resync ? live.cacheScopes(live.adminTables) : live.scopesForSection(_curSection);
+  if (scopes.length) DB.clearCache?.(scopes);
+  _adminRealtimeRefresh.request([_curSection]);
+}
 function startAdminRealtime(){
-  if (window.PB_USE_LOCAL_DATA) return;
-  const rerender=()=>{
-    clearTimeout(_admRtDebounce);
-    _admRtDebounce=setTimeout(async ()=>{
-      // Never clobber a form the admin is actively editing (e.g. payment settings).
-      const ae=document.activeElement;
-      if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){
-        _admRtDebounce=setTimeout(rerender,1000);
-        return;
+  if (window.PB_USE_LOCAL_DATA || _adminRealtimeRefresh) return;
+  const live = window.RealtimeRefresh;
+  _adminRealtimeRefresh = live.createQueue({
+    delay: 300,
+    isHidden: () => document.hidden,
+    isBlocked: () => {
+      const ae = document.activeElement;
+      return (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))
+        || document.querySelector('.overlay.show, #hostBalanceReviewModal:not([hidden])');
+    },
+    refresh: async sections => {
+      if (sections.includes(_curSection) && SECTION_LOADERS[_curSection]) {
+        if (_curSection === 'bookings' && $('calendarView')?.style.display !== 'none') {
+          await renderCalendar();
+        } else {
+          await SECTION_LOADERS[_curSection]();
+        }
       }
-      // Don't yank content out from under an open modal dialog.
-      if(document.querySelector('.overlay.show')){
-        _admRtDebounce=setTimeout(rerender,1000);
-        return;
+    },
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) requestAdminRealtimeRefresh(true);
+  });
+  window.addEventListener('online', () => requestAdminRealtimeRefresh(true));
+  const channel = _supabase.channel('admin-rt');
+  for (const table of live.adminTables) {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+      const scopes = live.cacheScopes([table]);
+      if (scopes.length) DB.clearCache?.(scopes);
+      if (live.sectionsFor(table).includes(_curSection)) {
+        _adminRealtimeRefresh.request([_curSection]);
       }
-      try{
-        if(_curSection && SECTION_LOADERS[_curSection]) await SECTION_LOADERS[_curSection]();
-      }catch(_){}
-    },300);
-  };
-  const rerenderBookings=()=>{
-    DB.invalidateBookingsCache?.();
-    rerender();
-  };
-  _supabase.channel('admin-rt')
-    .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},rerenderBookings)
-    .on('postgres_changes',{event:'*',schema:'public',table:'host_booking_balance_payments'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'deleted_booking_archive'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'courts'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'settings'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'vouchers'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'voucher_redemptions'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'blocked_dates'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_registrations'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_host_applications'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_host_sessions'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_host_session_registrations'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_game_sessions'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_game_players'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'open_play_game_rounds'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'weekly_fees'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'booking_fee_remittances'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'booking_fee_remittance_items'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'booking_fee_remittance_payments'},rerender)
-    .on('postgres_changes',{event:'*',schema:'public',table:'accounts'},rerender)
-    .subscribe();
+    });
+  }
+  let joined = false, disconnected = false;
+  channel.subscribe(status => {
+    if (status === 'SUBSCRIBED') {
+      if (joined || disconnected) requestAdminRealtimeRefresh(true);
+      joined = true;
+      disconnected = false;
+    } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+      disconnected = true;
+    }
+  });
 }
 
 /* ==============================================
@@ -6695,7 +6701,6 @@ let _bookingRenderSeq = 0;
 let _bookingType = 'all';
 let _bookingPage = 1;
 let _bookingPageSize = 50;
-let _balanceProcessorStarted = false;
 const BOOKING_VIEW_VALUES = new Set(['all','pending','confirmed','completed','closed','host']);
 const BOOKING_VIEW_NOUNS = {
   all: ['booking','bookings'],
@@ -6770,11 +6775,11 @@ function refreshPendingPaymentsOnReturn() {
   if (document.querySelector('.overlay.show, #hostBalanceReviewModal:not([hidden])')) return;
   if (Date.now() - _balanceReviewFocusRefreshAt < 2000) return;
   _balanceReviewFocusRefreshAt = Date.now();
+  if (_adminRealtimeRefresh) { requestAdminRealtimeRefresh(); return; }
   const refresh = _curSection === 'bookings' ? renderBookings : renderPaymentReview;
   refresh().catch(error => console.warn('Pending payment refresh failed:', error));
 }
 window.addEventListener('focus', refreshPendingPaymentsOnReturn);
-document.addEventListener('visibilitychange', refreshPendingPaymentsOnReturn);
 function bookingViewNoun(view = _bookingType, count = 2) {
   const labels = BOOKING_VIEW_NOUNS[view] || BOOKING_VIEW_NOUNS.all;
   return count === 1 ? labels[0] : labels[1];
@@ -6887,12 +6892,6 @@ async function renderBookings(){
     return;
   }
   if (seq !== _bookingRenderSeq) return;
-  if (!_balanceProcessorStarted && !window.PB_USE_LOCAL_DATA) {
-    _balanceProcessorStarted = true;
-    DB.processHostBalanceDeadlines?.({ allowFailure: true }).then(result => {
-      if (Number(result?.processed || 0) > 0 && _curSection === 'bookings') renderBookings();
-    }).catch(() => {});
-  }
   autoCompleteBookings(bks)
     .then(changed => {
       if (changed > 0 && _curSection === 'bookings' && seq === _bookingRenderSeq) renderBookings();
@@ -6928,11 +6927,10 @@ async function renderBookings(){
   // Inject maintenance/block rows when a date filter is active
   let mtRowsHtml = '';
   if (fd && !q && _bookingType === 'all') {
-    if (!_nbMaintenanceCfg) {
-      const s = await DB.getSettings();
-      if (seq !== _bookingRenderSeq) return;
-      try { _nbMaintenanceCfg = s.maintenance_config ? JSON.parse(s.maintenance_config) : null; } catch(e) {}
-    }
+    // Use the scoped DB cache so a settings event also refreshes maintenance rows.
+    const s = await DB.getSettings();
+    if (seq !== _bookingRenderSeq) return;
+    try { _nbMaintenanceCfg = s.maintenance_config ? JSON.parse(s.maintenance_config) : null; } catch(e) { _nbMaintenanceCfg = null; }
     const rules = _nbMaintenanceCfg ? (Array.isArray(_nbMaintenanceCfg.rules) ? _nbMaintenanceCfg.rules : [_nbMaintenanceCfg]) : [];
     const allCourts = await DB.getCourts();
     if (seq !== _bookingRenderSeq) return;
@@ -7357,6 +7355,7 @@ function switchBookingView(mode){
   $('tableView').style.display    = isCal ? 'none' : '';
   if ($('bookingTypeTabs')) $('bookingTypeTabs').hidden = isCal;
   if(isCal) renderCalendar();
+  else renderBookings();
 }
 
 function calNav(dir){

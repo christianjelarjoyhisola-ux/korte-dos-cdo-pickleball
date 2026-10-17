@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Korte DOS">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script defer src="/pwa.js?v=20261011"></script>
+<script src="realtime-refresh.js?v=20261017"></script>
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="voucher-booking.js?v=20260826-demand-growth-v1"></script>
@@ -6453,12 +6454,7 @@ function initFeaturedCourtDeal() {
   document.addEventListener('keydown', featuredCourtDealKeydown);
   const observer = new MutationObserver(scheduleFeaturedCourtDealSync);
   observer.observe(document.body, { subtree:true, attributes:true, attributeFilter:['class','style','hidden'] });
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      refreshFeaturedCourtDeal({ force:true });
-      refreshFeaturedCourtPick({ force:true });
-    }
-  });
+  // Returning to this tab is handled by the shared realtime refresh queue.
   setInterval(() => {
     if (!document.hidden) {
       refreshFeaturedCourtDeal({ force:true });
@@ -10551,35 +10547,58 @@ async function openHostBookings() {
 /* =============================================
    REAL-TIME — Supabase live updates
    ============================================= */
-let _rtDebounce = null;
-async function refreshLiveViews() {
-  const openDate = selectedCourtBrowseDate();
-
-  sharedCourtDate = openDate;
-  await renderCourts();
-  refreshFeaturedPromotions({ force:true });
-
-  // Keep the legacy wizard slot grid live too.
-  if (court && $('bDate').value) renderSlots();
+let _publicRealtimeRefresh = null;
+async function refreshLiveViews(views = ['courts', 'slots', 'promotions']) {
+  if (document.hidden) return;
+  if (views.includes('courts')) {
+    sharedCourtDate = selectedCourtBrowseDate();
+    await renderCourts();
+  }
+  if (document.hidden) return;
+  // Await each read so updates arriving in flight schedule a subsequent pass.
+  await Promise.all([
+    views.includes('promotions') ? refreshFeaturedPromotions({ force:true }) : null,
+    views.includes('slots') && court && $('bDate').value ? renderSlots() : null,
+  ]);
 }
 
 function startRealtime() {
-  if (window.PB_USE_LOCAL_DATA) return;
-  const onChange = () => {
-    // Debounce: a single booking can emit several row events in quick succession.
-    clearTimeout(_rtDebounce);
-    _rtDebounce = setTimeout(() => {
-      if (DB.clearCache) DB.clearCache();
-      refreshLiveViews().catch(() => {});
-    }, 120);
+  if (window.PB_USE_LOCAL_DATA || _publicRealtimeRefresh) return;
+  const live = window.RealtimeRefresh;
+  _publicRealtimeRefresh = live.createQueue({
+    delay: 120,
+    isHidden: () => document.hidden,
+    refresh: refreshLiveViews,
+  });
+  const resync = () => {
+    // A suspended tab or disconnected socket may have missed row events.
+    const scopes = live.cacheScopes(live.publicTables);
+    if (scopes.length) DB.clearCache?.(scopes);
+    _publicRealtimeRefresh.request(['courts', 'slots', 'promotions']);
   };
-  _supabase.channel('public-rt')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, onChange)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, onChange)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, onChange)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_dates' }, onChange)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'open_play_registrations' }, onChange)
-    .subscribe();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) resync(); });
+  window.addEventListener('online', resync);
+  const channel = _supabase.channel('public-rt');
+  for (const table of live.publicTables) {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table }, payload => {
+      // Invalidate immediately, even while hidden or a previous read is in flight.
+      const scopes = live.cacheScopes([table]);
+      if (scopes.length) DB.clearCache?.(scopes);
+      _publicRealtimeRefresh.request(live.publicViewsFor(table, payload, {
+        courts: selectedCourtBrowseDate(), slots: court ? $('bDate')?.value : '',
+      }));
+    });
+  }
+  let joined = false, disconnected = false;
+  channel.subscribe(status => {
+    if (status === 'SUBSCRIBED') {
+      if (joined || disconnected) resync();
+      joined = true;
+      disconnected = false;
+    } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+      disconnected = true;
+    }
+  });
 }
 
 /* =============================================

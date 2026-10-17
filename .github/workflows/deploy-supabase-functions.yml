@@ -104,7 +104,6 @@ jobs:
                 host-application
                 manage-account
                 send-confirmation-email
-                process-host-balance-deadlines
                 send-reschedule-email
                 send-telegram-notification
                 integration-status
@@ -116,6 +115,7 @@ jobs:
                     /^supabase\/functions\/[^/]+\// &&
                     $3 != "_shared" &&
                     $3 != "manage-device-notifications" &&
+                    $3 != "process-host-balance-deadlines" &&
                     $3 != "verify-gcash-receipt" &&
                     $3 != "host-booking-balance-payment" &&
                     $3 != "manage-payment-review-notification" &&

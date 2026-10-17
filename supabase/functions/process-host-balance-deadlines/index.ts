@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { paymentReviewWorkerSecretsMatch, PAYMENT_REVIEW_NOTIFICATION_WORKER_SETTING_KEY } from "../_shared/payment-review-worker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,7 +7,7 @@ const corsHeaders = {
 };
 const JSON_HEADERS = { ...corsHeaders, "Content-Type": "application/json" };
 const LOGO_URL = "https://kortedoscdo.club/korte-dos-logo.png";
-const DAY_MS = 86_400_000;
+const BOOKING_FIELDS = "ref,booking_group_ref,full_name,email,host_name,host_email,court_name,date,start_time,end_time,total,downpayment,balance_due_at,status,payment_status";
 
 type BookingRow = {
   ref: string;
@@ -22,7 +23,6 @@ type BookingRow = {
   total: number;
   downpayment: number;
   balance_due_at: string;
-  forfeited_at: string | null;
   status: string;
   payment_status: string;
 };
@@ -48,16 +48,6 @@ function dateLabel(value: string): string {
   return new Intl.DateTimeFormat("en-PH", {
     timeZone: "Asia/Manila", weekday: "short", month: "short", day: "numeric", year: "numeric",
   }).format(new Date(`${value}T00:00:00+08:00`));
-}
-
-function groupRows(rows: BookingRow[]): BookingRow[][] {
-  const groups = new Map<string, BookingRow[]>();
-  for (const row of rows) {
-    const key = row.booking_group_ref || row.ref;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(row);
-  }
-  return [...groups.values()];
 }
 
 function summary(rows: BookingRow[]) {
@@ -127,101 +117,113 @@ async function assertAdmin(req: Request, db: any) {
   }
 }
 
-async function sendNotice(db: any, resendKey: string, rows: BookingRow[], eventType: string, force = false) {
+async function sendNotice(db: any, resendKey: string, rows: BookingRow[], eventType: string, force = false,
+  fetcher: typeof fetch = fetch, fromAddress = "KORTE DOS <onboarding@resend.dev>") {
   const info = summary(rows);
   if (!info.email || !info.deadline || info.balance <= 0) return { skipped: true, reason: "No recipient or balance" };
 
-  const { data: existing } = await db.from("booking_balance_notifications")
-    .select("id,status,attempt_count,last_attempt_at").eq("booking_key", info.key).eq("event_type", eventType).maybeSingle();
-  if (!force && existing?.status === "sent") return { skipped: true, reason: "Already sent" };
-  if (!force && existing?.status === "pending" && existing.last_attempt_at && Date.now() - new Date(existing.last_attempt_at).getTime() < 10 * 60_000) {
-    return { skipped: true, reason: "Already processing" };
-  }
-
-  const attemptCount = Number(existing?.attempt_count || 0) + 1;
-  const log = {
-    booking_key: info.key, booking_ref: info.ref, event_type: eventType,
-    recipient_email: info.email, status: "pending", attempt_count: attemptCount,
-    last_attempt_at: new Date().toISOString(), error_message: null,
-  };
-  const { data: claimed, error: claimError } = await db.from("booking_balance_notifications")
-    .upsert(log, { onConflict: "booking_key,event_type" }).select("id").single();
+  const { data: claims, error: claimError } = await db.rpc("claim_host_balance_notification", {
+    p_booking_key: info.key, p_booking_ref: info.ref, p_event_type: eventType,
+    p_recipient_email: info.email, p_force: force,
+  });
   if (claimError) throw claimError;
+  const claimed = claims?.[0];
+  if (!claimed) return { skipped: true, reason: "Already sent or processing" };
+
+  const updateClaim = (values: Record<string, unknown>) => db.from("booking_balance_notifications").update(values)
+    .eq("id", claimed.id).eq("attempt_count", claimed.attempt_count).eq("delivery_id", claimed.delivery_id).eq("status", "pending");
 
   const copy = noticeCopy(eventType, info.balance, info.deadline);
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetcher("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json",
+        "Idempotency-Key": `host-balance:${claimed.delivery_id}` },
       body: JSON.stringify({
-        from: Deno.env.get("EMAIL_FROM") || "KORTE DOS <onboarding@resend.dev>",
+        from: fromAddress,
         to: [info.email], subject: `${copy.subject} | KORTE DOS`, html: emailHtml(info, eventType),
       }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`Resend error ${response.status}: ${JSON.stringify(result)}`);
-    await db.from("booking_balance_notifications").update({ status: "sent", sent_at: new Date().toISOString(), provider_message_id: result.id || null }).eq("id", claimed.id);
+    if (!response.ok) throw new Error(`Email provider rejected notice (${response.status})`);
+    const saved = await updateClaim({ status: "sent", sent_at: new Date().toISOString(), provider_message_id: result.id || null });
+    if (saved.error) throw saved.error;
     return { sent: true, eventType, bookingKey: info.key };
   } catch (error) {
-    await db.from("booking_balance_notifications").update({ status: "failed", error_message: error instanceof Error ? error.message : String(error) }).eq("id", claimed.id);
+    await updateClaim({ status: "failed", error_message: error instanceof Error ? error.message.slice(0, 500) : "Notice delivery failed" });
     throw error;
   }
 }
 
-Deno.serve(async (req) => {
+export async function handle(req: Request, db: any, env = (key: string) => Deno.env.get(key), fetcher: typeof fetch = fetch) {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
   try {
-    const url = Deno.env.get("SUPABASE_URL") || "";
-    const serviceKey = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const resendKey = Deno.env.get("RESEND_API_KEY") || "";
-    if (!url || !serviceKey || !resendKey) throw new Error("Balance processor environment is incomplete");
-    const db = createClient(url, serviceKey, { auth: { persistSession: false } });
-    const body = await req.json().catch(() => ({}));
+    const raw = await req.text();
+    if (raw.length > 4096) return new Response(JSON.stringify({ ok: false, error: "Request too large" }), { status: 413, headers: JSON_HEADERS });
+    let body;
+    try { body = JSON.parse(raw); } catch { return new Response(JSON.stringify({ ok: false, error: "Invalid request" }), { status: 400, headers: JSON_HEADERS }); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return new Response(JSON.stringify({ ok: false, error: "Invalid request" }), { status: 400, headers: JSON_HEADERS });
+    const resendKey = env("RESEND_API_KEY") || "";
+    const fromAddress = env("EMAIL_FROM") || "KORTE DOS <onboarding@resend.dev>";
 
     if (body.action === "manual") {
       await assertAdmin(req, db);
+      if (!resendKey) throw new Error("Balance processor environment is incomplete");
       const ref = String(body.bookingRef || "");
-      const { data: seed } = await db.from("bookings").select("booking_group_ref").eq("ref", ref).single();
-      const key = seed?.booking_group_ref || ref;
-      const { data: manualRows, error } = await db.from("bookings").select("*").or(`ref.eq.${key},booking_group_ref.eq.${key}`);
+      const { data: seed, error: seedError } = await db.from("bookings").select("booking_group_ref").eq("ref", ref).single();
+      if (seedError || !seed) throw seedError || new Error("Booking not found");
+      const query = db.from("bookings").select(BOOKING_FIELDS);
+      const { data: manualRows, error } = await (seed.booking_group_ref ? query.eq("booking_group_ref", seed.booking_group_ref) : query.eq("ref", ref)).order("ref");
       if (error || !manualRows?.length) throw error || new Error("Booking not found");
       const eventType = manualRows.some((row: BookingRow) => row.status === "forfeited") ? "forfeited" : String(body.eventType || "reminder_1d");
-      const result = await sendNotice(db, resendKey, manualRows as BookingRow[], eventType, true);
+      if (!["reminder_3d", "reminder_2d", "reminder_1d", "forfeited", "manual"].includes(eventType)) throw new Error("Invalid notice type");
+      const result = await sendNotice(db, resendKey, manualRows as BookingRow[], eventType, true, fetcher, fromAddress);
       return new Response(JSON.stringify({ ok: true, result }), { headers: JSON_HEADERS });
     }
 
-    const { data, error } = await db.from("bookings").select("*")
-      .eq("host_booking", true).eq("status", "confirmed").eq("payment_status", "downpayment_paid")
-      .not("balance_due_at", "is", null);
+    const { data: setting, error: settingError } = await db.from("private_settings").select("value")
+      .eq("key", PAYMENT_REVIEW_NOTIFICATION_WORKER_SETTING_KEY).maybeSingle();
+    if (settingError) throw settingError;
+    if (!paymentReviewWorkerSecretsMatch(req.headers.get("x-payment-review-worker-secret"), setting?.value)) {
+      return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401, headers: JSON_HEADERS });
+    }
+    if (!resendKey) throw new Error("Balance processor environment is incomplete");
+    const { data, error } = await db.rpc("due_host_balance_notification_groups", { p_limit: 100 });
     if (error) throw error;
 
-    const results = [];
-    const now = Date.now();
-    for (const rows of groupRows((data || []) as BookingRow[])) {
-      const info = summary(rows);
-      const remaining = new Date(info.deadline).getTime() - now;
-      if (remaining <= 0) {
-        const { data: forfeiture, error: forfeitError } = await db.rpc("forfeit_overdue_host_booking", { p_booking_key: info.key });
-        if (forfeitError) throw forfeitError;
-        if (Number(forfeiture?.changed || 0) > 0) results.push(await sendNotice(db, resendKey, rows, "forfeited"));
-      } else if (remaining <= DAY_MS) results.push(await sendNotice(db, resendKey, rows, "reminder_1d"));
-      else if (remaining <= 2 * DAY_MS) results.push(await sendNotice(db, resendKey, rows, "reminder_2d"));
-      else if (remaining <= 3 * DAY_MS) results.push(await sendNotice(db, resendKey, rows, "reminder_3d"));
+    let sent = 0, skipped = 0, failed = 0;
+    for (const group of data || []) {
+      let stage = group.needs_forfeiture ? "forfeiture" : "notice";
+      try {
+        if (group.needs_forfeiture) {
+          const { data: forfeiture, error: forfeitError } = await db.rpc("forfeit_overdue_host_booking", { p_booking_key: group.booking_key });
+          if (forfeitError) throw forfeitError;
+          // The authoritative mutation rechecks payment/review state under
+          // locks. A concurrently settled or protected group sends no notice.
+          if (Number(forfeiture?.changed || 0) === 0) { skipped++; continue; }
+        }
+        stage = "notice";
+        const result = await sendNotice(db, resendKey, group.bookings, group.event_type, false, fetcher, fromAddress);
+        if (result.sent) sent++; else skipped++;
+      } catch (error) {
+        failed++;
+        // Retain useful failure diagnostics without logging a host, reference,
+        // receipt, recipient, provider response, or rendered email.
+        const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+        const providerStatus = error instanceof Error ? error.message.match(/^Email provider rejected notice \((\d{3})\)$/)?.[1] : null;
+        console.error("Host balance processing failed", { stage,
+          code: /^[A-Z0-9_]{1,20}$/.test(code) ? code : providerStatus ? `HTTP_${providerStatus}` : "DELIVERY_OR_DATABASE_ERROR" });
+      }
     }
-
-    // A status change must not suppress a forfeiture email retry. Failed logs
-    // are retried on the next cron pass; sent logs remain idempotent.
-    const { data: forfeitedData, error: forfeitedError } = await db.from("bookings").select("*")
-      .eq("host_booking", true).eq("status", "forfeited").eq("payment_status", "deposit_retained")
-      .not("balance_due_at", "is", null);
-    if (forfeitedError) throw forfeitedError;
-    for (const rows of groupRows((forfeitedData || []) as BookingRow[])) {
-      results.push(await sendNotice(db, resendKey, rows, "forfeited"));
-    }
-    return new Response(JSON.stringify({ ok: true, processed: results.length, results }), { headers: JSON_HEADERS });
+    return new Response(JSON.stringify({ ok: failed === 0, processed: sent + skipped + failed, sent, skipped, failed }), { status: failed ? 207 : 200, headers: JSON_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return new Response(JSON.stringify({ ok: false, error: message }), { status: 500, headers: JSON_HEADERS });
   }
-});
+}
+
+if (import.meta.main) Deno.serve(req => handle(req, createClient(
+  Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+  { auth: { persistSession: false } },
+)));

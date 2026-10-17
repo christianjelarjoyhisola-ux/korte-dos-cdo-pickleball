@@ -788,6 +788,9 @@ jobs:
 
           echo "Payment-review production migration verified."
 
+      - name: Preserve due-work schedules after legacy migration
+        run: node tools/manage-background-notifications.mjs restore-schedules
+
       - name: Deploy schema-dependent payment-review Edge Functions
         shell: bash
         run: |

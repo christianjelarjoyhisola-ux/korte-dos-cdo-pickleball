@@ -52,5 +52,9 @@ jobs:
               exit 1
             fi
           done
+      - name: Preserve due-work schedules after legacy migration
+        # A legacy schema replay must retain the newer due-work schedules.
+        # The helper is a no-op until the efficiency migration is installed.
+        run: node tools/manage-background-notifications.mjs restore-schedules
       - name: Deploy notification service
         run: supabase functions deploy manage-device-notifications --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt

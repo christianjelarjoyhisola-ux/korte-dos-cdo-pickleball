@@ -1,0 +1,56 @@
+name: Deploy Notification Request Efficiency
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261017090000_reduce_background_notification_requests.sql'
+      - 'supabase/functions/process-host-balance-deadlines/**'
+      - 'supabase/functions/_shared/payment-review-worker.ts'
+      - 'tools/manage-background-notifications.mjs'
+      - 'tests/background-notification-sql.test.cjs'
+      - 'tests/host-balance-worker.test.cjs'
+      - '.github/workflows/deploy-request-efficiency.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check host notification worker
+        run: deno check --no-lock supabase/functions/process-host-balance-deadlines/index.ts
+      - name: Test device notification worker
+        run: deno test --no-lock --node-modules-dir=auto --allow-env supabase/functions/manage-device-notifications/notifications_test.ts
+      - name: Rehearse notification migration with rollback
+        run: node tools/manage-background-notifications.mjs rehearse
+      - name: Apply notification migration
+        run: node tools/manage-background-notifications.mjs apply
+      - name: Verify schedules and private function permissions
+        run: node tools/manage-background-notifications.mjs verify
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+      - name: Deploy host worker after its database functions
+        run: supabase functions deploy process-host-balance-deadlines --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
