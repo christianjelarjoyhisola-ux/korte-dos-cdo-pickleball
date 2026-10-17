@@ -1,0 +1,43 @@
+name: Manage Routine Cron Logging
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Plan is read-only. Apply and restore restart the production database.'
+        type: choice
+        options: [plan, apply, restore, verify]
+        default: plan
+        required: true
+      restart_approved:
+        description: 'The owner explicitly approved a production database restart for this run.'
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  manage:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/cron-logging-management.test.cjs
+      - name: Manage the single routine cron logging setting
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+          CRON_LOGGING_ACTION: ${{ inputs.action }}
+          ALLOW_DATABASE_RESTART: ${{ inputs.restart_approved && 'yes' || 'no' }}
+        run: node tools/manage-cron-logging.mjs "$CRON_LOGGING_ACTION"
