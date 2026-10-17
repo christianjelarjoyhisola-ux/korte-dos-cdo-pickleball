@@ -20,6 +20,7 @@ permissions:
 concurrency:
   group: supabase-production-deploy
   cancel-in-progress: false
+  queue: max
 
 jobs:
   migrate:
@@ -682,12 +683,37 @@ jobs:
         $verify$;
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect payment-review source changes
+        id: affected
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=true
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            if git diff --quiet "${{ github.event.before }}" "${{ github.sha }}" -- \
+              supabase/migrations/20260723153000_payment_review_notifications.sql \
+              supabase/functions/_shared \
+              supabase/functions/verify-gcash-receipt \
+              supabase/functions/manage-payment-review-notification \
+              supabase/functions/process-payment-review-notifications \
+              supabase/functions/review-payment-receipt deno.lock; then
+              required=false
+            else
+              diff_status=$?
+              if [[ "$diff_status" != 1 ]]; then exit "$diff_status"; fi
+            fi
+          fi
+          echo "migration_required=$required" >> "$GITHUB_OUTPUT"
 
       - uses: supabase/setup-cli@v1
         with:
           version: 2.109.1
 
       - name: Rehearse, verify, and apply only the payment-review migration
+        if: steps.affected.outputs.migration_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -757,6 +783,7 @@ jobs:
           fi
 
       - name: Verify production database state
+        if: steps.affected.outputs.migration_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -792,6 +819,7 @@ jobs:
         run: node tools/manage-background-notifications.mjs restore-schedules
 
       - name: Deploy schema-dependent payment-review Edge Functions
+        if: steps.affected.outputs.migration_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
