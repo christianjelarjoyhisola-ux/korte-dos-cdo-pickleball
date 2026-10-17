@@ -3315,7 +3315,7 @@ body.host-mode .courts { padding-bottom:140px; }
       <div class="late-ext-note">This will be added as a separate next-day booking item in the same reservation.</div>
     </div>
     <div class="m-foot">
-      <button type="button" class="btn btn-g" onclick="resolveLateNightExtension(false)">No, continue 11PM - 12AM only</button>
+      <button type="button" class="btn btn-g" onclick="resolveLateNightExtension(false)">No, keep my selected times</button>
       <button type="button" class="btn btn-p" onclick="resolveLateNightExtension(true)">Yes, add 12AM - 1AM</button>
     </div>
   </div>
@@ -7080,11 +7080,14 @@ function bookingHoldsSlot(b) {
 
 let lateNightExtensionResolver = null;
 
-function selectedOnlyElevenToMidnight(selections = []) {
+function selectedLateNightCourts(selections = []) {
   const distinctCourts = new Set(selections.map(sel => String(sel.courtId || '')));
-  return distinctCourts.size >= 2 && selections.every(sel => {
-    const slots = normalizedSlots(sel.slots);
-    return slots.length === 1 && slots[0] === 23;
+  return !distinctCourts.has('') && distinctCourts.size >= 2 && selections.every(sel => {
+    const slots = [...new Set(normalizedSlots(sel.slots))];
+    // Each court needs at least two consecutive hours ending at midnight.
+    // Longer evening bookings qualify too; a gap does not count as continuity.
+    return slots.length >= 2 && slots[slots.length - 1] === 23 &&
+      slots.every((hour, index) => index === 0 || hour === slots[index - 1] + 1);
   });
 }
 
@@ -7102,7 +7105,7 @@ async function isLateNightExtensionAvailable(sel, nextDate, blockedDates = []) {
 }
 
 async function lateNightExtensionCandidate(selections = []) {
-  if (!selectedOnlyElevenToMidnight(selections)) return null;
+  if (!selectedLateNightCourts(selections)) return null;
   const selectedDate = selections[0]?.date;
   if (!selectedDate || selections.some(sel => sel.date !== selectedDate)) return null;
   const nextDate = addDaysYmd(selectedDate, 1);
