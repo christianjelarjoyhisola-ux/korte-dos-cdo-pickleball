@@ -8,6 +8,13 @@ on:
       - 'tools/manage-player-live-updates.mjs'
       - '.github/workflows/deploy-player-live-updates.yml'
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Deploy the migration, or probe an already applied migration without replaying it.'
+        type: choice
+        options: [deploy, probe-enable, verify]
+        default: deploy
+        required: true
 
 permissions:
   contents: read
@@ -35,10 +42,13 @@ jobs:
       - run: npm run check
       - run: npm test
       - name: Rehearse live board migration with rollback
+        if: github.event_name == 'push' || inputs.action == 'deploy'
         run: node tools/manage-player-live-updates.mjs rehearse
       - name: Apply live board migration
+        if: github.event_name == 'push' || inputs.action == 'deploy'
         run: node tools/manage-player-live-updates.mjs apply
       - name: Test anonymous database broadcast before enabling live updates
+        if: github.event_name == 'push' || inputs.action != 'verify'
         run: node tools/manage-player-live-updates.mjs probe-enable
       - name: Verify live board permissions and triggers
         run: node tools/manage-player-live-updates.mjs verify

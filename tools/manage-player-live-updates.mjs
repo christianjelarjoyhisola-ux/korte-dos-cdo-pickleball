@@ -51,11 +51,11 @@ begin
   end if;
 end $verify$;`;
 
-async function query(sql) {
+async function query(sql, timeoutMs = 120_000) {
   // An uncertain mutation response must be inspected, never automatically replayed.
   const response = await fetch(`https://api.supabase.com/v1/projects/${project}/database/query`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: sql }), signal: AbortSignal.timeout(120_000),
+    body: JSON.stringify({ query: sql }), signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     await response.body?.cancel();
@@ -63,15 +63,18 @@ async function query(sql) {
   }
   const result = await response.json();
   if (result?.error) throw new Error('Live update database operation was rejected');
+  return result;
 }
 
 async function probeAndEnable() {
   await query(verification);
+  console.log('Live board database functions and permissions verified.');
   const config = await readFile(new URL('../supabase-config.js', import.meta.url), 'utf8');
   const anonKey = config.match(/const SUPABASE_ANON_KEY\s*=\s*'([^']+)'/)?.[1];
   if (!anonKey || !config.includes(`https://${project}.supabase.co`)) throw new Error('Public client configuration unavailable');
   const client = createClient(`https://${project}.supabase.co`, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    realtime: { timeout: 3000, disconnectOnEmptyChannelsAfterMs: 0 },
   });
   const topic = `player-live-probe:${randomUUID()}`;
   const channel = client.channel(topic, { config: { private: false } });
@@ -91,8 +94,15 @@ async function probeAndEnable() {
           else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) reject(new Error('Public broadcast unavailable'));
         });
       });
+      console.log('Anonymous public probe channel subscribed.');
       // Random, non-customer topic; no session, token, name or score is used.
-      await query(`select realtime.send('{}'::jsonb, 'changed', '${topic}', false);`);
+      await query(`select realtime.send('{}'::jsonb, 'changed', '${topic}', false);`, 15_000);
+      const diagnostic = await query(`select count(*)::integer as probe_rows,
+        count(*) filter(where not private and event='changed')::integer as public_changed_rows
+        from realtime.messages where topic='${topic}';`, 10_000);
+      // Only counts for our freshly generated dummy topic are printed.
+      const row = diagnostic?.[0];
+      console.log(JSON.stringify({ probe_rows: Number(row?.probe_rows), public_changed_rows: Number(row?.public_changed_rows) }));
       await received;
     })()]);
     clearTimeout(timer);
@@ -101,6 +111,7 @@ async function probeAndEnable() {
   } finally {
     clearTimeout(timer);
     await client.removeChannel(channel);
+    await client.realtime.disconnect();
   }
 }
 
@@ -120,3 +131,6 @@ try {
     ? error.message : 'Player live update deployment failed; inspect aggregate diagnostics.');
   process.exitCode = 1;
 }
+// This one-shot CLI has finished every database operation and cleanup above.
+// Realtime SDK internal disconnect timers otherwise keep CI alive for a minute.
+process.exit(process.exitCode || 0);
