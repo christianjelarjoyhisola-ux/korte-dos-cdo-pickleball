@@ -7083,11 +7083,9 @@ let lateNightExtensionResolver = null;
 function selectedLateNightCourts(selections = []) {
   const distinctCourts = new Set(selections.map(sel => String(sel.courtId || '')));
   return !distinctCourts.has('') && distinctCourts.size >= 2 && selections.every(sel => {
-    const slots = [...new Set(normalizedSlots(sel.slots))];
-    // Each court needs at least two consecutive hours ending at midnight.
-    // Longer evening bookings qualify too; a gap does not count as continuity.
-    return slots.length >= 2 && slots[slots.length - 1] === 23 &&
-      slots.every((hour, index) => index === 0 || hour === slots[index - 1] + 1);
+    // The extension continues the midnight hour on each selected court.
+    // Earlier selected hours and differing durations do not affect eligibility.
+    return normalizedSlots(sel.slots).includes(23);
   });
 }
 
