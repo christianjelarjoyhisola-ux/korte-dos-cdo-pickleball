@@ -6,6 +6,7 @@ on:
     paths:
       - 'supabase/migrations/20261018003000_player_live_invalidation.sql'
       - 'tools/manage-player-live-updates.mjs'
+      - 'tools/player-live-probe.mjs'
       - '.github/workflows/deploy-player-live-updates.yml'
   workflow_dispatch:
     inputs:

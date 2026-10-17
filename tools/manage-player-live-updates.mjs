@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+import { isEmptyProbePayload } from './player-live-probe.mjs';
 
 const project = 'zcuufcpkgidmaanxjufo';
 const action = process.argv[2];
@@ -88,7 +89,7 @@ async function probeAndEnable() {
     await Promise.race([timeout, (async () => {
       await new Promise((resolve, reject) => {
         channel.on('broadcast', { event: 'changed' }, message => {
-          if (message.payload && Object.keys(message.payload).length === 0) receive();
+          if (isEmptyProbePayload(message.payload)) receive();
         }).subscribe(status => {
           if (status === 'SUBSCRIBED') resolve();
           else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) reject(new Error('Public broadcast unavailable'));
