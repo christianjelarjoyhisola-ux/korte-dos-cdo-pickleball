@@ -1,14 +1,12 @@
 (() => {
   "use strict";
 
-  const POLL_MS = 3000;
   const PLAYER_NAME_KEY = "korte_dos_player_live_name_v1";
   const state = {
     token: String(location.hash || "").slice(1).trim(),
     snapshot: null,
     signature: "",
     selectedName: "",
-    inFlight: false,
     failures: 0,
     terminal: false,
     winnerReveal: null,
@@ -16,7 +14,7 @@
     matchupReveals: [],
     pendingMatchupReveals: [],
     matchupRevealTimer: null,
-    pollTimer: null,
+    updates: null,
     clockTimer: null,
     shareFeedbackTimer: null,
     navObserver: null,
@@ -1331,15 +1329,6 @@
     updateHeader();
   }
 
-  function schedulePoll() {
-    clearTimeout(state.pollTimer);
-    if (state.terminal || document.hidden) return;
-    const delay = state.failures
-      ? Math.min(60000, POLL_MS * (2 ** Math.min(state.failures, 3)))
-      : POLL_MS;
-    state.pollTimer = setTimeout(fetchSnapshot, delay);
-  }
-
   function setShareFeedback(message) {
     const label = document.querySelector("[data-plb-share-label]");
     if (!label) return;
@@ -1389,68 +1378,46 @@
     }
   }
 
-  async function fetchSnapshot({ showBusy = false } = {}) {
-    if (state.inFlight || state.terminal || document.hidden) return;
-    state.inFlight = true;
-    if (showBusy) {
-      document.querySelectorAll('[data-plb-action="refresh"]').forEach(button => {
-        button.disabled = true;
-      });
+  function applySnapshot(snapshot) {
+    const hadSnapshot = Boolean(state.snapshot);
+    const winnerReveal = hadSnapshot ? winnerRevealForUpdate(state.snapshot, snapshot) : null;
+    const matchupReveals = hadSnapshot ? matchupRevealsForUpdate(state.snapshot, snapshot) : [];
+    const signature = contentSignature(snapshot);
+    state.snapshot = snapshot;
+    state.failures = 0;
+    if (signature !== state.signature) {
+      state.signature = signature;
+      if (winnerReveal || matchupReveals.length) {
+        clearTimeout(state.winnerRevealTimer);
+        clearTimeout(state.matchupRevealTimer);
+        state.winnerReveal = winnerReveal;
+        state.pendingMatchupReveals = winnerReveal ? matchupReveals : [];
+        state.matchupReveals = winnerReveal ? [] : matchupReveals;
+      }
+      renderBoard();
+      if (hadSnapshot) announceUpdate(snapshot);
+      if (winnerReveal) scheduleWinnerRevealEnd(matchupReveals);
+      else if (matchupReveals.length) scheduleMatchupRevealEnd();
+    } else {
+      const note = document.getElementById("plbConnectionNote");
+      if (note) {
+        note.classList.remove("is-error");
+        note.textContent = "Live connection active. This page refreshes automatically.";
+      }
+      updateHeader();
     }
-    try {
-      const snapshot = await DB.getPublicOpenPlayGameLiveBoard(state.token);
-      if (!snapshot) {
-        state.terminal = true;
-        state.snapshot = null;
-        renderUnavailable();
-        return;
+  }
+
+  function snapshotError() {
+    state.failures += 1;
+    if (!state.snapshot) renderConnectionError();
+    else {
+      const note = document.getElementById("plbConnectionNote");
+      if (note) {
+        note.classList.add("is-error");
+        note.textContent = "Connection interrupted. Showing the last update while reconnecting.";
       }
-      const hadSnapshot = Boolean(state.snapshot);
-      const winnerReveal = hadSnapshot ? winnerRevealForUpdate(state.snapshot, snapshot) : null;
-      const matchupReveals = hadSnapshot ? matchupRevealsForUpdate(state.snapshot, snapshot) : [];
-      const signature = contentSignature(snapshot);
-      state.snapshot = snapshot;
-      state.failures = 0;
-      if (signature !== state.signature) {
-        state.signature = signature;
-        if (winnerReveal || matchupReveals.length) {
-          clearTimeout(state.winnerRevealTimer);
-          clearTimeout(state.matchupRevealTimer);
-          state.winnerReveal = winnerReveal;
-          state.pendingMatchupReveals = winnerReveal ? matchupReveals : [];
-          state.matchupReveals = winnerReveal ? [] : matchupReveals;
-        }
-        renderBoard();
-        if (hadSnapshot) announceUpdate(snapshot);
-        if (winnerReveal) scheduleWinnerRevealEnd(matchupReveals);
-        else if (matchupReveals.length) scheduleMatchupRevealEnd();
-      } else {
-        const note = document.getElementById("plbConnectionNote");
-        if (note) {
-          note.classList.remove("is-error");
-          note.textContent = "Live connection active. This page refreshes automatically.";
-        }
-        updateHeader();
-      }
-    } catch (error) {
-      state.failures += 1;
-      if (!state.snapshot) renderConnectionError();
-      else {
-        const note = document.getElementById("plbConnectionNote");
-        if (note) {
-          note.classList.add("is-error");
-          note.textContent = "Connection interrupted. Showing the last update while reconnecting.";
-        }
-        updateHeader();
-      }
-    } finally {
-      state.inFlight = false;
-      if (showBusy) {
-        document.querySelectorAll('[data-plb-action="refresh"]').forEach(button => {
-          button.disabled = false;
-        });
-      }
-      schedulePoll();
+      updateHeader();
     }
   }
 
@@ -1458,8 +1425,7 @@
     const button = event.target.closest("[data-plb-action]");
     if (!button) return;
     if (button.dataset.plbAction === "refresh") {
-      clearTimeout(state.pollTimer);
-      fetchSnapshot({ showBusy: true });
+      state.updates?.refresh();
       return;
     }
     if (button.dataset.plbAction === "share") {
@@ -1486,15 +1452,39 @@
       return;
     }
 
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        clearTimeout(state.pollTimer);
-      } else {
-        fetchSnapshot();
-      }
+    state.updates = window.LiveBoardUpdates.create({
+      fetchSnapshot: () => DB.getPublicOpenPlayGameLiveBoard(state.token),
+      onSnapshot: applySnapshot,
+      onError: snapshotError,
+      onUnavailable() {
+        state.terminal = true;
+        state.snapshot = null;
+        clearTimeout(state.winnerRevealTimer);
+        clearTimeout(state.matchupRevealTimer);
+        renderUnavailable();
+      },
+      onLoading(busy) {
+        document.querySelectorAll('[data-plb-action="refresh"]').forEach(button => { button.disabled = busy; });
+      },
+      isHidden: () => document.hidden,
+      isOnline: () => navigator.onLine !== false,
+      subscribe(topic, handlers) {
+        const client = window._supabase;
+        if (!client?.channel) throw new Error("Live updates unavailable");
+        const channel = client.channel(topic, { config: { private: false, broadcast: { self: false } } })
+          .on("broadcast", { event: "changed" }, () => handlers.changed())
+          .subscribe(status => handlers.status(status));
+        return () => client.removeChannel(channel);
+      },
     });
-    window.addEventListener("online", fetchSnapshot);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) state.updates.pause();
+      else state.updates.wake();
+    });
+    window.addEventListener("online", () => state.updates.wake());
     window.addEventListener("offline", () => {
+      state.updates.pause();
       state.failures = Math.max(1, state.failures);
       updateHeader();
       const note = document.getElementById("plbConnectionNote");
@@ -1503,8 +1493,10 @@
         note.textContent = "You are offline. Showing the last saved live update.";
       }
     });
+    window.addEventListener("pagehide", () => state.updates.pause());
+    window.addEventListener("pageshow", event => { if (event.persisted) state.updates.wake(); });
     window.addEventListener("hashchange", () => location.reload());
-    fetchSnapshot();
+    state.updates.start();
   }
 
   start();

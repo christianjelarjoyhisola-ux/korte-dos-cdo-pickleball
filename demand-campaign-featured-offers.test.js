@@ -280,7 +280,7 @@ test('player deal UI shows exact actionable slots without mutating a booking sel
   assert.match(navigation, /offers\.find\([\s\S]*offer\.slotHour/);
   assert.match(navigation, /loadOffersForDate\?\.\(target\.date, \{ force:true \}\)/);
   assert.doesNotMatch(navigation, /toggleCardSlot|proceedToBook|submitBooking|createBooking|reserveBooking/i);
-  assert.match(initialization, /refreshFeaturedCourtDeal\(\{ force:true \}\)/);
+  assert.match(initialization, /refreshFeaturedPromotions\(\)/);
   assert.match(widget, /Limited court deal/i);
   assert.doesNotMatch(widget, /Smart Rate/i);
   assert.match(controller, /Limited Court Deal applied/);

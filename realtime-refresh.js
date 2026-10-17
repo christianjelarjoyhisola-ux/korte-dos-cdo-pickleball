@@ -97,7 +97,67 @@
     };
   }
 
-  const api = { publicTables, adminTables, cacheScopes, sectionsFor, scopesForSection, publicViewsFor, affectsDate, createQueue };
+  const PROMOTION_DISCOVERY_MS = 5 * 60 * 1000;
+  function createDiscoveryCache(options) {
+    const now = options.now || Date.now;
+    const ttlMs = options.ttlMs ?? PROMOTION_DISCOVERY_MS;
+    let epoch = 0, savedEpoch = -1, activeEpoch = -1, activeForced = false, pendingForce = false;
+    let value, expiresAt = 0, flight = null;
+    const remainingMs = () => savedEpoch === epoch ? Math.max(0, expiresAt - now()) : 0;
+    function refresh({ force = false } = {}) {
+      // Repeated force requests share the already queued fresh pass. A click
+      // during an older discovery read must wait for a read started after it.
+      if (force) {
+        if (!flight || (activeEpoch === epoch && !activeForced)) { epoch++; pendingForce = true; }
+        else if (activeEpoch !== epoch) pendingForce = true;
+      }
+      if (!force && remainingMs() > 0) return Promise.resolve(value);
+      if (flight) return flight;
+      activeEpoch = -1;
+      const task = Promise.resolve().then(async () => {
+        while (true) {
+          const readEpoch = epoch;
+          activeEpoch = readEpoch;
+          activeForced = pendingForce;
+          pendingForce = false;
+          const next = await options.load();
+          if (readEpoch !== epoch) {
+            if (options.isHidden?.()) return options.emptyValue;
+            continue;
+          }
+          value = next;
+          savedEpoch = readEpoch;
+          const itemExpiry = Number(options.expiresAt?.(next));
+          expiresAt = Math.min(now() + ttlMs, Number.isFinite(itemExpiry) && itemExpiry > now() ? itemExpiry : Infinity);
+          // Release before rendering; an automatically opened offer may request
+          // its own fresh validation while the render callback is running.
+          flight = null;
+          options.apply?.(next);
+          return next;
+        }
+      }).finally(() => { if (flight === task) flight = null; });
+      flight = task;
+      return task;
+    }
+    return { refresh, remainingMs, invalidate: () => { epoch++; }, pending: () => !!flight };
+  }
+
+  function promotionsAffected(table, payload, displayed = [], loading = false) {
+    if (['courts', 'settings', 'blocked_dates'].includes(table)) return true;
+    if (table !== 'bookings' || String(payload?.eventType).toUpperCase() === 'DELETE') return false;
+    // Released/newly available opportunities are found on the bounded discovery
+    // timer. A newly occupied advertised slot needs immediate revalidation.
+    if (loading) return true;
+    const row = payload?.new || {};
+    if (!row.date) return displayed.length > 0;
+    const hours = Array.isArray(row.slots) ? row.slots.map(Number) : null;
+    return displayed.some(offer => (offer.date || offer.playDate) === row.date
+      && (row.court_id == null || String(row.court_id) === String(offer.courtId))
+      && (!hours || hours.includes(Number(offer.slotHour))));
+  }
+
+  const api = { publicTables, adminTables, cacheScopes, sectionsFor, scopesForSection, publicViewsFor, affectsDate, createQueue,
+    PROMOTION_DISCOVERY_MS, createDiscoveryCache, promotionsAffected };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.RealtimeRefresh = api;
 })(typeof window === 'undefined' ? globalThis : window);

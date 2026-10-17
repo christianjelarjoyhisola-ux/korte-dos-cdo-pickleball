@@ -52,6 +52,7 @@ function harness(page, options = {}) {
     renderSlots: async () => renders.push('slots'),
     renderCalendar: async () => renders.push('calendar'),
     refreshFeaturedPromotions: async () => renders.push('promotions'),
+    invalidateFeaturedPromotions() {},
   };
   context.window = context;
   const source = fs.readFileSync(page + '.html', 'utf8').replace(/\r\n/g, '\n');

@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Korte DOS">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script defer src="/pwa.js?v=20261011"></script>
-<script src="realtime-refresh.js?v=20261017"></script>
+<script src="realtime-refresh.js?v=20261018"></script>
 <script src="booking-balance.js?v=20260820-host-balance-eod-v3"></script>
 <script src="host-balance-payment.js?v=20260820-host-balance-eod-v3"></script>
 <script src="voucher-booking.js?v=20260826-demand-growth-v1"></script>
@@ -6243,35 +6243,87 @@ function renderCourtPickPanel() {
   }
 }
 
+let _promotionDiscoveryCaches = null;
+let _promotionDiscoveryTimer = null;
+function featuredPromotionCaches() {
+  if (_promotionDiscoveryCaches) return _promotionDiscoveryCaches;
+  const make = window.RealtimeRefresh.createDiscoveryCache;
+  _promotionDiscoveryCaches = {
+    deals: make({
+      isHidden: () => document.hidden,
+      emptyValue: [],
+      load: async () => {
+        // A deliberate refresh must bypass both the DB and offer-preview caches.
+        DB.clearCache?.(['publicDemandCampaignFeaturedOffers']);
+        return await window.BookingDemandCampaign?.loadFeaturedOffers?.({ force:true }) || [];
+      },
+      apply: renderFeaturedCourtDeal,
+      expiresAt: offers => Math.min(...offers.map(offer => Date.parse(offer.endsAt)).filter(Number.isFinite)),
+    }),
+    pick: make({
+      isHidden: () => document.hidden,
+      emptyValue: null,
+      load: async () => normalizedFeaturedCourtPick(typeof DB?.getPublicFeaturedCourtHour === 'function'
+        ? await DB.getPublicFeaturedCourtHour({ force:true }) : null),
+      apply: renderFeaturedCourtPick,
+      expiresAt: pick => Date.parse(pick?.expiresAt),
+    }),
+  };
+  return _promotionDiscoveryCaches;
+}
+
+function invalidateFeaturedPromotions(table, payload) {
+  if (!_promotionDiscoveryCaches) return;
+  const caches = _promotionDiscoveryCaches;
+  const displayed = [..._featuredDealOffers, ...(_featuredCourtPick ? [_featuredCourtPick] : [])];
+  if (table && !window.RealtimeRefresh.promotionsAffected(table, payload, displayed, caches.deals.pending() || caches.pick.pending())) return;
+  caches.deals.invalidate();
+  caches.pick.invalidate();
+}
+
+function schedulePromotionDiscovery() {
+  clearTimeout(_promotionDiscoveryTimer);
+  const caches = featuredPromotionCaches();
+  const remaining = Math.min(caches.deals.remainingMs(), caches.pick.remainingMs());
+  // Hidden tabs perform no discovery reads. Visibility return shares the same
+  // caches; only an expired result or reconnect requires another request.
+  const delay = document.hidden || remaining <= 0 ? 60000 : remaining;
+  _promotionDiscoveryTimer = setTimeout(() => {
+    if (document.hidden) schedulePromotionDiscovery();
+    else refreshFeaturedPromotions();
+  }, delay);
+}
+
 async function refreshFeaturedCourtDeal(options = {}) {
   try {
-    const offers = await window.BookingDemandCampaign?.loadFeaturedOffers?.(options) || [];
-    renderFeaturedCourtDeal(offers);
-    return offers;
+    return await featuredPromotionCaches().deals.refresh(options);
   } catch (_) {
     renderFeaturedCourtDeal([]);
     return [];
+  } finally {
+    if (_featuredDealInitialized) schedulePromotionDiscovery();
   }
 }
 
 async function refreshFeaturedCourtPick(options = {}) {
   try {
-    const value = typeof DB?.getPublicFeaturedCourtHour === 'function'
-      ? await DB.getPublicFeaturedCourtHour(options)
-      : null;
-    const pick = normalizedFeaturedCourtPick(value);
-    renderFeaturedCourtPick(pick);
-    return pick;
+    return await featuredPromotionCaches().pick.refresh(options);
   } catch (_) {
     renderFeaturedCourtPick(null);
     return null;
+  } finally {
+    if (_featuredDealInitialized) schedulePromotionDiscovery();
   }
 }
 
 async function refreshFeaturedPromotions(options = {}) {
+  // Hide elapsed promotions immediately, even when their replacement read is slow.
+  const currentOffers = _featuredDealOffers.filter(offer => !offer.endsAt || Date.parse(offer.endsAt) > Date.now());
+  if (currentOffers.length !== _featuredDealOffers.length) renderFeaturedCourtDeal(currentOffers);
+  if (_featuredCourtPick && !normalizedFeaturedCourtPick(_featuredCourtPick)) renderFeaturedCourtPick(null);
   const [offers, pick] = await Promise.all([
     refreshFeaturedCourtDeal(options),
-    refreshFeaturedCourtPick(),
+    refreshFeaturedCourtPick(options),
   ]);
   return { offers, pick };
 }
@@ -6454,13 +6506,8 @@ function initFeaturedCourtDeal() {
   document.addEventListener('keydown', featuredCourtDealKeydown);
   const observer = new MutationObserver(scheduleFeaturedCourtDealSync);
   observer.observe(document.body, { subtree:true, attributes:true, attributeFilter:['class','style','hidden'] });
-  // Returning to this tab is handled by the shared realtime refresh queue.
-  setInterval(() => {
-    if (!document.hidden) {
-      refreshFeaturedCourtDeal({ force:true });
-      refreshFeaturedCourtPick({ force:true });
-    }
-  }, 60000);
+  // The bounded discovery timer, realtime events and visibility return share
+  // cached reads. Opening or choosing an offer still forces fresh validation.
   refreshFeaturedPromotions();
 }
 
@@ -10557,7 +10604,7 @@ async function refreshLiveViews(views = ['courts', 'slots', 'promotions']) {
   if (document.hidden) return;
   // Await each read so updates arriving in flight schedule a subsequent pass.
   await Promise.all([
-    views.includes('promotions') ? refreshFeaturedPromotions({ force:true }) : null,
+    views.includes('promotions') ? refreshFeaturedPromotions() : null,
     views.includes('slots') && court && $('bDate').value ? renderSlots() : null,
   ]);
 }
@@ -10570,20 +10617,22 @@ function startRealtime() {
     isHidden: () => document.hidden,
     refresh: refreshLiveViews,
   });
-  const resync = () => {
+  const resync = (reconnected = false) => {
     // A suspended tab or disconnected socket may have missed row events.
     const scopes = live.cacheScopes(live.publicTables);
     if (scopes.length) DB.clearCache?.(scopes);
+    if (reconnected) invalidateFeaturedPromotions();
     _publicRealtimeRefresh.request(['courts', 'slots', 'promotions']);
   };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) resync(); });
-  window.addEventListener('online', resync);
+  window.addEventListener('online', () => resync(true));
   const channel = _supabase.channel('public-rt');
   for (const table of live.publicTables) {
     channel.on('postgres_changes', { event: '*', schema: 'public', table }, payload => {
       // Invalidate immediately, even while hidden or a previous read is in flight.
       const scopes = live.cacheScopes([table]);
       if (scopes.length) DB.clearCache?.(scopes);
+      invalidateFeaturedPromotions(table, payload);
       _publicRealtimeRefresh.request(live.publicViewsFor(table, payload, {
         courts: selectedCourtBrowseDate(), slots: court ? $('bDate')?.value : '',
       }));
@@ -10592,7 +10641,7 @@ function startRealtime() {
   let joined = false, disconnected = false;
   channel.subscribe(status => {
     if (status === 'SUBSCRIBED') {
-      if (joined || disconnected) resync();
+      if (joined || disconnected) resync(true);
       joined = true;
       disconnected = false;
     } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
@@ -11568,7 +11617,7 @@ async function submitOpenPlay() {
 }
 </script>
 <script src="supabase.min.js"></script>
-<script src="supabase-config.js?v=20260928-booking-reliability-v1"></script>
+<script src="supabase-config.js?v=20261018-promotion-discovery"></script>
 
 <!-- PUBLIC LIMITED COURT DEAL -->
 <!-- This premium surface also renders the regular-price Korte DOS Court Pick. -->

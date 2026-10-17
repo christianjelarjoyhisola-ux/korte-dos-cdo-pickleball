@@ -42,6 +42,7 @@ $publicFiles = @(
   "admin.html",
   "admin-notifications.js",
   "realtime-refresh.js",
+  "live-board-updates.js",
   "admin-notifications.css",
   "admin.js",
   "ads.txt",

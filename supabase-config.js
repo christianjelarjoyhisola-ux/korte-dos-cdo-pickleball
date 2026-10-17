@@ -144,6 +144,27 @@ const PB_FAST_CACHE_MS = {
   featuredCourtHour: 3500,
 };
 const PB_PUBLIC_OFFER_TIMEOUT_MS = 1500;
+const _pbPublicOfferRequests = new Map();
+const _pbPublicOfferEpochs = new Map();
+
+function _pbSharedPublicOfferRequest(key, loader, needed = () => true) {
+  if (!needed()) return Promise.resolve(null);
+  const epoch = _pbPublicOfferEpochs.get(key) || 0;
+  const existing = _pbPublicOfferRequests.get(key);
+  if (existing) {
+    if (existing.epoch === epoch) return existing.promise;
+    // A forced validation after a timeout cannot reuse a snapshot requested
+    // before invalidation. Wait for that transport, then share one fresh read.
+    return existing.promise.then(() => _pbSharedPublicOfferRequest(key, loader, needed));
+  }
+  // The optional UI gives up after 1.5 seconds, but the bounded transport may
+  // still be active. Cache invalidation/force must not start an overlapping RPC.
+  const request = Promise.resolve().then(loader).catch(() => null).finally(() => {
+    if (_pbPublicOfferRequests.get(key)?.promise === request) _pbPublicOfferRequests.delete(key);
+  });
+  _pbPublicOfferRequests.set(key, { epoch, promise: request });
+  return request;
+}
 const PB_FEATURED_COURT_SESSION_KEY = 'pb_featured_court_session_v1';
 const _pbFastCache = new Map();
 const PB_RECEIPT_URL_CACHE_MS = 4 * 60 * 1000;
@@ -193,7 +214,7 @@ async function _pbCached(scope, params, ttlMs, loader) {
 
 function _pbClearFastCache(scopes = []) {
   const list = Array.isArray(scopes) ? scopes.filter(Boolean) : [scopes].filter(Boolean);
-  if (list.length === 0) { _pbFastCache.clear(); return; }
+  const allScopes = list.length === 0;
   if (list.some(scope => [
     'courts',
     'bookings',
@@ -205,6 +226,10 @@ function _pbClearFastCache(scopes = []) {
   ].includes(scope)) && !list.includes('publicFeaturedCourtHour')) {
     list.push('publicFeaturedCourtHour');
   }
+  for (const scope of ['publicDemandCampaignFeaturedOffers', 'publicFeaturedCourtHour']) {
+    if (allScopes || list.includes(scope)) _pbPublicOfferEpochs.set(scope, (_pbPublicOfferEpochs.get(scope) || 0) + 1);
+  }
+  if (allScopes) { _pbFastCache.clear(); return; }
   for (const key of [..._pbFastCache.keys()]) {
     if (list.some(scope => key === scope || key.startsWith(`${scope}:`))) _pbFastCache.delete(key);
   }
@@ -1461,14 +1486,15 @@ window.DB = {
         PB_FAST_CACHE_MS.demandFeaturedOffers,
         async () => {
           let timeoutId = null;
+          let waiting = true;
           const timedOut = Symbol('public-demand-featured-offer-timeout');
           try {
-            const request = Promise.resolve(
+            const request = _pbSharedPublicOfferRequest('publicDemandCampaignFeaturedOffers', () =>
               _publicBookingSb.rpc(
                 'get_public_demand_campaign_featured_offers',
                 {},
-              ),
-            ).catch(() => null);
+              ), () => waiting,
+            );
             const timeout = new Promise(resolve => {
               timeoutId = setTimeout(
                 () => resolve(timedOut),
@@ -1482,6 +1508,7 @@ window.DB = {
               .filter(Boolean)
               .slice(0, 6);
           } finally {
+            waiting = false;
             if (timeoutId) clearTimeout(timeoutId);
           }
         },
@@ -1502,11 +1529,12 @@ window.DB = {
         PB_FAST_CACHE_MS.featuredCourtHour,
         async () => {
           let timeoutId = null;
+          let waiting = true;
           const timedOut = Symbol('public-featured-court-timeout');
           try {
-            const request = Promise.resolve(
-              _publicBookingSb.rpc('get_public_featured_court_hour', {}),
-            ).catch(() => null);
+            const request = _pbSharedPublicOfferRequest('publicFeaturedCourtHour', () =>
+              _publicBookingSb.rpc('get_public_featured_court_hour', {}), () => waiting,
+            );
             const timeout = new Promise(resolve => {
               timeoutId = setTimeout(
                 () => resolve(timedOut),
@@ -1518,6 +1546,7 @@ window.DB = {
             const row = Array.isArray(response.data) ? response.data[0] : null;
             return publicFeaturedCourtHourFromRow(row);
           } finally {
+            waiting = false;
             if (timeoutId) clearTimeout(timeoutId);
           }
         },
