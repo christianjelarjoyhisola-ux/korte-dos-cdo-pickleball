@@ -106,6 +106,11 @@ import {
   parseGoTymePhDateTime,
 } from "../_shared/gotyme-receipt.ts";
 
+// The email notification and in-app admin review queue remain authoritative.
+// Telegram is disabled separately so verification never makes a second Edge
+// Function request solely to send an alert.
+const TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED = false;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -1232,6 +1237,7 @@ async function runOCR(
 }
 
 async function dispatchTelegramPaymentReview(bookingRef: string) {
+  if (!TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED) return;
   const supabaseUrl = String(Deno.env.get("SUPABASE_URL") || "")
     .trim()
     .replace(/\/+$/, "");

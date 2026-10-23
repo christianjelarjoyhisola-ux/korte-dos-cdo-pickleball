@@ -40,11 +40,45 @@ test('formats dates in Philippine time and defines an exact seven-day lifetime',
   assert.match(formatted, /PHT$/);
 });
 
-test('admin payments loads and renders the Telegram recipient panel', () => {
+test('admin payments no longer loads or queries the Telegram recipient panel', () => {
   const adminHtml = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8');
-  assert.match(
-    adminHtml,
-    /<script src="telegram-admin\.js\?v=20260731-owner-link-v1"><\/script>/,
+  assert.doesNotMatch(adminHtml, /<script src="telegram-admin\.js/);
+  assert.doesNotMatch(adminHtml, /window\.TelegramAdmin\?\.render\(\)/);
+});
+
+test('browser notification helpers skip before invoking the Telegram Edge Function', () => {
+  const client = fs.readFileSync(path.join(__dirname, 'supabase-config.js'), 'utf8');
+  assert.match(client, /const PB_TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED = false;/);
+  const methodStart = client.indexOf('async sendTelegramNotification(payload, options = {})');
+  const disabledGuard = client.indexOf('if (!PB_TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED)', methodStart);
+  const edgeInvocation = client.indexOf("_invokeEdgeFunction('send-telegram-notification'", methodStart);
+  assert.ok(methodStart >= 0);
+  assert.ok(disabledGuard > methodStart);
+  assert.ok(edgeInvocation > disabledGuard);
+});
+
+test('receipt verification keeps email review but skips the Telegram dispatcher', () => {
+  const verifier = fs.readFileSync(
+    path.join(__dirname, 'supabase/functions/verify-gcash-receipt/index.ts'),
+    'utf8',
   );
-  assert.match(adminHtml, /await window\.TelegramAdmin\?\.render\(\);/);
+  assert.match(verifier, /const TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED = false;/);
+  assert.match(verifier, /deliverPaymentReviewNotification/);
+  assert.match(
+    verifier,
+    /async function dispatchTelegramPaymentReview\(bookingRef: string\) \{\s+if \(!TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED\) return;/,
+  );
+});
+
+test('cached clients are stopped before booking lookup or Telegram delivery', () => {
+  const edge = fs.readFileSync(
+    path.join(__dirname, 'supabase/functions/send-telegram-notification/index.ts'),
+    'utf8',
+  );
+  const disabledResponse = edge.indexOf('reason: "Telegram booking notifications are disabled"');
+  const referenceLookup = edge.indexOf('const reference = bookingReference(body.bookingRef)');
+  const bookingLookup = edge.indexOf('rows = await loadBookingGroup');
+  assert.ok(disabledResponse >= 0);
+  assert.ok(referenceLookup > disabledResponse);
+  assert.ok(bookingLookup > referenceLookup);
 });

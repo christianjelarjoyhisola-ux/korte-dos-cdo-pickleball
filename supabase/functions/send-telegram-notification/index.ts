@@ -20,6 +20,11 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// Keep the endpoint temporarily for cached clients and owner-link webhook
+// compatibility, but stop booking alerts before any booking lookup, delivery
+// claim, or Telegram API request.
+const TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED = false;
+
 const BOOKING_SELECT = [
   "ref",
   "booking_group_ref",
@@ -280,6 +285,14 @@ Deno.serve(async (req) => {
       ok: true,
       skipped: true,
       reason: "Only pending booking verification alerts are sent",
+    });
+  }
+
+  if (!TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED) {
+    return json({
+      ok: true,
+      skipped: true,
+      reason: "Telegram booking notifications are disabled",
     });
   }
 

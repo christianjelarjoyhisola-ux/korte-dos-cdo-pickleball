@@ -8,6 +8,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const PB_REQUEST_TIMEOUT_MS = 45000;
 const PB_RECEIPT_TIMEOUT_MS = 90000;
+// Booking-related Telegram alerts are intentionally disabled. Keeping this
+// decision in the shared client prevents every current UI call site from
+// invoking an Edge Function (and creating automatic gateway/invocation logs)
+// without changing any booking or payment state.
+const PB_TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED = false;
 const _pbLocalStagedReceipts = new Map();
 
 function normalizeOpenPlaySkillLevel(value, fallback = 1) {
@@ -3077,6 +3082,9 @@ window.DB = {
   },
 
   async sendTelegramNotification(payload, options = {}) {
+    if (!PB_TELEGRAM_BOOKING_NOTIFICATIONS_ENABLED) {
+      return { ok: true, skipped: true, reason: 'Telegram booking notifications are disabled' };
+    }
     return _invokeEdgeFunction('send-telegram-notification', payload, {
       allowFailure: options.allowFailure !== false,
     });
