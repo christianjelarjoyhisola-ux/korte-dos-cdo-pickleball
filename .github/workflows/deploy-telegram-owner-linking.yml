@@ -207,10 +207,12 @@ jobs:
           set -euo pipefail
           supabase functions deploy send-telegram-notification \
             --project-ref "$SUPABASE_PROJECT_REF" \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --use-api
           supabase functions deploy verify-gcash-receipt \
             --project-ref "$SUPABASE_PROJECT_REF" \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --use-api
 
       - name: Verify pending-only dispatcher
         if: ${{ hashFiles('supabase/functions/_shared/telegram-owner-link.ts') != '' }}
