@@ -65,7 +65,7 @@ const RESCHEDULE_FUNCTIONS = ['fmtHour', 'rescheduleSlotOptions', 'rescheduleMan
   'rescheduleClosedHours', 'rescheduleFinalPlacement', 'rescheduleRowOptions', 'rescheduleRefreshOptions',
   'loadRescheduleData', 'loadRescheduleSlots', 'renderRescheduleRows', 'rescheduleReady', 'updateRescheduleSummary',
   'setRescheduleRowMode', 'setRescheduleRowDate', 'setRescheduleRowCourt', 'selectRescheduleSlot',
-  'applyRescheduleDateToAll', 'openRescheduleModal', 'saveReschedule'];
+  'rescheduleValidDate', 'queueRescheduleAllDate', 'applyRescheduleDateToAll', 'openRescheduleModal', 'saveReschedule'];
 
 // Host reservation: 3 courts, different times.
 const HOST_ROWS = [
@@ -79,7 +79,7 @@ function harness({ items = HOST_ROWS, bookings = [], dbOverrides = {} } = {}) {
   const calls = { moves: null, toasts: [] };
   const context = {
     Intl, Date, Set, Map, Number, String, JSON, Math, Array, Object, console, Promise,
-    _rescheduleContext: null, _rescheduleLoad: 0, _rescheduleSaving: false,
+    _rescheduleContext: null, _rescheduleLoad: 0, _rescheduleSaving: false, _rescheduleAllDateTimer: null, setTimeout, clearTimeout,
     $: id => elements[id] ||= { value: '', textContent: '', innerHTML: '', disabled: false, hidden: false, min: '', dataset: {}, classList: { add() {} } },
     esc: value => String(value), fmtD: value => String(value),
     toast: (msg, kind) => calls.toasts.push([msg, kind]), closeModal() {}, renderBookings: async () => {}, renderDash() {},
@@ -121,8 +121,44 @@ test('clicking Save with nothing set to move explains what to do instead of doin
   assert.match(calls.toasts.at(-1)[0], /Pick a new date at the top/);
 });
 
-test('picking a date in the top box moves every court right away', () => {
-  assert.match(admin, /id="rsAllDate"[^>]*onchange="applyRescheduleDateToAll\(\)"/);
+test('picking a date in the top box moves every court right away', async () => {
+  assert.match(admin, /id="rsAllDate"[^>]*oninput="queueRescheduleAllDate\(\)"[^>]*onchange="queueRescheduleAllDate\(\)"/);
+  const { c } = harness();
+  await c.openRescheduleModal('H-01');
+  assert.equal(c.$('rsAllDate').value, '');
+  c.$('rsAllDate').value = '0002-12-11'; c.queueRescheduleAllDate();
+  c.$('rsAllDate').value = '2026-12-11'; c.queueRescheduleAllDate();
+  await new Promise(r => setTimeout(r, 600));
+  assert.deepEqual([...c._rescheduleContext.rows.map(r => r.newDate)], ['2026-12-11', '2026-12-11', '2026-12-11']);
+  assert.deepEqual([...c._rescheduleContext.rows.map(r => r.selectedStart)], [17, 17, 19]);
+});
+
+test('picking a date at the top and pressing Save moves all courts at the same times', async () => {
+  const { c, calls } = harness();
+  await c.openRescheduleModal('H-01');
+  c.$('rsAllDate').value = '2026-12-11';
+  await c.saveReschedule();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.moves)), [
+    { ref: 'H-01', date: '2026-12-11', startHour: 17, courtId: null },
+    { ref: 'H-03', date: '2026-12-11', startHour: 17, courtId: null },
+    { ref: 'H-02', date: '2026-12-11', startHour: 19, courtId: null },
+  ]);
+});
+
+test('date at top with a taken time stops and names the court instead of saving', async () => {
+  const { c, calls } = harness({ bookings: [{ ref: 'X', courtId: '2', date: '2026-12-11', slots: [20], status: 'confirmed' }] });
+  await c.openRescheduleModal('H-01');
+  c.$('rsAllDate').value = '2026-12-11';
+  await c.saveReschedule();
+  assert.equal(calls.moves, null);
+  assert.match(calls.toasts.at(-1)[0], /1 court need a different time/);
+});
+
+test('half-typed or past dates are ignored', () => {
+  const { c } = harness();
+  assert.equal(c.rescheduleValidDate('0002-12-11', '2026-10-29'), false);
+  assert.equal(c.rescheduleValidDate('2026-10-28', '2026-10-29'), false);
+  assert.equal(c.rescheduleValidDate('2026-12-11', '2026-10-29'), true);
 });
 
 test('"use for all courts" moves every court to the new date at its own time and saves all 3', async () => {

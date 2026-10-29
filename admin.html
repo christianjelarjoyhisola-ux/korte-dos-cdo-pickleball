@@ -4691,7 +4691,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
       <div id="rsAllBar" class="rs-allbar">
         <label class="fl" for="rsAllDate" style="margin:0 0 6px">Move every court to a new date</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input type="date" class="fi" id="rsAllDate" style="flex:1;min-width:150px" onchange="applyRescheduleDateToAll()" />
+          <input type="date" class="fi" id="rsAllDate" style="flex:1;min-width:150px" oninput="queueRescheduleAllDate()" onchange="queueRescheduleAllDate()" />
           <button type="button" class="btn btn-p btn-sm" onclick="applyRescheduleDateToAll()">Use for all courts</button>
         </div>
         <p style="font-size:.76rem;color:var(--muted);margin:6px 0 0">Picking a date moves every court to it, keeping each court's own court and time when free. You can still change any court below.</p>
@@ -9504,13 +9504,37 @@ function selectRescheduleSlot(index, start) {
   renderRescheduleRows();
 }
 
+// A date box can report half-typed values (e.g. year 0002) while typing, so
+// only a complete date from this year on counts.
+function rescheduleValidDate(value, minDate) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number(String(value).slice(0, 4)) >= 2000
+    && !Number.isNaN(Date.parse(value + 'T12:00:00')) && (!minDate || value >= minDate);
+}
+
+let _rescheduleAllDateTimer = null;
+// Typing or picking in the top date box moves every court once the date is
+// complete, without firing a slot check for each keystroke.
+function queueRescheduleAllDate() {
+  clearTimeout(_rescheduleAllDateTimer);
+  _rescheduleAllDateTimer = setTimeout(() => {
+    const context = _rescheduleContext;
+    const date = $('rsAllDate').value;
+    if (!context || !rescheduleValidDate(date, context.minDate) || date === context.allDateApplied) return;
+    applyRescheduleDateToAll();
+  }, 450);
+}
+
 // Main shortcut: move every court to one new date, keeping each court's own
-// court and start time where that is still free.
+// court and start time where that is still free. Returns true when every
+// court got its usual time on that date.
 async function applyRescheduleDateToAll() {
   const context = _rescheduleContext;
   const date = $('rsAllDate').value;
-  if (!context || _rescheduleSaving) return;
-  if (!date) { toast('Choose the new date first.', 'err'); return; }
+  if (!context || _rescheduleSaving) return false;
+  if (!date) { toast('Choose the new date first.', 'err'); return false; }
+  if (!rescheduleValidDate(date, context.minDate)) { toast('Choose today or a later date.', 'err'); return false; }
+  clearTimeout(_rescheduleAllDateTimer);
+  context.allDateApplied = date;
   context.rows.forEach(row => {
     row.mode = 'move';
     row.newDate = date;
@@ -9518,7 +9542,8 @@ async function applyRescheduleDateToAll() {
     row.selectedStart = null;
     row.notice = '';
   });
-  if (!(await loadRescheduleSlots())) return;
+  if (!(await loadRescheduleSlots())) return false;
+  if (context !== _rescheduleContext || $('rsAllDate').value !== date) return false;
   // Place courts one at a time so two courts never claim the same slot.
   context.rows.forEach(row => {
     row.options = rescheduleRowOptions(context, row);
@@ -9530,6 +9555,7 @@ async function applyRescheduleDateToAll() {
   renderRescheduleRows();
   const missing = context.rows.filter(row => !Number.isInteger(row.selectedStart)).length;
   if (missing) toast(`${missing} court${missing === 1 ? '' : 's'} need a different time on that date.`, 'err');
+  return missing === 0;
 }
 
 async function openRescheduleModal(ref) {
@@ -9596,7 +9622,8 @@ async function openRescheduleModal(ref) {
   $('rsName').textContent = _rescheduleContext.fullName || '—';
   $('rsCount').textContent = rows.length === 1 ? '1 court' : `${rows.length} court entries`;
   $('rsAllBar').hidden = rows.length < 2;
-  $('rsAllDate').value = defaultDate;
+  // Empty on purpose: a date here is always one the admin chose.
+  $('rsAllDate').value = '';
   $('rsAllDate').min = clock.date;
   $('rsNote').value = 'Due to expected heavy rain, we have rescheduled your booking for your safety and convenience. We apologize for the inconvenience!';
   $('rescheduleModal').dataset.ref = ref;
@@ -9608,7 +9635,13 @@ async function saveReschedule() {
   if (_rescheduleSaving) return;
   const context = _rescheduleContext;
   if (!context) return;
-  const picks = context.rows.filter(row => row.mode === 'move').map(row => ({ row, start: row.selectedStart }));
+  let picks = context.rows.filter(row => row.mode === 'move').map(row => ({ row, start: row.selectedStart }));
+  // A date chosen at the top but not applied yet: move every court to it at
+  // its same time, then save if they all fit.
+  if (!picks.length && context.rows.length > 1 && $('rsAllDate').value) {
+    if (!(await applyRescheduleDateToAll())) return;
+    picks = context.rows.filter(row => row.mode === 'move').map(row => ({ row, start: row.selectedStart }));
+  }
   if (!picks.length) {
     toast(context.rows.length > 1
       ? 'Nothing is set to move yet. Pick a new date at the top, or tap "Move to new time" on a court.'
