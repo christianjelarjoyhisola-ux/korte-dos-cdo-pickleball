@@ -4691,10 +4691,10 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
       <div id="rsAllBar" class="rs-allbar">
         <label class="fl" for="rsAllDate" style="margin:0 0 6px">Move every court to a new date</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input type="date" class="fi" id="rsAllDate" style="flex:1;min-width:150px" />
+          <input type="date" class="fi" id="rsAllDate" style="flex:1;min-width:150px" onchange="applyRescheduleDateToAll()" />
           <button type="button" class="btn btn-p btn-sm" onclick="applyRescheduleDateToAll()">Use for all courts</button>
         </div>
-        <p style="font-size:.76rem;color:var(--muted);margin:6px 0 0">Each court keeps its court and time when free. You can still change any court below.</p>
+        <p style="font-size:.76rem;color:var(--muted);margin:6px 0 0">Picking a date moves every court to it, keeping each court's own court and time when free. You can still change any court below.</p>
       </div>
 
       <div id="rsRows" aria-live="polite"></div>
@@ -4725,6 +4725,7 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
 .rs-slots .btn{white-space:normal;min-height:42px;font-size:.78rem}
 .rs-pick{font-size:.78rem;margin-top:6px;color:#5a9ad4}
 .rs-pick.rs-warn{color:var(--red,#e06c6c)}
+#rsSaveBtn[data-ready="no"]{opacity:.55}
 @media (max-width:520px){.rs-move{grid-template-columns:1fr}.rs-slots{grid-template-columns:1fr 1fr}}
 </style>
 
@@ -9460,7 +9461,9 @@ function updateRescheduleSummary() {
     ? 'Choose “Move to new time” on at least one court.'
     : `${moving.length} of ${context.rows.length} court${context.rows.length === 1 ? '' : 's'} moving` +
       (waiting ? ` · ${waiting} still need a time` : ' · ready to save');
-  $('rsSaveBtn').disabled = _rescheduleSaving || !rescheduleReady(context);
+  // Stays clickable so a click always explains what is missing.
+  $('rsSaveBtn').disabled = _rescheduleSaving;
+  $('rsSaveBtn').dataset.ready = rescheduleReady(context) ? 'yes' : 'no';
 }
 
 function setRescheduleRowMode(index, mode) {
@@ -9606,8 +9609,16 @@ async function saveReschedule() {
   const context = _rescheduleContext;
   if (!context) return;
   const picks = context.rows.filter(row => row.mode === 'move').map(row => ({ row, start: row.selectedStart }));
-  if (!picks.length) { toast('Choose at least one court to move.', 'err'); return; }
-  if (picks.some(pick => !Number.isInteger(pick.start))) { toast('Choose a new time for every court you are moving.', 'err'); return; }
+  if (!picks.length) {
+    toast(context.rows.length > 1
+      ? 'Nothing is set to move yet. Pick a new date at the top, or tap "Move to new time" on a court.'
+      : 'Choose a new date and time first.', 'err');
+    return;
+  }
+  const waiting = picks.filter(pick => !Number.isInteger(pick.start)).map(pick => pick.row.courtName);
+  if (waiting.length) { toast(`Choose a new time for ${waiting.join(', ')}.`, 'err'); return; }
+  if (context.loading) { toast('Still checking available time slots. Please wait a moment.', 'err'); return; }
+  if (context.error) { toast('Could not check time slots. Tap Retry, then save again.', 'err'); return; }
   const note = $('rsNote').value.trim();
 
   _rescheduleSaving = true;

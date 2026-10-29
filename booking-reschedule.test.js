@@ -109,7 +109,20 @@ test('opening a 3-court host reservation shows all 3 courts, each kept by defaul
   assert.ok(rows.every(r => r.mode === 'keep'));
   assert.equal(c.$('rsAllBar').hidden, false);
   assert.match(c.$('rsRows').innerHTML, /Court 1[\s\S]*Court 3[\s\S]*Court 2/);
-  assert.equal(c.$('rsSaveBtn').disabled, true);
+  assert.equal(c.$('rsSaveBtn').dataset.ready, 'no');
+});
+
+test('clicking Save with nothing set to move explains what to do instead of doing nothing', async () => {
+  const { c, calls } = harness();
+  await c.openRescheduleModal('H-01');
+  assert.equal(c.$('rsSaveBtn').disabled, false);
+  await c.saveReschedule();
+  assert.equal(calls.moves, null);
+  assert.match(calls.toasts.at(-1)[0], /Pick a new date at the top/);
+});
+
+test('picking a date in the top box moves every court right away', () => {
+  assert.match(admin, /id="rsAllDate"[^>]*onchange="applyRescheduleDateToAll\(\)"/);
 });
 
 test('"use for all courts" moves every court to the new date at its own time and saves all 3', async () => {
@@ -119,7 +132,7 @@ test('"use for all courts" moves every court to the new date at its own time and
   await c.applyRescheduleDateToAll();
   const rows = c._rescheduleContext.rows;
   assert.deepEqual([...rows.map(r => r.selectedStart)], [17, 17, 19]);
-  assert.equal(c.$('rsSaveBtn').disabled, false);
+  assert.equal(c.$('rsSaveBtn').dataset.ready, 'yes');
   await c.saveReschedule();
   assert.deepEqual(JSON.parse(JSON.stringify(calls.moves)), [
     { ref: 'H-01', date: '2026-11-06', startHour: 17, courtId: null },
@@ -137,9 +150,12 @@ test('when a court\'s usual time is taken on the new date, only that court asks 
   const court2 = c._rescheduleContext.rows.find(r => r.courtName === 'Court 2');
   assert.equal(court2.selectedStart, null);
   assert.match(court2.notice, /usual time is taken/);
-  assert.equal(c.$('rsSaveBtn').disabled, true);
+  assert.equal(c.$('rsSaveBtn').dataset.ready, 'no');
+  await c.saveReschedule();
+  assert.equal(calls.moves, null);
+  assert.match(calls.toasts.at(-1)[0], /Choose a new time for Court 2/);
   c.selectRescheduleSlot(c._rescheduleContext.rows.indexOf(court2), 21);
-  assert.equal(c.$('rsSaveBtn').disabled, false);
+  assert.equal(c.$('rsSaveBtn').dataset.ready, 'yes');
   await c.saveReschedule();
   assert.equal(calls.moves.find(m => m.ref === 'H-02').startHour, 21);
 });
@@ -211,7 +227,7 @@ test('failed availability check disables Save and offers Retry', async () => {
   c.setRescheduleRowMode(0, 'move');
   await new Promise(r => setImmediate(r));
   assert.match(c.$('rsRows').innerHTML, /Retry/);
-  assert.equal(c.$('rsSaveBtn').disabled, true);
+  assert.equal(c.$('rsSaveBtn').dataset.ready, 'no');
 });
 
 test('slot ranges keep the paid duration, end at midnight, and skip past hours', () => {
