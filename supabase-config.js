@@ -2043,6 +2043,23 @@ window.DB = {
     return data;
   },
 
+  // Per-court reschedule: each entry moves one court row of a reservation to
+  // its own date, start hour and (optionally) court. All moves are checked and
+  // applied together by the database; paid hours and money fields never change.
+  async rescheduleBookingItems(moves) {
+    const list = (Array.isArray(moves) ? moves : []).map(move => ({
+      ref: String(move?.ref || ''),
+      date: move?.date,
+      start_hour: Number(move?.startHour),
+      court_id: move?.courtId ? String(move.courtId) : null,
+    }));
+    if (!list.length) throw new Error('Choose at least one court to reschedule.');
+    const { data, error } = await _sb.rpc('reschedule_booking_items', { p_moves: list });
+    if (error) { console.error('rescheduleBookingItems:', error); throw error; }
+    _pbClearFastCache(['bookings', 'publicBookingSlots', 'publicDemandCampaignFeaturedOffers']);
+    return data;
+  },
+
   // Stamp a set of bookings as billed on a given weekly statement (idempotent
   // audit trail; a booking is only ever billed once).
   async markBookingsBilled(refs, weeklyFeeId) {
@@ -5478,6 +5495,73 @@ window.DB = {
         : booking);
       writeDb(db);
       return bookingRefs.map(ref => ({ ref }));
+    },
+    async rescheduleBookingItems(moves) {
+      const list = (Array.isArray(moves) ? moves : []).map(move => ({
+        ref: String(move?.ref || ''), date: move?.date, startHour: Number(move?.startHour),
+        courtId: move?.courtId ? String(move.courtId) : null,
+      }));
+      if (!list.length) throw new Error('Choose at least one court to reschedule.');
+      const refs = list.map(move => move.ref);
+      if (refs.some(ref => !ref) || new Set(refs).size !== refs.length) throw new Error('The reservation references are invalid.');
+      const db = readDb();
+      const found = refs.map(ref => db.bookings.find(booking => String(booking.ref) === ref));
+      if (found.some(booking => !booking)) throw new Error('The complete reservation could not be found. Nothing was moved.');
+      const groups = new Set(found.map(booking => String(booking.groupRef || '')));
+      if (groups.size !== 1 || (!found[0].groupRef && refs.length > 1)) throw new Error('These bookings do not belong to one reservation.');
+      if (!found.every(booking => ['pending', 'confirmed'].includes(String(booking.status || '').toLowerCase()))) {
+        throw new Error('Only pending or confirmed reservations can be rescheduled.');
+      }
+      const hourLabel = hour => hour === 0 || hour === 24 ? '12:00 AM' : `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`;
+      const groupRef = found[0].groupRef || null;
+      const groupRefs = new Set(groupRef
+        ? db.bookings.filter(booking => String(booking.groupRef || '') === String(groupRef)).map(booking => String(booking.ref))
+        : refs);
+      const planned = new Map();
+      list.forEach((move, index) => {
+        const booking = found[index];
+        const hours = (booking.slots || []).length || Math.round(Number(booking.duration) || 0);
+        if (!move.date || !Number.isInteger(move.startHour) || hours < 1 || move.startHour < 6 || move.startHour + hours > 24) {
+          throw new Error('Choose a valid date and time within venue hours.');
+        }
+        const courtId = move.courtId || String(booking.courtId);
+        const court = (db.courts || []).find(row => String(row.id) === courtId);
+        if (!court || (court.blocked && courtId !== String(booking.courtId))) throw new Error('The selected court is unavailable.');
+        planned.set(move.ref, {
+          date: move.date,
+          slots: Array.from({ length: hours }, (_, i) => move.startHour + i),
+          startTime: hourLabel(move.startHour),
+          endTime: hourLabel(move.startHour + hours),
+          duration: hours,
+          courtId,
+          courtName: courtId === String(booking.courtId) ? (booking.courtName || court.name) : court.name,
+        });
+      });
+      const finalRows = db.bookings
+        .filter(booking => groupRefs.has(String(booking.ref)) && !['cancelled', 'forfeited'].includes(booking.status))
+        .map(booking => ({ ...booking, ...(planned.get(String(booking.ref)) || {}), moved: planned.has(String(booking.ref)), original: booking }));
+      for (const row of finalRows.filter(item => item.moved)) {
+        const outside = db.bookings.filter(other => !groupRefs.has(String(other.ref))
+          && String(other.courtId) === String(row.courtId) && String(other.date) === String(row.date));
+        if (hasSlotConflict(outside, row)) throw new Error('One or more time slots are already booked for the selected court and date.');
+        const sameShape = (a, b) => String(a.courtId) === String(b.courtId) && String(a.date) === String(b.date)
+          && (a.slots || []).map(Number).join(',') === (b.slots || []).map(Number).join(',');
+        const clash = finalRows.some(other => other.ref !== row.ref
+          && String(other.courtId) === String(row.courtId) && String(other.date) === String(row.date)
+          && (other.slots || []).some(slot => (row.slots || []).map(Number).includes(Number(slot)))
+          && !(sameShape(other.original, row.original) && sameShape(other, row)));
+        if (clash) throw new Error('Two courts in this reservation would overlap on the same court and time. Choose different times or courts.');
+      }
+      const changes = list.map((move, index) => {
+        const before = found[index];
+        const after = planned.get(move.ref);
+        return { ref: move.ref, oldCourtId: before.courtId, oldCourtName: before.courtName, oldDate: before.date,
+          oldStartTime: before.startTime, oldEndTime: before.endTime, newCourtId: after.courtId, newCourtName: after.courtName,
+          newDate: after.date, newStartTime: after.startTime, newEndTime: after.endTime, newDuration: after.duration };
+      });
+      db.bookings = db.bookings.map(booking => planned.has(String(booking.ref)) ? { ...booking, ...planned.get(String(booking.ref)) } : booking);
+      writeDb(db);
+      return { ok: true, bookingCount: changes.length, changes };
     },
     async markBookingsBilled(refs, weeklyFeeId) {
       if (!Array.isArray(refs) || refs.length === 0) return;

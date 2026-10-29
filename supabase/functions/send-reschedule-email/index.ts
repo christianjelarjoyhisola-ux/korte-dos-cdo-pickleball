@@ -5,6 +5,18 @@ const corsHeaders = {
 
 const LOGO_URL = "https://kortedoscdo.club/korte-dos-logo.png";
 
+type CourtChange = {
+  oldCourtName?: string;
+  oldDate: string;
+  oldStartTime: string;
+  oldEndTime: string;
+  newCourtName?: string;
+  newDate: string;
+  newStartTime: string;
+  newEndTime: string;
+  newDuration?: number;
+};
+
 type Payload = {
   bookingRef: string;
   email: string;
@@ -17,6 +29,8 @@ type Payload = {
   newStartTime: string;
   newEndTime: string;
   newDuration: number;
+  // Per-court list for reservations with several courts or times.
+  changes?: CourtChange[];
   note?: string;
 };
 
@@ -39,7 +53,32 @@ function fmtDate(d: string): string {
   });
 }
 
+function hoursLabel(hours: unknown): string {
+  const n = Number(hours);
+  return Number.isFinite(n) && n > 0 ? ` &middot; ${n} hr${n !== 1 ? "s" : ""}` : "";
+}
+
+// One old -> new card per moved court.
+function buildChangesHtml(changes: CourtChange[]): string {
+  return changes.map((c) => {
+    const oldCourt = escapeHtml(c.oldCourtName || "");
+    const newCourt = escapeHtml(c.newCourtName || c.oldCourtName || "");
+    return `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;border:1.5px solid #8b4b20;border-radius:10px;overflow:hidden;">
+          <tr><td style="background:#241313;background-image:linear-gradient(#241313,#241313);padding:10px 16px;">
+            <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:1px;color:#f28b82;font-weight:700;">Was</div>
+            <div style="font-size:.86rem;color:#f1b2ae;text-decoration:line-through;">${oldCourt ? oldCourt + " &middot; " : ""}${fmtDate(c.oldDate)} &middot; ${escapeHtml(c.oldStartTime)} &ndash; ${escapeHtml(c.oldEndTime)}</div>
+          </td></tr>
+          <tr><td style="background:#1d241e;background-image:linear-gradient(#1d241e,#1d241e);padding:10px 16px;">
+            <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:1px;color:#f49a4a;font-weight:700;">Now</div>
+            <div style="font-size:.95rem;font-weight:800;color:#f7fafc;">${newCourt ? newCourt + " &middot; " : ""}${fmtDate(c.newDate)}</div>
+            <div style="font-size:.88rem;font-weight:600;color:#d7dee8;">${escapeHtml(c.newStartTime)} &ndash; ${escapeHtml(c.newEndTime)}${hoursLabel(c.newDuration)}</div>
+          </td></tr>
+        </table>`;
+  }).join("");
+}
+
 function buildHtml(p: Payload): string {
+  const changes = Array.isArray(p.changes) ? p.changes.filter((c) => c && c.newDate) : [];
   const fullName = escapeHtml(p.fullName);
   const bookingRef = escapeHtml(p.bookingRef);
   const courtName = escapeHtml(p.courtName);
@@ -82,12 +121,21 @@ function buildHtml(p: Payload): string {
       <tr><td style="padding:32px 36px;background:#202428;background-image:linear-gradient(#202428,#202428);">
         <p style="margin:0 0 20px;font-size:1rem;color:#f7fafc;">Hi <strong>${fullName}</strong>,</p>
         <p style="margin:0 0 24px;font-size:.95rem;color:#d7dee8;line-height:1.6;">
-          Your booking has been <strong style="color:#f49a4a;">rescheduled</strong> to a new date and time.
+          ${changes.length > 1 ? `${changes.length} of your court bookings have been` : "Your booking has been"} <strong style="color:#f49a4a;">rescheduled</strong>${changes.length > 1 ? " as listed below" : " to a new date and time"}.
           All other details remain the same &mdash; your slot is secure.
         </p>
 
         ${note}
 
+${changes.length ? `
+        ${buildChangesHtml(changes)}
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#1d241e;background-image:linear-gradient(#1d241e,#1d241e);border:1.5px solid #8b4b20;border-radius:10px;margin:12px 0 24px;">
+          <tr><td style="padding:14px 22px;">
+            <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#aab6c5;margin-bottom:3px;">Booking Reference</div>
+            <div style="font-size:.95rem;font-weight:700;"><span style="font-family:monospace;color:#f49a4a;">${bookingRef}</span></div>
+          </td></tr>
+        </table>
+` : `
         <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;margin-bottom:24px;">
           <tr><td style="background:#241313;background-image:linear-gradient(#241313,#241313);border:1.5px solid #7a3732;border-bottom:none;border-radius:10px 10px 0 0;padding:14px 20px;">
             <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:1px;color:#f28b82;margin-bottom:6px;font-weight:700;">Old Schedule</div>
@@ -107,6 +155,8 @@ function buildHtml(p: Payload): string {
             <div style="font-size:.95rem;font-weight:700;color:#f7fafc;">${courtName} &nbsp;&middot;&nbsp; <span style="font-family:monospace;color:#f49a4a;">${bookingRef}</span></div>
           </td></tr>
         </table>
+
+`}
 
         <p style="margin:0;font-size:.88rem;color:#aab6c5;line-height:1.6;">
           We apologize for the change and appreciate your understanding. See you on the new date!

@@ -1,0 +1,137 @@
+name: Apply Per-Court Reschedule Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-reschedule-booking-items-migration.yml"
+      - "supabase/migrations/20261029220000_reschedule_booking_items.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply and verify per-court rescheduling
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: zcuufcpkgidmaanxjufo
+      MIGRATION_FILE: supabase/migrations/20261029220000_reschedule_booking_items.sql
+      MIGRATION_SHA256: 7bc0a05a8aa727793dc0b0c84a2ea788cdf1a53a029b477f2742a90e06223143
+      HISTORY_SQL: |
+        create schema if not exists supabase_migrations;
+        create table if not exists supabase_migrations.schema_migrations (
+          version text not null primary key
+        );
+        alter table supabase_migrations.schema_migrations add column if not exists statements text[];
+        alter table supabase_migrations.schema_migrations add column if not exists name text;
+        insert into supabase_migrations.schema_migrations (version, name, statements)
+        values (
+          '20261029220000',
+          'reschedule_booking_items',
+          array['sha256:7bc0a05a8aa727793dc0b0c84a2ea788cdf1a53a029b477f2742a90e06223143']::text[]
+        )
+        on conflict (version) do update
+        set name = excluded.name, statements = excluded.statements;
+      VERIFY_SQL: |
+        do $verify$
+        declare
+          target regprocedure := to_regprocedure('public.reschedule_booking_items(jsonb)');
+          definition text;
+        begin
+          if target is null then
+            raise exception 'Per-court reschedule function is missing';
+          end if;
+          select pg_get_functiondef(target) into definition;
+          if not coalesce((
+            select prosecdef
+              and prorettype = 'jsonb'::regtype
+              and coalesce(proconfig, '{}'::text[]) @> array['search_path=public, pg_temp']::text[]
+            from pg_proc where oid = target
+          ), false) then
+            raise exception 'Per-court reschedule security attributes are invalid';
+          end if;
+          if has_function_privilege('anon', target, 'execute')
+             or not has_function_privilege('authenticated', target, 'execute') then
+            raise exception 'Per-court reschedule grants are invalid';
+          end if;
+          if definition not like '%occupied.slots && plan.new_slots%'
+             or definition not like '%a.slots && b.slots%' then
+            raise exception 'Per-court reschedule validation is incomplete';
+          end if;
+          if not exists (
+            select 1 from supabase_migrations.schema_migrations
+            where version = '20261029220000'
+              and name = 'reschedule_booking_items'
+              and statements = array[
+                'sha256:7bc0a05a8aa727793dc0b0c84a2ea788cdf1a53a029b477f2742a90e06223143'
+              ]::text[]
+          ) then
+            raise exception 'Per-court reschedule migration history is missing';
+          end if;
+        end
+        $verify$;
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply checksum-locked migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN secret is required}"
+          test -s "$MIGRATION_FILE"
+          printf '%s  %s\n' "$MIGRATION_SHA256" "$MIGRATION_FILE" | sha256sum --check --strict -
+
+          stripped_migration="$RUNNER_TEMP/reschedule-booking-items.sql"
+          sed -e '1{/^[[:space:]]*begin;[[:space:]]*$/Id;}' \
+              -e '${/^[[:space:]]*commit;[[:space:]]*$/Id;}' \
+              "$MIGRATION_FILE" > "$stripped_migration"
+          payload_file="$RUNNER_TEMP/reschedule-booking-items.json"
+          response_file="$RUNNER_TEMP/reschedule-booking-items-response.json"
+          jq -Rs --arg history "$HISTORY_SQL" \
+            '{query: ("begin;\n" + . + "\n" + $history + "\ncommit;")}' \
+            "$stripped_migration" > "$payload_file"
+
+          status_code="$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Per-court reschedule migration failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Verify production database state
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_file="$RUNNER_TEMP/reschedule-booking-items-verification.json"
+          response_file="$RUNNER_TEMP/reschedule-booking-items-verification-response.json"
+          jq -n --arg query "$VERIFY_SQL" '{query: $query}' > "$payload_file"
+          status_code="$(curl --silent --show-error \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --url "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$payload_file")"
+          if [[ ! "$status_code" =~ ^2 ]]; then
+            echo "::error::Per-court reschedule verification failed with HTTP $status_code."
+            jq -c '{code, message, error}' "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Per-court reschedule production migration verified."

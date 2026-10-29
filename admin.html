@@ -4678,54 +4678,55 @@ body.insights-mode #sec-insights { max-width: 1120px; margin: 0 auto; padding-bo
   </div>
 </div>
 
-<!-- RESCHEDULE MODAL -->
+<!-- RESCHEDULE MODAL: one row per court; each court keeps its time or moves to its own date, court and time -->
 <div class="overlay" id="rescheduleModal">
-  <div class="modal" style="max-width:440px">
+  <div class="modal" style="max-width:620px">
     <div class="m-hd" style="background:linear-gradient(135deg,rgba(74,154,220,.1),transparent)">
       <h2 style="color:#5a9ad4">📅 RESCHEDULE BOOKING</h2>
       <button class="m-x" onclick="closeModal('rescheduleModal')">✕</button>
     </div>
     <div class="m-body">
-      <!-- Current schedule -->
-      <div style="background:rgba(200,160,96,.07);border:1px solid rgba(200,160,96,.25);border-radius:8px;padding:12px 16px;margin-bottom:18px;">
-        <div style="font-size:.67rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px;">Current Schedule</div>
-        <div style="font-size:.9rem;font-weight:700;color:var(--text)" id="rsOldCourt">—</div>
-        <div style="font-size:.84rem;color:var(--yellow);margin-top:2px"><span id="rsOldDate">—</span> · <span id="rsOldTime">—</span></div>
-        <div style="font-size:.78rem;color:var(--muted);margin-top:3px;">👤 <span id="rsName">—</span></div>
+      <div style="font-size:.84rem;color:var(--muted);margin-bottom:12px;">👤 <span id="rsName" style="color:var(--text);font-weight:700">—</span> · <span id="rsCount">—</span></div>
+
+      <div id="rsAllBar" class="rs-allbar">
+        <label class="fl" for="rsAllDate" style="margin:0 0 6px">Move every court to a new date</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="date" class="fi" id="rsAllDate" style="flex:1;min-width:150px" />
+          <button type="button" class="btn btn-p btn-sm" onclick="applyRescheduleDateToAll()">Use for all courts</button>
+        </div>
+        <p style="font-size:.76rem;color:var(--muted);margin:6px 0 0">Each court keeps its court and time when free. You can still change any court below.</p>
       </div>
 
-      <!-- New date -->
-      <div class="fg">
-        <label class="fl">New Date</label>
-        <input type="date" class="fi" id="rsNewDate" onchange="loadRescheduleSlots()" />
-      </div>
+      <div id="rsRows" aria-live="polite"></div>
 
-      <div class="fg" id="rsCourtField">
-        <label class="fl" for="rsNewCourt">New Court</label>
-        <select class="fi" id="rsNewCourt" onchange="loadRescheduleSlots()"></select>
-        <p id="rsCourtHint" style="font-size:.8rem;color:var(--muted);margin:.4rem 0 0"></p>
-      </div>
-
-      <div class="fg">
-        <label class="fl" id="rsSlotLabel">New time slot</label>
-        <p id="rsDurationHint" style="font-size:.8rem;color:var(--muted)"></p>
-        <select id="rsDuration" disabled hidden title="Original booking duration"></select>
-        <div id="rsSlots" role="group" aria-labelledby="rsSlotLabel" aria-live="polite" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
-        <p id="rsEndTimeDisplay" style="font-size:.8rem;color:#5a9ad4"></p>
-      </div>
-
-      <!-- Note to customer -->
-      <div class="fg" style="margin:0">
+      <div class="fg" style="margin:14px 0 0">
         <label class="fl">Note to Customer <span style="color:var(--muted);font-weight:400;text-transform:none;">(sent via email)</span></label>
         <textarea class="fi" id="rsNote" rows="3" placeholder="e.g. Heavy rain expected — we moved your slot to keep you safe!" style="resize:none;font-size:.84rem;line-height:1.5;"></textarea>
       </div>
     </div>
-    <div class="m-foot">
+    <div class="m-foot" style="flex-wrap:wrap">
+      <span id="rsSummary" style="flex:1;min-width:160px;font-size:.8rem;color:var(--muted)"></span>
       <button class="btn btn-g" onclick="closeModal('rescheduleModal')">Cancel</button>
       <button class="btn btn-p" id="rsSaveBtn" disabled onclick="saveReschedule()">📅 Reschedule & Notify</button>
     </div>
   </div>
 </div>
+<style>
+.rs-allbar{background:rgba(74,154,220,.07);border:1px solid rgba(74,154,220,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.rs-row{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.rs-row.rs-moving{border-color:rgba(74,154,220,.45);background:rgba(74,154,220,.04)}
+.rs-row-hd{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.rs-row-title{font-weight:700;color:var(--text);font-size:.9rem}
+.rs-row-now{font-size:.8rem;color:var(--yellow)}
+.rs-mode{display:flex;gap:8px;margin-top:10px}
+.rs-mode button{flex:1}
+.rs-move{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.rs-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}
+.rs-slots .btn{white-space:normal;min-height:42px;font-size:.78rem}
+.rs-pick{font-size:.78rem;margin-top:6px;color:#5a9ad4}
+.rs-pick.rs-warn{color:var(--red,#e06c6c)}
+@media (max-width:520px){.rs-move{grid-template-columns:1fr}.rs-slots{grid-template-columns:1fr 1fr}}
+</style>
 
 <!-- PREPARE REMITTANCE — freezes an exact server-side cutoff -->
 <div class="overlay" id="rmPrepareModal" aria-hidden="true">
@@ -9285,243 +9286,392 @@ let _rescheduleContext = null;
 let _rescheduleLoad = 0;
 let _rescheduleSaving = false;
 
-function selectRescheduleSlot(start) {
-  const context = _rescheduleContext;
-  const option = context?.options?.find(item => item.start === start && !item.unavailable);
-  if (!option || context.date !== $('rsNewDate').value || _rescheduleSaving) return;
-  context.selectedStart = start;
-  renderRescheduleSlotChoices();
+// Hours a court cannot be used on a date: closed date, closed/missing court,
+// open play, or maintenance. Other bookings are added separately.
+function rescheduleClosedHours({ settings, blockedDates, courts, date, courtId }) {
+  const closed = new Set();
+  const id = String(courtId || '');
+  const parseConfig = value => typeof value === 'string' ? JSON.parse(value) : value;
+  const maintenance = parseConfig(settings?.maintenance_config || 'null');
+  const openPlay = parseConfig(settings?.open_play_config || 'null');
+  const rules = maintenance ? (Array.isArray(maintenance.rules) ? maintenance.rules : [maintenance]) : [];
+  const courtMissing = !(courts || []).some(c => String(c.id) === id && !c.blocked);
+  const dow = new Date(date + 'T12:00:00').getDay();
+  for (let hour = 0; hour < 24; hour++) {
+    const opCourt = !openPlay?.courtIds?.length || openPlay.courtIds.map(String).includes(id);
+    const opDay = openPlay?.days?.includes(dow) || openPlay?.specificDates?.includes(date);
+    const from = Number(openPlay?.start), to = Number(openPlay?.end);
+    const opHour = Number.isFinite(from) && Number.isFinite(to) && from !== to && (from < to ? hour >= from && hour < to : hour >= from || hour < to);
+    if (courtMissing || (blockedDates || []).includes(date)
+        || (openPlay?.enabled && opCourt && opDay && opHour)
+        || rules.some(rule => _nbCheckRule(rule, date, hour, id))) closed.add(hour);
+  }
+  return closed;
 }
 
-function renderRescheduleSlotChoices() {
-  const context = _rescheduleContext;
-  $('rsSlots').innerHTML = context.options.length ? context.options.map(option => {
-    const selected = option.start === context.selectedStart;
-    return '<button type="button" class="btn ' + (selected ? 'btn-p' : 'btn-g') + '" style="white-space:normal;min-height:48px" aria-pressed="' + selected + '" ' +
-      (option.unavailable ? 'disabled' : 'onclick="selectRescheduleSlot(' + option.start + ')"') + '>' + esc(option.label) +
-      (option.unavailable ? '<br><small>Unavailable</small>' : '') + '</button>';
-  }).join('') : '<p>No time slots fit this booking on this date.</p>';
-  const selected = context.options.find(option => option.start === context.selectedStart && !option.unavailable);
-  $('rsEndTimeDisplay').textContent = selected ? 'Selected: ' + selected.label : 'Choose an available time slot.';
-  $('rsSaveBtn').disabled = !selected || _rescheduleSaving;
+function rescheduleRowLabel(row) {
+  return `${row.courtName} · ${fmtD(row.date)} · ${row.startTime} – ${row.endTime} · ${row.hours} hr${row.hours === 1 ? '' : 's'}`;
 }
 
-async function loadRescheduleSlots(preferredStart = null) {
+// Where every court of this reservation will be after saving: moved courts at
+// their picked time, kept courts where they are.
+function rescheduleFinalPlacement(row) {
+  if (row.mode === 'move') {
+    if (!Number.isInteger(row.selectedStart)) return null;
+    return { courtId: String(row.newCourtId), date: row.newDate,
+      slots: Array.from({ length: row.hours }, (_, i) => row.selectedStart + i) };
+  }
+  return { courtId: String(row.courtId), date: row.date, slots: row.slots.map(Number) };
+}
+
+function rescheduleRowOptions(context, row) {
+  const data = context.data;
+  const date = row.newDate;
+  if (!data || !date) return [];
+  const unavailable = rescheduleClosedHours({ settings: data.settings, blockedDates: data.blockedDates,
+    courts: data.courts, date, courtId: row.newCourtId });
+  const refs = new Set(context.refs.map(String));
+  for (const booking of data.bookingsByDate[date] || []) {
+    if (refs.has(String(booking.ref)) || booking.date !== date || String(booking.courtId) !== String(row.newCourtId)
+        || ['cancelled', 'forfeited'].includes(booking.status)) continue;
+    if (booking.status === 'verifying' && booking.createdAt && Date.parse(booking.createdAt) <= Date.now() - 15 * 60000) continue;
+    (booking.slots || []).forEach(hour => unavailable.add(Number(hour)));
+  }
+  // Other courts of this same reservation also hold their final slots.
+  for (const other of context.rows) {
+    if (other === row) continue;
+    const placed = rescheduleFinalPlacement(other);
+    if (placed && placed.date === date && placed.courtId === String(row.newCourtId)) placed.slots.forEach(hour => unavailable.add(hour));
+  }
+  return rescheduleSlotOptions({ date, duration: row.hours,
+    openHour: Number(data.settings?.open_hour ?? 6), closeHour: Number(data.settings?.close_hour ?? 22),
+    unavailableHours: unavailable, today: data.clock.date, currentHour: data.clock.hour });
+}
+
+function rescheduleRefreshOptions(context) {
+  context.rows.forEach(row => {
+    if (row.mode !== 'move') { row.options = []; return; }
+    row.options = rescheduleRowOptions(context, row);
+    if (Number.isInteger(row.selectedStart) && !row.options.some(o => o.start === row.selectedStart && !o.unavailable)) {
+      row.selectedStart = null;
+    }
+  });
+}
+
+async function loadRescheduleData(context) {
+  const dates = [...new Set(context.rows.filter(row => row.mode === 'move' && row.newDate).map(row => row.newDate))];
+  if (DB.clearCache) DB.clearCache();
+  const [settings, blockedDates, courts, ...perDate] = await Promise.all([
+    DB.getSettings(), DB.getBlockedDates(), DB.getCourts(),
+    ...dates.map(date => DB.getBookings({ date, activeOnly: true })),
+  ]);
+  const bookingsByDate = {};
+  dates.forEach((date, i) => { bookingsByDate[date] = perDate[i] || []; });
+  return { settings, blockedDates, courts, bookingsByDate, clock: rescheduleManilaClock() };
+}
+
+async function loadRescheduleSlots() {
   const context = _rescheduleContext;
   if (!context) return false;
   const request = ++_rescheduleLoad;
-  const date = $('rsNewDate').value;
-  context.selectedStart = null;
-  context.options = [];
-  $('rsSaveBtn').disabled = true;
-  $('rsEndTimeDisplay').textContent = '';
-  $('rsSlots').textContent = 'Checking available time slots…';
+  context.loading = true;
+  context.error = false;
+  renderRescheduleRows();
   try {
-    if (DB.clearCache) DB.clearCache();
-    const [settings, bookings, blockedDates, courts] = await Promise.all([
-      DB.getSettings(), DB.getBookings({ date, activeOnly: true }), DB.getBlockedDates(), DB.getCourts(),
-    ]);
-    if (request !== _rescheduleLoad || context !== _rescheduleContext || date !== $('rsNewDate').value) return false;
-    const clock = rescheduleManilaClock();
-    const unavailableHours = new Set();
-    const selectedCourtId = context.isGroup
-      ? ''
-      : String($('rsNewCourt')?.value || context.courtId || '');
-    const courtIds = new Set(context.isGroup
-      ? context.items.map(item => String(item.courtId))
-      : [selectedCourtId]);
-    context.selectedCourtId = selectedCourtId;
-    context.selectedCourtName = context.isGroup
-      ? context.courtName
-      : (courts.find(court => String(court.id) === selectedCourtId)?.name || context.courtName);
-    const missingOrClosed = [...courtIds].some(id => !courts.some(c => String(c.id) === id && !c.blocked));
-    const parseConfig = value => typeof value === 'string' ? JSON.parse(value) : value;
-    const maintenance = parseConfig(settings.maintenance_config || 'null');
-    const openPlay = parseConfig(settings.open_play_config || 'null');
-    const rules = maintenance ? (Array.isArray(maintenance.rules) ? maintenance.rules : [maintenance]) : [];
-    const dow = new Date(date + 'T12:00:00').getDay();
-    for (let hour = 0; hour < 24; hour++) {
-      if (missingOrClosed || blockedDates.includes(date) || [...courtIds].some(id => {
-        const opCourt = !openPlay?.courtIds?.length || openPlay.courtIds.map(String).includes(id);
-        const opDay = openPlay?.days?.includes(dow) || openPlay?.specificDates?.includes(date);
-        const from = Number(openPlay?.start), to = Number(openPlay?.end);
-        const opHour = Number.isFinite(from) && Number.isFinite(to) && from !== to && (from < to ? hour >= from && hour < to : hour >= from || hour < to);
-        return (openPlay?.enabled && opCourt && opDay && opHour) || rules.some(rule => _nbCheckRule(rule, date, hour, id));
-      })) unavailableHours.add(hour);
-    }
-    for (const booking of bookings) {
-      if (context.refs.includes(booking.ref) || booking.date !== date || !courtIds.has(String(booking.courtId)) || ['cancelled', 'forfeited'].includes(booking.status)) continue;
-      if (booking.status === 'verifying' && booking.createdAt && Date.parse(booking.createdAt) <= Date.now() - 15 * 60000) continue;
-      (booking.slots || []).forEach(hour => unavailableHours.add(Number(hour)));
-    }
-    context.date = date;
-    context.options = rescheduleSlotOptions({ date, duration: context.duration,
-      openHour: Number(settings.open_hour ?? 6), closeHour: Number(settings.close_hour ?? 22),
-      unavailableHours, today: clock.date, currentHour: clock.hour });
-    if (context.options.some(option => option.start === preferredStart && !option.unavailable)) context.selectedStart = preferredStart;
-    renderRescheduleSlotChoices();
+    const data = await loadRescheduleData(context);
+    if (request !== _rescheduleLoad || context !== _rescheduleContext) return false;
+    context.data = data;
+    context.loading = false;
+    rescheduleRefreshOptions(context);
+    renderRescheduleRows();
     return true;
   } catch (error) {
     if (request !== _rescheduleLoad || context !== _rescheduleContext) return false;
-    $('rsSlots').innerHTML = '<p role="alert">Unable to check time slots. <button type="button" class="btn btn-g" onclick="loadRescheduleSlots()">Retry</button></p>';
+    context.loading = false;
+    context.error = true;
+    renderRescheduleRows();
     return false;
   }
+}
+
+function renderRescheduleRows() {
+  const context = _rescheduleContext;
+  if (!context) return;
+  const courts = (context.data?.courts || context.courts || []);
+  $('rsRows').innerHTML = context.rows.map((row, index) => {
+    const moving = row.mode === 'move';
+    const courtOptions = courts
+      .filter(court => !court.blocked || String(court.id) === String(row.courtId))
+      .map(court => `<option value="${esc(String(court.id))}" ${String(court.id) === String(row.newCourtId) ? 'selected' : ''}>${esc(court.name)}</option>`)
+      .join('');
+    let slotsHtml = '';
+    if (moving) {
+      if (context.error) {
+        slotsHtml = '<p role="alert" style="font-size:.8rem">Unable to check time slots. <button type="button" class="btn btn-g btn-sm" onclick="loadRescheduleSlots()">Retry</button></p>';
+      } else if (context.loading && !row.options.length) {
+        slotsHtml = '<p style="font-size:.8rem;color:var(--muted)">Checking available time slots…</p>';
+      } else if (!row.options.length) {
+        slotsHtml = '<p style="font-size:.8rem;color:var(--muted)">No time slots fit this court on this date.</p>';
+      } else {
+        slotsHtml = '<div class="rs-slots" role="group" aria-label="Time slots for ' + esc(row.courtName) + '">' + row.options.map(option => {
+          const selected = option.start === row.selectedStart;
+          return '<button type="button" class="btn ' + (selected ? 'btn-p' : 'btn-g') + '" aria-pressed="' + selected + '" ' +
+            (option.unavailable ? 'disabled' : 'onclick="selectRescheduleSlot(' + index + ',' + option.start + ')"') + '>' +
+            esc(option.label) + (option.unavailable ? '<br><small>Unavailable</small>' : '') + '</button>';
+        }).join('') + '</div>';
+      }
+      const picked = row.options.find(option => option.start === row.selectedStart && !option.unavailable);
+      slotsHtml += picked
+        ? `<div class="rs-pick">New: ${esc(fmtD(row.newDate))} · ${esc(picked.label)}</div>`
+        : (context.loading || context.error ? '' : `<div class="rs-pick rs-warn">${esc(row.notice || 'Choose a time for this court.')}</div>`);
+    }
+    return `<div class="rs-row ${moving ? 'rs-moving' : ''}">
+      <div class="rs-row-hd">
+        <span class="rs-row-title">${esc(row.courtName)}</span>
+        <span class="rs-row-now">Now: ${esc(fmtD(row.date))} · ${esc(row.startTime)} – ${esc(row.endTime)} · ${row.hours} hr${row.hours === 1 ? '' : 's'}</span>
+      </div>
+      <div class="rs-mode" role="group" aria-label="What to do with ${esc(row.courtName)}">
+        <button type="button" class="btn btn-sm ${moving ? 'btn-g' : 'btn-p'}" aria-pressed="${!moving}" onclick="setRescheduleRowMode(${index},'keep')">Keep same time</button>
+        <button type="button" class="btn btn-sm ${moving ? 'btn-p' : 'btn-g'}" aria-pressed="${moving}" onclick="setRescheduleRowMode(${index},'move')">Move to new time</button>
+      </div>
+      ${moving ? `<div class="rs-move">
+        <div><label class="fl" for="rsDate${index}">New date</label>
+          <input type="date" class="fi" id="rsDate${index}" min="${esc(context.minDate)}" value="${esc(row.newDate || '')}" onchange="setRescheduleRowDate(${index},this.value)" /></div>
+        <div><label class="fl" for="rsCourt${index}">Court</label>
+          <select class="fi" id="rsCourt${index}" onchange="setRescheduleRowCourt(${index},this.value)">${courtOptions}</select></div>
+      </div>${slotsHtml}` : ''}
+    </div>`;
+  }).join('');
+  updateRescheduleSummary();
+}
+
+function rescheduleReady(context) {
+  const moving = (context?.rows || []).filter(row => row.mode === 'move');
+  return moving.length > 0 && !context.loading && !context.error
+    && moving.every(row => row.options.some(option => option.start === row.selectedStart && !option.unavailable));
+}
+
+function updateRescheduleSummary() {
+  const context = _rescheduleContext;
+  if (!context) return;
+  const moving = context.rows.filter(row => row.mode === 'move');
+  const waiting = moving.filter(row => !Number.isInteger(row.selectedStart)).length;
+  $('rsSummary').textContent = !moving.length
+    ? 'Choose “Move to new time” on at least one court.'
+    : `${moving.length} of ${context.rows.length} court${context.rows.length === 1 ? '' : 's'} moving` +
+      (waiting ? ` · ${waiting} still need a time` : ' · ready to save');
+  $('rsSaveBtn').disabled = _rescheduleSaving || !rescheduleReady(context);
+}
+
+function setRescheduleRowMode(index, mode) {
+  const context = _rescheduleContext;
+  const row = context?.rows?.[index];
+  if (!row || _rescheduleSaving) return;
+  row.mode = mode === 'move' ? 'move' : 'keep';
+  row.notice = '';
+  if (row.mode === 'move' && !row.newDate) row.newDate = context.defaultDate;
+  loadRescheduleSlots();
+}
+
+function setRescheduleRowDate(index, date) {
+  const row = _rescheduleContext?.rows?.[index];
+  if (!row || _rescheduleSaving) return;
+  row.newDate = date;
+  row.selectedStart = null;
+  row.notice = '';
+  loadRescheduleSlots();
+}
+
+function setRescheduleRowCourt(index, courtId) {
+  const row = _rescheduleContext?.rows?.[index];
+  if (!row || _rescheduleSaving) return;
+  row.newCourtId = String(courtId);
+  row.selectedStart = null;
+  row.notice = '';
+  loadRescheduleSlots();
+}
+
+function selectRescheduleSlot(index, start) {
+  const context = _rescheduleContext;
+  const row = context?.rows?.[index];
+  if (!row || _rescheduleSaving || !row.options.some(option => option.start === start && !option.unavailable)) return;
+  row.selectedStart = start;
+  row.notice = '';
+  rescheduleRefreshOptions(context);
+  renderRescheduleRows();
+}
+
+// Main shortcut: move every court to one new date, keeping each court's own
+// court and start time where that is still free.
+async function applyRescheduleDateToAll() {
+  const context = _rescheduleContext;
+  const date = $('rsAllDate').value;
+  if (!context || _rescheduleSaving) return;
+  if (!date) { toast('Choose the new date first.', 'err'); return; }
+  context.rows.forEach(row => {
+    row.mode = 'move';
+    row.newDate = date;
+    row.newCourtId = String(row.courtId);
+    row.selectedStart = null;
+    row.notice = '';
+  });
+  if (!(await loadRescheduleSlots())) return;
+  // Place courts one at a time so two courts never claim the same slot.
+  context.rows.forEach(row => {
+    row.options = rescheduleRowOptions(context, row);
+    const keep = row.options.find(option => option.start === row.startHour && !option.unavailable);
+    if (keep) row.selectedStart = keep.start;
+    else row.notice = 'Its usual time is taken on this date. Choose another time or court.';
+  });
+  rescheduleRefreshOptions(context);
+  renderRescheduleRows();
+  const missing = context.rows.filter(row => !Number.isInteger(row.selectedStart)).length;
+  if (missing) toast(`${missing} court${missing === 1 ? '' : 's'} need a different time on that date.`, 'err');
 }
 
 async function openRescheduleModal(ref) {
   if (_rescheduleSaving) return;
   const group = await getBookingGroupByRef(ref);
   const activeItems = group?.allItems || group?.items || [];
-  const b = group?.items?.[0] || await DB.getBookingByRef(ref);
-  if (!b) { toast('Booking not found.', 'err'); return; }
-  if (!canRescheduleBooking({ allItems: activeItems })) {
+  const first = group?.items?.[0] || await DB.getBookingByRef(ref);
+  if (!first) { toast('Booking not found.', 'err'); return; }
+  const allItems = activeItems.length ? activeItems : [first];
+  if (!canRescheduleBooking({ allItems })) {
     toast('Only pending or confirmed reservations can be rescheduled.', 'err');
     return;
   }
 
-  const scheduleKey = item => JSON.stringify({
-    date: item.date,
-    startTime: item.startTime,
-    endTime: item.endTime,
-    duration: Number(item.duration || item.slots?.length || 0),
-    slots: (item.slots || []).map(Number),
+  // One row per court entry. Identical duplicate rows (same court, date and
+  // slots) move together so they never end up apart.
+  const byKey = new Map();
+  sortBookingsChronologically(allItems).forEach(item => {
+    const key = bookingLogicalKey(item);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(item);
   });
-  if (activeItems.length > 1 && new Set(activeItems.map(scheduleKey)).size !== 1) {
-    toast('This grouped reservation has different schedules. Reschedule its court entries individually to preserve each paid duration.', 'err');
-    return;
-  }
-
-  const refs = [...new Set(activeItems.map(item => String(item.ref || '')).filter(Boolean))];
-  const isGroup = refs.length > 1;
-  _rescheduleContext = {
-    ref: b.ref,
-    refs: refs.length ? refs : [b.ref],
-    items: activeItems.length ? activeItems : [b],
-    duration: Number(b.duration || b.slots?.length || 0),
-    options: [],
-    selectedStart: null,
-    isGroup,
-    courtId: String(b.courtId || ''),
-    selectedCourtId: String(b.courtId || ''),
-    selectedCourtName: b.courtName,
-    courtName: isGroup ? bookingGroupCourtLabel(activeItems) : b.courtName,
-  };
-
-  $('rsOldCourt').textContent = isGroup
-    ? `${_rescheduleContext.courtName} · ${refs.length} courts move together`
-    : b.courtName;
-  $('rsOldDate').textContent = group?.dateLabel || fmtD(b.date);
-  $('rsOldTime').textContent = group?.timeLabel || `${b.startTime} – ${b.endTime}`;
-  $('rsName').textContent = group?.fullName || b.fullName;
-
   const clock = rescheduleManilaClock();
   const tomorrow = new Date(clock.date + 'T12:00:00Z');
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  $('rsNewDate').value = tomorrow.toISOString().slice(0, 10);
-  $('rsNewDate').min = clock.date;
-  const courts = await DB.getCourts();
-  const availableCourts = courts.filter(court => !court.blocked || String(court.id) === String(b.courtId));
-  $('rsNewCourt').innerHTML = availableCourts.map(court =>
-    '<option value="' + esc(String(court.id)) + '" ' +
-      (String(court.id) === String(b.courtId) ? 'selected' : '') + '>' + esc(court.name) + '</option>'
-  ).join('');
-  $('rsNewCourt').disabled = isGroup;
-  $('rsCourtHint').textContent = isGroup
-    ? 'Multi-court reservations keep their original courts and move together.'
-    : 'Choose any open court, then select one of its available time slots.';
-  const dur = _rescheduleContext.duration;
-  $('rsDuration').innerHTML = '<option value="' + dur + '">' + dur + ' hours</option>';
-  $('rsDurationHint').textContent = 'Choose one ' + dur + '-hour time slot. The original duration and price stay unchanged.';
+  const defaultDate = tomorrow.toISOString().slice(0, 10);
+  const rows = [...byKey.values()].map(items => {
+    const item = items[0];
+    const slots = (item.slots || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+    const hours = slots.length || Number(item.duration || 0);
+    return {
+      refs: items.map(entry => String(entry.ref)),
+      courtId: String(item.courtId || ''),
+      courtName: item.courtName || 'Court',
+      date: item.date,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      slots,
+      hours,
+      startHour: slots.length ? slots[0] : null,
+      mode: byKey.size === 1 ? 'move' : 'keep',
+      newDate: byKey.size === 1 ? defaultDate : '',
+      newCourtId: String(item.courtId || ''),
+      selectedStart: null,
+      options: [],
+      notice: '',
+    };
+  });
 
+  _rescheduleContext = {
+    ref: first.ref,
+    refs: [...new Set(allItems.map(item => String(item.ref || '')).filter(Boolean))],
+    rows,
+    fullName: group?.fullName || first.fullName,
+    email: group?.email || first.email,
+    minDate: clock.date,
+    defaultDate,
+    courts: [],
+    data: null,
+    loading: false,
+    error: false,
+  };
+
+  $('rsName').textContent = _rescheduleContext.fullName || '—';
+  $('rsCount').textContent = rows.length === 1 ? '1 court' : `${rows.length} court entries`;
+  $('rsAllBar').hidden = rows.length < 2;
+  $('rsAllDate').value = defaultDate;
+  $('rsAllDate').min = clock.date;
   $('rsNote').value = 'Due to expected heavy rain, we have rescheduled your booking for your safety and convenience. We apologize for the inconvenience!';
-
   $('rescheduleModal').dataset.ref = ref;
-  $('rescheduleModal').dataset.oldDate = b.date;
-  $('rescheduleModal').dataset.oldStart = b.startTime;
-  $('rescheduleModal').dataset.oldEnd = b.endTime;
   $('rescheduleModal').classList.add('show');
   await loadRescheduleSlots();
 }
 
 async function saveReschedule() {
   if (_rescheduleSaving) return;
-  const context = _rescheduleContext ? { ..._rescheduleContext, refs: [..._rescheduleContext.refs] } : null;
-  const ref = context?.ref || $('rescheduleModal').dataset.ref;
-  if (!ref) return;
-
-  const oldDate = $('rescheduleModal').dataset.oldDate;
-  const oldStartTime = $('rescheduleModal').dataset.oldStart;
-  const oldEndTime = $('rescheduleModal').dataset.oldEnd;
-  const newDate = $('rsNewDate').value;
-  const startH = context?.selectedStart;
-  const dur = context?.duration;
-  const endH = startH + dur;
+  const context = _rescheduleContext;
+  if (!context) return;
+  const picks = context.rows.filter(row => row.mode === 'move').map(row => ({ row, start: row.selectedStart }));
+  if (!picks.length) { toast('Choose at least one court to move.', 'err'); return; }
+  if (picks.some(pick => !Number.isInteger(pick.start))) { toast('Choose a new time for every court you are moving.', 'err'); return; }
   const note = $('rsNote').value.trim();
-
-  if (!newDate) { toast('Please select a new date.', 'err'); return; }
-  if (!Number.isInteger(startH) || !Number.isInteger(dur) || context.date !== newDate) { toast('Please select an available time slot.', 'err'); return; }
-
-  const slots = Array.from({ length: dur }, (_, i) => startH + i);
-  const newStartTime = fmtHour(startH);
-  const newEndTime = fmtHour(endH);
 
   _rescheduleSaving = true;
   $('rsSaveBtn').disabled = true;
   try {
-    const loaded = await loadRescheduleSlots(startH);
-    if (!loaded || _rescheduleContext?.selectedStart !== startH || $('rsNewDate').value !== newDate) {
-      toast('That time slot is no longer available. Please choose another.', 'err');
+    // Recheck with fresh data so a slot taken meanwhile is caught before saving.
+    const loaded = await loadRescheduleSlots();
+    if (!loaded || picks.some(pick => pick.row.selectedStart !== pick.start)) {
+      toast('A chosen time is no longer available. Please choose again.', 'err');
       return;
     }
-    const scheduleUpdates = {
-      date: newDate,
-      startTime: newStartTime,
-      endTime: newEndTime,
-      duration: dur,
-      slots,
-    };
-    if (!context?.isGroup) {
-      scheduleUpdates.courtId = _rescheduleContext.selectedCourtId;
-      scheduleUpdates.courtName = _rescheduleContext.selectedCourtName;
-    }
-    await DB.rescheduleBookingGroup(context.refs, scheduleUpdates);
+    const moves = picks.flatMap(({ row }) => row.refs.map(ref => ({
+      ref, date: row.newDate, startHour: row.selectedStart,
+      courtId: String(row.newCourtId) !== String(row.courtId) ? String(row.newCourtId) : null,
+    })));
+    const result = await DB.rescheduleBookingItems(moves);
 
     closeModal('rescheduleModal');
-    toast(context?.isGroup ? 'All courts in the reservation were rescheduled!' : 'Booking rescheduled!');
+    toast(picks.length === 1 ? 'Booking rescheduled!' : `${picks.length} courts rescheduled!`);
     await renderBookings();
     renderDash();
 
-    DB.getBookingByRef(ref).then(async bk => {
-      if (!bk) return;
+    const seen = new Set();
+    const changes = (result?.changes || []).filter(change => {
+      const key = [change.newCourtId, change.newDate, change.newStartTime, change.oldCourtId, change.oldDate, change.oldStartTime].join('|');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    DB.getBookingByRef(context.ref).then(async bk => {
+      if (!bk || !changes.length) return;
+      const firstChange = changes[0];
       const payload = {
-        bookingRef: bk.ref,
+        bookingRef: bk.groupRef ? String(bk.groupRef).replace(/-G$/, '') : bk.ref,
         email: bk.email,
         fullName: bk.fullName,
-        courtName: _rescheduleContext?.selectedCourtName || context?.courtName || bk.courtName,
-        oldDate,
-        oldStartTime,
-        oldEndTime,
-        newDate,
-        newStartTime,
-        newEndTime,
-        newDuration: dur,
+        courtName: firstChange.newCourtName,
+        oldDate: firstChange.oldDate,
+        oldStartTime: firstChange.oldStartTime,
+        oldEndTime: firstChange.oldEndTime,
+        newDate: firstChange.newDate,
+        newStartTime: firstChange.newStartTime,
+        newEndTime: firstChange.newEndTime,
+        newDuration: firstChange.newDuration,
+        changes,
         note,
       };
-
+      const summary = changes.map(change =>
+        `${change.oldCourtName} ${change.oldDate} ${change.oldStartTime}-${change.oldEndTime} → ` +
+        `${change.newCourtName} ${change.newDate} ${change.newStartTime}-${change.newEndTime}`).join('; ');
       await Promise.all([
         bk.email ? DB.sendRescheduleEmail(payload, { allowFailure: true }).then(j => {
           if (j?.ok) toast('Reschedule email sent to customer!');
           else if (!j?.skipped) toast(`Booking rescheduled, but email failed: ${j?.error || 'unknown error'}`, 'err');
         }).catch(() => {}) : Promise.resolve(),
-        notifyBookingUpdateSafe(bk, 'booking_rescheduled', note || `Moved from ${oldDate} ${oldStartTime}-${oldEndTime} to ${newDate} ${newStartTime}-${newEndTime}`),
+        notifyBookingUpdateSafe(bk, 'booking_rescheduled', note ? `${note} (${summary})` : `Moved: ${summary}`),
       ]);
     }).catch(() => {});
-  } catch(e) {
+  } catch (e) {
     toast(e?.message || 'Failed to reschedule booking.', 'err');
     await loadRescheduleSlots();
   } finally {
     _rescheduleSaving = false;
-    if (_rescheduleContext?.options?.length) renderRescheduleSlotChoices();
+    updateRescheduleSummary();
   }
 }
 
