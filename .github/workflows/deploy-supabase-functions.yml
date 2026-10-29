@@ -248,5 +248,6 @@ jobs:
           for function_name in ${{ steps.functions.outputs.names }}; do
             supabase functions deploy "$function_name" \
               --project-ref "$SUPABASE_PROJECT_REF" \
-              --no-verify-jwt
+              --no-verify-jwt \
+              --use-api
           done
